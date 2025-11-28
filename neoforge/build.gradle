@@ -42,3 +42,10 @@ neoForge {
 }
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+dependencies {
+    // JEI API for compile-time, JEI mod for runtime
+    compileOnly "mezz.jei:jei-1.21.1-neoforge-api:19.25.1.328"
+    runtimeOnly  "mezz.jei:jei-1.21.1-neoforge:19.25.1.328"
+}
+

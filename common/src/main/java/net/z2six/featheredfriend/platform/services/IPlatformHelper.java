@@ -1,5 +1,11 @@
+// common/src/main/java/net/z2six/featheredfriend/platform/services/IPlatformHelper.java
 package net.z2six.featheredfriend.platform.services;
 
+import net.minecraft.server.level.ServerPlayer;
+
+/**
+ * Platform abstraction for MultiLoader.
+ */
 public interface IPlatformHelper {
 
     /**
@@ -30,7 +36,12 @@ public interface IPlatformHelper {
      * @return The name of the environment type.
      */
     default String getEnvironmentName() {
-
         return isDevelopmentEnvironment() ? "development" : "production";
     }
+
+    /**
+     * Open the Scroll Sealing screen for the given player.
+     * Called from UnsealedScrollItem#use on the logical server.
+     */
+    void openScrollSealingScreen(ServerPlayer player);
 }

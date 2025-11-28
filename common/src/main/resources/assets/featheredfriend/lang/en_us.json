@@ -1,0 +1,12 @@
+{
+  "item.featheredfriend.scroll_unsealed": "Unsealed Scroll",
+  "item.featheredfriend.scroll_sealed": "Sealed Scroll",
+  "item.featheredfriend.seal_stamp": "Seal Stamp",
+
+  "item.featheredfriend.scroll_sealed.description": "Obtained by sealing an Unsealed Scroll in the Scroll Sealing GUI.",
+
+  "screen.featheredfriend.scroll_sealing": "Scroll Sealing",
+  "screen.featheredfriend.scroll_sealing.seal_button": "Seal (Placeholder)",
+
+  "jei.featheredfriend.scroll_sealed.info": "Sealed Scrolls are created from Unsealed Scrolls inside the Scroll Sealing GUI."
+}
