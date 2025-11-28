@@ -2,10 +2,10 @@
   "required": true,
   "minVersion": "0.8",
   "package": "net.z2six.featheredfriend.mixin",
-  "compatibilityLevel": "JAVA_18",
+  "compatibilityLevel": "JAVA_21",
   "mixins": [],
   "client": [
-    "net.z2six.featheredfriend.mixin.MixinTitleScreen"
+    "MixinTitleScreen"
   ],
   "server": [],
   "injectors": {
