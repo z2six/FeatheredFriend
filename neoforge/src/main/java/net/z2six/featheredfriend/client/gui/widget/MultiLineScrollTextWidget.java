@@ -20,6 +20,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
+ * // neoforge/src/main/java/net/z2six/featheredfriend/client/gui/widget/MultiLineScrollTextWidget.java
+ *
  * MultiLineScrollTextWidget
  *
  * A simple multi-line text widget that:
@@ -37,6 +39,7 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
     private final Font font;
     private final int maxChars;
     private final int maxLines;
+    private final boolean allowNewlines;
     private final Component placeholder;
     private boolean editable = true;
 
@@ -52,12 +55,12 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
     @Nullable
     private ResourceLocation customFontId;
 
-    // Behavior flags
-    private boolean allowNewlines = false;
-    private boolean enforceVisualLimit = false;
-
     private record LineInfo(int start, int end) {
     }
+
+    // ---------------------------------------------------------------------
+    // Constructors
+    // ---------------------------------------------------------------------
 
     public MultiLineScrollTextWidget(
             @NotNull Font font,
@@ -69,7 +72,7 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             int maxLines,
             @NotNull Component placeholder
     ) {
-        this(font, x, y, width, height, maxChars, maxLines, placeholder, null);
+        this(font, x, y, width, height, maxChars, maxLines, placeholder, null, false);
     }
 
     public MultiLineScrollTextWidget(
@@ -83,20 +86,36 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             @NotNull Component placeholder,
             @Nullable ResourceLocation customFontId
     ) {
+        this(font, x, y, width, height, maxChars, maxLines, placeholder, customFontId, false);
+    }
+
+    public MultiLineScrollTextWidget(
+            @NotNull Font font,
+            int x,
+            int y,
+            int width,
+            int height,
+            int maxChars,
+            int maxLines,
+            @NotNull Component placeholder,
+            @Nullable ResourceLocation customFontId,
+            boolean allowNewlines
+    ) {
         super(x, y, width, height, placeholder);
         this.font = font;
         this.maxChars = Math.max(1, maxChars);
         this.maxLines = Math.max(1, maxLines);
         this.placeholder = placeholder;
         this.customFontId = customFontId;
+        this.allowNewlines = allowNewlines;
 
         this.setFocused(false);
         this.active = true;
         this.visible = true;
 
         LOG.debug(
-                "[MultiLineScrollTextWidget] Created at ({},{}) size=({},{}) maxChars={} maxLines={} fontId={}",
-                x, y, width, height, this.maxChars, this.maxLines, this.customFontId
+                "[MultiLineScrollTextWidget] Created at ({},{}) size=({},{}) maxChars={} maxLines={} fontId={} allowNewlines={}",
+                x, y, width, height, this.maxChars, this.maxLines, this.customFontId, this.allowNewlines
         );
 
         reflowLines();
@@ -133,16 +152,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
     public void setCustomFontId(@Nullable ResourceLocation fontId) {
         this.customFontId = fontId;
         LOG.debug("[MultiLineScrollTextWidget] setCustomFontId -> {}", fontId);
-    }
-
-    public void setAllowNewlines(boolean allowNewlines) {
-        this.allowNewlines = allowNewlines;
-        LOG.debug("[MultiLineScrollTextWidget] setAllowNewlines -> {}", allowNewlines);
-    }
-
-    public void setEnforceVisualLimit(boolean enforceVisualLimit) {
-        this.enforceVisualLimit = enforceVisualLimit;
-        LOG.debug("[MultiLineScrollTextWidget] setEnforceVisualLimit -> {}", enforceVisualLimit);
     }
 
     // ---------------------------------------------------------------------
@@ -232,7 +241,7 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                         beforeCaret = beforeCaret.substring(0, beforeCaret.length() - 1);
                     }
 
-                    int width = measureStringWidth(beforeCaret);
+                    int width = measureString(beforeCaret);
                     caretX = this.getX() + 2 + width;
                     caretY = this.getY() + 2 + (lineIdx * this.font.lineHeight);
                     placed = true;
@@ -243,8 +252,8 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             }
 
             if (!placed) {
-                // Default: end of first line if we couldn't place it
-                int width = measureStringWidth(this.text);
+                // Default: end of whole text if we couldn't place it
+                int width = measureString(this.text);
                 caretX = this.getX() + 2 + width;
                 caretY = this.getY() + 2;
             }
@@ -286,7 +295,7 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         }
 
         try {
-            // Defensive: if the font family JSON isn't actually loaded, don't force it (avoids tofu)
+            // Defensive: if the font family isn't actually loaded, don't force it (avoids tofu)
             var rm = Minecraft.getInstance().getResourceManager();
 
             // This looks for assets/<ns>/font/<path>.json
@@ -312,23 +321,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         }
     }
 
-    /**
-     * Measure string width using the same font family we render with,
-     * so wrapping and caret match the actual glyphs.
-     */
-    private int measureStringWidth(@NotNull String text) {
-        if (text.isEmpty()) {
-            return 0;
-        }
-        try {
-            Component styled = applyCustomFont(Component.literal(text));
-            return this.font.width(styled);
-        } catch (Throwable t) {
-            LOG.error("[MultiLineScrollTextWidget] measureStringWidth failed, falling back to default width()", t);
-            return this.font.width(text);
-        }
-    }
-
     // ---------------------------------------------------------------------
     // Input handling
     // ---------------------------------------------------------------------
@@ -339,13 +331,9 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             return false;
         }
 
-        // Allow newline input only if enabled
-        if (codePoint == '\r') {
-            return false;
-        }
-
-        if (codePoint == '\n') {
-            if (!this.allowNewlines) {
+        // Treat both '\r' and '\n' as "ENTER"
+        if (codePoint == '\r' || codePoint == '\n') {
+            if (!allowNewlines) {
                 return false;
             }
             try {
@@ -363,7 +351,7 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         }
 
         try {
-            if (this.text.length() >= maxChars && !this.enforceVisualLimit) {
+            if (this.text.length() >= maxChars) {
                 // Consume input but don't add any more characters.
                 return true;
             }
@@ -407,6 +395,13 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                 case GLFW.GLFW_KEY_END -> {
                     moveCursorToEnd();
                     yield true;
+                }
+                case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> {
+                    if (allowNewlines) {
+                        insertText("\n");
+                        yield true;
+                    }
+                    yield false;
                 }
                 default -> false;
             };
@@ -455,65 +450,118 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         return c >= 32 && c != 127;
     }
 
+    /**
+     * Measure string width using the same styled font as rendering,
+     * so caret and wrapping align with the Gothic TTF.
+     */
+    private int measureString(@NotNull String s) {
+        if (s.isEmpty()) {
+            return 0;
+        }
+        MutableComponent mc = Component.literal(s);
+        if (this.customFontId != null) {
+            mc.setStyle(mc.getStyle().withFont(this.customFontId));
+        }
+        return this.font.width(mc);
+    }
+
     private void insertText(@NotNull String toInsert) {
         if (toInsert.isEmpty()) {
             return;
         }
 
-        // If we don't enforce visual limit, keep old length-only behavior.
-        if (!this.enforceVisualLimit) {
-            int allowed = Math.min(toInsert.length(), maxChars - this.text.length());
-            if (allowed <= 0) {
-                return;
-            }
-
-            String insert = toInsert.substring(0, allowed);
-            String before = safeSubstring(this.text, 0, this.cursorIndex);
-            String after = safeSubstring(this.text, this.cursorIndex, this.text.length());
-
-            this.text = before + insert + after;
-            this.cursorIndex += insert.length();
-
-            LOG.debug("[MultiLineScrollTextWidget] insertText (len-capped): newText='{}'", this.text);
-
-            reflowLines();
-            return;
-        }
-
-        // Visual-limit-aware insertion: try characters one by one, stop when box is full.
         String before = safeSubstring(this.text, 0, this.cursorIndex);
         String after = safeSubstring(this.text, this.cursorIndex, this.text.length());
 
-        StringBuilder accepted = new StringBuilder();
+        String candidate = before + toInsert + after;
 
-        for (int i = 0; i < toInsert.length(); i++) {
-            char c = toInsert.charAt(i);
-            String candidate = before + accepted + c + after;
-
-            if (candidate.length() > maxChars) {
-                LOG.debug("[MultiLineScrollTextWidget] insertText: maxChars reached, stopping");
-                break;
+        // Enforce maxChars
+        if (candidate.length() > maxChars) {
+            int allowedExtra = maxChars - this.text.length();
+            if (allowedExtra <= 0) {
+                LOG.debug("[MultiLineScrollTextWidget] insertText blocked by maxChars");
+                return;
             }
-
-            if (!fitsWithinBox(candidate)) {
-                LOG.debug("[MultiLineScrollTextWidget] insertText: visual limit reached, stopping at char '{}'", c);
-                break;
-            }
-
-            accepted.append(c);
+            String trimmedInsert = toInsert.substring(0, Math.min(allowedExtra, toInsert.length()));
+            candidate = before + trimmedInsert + after;
+            toInsert = trimmedInsert;
         }
 
-        if (accepted.length() == 0) {
-            // Nothing fits, just ignore this input.
+        // Enforce visual bounds (no invisible overflow)
+        if (wouldExceedVisualBounds(candidate)) {
+            LOG.debug("[MultiLineScrollTextWidget] insertText blocked by visual bounds");
             return;
         }
 
-        this.text = before + accepted + after;
-        this.cursorIndex = before.length() + accepted.length();
+        this.text = candidate;
+        this.cursorIndex = before.length() + toInsert.length();
 
-        LOG.debug("[MultiLineScrollTextWidget] insertText (visual-capped): newText='{}'", this.text);
+        LOG.debug("[MultiLineScrollTextWidget] insertText: newText='{}'", this.text);
 
         reflowLines();
+    }
+
+    private boolean wouldExceedVisualBounds(@NotNull String candidate) {
+        try {
+            if (candidate.isEmpty()) {
+                return false;
+            }
+
+            int maxWidth = this.width - 4;
+            if (maxWidth <= 0) {
+                return false;
+            }
+
+            int idx = 0;
+            int lines = 0;
+            int len = candidate.length();
+
+            while (idx < len && lines < maxLines) {
+                int lineStart = idx;
+                int lineEnd = idx;
+                int lastSpace = -1;
+                int currentWidth = 0;
+
+                while (lineEnd < len) {
+                    char c = candidate.charAt(lineEnd);
+
+                    if (c == '\n') {
+                        lineEnd++; // include newline in this logical line
+                        break;
+                    }
+
+                    int charWidth = measureString(String.valueOf(c));
+                    if (currentWidth + charWidth > maxWidth) {
+                        if (lastSpace > lineStart) {
+                            // Wrap at last space
+                            lineEnd = lastSpace + 1;
+                        }
+                        break;
+                    }
+
+                    currentWidth += charWidth;
+                    if (c == ' ') {
+                        lastSpace = lineEnd;
+                    }
+                    lineEnd++;
+                }
+
+                if (lineEnd == lineStart) {
+                    // Safety: avoid infinite loops if something goes wrong.
+                    lineEnd = Math.min(lineStart + 1, len);
+                }
+
+                lines++;
+                idx = lineEnd;
+            }
+
+            // If we couldn't consume the entire string within maxLines, we'd overflow visually.
+            return idx < len;
+        } catch (Throwable t) {
+            LOG.error("[MultiLineScrollTextWidget] wouldExceedVisualBounds failed", t);
+            // Fail-safe: if something goes wrong, don't allow extra text.
+            return true;
+        }
     }
 
     private void deleteFromCursor(int direction) {
@@ -559,75 +607,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         this.cursorIndex = this.text.length();
     }
 
-    /**
-     * Simulate wrapping for a candidate string and return true
-     * if *all* characters fit inside maxLines & width.
-     */
-    private boolean fitsWithinBox(@NotNull String candidate) {
-        try {
-            if (candidate.isEmpty()) {
-                return true;
-            }
-
-            int maxWidth = this.width - 4;
-            if (maxWidth <= 0) {
-                return true;
-            }
-
-            int idx = 0;
-            int lines = 0;
-
-            while (idx < candidate.length() && lines < maxLines) {
-                int lineStart = idx;
-                int lineEnd = idx;
-                int lastSpace = -1;
-                int currentWidth = 0;
-
-                while (lineEnd < candidate.length()) {
-                    char c = candidate.charAt(lineEnd);
-
-                    if (c == '\n') {
-                        lineEnd++; // include newline in this logical line
-                        break;
-                    }
-
-                    int charWidth = measureStringWidth(String.valueOf(c));
-                    if (currentWidth + charWidth > maxWidth) {
-                        if (lastSpace > lineStart) {
-                            // Wrap at last space
-                            lineEnd = lastSpace + 1;
-                        }
-                        break;
-                    }
-
-                    currentWidth += charWidth;
-                    if (c == ' ') {
-                        lastSpace = lineEnd;
-                    }
-                    lineEnd++;
-                }
-
-                if (lineEnd == lineStart) {
-                    // Safety: avoid infinite loops if something goes wrong.
-                    lineEnd = Math.min(lineStart + 1, candidate.length());
-                }
-
-                lines++;
-                idx = lineEnd;
-            }
-
-            boolean fits = (idx >= candidate.length());
-            if (!fits) {
-                LOG.debug("[MultiLineScrollTextWidget] fitsWithinBox: candidate overflow (len={} consumed={} lines={})",
-                        candidate.length(), idx, lines);
-            }
-            return fits;
-        } catch (Throwable t) {
-            LOG.error("[MultiLineScrollTextWidget] fitsWithinBox failed, treating as not fitting", t);
-            return false;
-        }
-    }
-
     private void reflowLines() {
         try {
             this.visualLines.clear();
@@ -657,7 +636,7 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                         break;
                     }
 
-                    int charWidth = measureStringWidth(String.valueOf(c));
+                    int charWidth = measureString(String.valueOf(c));
                     if (currentWidth + charWidth > maxWidth) {
                         if (lastSpace > lineStart) {
                             // Wrap at last space

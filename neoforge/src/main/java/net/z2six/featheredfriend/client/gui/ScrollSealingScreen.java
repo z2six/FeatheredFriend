@@ -103,7 +103,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         LOG.debug("[ScrollSealingScreen] init at leftPos={}, topPos={}", this.leftPos, this.topPos);
         this.clearWidgets();
 
-        // Recipient field (single-line custom widget) using Gothic font
+        // Recipient field (single-line custom widget) using Gothic font, NO newlines
         this.recipientField = new MultiLineScrollTextWidget(
                 this.font,
                 this.leftPos + RECIPIENT_X,
@@ -113,11 +113,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 RECIPIENT_MAX_CHARS,
                 1,
                 Component.literal("Dear Recipient"),
-                GOTHIC_FONT_ID
+                GOTHIC_FONT_ID,
+                false // allowNewlines
         );
-        // Recipient: no newlines, no special line-based cap (maxChars is enough)
-        this.recipientField.setAllowNewlines(false);
-        this.recipientField.setEnforceVisualLimit(false);
         this.addRenderableWidget(this.recipientField);
 
         // Message widget using Gothic font + newline support
@@ -130,11 +128,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 MESSAGE_MAX_CHARS,
                 MESSAGE_MAX_LINES,
                 Component.literal("Click here to write your message..."),
-                GOTHIC_FONT_ID
+                GOTHIC_FONT_ID,
+                true // allowNewlines
         );
-        // Message body: allow ENTER and enforce "no room left" behavior
-        this.messageWidget.setAllowNewlines(true);
-        this.messageWidget.setEnforceVisualLimit(true);
         this.addRenderableWidget(this.messageWidget);
 
         // Recipient overlay: position just under the recipient field, expanding downward
