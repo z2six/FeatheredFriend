@@ -1,0 +1,17 @@
+{
+  "providers": [
+    {
+      "type": "bitmap",
+      "file": "featheredfriend:font/gothic12_8.png",
+      "ascent": 7,
+      "height": 8,
+      "chars": [
+        " !\"#$%&'()*+,-./012",
+        "3456789:;<=>?@ABCDE",
+        "FGHIJKLMNOPQRSTUVWX",
+        "YZ[\\]^_`abcdefghijk",
+        "lmnopqrstuvwxyz{|}~"
+      ]
+    }
+  ]
+}

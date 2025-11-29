@@ -27,9 +27,9 @@ import java.util.UUID;
  *
  * Visual front-end for ScrollSealingMenu.
  * For now:
- *  - "Dear Recipient" field (single-line via MultiLineScrollTextWidget).
- *  - Player list overlay using RecipientOverlay (with UUID selection).
- *  - Multi-line message body widget.
+ *  - "Dear Recipient" field (single-line via MultiLineScrollTextWidget) using Gothic font.
+ *  - Multi-line message body widget using Gothic font + newline support.
+ *  - Player list overlay using RecipientOverlay (vanilla font).
  *  - Rendered Ender Pearl icon acting as a clickable "items attachment" entry point.
  *  - Placeholder "Seal" button logic still not implemented (just logs).
  *
@@ -43,6 +43,10 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
 
     private static final ResourceLocation SCROLL_GUI_TEXTURE =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scroll_sealing.png");
+
+    // Our custom Gothic bitmap font id (from assets/featheredfriend/font/gothic12_8.json)
+    private static final ResourceLocation GOTHIC_FONT_ID =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12_8");
 
     // GUI dimensions
     private static final int GUI_WIDTH = 248;
@@ -63,12 +67,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private static final int MESSAGE_MAX_CHARS = 512;
     private static final int MESSAGE_MAX_LINES = 6;
 
-    // "Seal" button placeholder (we're not drawing vanilla button for now, can be wired later)
-    private static final int SEAL_BUTTON_WIDTH = 80;
-    private static final int SEAL_BUTTON_HEIGHT = 20;
-    private static final int SEAL_BUTTON_OFFSET_X = 16;
-    private static final int SEAL_BUTTON_OFFSET_Y = 10;
-
     // Ender pearl icon (no vanilla button) relative to GUI origin
     private static final int PEARL_ICON_X = 20;
     private static final int PEARL_ICON_Y = 24;
@@ -83,7 +81,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     // Recipient player selection (UUID is our ground truth)
     private UUID selectedRecipientUuid = null;
 
-    // Player overlay
+    // Player overlay (uses vanilla font)
     private RecipientOverlay recipientOverlay;
 
     public ScrollSealingScreen(@NotNull ScrollSealingMenu menu,
@@ -93,7 +91,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
 
         this.imageWidth = GUI_WIDTH;
         this.imageHeight = GUI_HEIGHT;
-        // We'll suppress the vanilla title rendering entirely.
+        // Suppress vanilla title rendering.
         this.titleLabelX = 10000;
         this.titleLabelY = 10000;
     }
@@ -105,7 +103,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         LOG.debug("[ScrollSealingScreen] init at leftPos={}, topPos={}", this.leftPos, this.topPos);
         this.clearWidgets();
 
-        // Recipient field (single-line custom widget)
+        // Recipient field (single-line custom widget) using Gothic font
         this.recipientField = new MultiLineScrollTextWidget(
                 this.font,
                 this.leftPos + RECIPIENT_X,
@@ -114,11 +112,12 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 RECIPIENT_HEIGHT,
                 RECIPIENT_MAX_CHARS,
                 1,
-                Component.literal("Dear Recipient")
+                Component.literal("Dear Recipient"),
+                GOTHIC_FONT_ID
         );
         this.addRenderableWidget(this.recipientField);
 
-        // Message widget
+        // Message widget using Gothic font + newline support
         this.messageWidget = new MultiLineScrollTextWidget(
                 this.font,
                 this.leftPos + MESSAGE_X,
@@ -127,7 +126,8 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 MESSAGE_HEIGHT,
                 MESSAGE_MAX_CHARS,
                 MESSAGE_MAX_LINES,
-                Component.literal("Click here to write your message...")
+                Component.literal("Click here to write your message..."),
+                GOTHIC_FONT_ID
         );
         this.addRenderableWidget(this.messageWidget);
 
@@ -139,7 +139,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
 
         this.recipientOverlay = new RecipientOverlay(
                 Minecraft.getInstance(),
-                this.font,
+                this.font, // vanilla font here – no Gothic
                 overlayX,
                 overlayY,
                 overlayWidth,

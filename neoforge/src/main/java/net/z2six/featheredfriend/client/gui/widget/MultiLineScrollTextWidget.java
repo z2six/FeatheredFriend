@@ -2,12 +2,17 @@
 package net.z2six.featheredfriend.client.gui.widget;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
+import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 
@@ -23,7 +28,7 @@ import java.util.List;
  *  - Limits the number of visible lines.
  *  - Draws a blinking caret when focused.
  *
- * This is used as the main message area of the scroll sealing GUI.
+ * Supports an optional custom font id (e.g. featheredfriend:gothic12_8) for rendering.
  */
 public class MultiLineScrollTextWidget extends AbstractWidget {
 
@@ -44,7 +49,11 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
 
     private final List<LineInfo> visualLines = new ArrayList<>();
 
-    private record LineInfo(int start, int end) {}
+    @Nullable
+    private ResourceLocation customFontId;
+
+    private record LineInfo(int start, int end) {
+    }
 
     public MultiLineScrollTextWidget(
             @NotNull Font font,
@@ -56,18 +65,34 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             int maxLines,
             @NotNull Component placeholder
     ) {
+        this(font, x, y, width, height, maxChars, maxLines, placeholder, null);
+    }
+
+    public MultiLineScrollTextWidget(
+            @NotNull Font font,
+            int x,
+            int y,
+            int width,
+            int height,
+            int maxChars,
+            int maxLines,
+            @NotNull Component placeholder,
+            @Nullable ResourceLocation customFontId
+    ) {
         super(x, y, width, height, placeholder);
         this.font = font;
         this.maxChars = Math.max(1, maxChars);
         this.maxLines = Math.max(1, maxLines);
         this.placeholder = placeholder;
+        this.customFontId = customFontId;
+
         this.setFocused(false);
         this.active = true;
         this.visible = true;
 
         LOG.debug(
-                "[MultiLineScrollTextWidget] Created at ({},{}) size=({},{}) maxChars={} maxLines={}",
-                x, y, width, height, this.maxChars, this.maxLines
+                "[MultiLineScrollTextWidget] Created at ({},{}) size=({},{}) maxChars={} maxLines={} fontId={}",
+                x, y, width, height, this.maxChars, this.maxLines, this.customFontId
         );
 
         reflowLines();
@@ -101,12 +126,9 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         this.editable = editable;
     }
 
-    /**
-     * Expose focus state so the parent screen can decide whether
-     * to swallow inventory key presses ('E', etc.).
-     */
-    public boolean isFocusedForInput() {
-        return this.isFocused();
+    public void setCustomFontId(@Nullable ResourceLocation fontId) {
+        this.customFontId = fontId;
+        LOG.debug("[MultiLineScrollTextWidget] setCustomFontId -> {}", fontId);
     }
 
     // ---------------------------------------------------------------------
@@ -120,13 +142,12 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
 
             if (this.text.isEmpty() && !this.isFocused()) {
                 // Placeholder text
-                guiGraphics.drawString(
-                        this.font,
+                drawStringWithFont(
+                        guiGraphics,
                         this.placeholder,
                         this.getX() + 2,
                         this.getY() + 2,
-                        placeholderColor,
-                        false
+                        placeholderColor
                 );
                 return;
             }
@@ -148,13 +169,12 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                     line = line.substring(0, line.length() - 1);
                 }
 
-                guiGraphics.drawString(
-                        this.font,
-                        line,
+                drawStringWithFont(
+                        guiGraphics,
+                        Component.literal(line),
                         this.getX() + 2,
                         lineY,
-                        textColor,
-                        false
+                        textColor
                 );
 
                 lineY += this.font.lineHeight;
@@ -222,6 +242,61 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         }
     }
 
+    private void drawStringWithFont(
+            @NotNull GuiGraphics guiGraphics,
+            @NotNull Component base,
+            int x,
+            int y,
+            int color
+    ) {
+        Component toDraw = applyCustomFont(base);
+        guiGraphics.drawString(this.font, toDraw, x, y, color, false);
+    }
+
+    private void drawStringWithFont(
+            @NotNull GuiGraphics guiGraphics,
+            @NotNull Component base,
+            int x,
+            int y,
+            int color,
+            boolean shadow
+    ) {
+        Component toDraw = applyCustomFont(base);
+        guiGraphics.drawString(this.font, toDraw, x, y, color, shadow);
+    }
+
+    private Component applyCustomFont(@NotNull Component base) {
+        if (this.customFontId == null) {
+            return base;
+        }
+
+        try {
+            // Defensive: if the font family isn't actually loaded, don't force it (avoids tofu)
+            var rm = Minecraft.getInstance().getResourceManager();
+
+            // This looks for assets/<ns>/font/<path>.json
+            ResourceLocation fontJson = ResourceLocation.fromNamespaceAndPath(
+                    this.customFontId.getNamespace(),
+                    "font/" + this.customFontId.getPath() + ".json"
+            );
+
+            boolean exists = rm.getResource(fontJson).isPresent();
+
+            if (!exists) {
+                LOG.debug("[MultiLineScrollTextWidget] Font resource {} not present, falling back to default", fontJson);
+                return base;
+            }
+
+            MutableComponent mutable = base.copy();
+            Style style = mutable.getStyle().withFont(this.customFontId);
+            mutable.setStyle(style);
+            return mutable;
+        } catch (Throwable t) {
+            LOG.error("[MultiLineScrollTextWidget] applyCustomFont failed, falling back to default font", t);
+            return base;
+        }
+    }
+
     // ---------------------------------------------------------------------
     // Input handling
     // ---------------------------------------------------------------------
@@ -232,9 +307,19 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             return false;
         }
 
-        if (codePoint == '\r' || codePoint == '\n') {
-            // For now: ignore manual newline input.
+        // Allow newline input now – this is the main text area use case.
+        if (codePoint == '\r') {
             return false;
+        }
+
+        if (codePoint == '\n') {
+            try {
+                insertText("\n");
+                return true;
+            } catch (Throwable t) {
+                LOG.error("[MultiLineScrollTextWidget] charTyped newline failed", t);
+                return false;
+            }
         }
 
         // Simple "allowed character" check: no control chars except space
