@@ -47,7 +47,8 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
     private int cursorIndex = 0;
     private int tickCount = 0;
 
-    private final int textColor = 0x000000;
+    // Text color is now configurable per-instance (default: black).
+    private int textColor = 0x000000;
     private final int placeholderColor = 0x707070;
 
     private final List<LineInfo> visualLines = new ArrayList<>();
@@ -172,6 +173,19 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
     public void setCustomFontId(@Nullable ResourceLocation fontId) {
         this.customFontId = fontId;
         LOG.debug("[MultiLineScrollTextWidget] setCustomFontId -> {}", fontId);
+    }
+
+    /**
+     * Allow callers to override the text color for this widget instance.
+     * Used by RecipientOverlay to make the filter text white without affecting other widgets.
+     */
+    public void setTextColor(int argb) {
+        try {
+            this.textColor = argb;
+            LOG.debug("[MultiLineScrollTextWidget] setTextColor -> 0x{}", Integer.toHexString(argb));
+        } catch (Throwable t) {
+            LOG.error("[MultiLineScrollTextWidget] setTextColor failed", t);
+        }
     }
 
     // ---------------------------------------------------------------------

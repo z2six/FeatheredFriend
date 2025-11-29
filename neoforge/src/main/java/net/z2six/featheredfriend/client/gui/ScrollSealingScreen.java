@@ -151,7 +151,8 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                     public void onPlayerSelected(UUID uuid, String name) {
                         LOG.debug("[ScrollSealingScreen] Recipient selected: {} ({})", name, uuid);
                         selectedRecipientUuid = uuid;
-                        recipientField.setText("Dear " + name);
+                        // Add comma after the name: "Dear Dev,"
+                        recipientField.setText("Dear " + name + ",");
                     }
 
                     @Override

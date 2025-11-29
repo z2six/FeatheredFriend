@@ -91,6 +91,14 @@ public final class RecipientOverlay {
                 Component.literal("Filter players...")
         );
 
+        // Make the filter text white, without affecting any other widgets.
+        try {
+            this.filterField.setTextColor(0xFFFFFFFF);
+            LOG.debug("[RecipientOverlay] Set filterField text color to 0xFFFFFFFF (white)");
+        } catch (Throwable t) {
+            LOG.error("[RecipientOverlay] Failed to set filterField text color", t);
+        }
+
         LOG.debug("[RecipientOverlay] Created at ({},{}) size=({},{})", x, y, width, height);
     }
 
@@ -205,7 +213,7 @@ public final class RecipientOverlay {
     /**
      * Called from the parent screen's mouseClicked.
      *
-     * @return true if the overlay consumed the click (selected a player).
+     * @return true if the overlay consumed the click.
      */
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (!active || button != 0) {
@@ -214,9 +222,10 @@ public final class RecipientOverlay {
 
         try {
             if (!isMouseOverOverlay(mouseX, mouseY)) {
-                // Click outside -> close overlay, but allow rest of screen to handle click.
+                // Click outside -> close overlay and consume the click.
                 close(true);
-                return false;
+                LOG.debug("[RecipientOverlay] Click outside overlay -> closing");
+                return true;
             }
 
             // Click inside overlay:
@@ -264,8 +273,6 @@ public final class RecipientOverlay {
                     y + height - 1,
                     0xC0222222
             );
-
-            // (Previously we drew a header title here; now deliberately omitted.)
 
             // Filter field
             this.filterField.render(guiGraphics, mouseX, mouseY, partialTick);
