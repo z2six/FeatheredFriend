@@ -2,7 +2,7 @@
   "providers": [
     {
       "type": "ttf",
-      "file": "featheredfriend:font/gothic12.ttf",
+      "file": "featheredfriend:gothic12.ttf",
       "shift": [0, 0],
       "size": 12,
       "oversample": 4

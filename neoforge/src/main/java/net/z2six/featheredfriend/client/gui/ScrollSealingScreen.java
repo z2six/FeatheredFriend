@@ -44,9 +44,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private static final ResourceLocation SCROLL_GUI_TEXTURE =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scroll_sealing.png");
 
-    // Our custom Gothic bitmap font id (from assets/featheredfriend/font/gothic12_8.json)
+    // Our custom Gothic TTF font id (from assets/featheredfriend/font/gothic12.json)
     private static final ResourceLocation GOTHIC_FONT_ID =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12_8");
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12");
 
     // GUI dimensions
     private static final int GUI_WIDTH = 248;
@@ -115,6 +115,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 Component.literal("Dear Recipient"),
                 GOTHIC_FONT_ID
         );
+        // Recipient: no newlines, no special line-based cap (maxChars is enough)
+        this.recipientField.setAllowNewlines(false);
+        this.recipientField.setEnforceVisualLimit(false);
         this.addRenderableWidget(this.recipientField);
 
         // Message widget using Gothic font + newline support
@@ -129,6 +132,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 Component.literal("Click here to write your message..."),
                 GOTHIC_FONT_ID
         );
+        // Message body: allow ENTER and enforce "no room left" behavior
+        this.messageWidget.setAllowNewlines(true);
+        this.messageWidget.setEnforceVisualLimit(true);
         this.addRenderableWidget(this.messageWidget);
 
         // Recipient overlay: position just under the recipient field, expanding downward
