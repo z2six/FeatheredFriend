@@ -63,9 +63,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private static final int MESSAGE_X = 20;
     private static final int MESSAGE_Y = 50;
     private static final int MESSAGE_WIDTH = 208;
-    private static final int MESSAGE_HEIGHT = 6 * 9 + 6; // about 6 lines
+    private static final int MESSAGE_HEIGHT = 6 * 9 + 10; // about 6 lines
     private static final int MESSAGE_MAX_CHARS = 512;
-    private static final int MESSAGE_MAX_LINES = 6;
+    private static final int MESSAGE_MAX_LINES = 10;
 
     // Ender pearl icon (no vanilla button) relative to GUI origin
     private static final int PEARL_ICON_X = 20;
@@ -151,8 +151,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                     public void onPlayerSelected(UUID uuid, String name) {
                         LOG.debug("[ScrollSealingScreen] Recipient selected: {} ({})", name, uuid);
                         selectedRecipientUuid = uuid;
-                        // Add comma after the name: "Dear Dev,"
+                        // Autofill text and move caret to the end ("Dear Dev,|")
                         recipientField.setText("Dear " + name + ",");
+                        recipientField.setCursorToEnd();
                     }
 
                     @Override

@@ -196,6 +196,14 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         return selectionStart >= 0 && selectionEnd > selectionStart && selectionEnd <= text.length();
     }
 
+    public void setCursorToEnd() {
+        try {
+            moveCursorToEnd(false);
+        } catch (Throwable t) {
+            LOG.error("[MultiLineScrollTextWidget] setCursorToEnd failed", t);
+        }
+    }
+
     private void clearSelection() {
         selectionStart = -1;
         selectionEnd = -1;
@@ -487,6 +495,12 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                 return false;
             }
             try {
+                // IMPORTANT: mirror the same guard as keyPressed(ENTER):
+                // if this newline would push us beyond maxLines, don't insert it
+                // and don't move the caret either.
+                if (!canInsertNewlineHere()) {
+                    return true; // consume, but do nothing
+                }
                 insertText("\n");
                 return true;
             } catch (Throwable t) {
