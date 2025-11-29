@@ -2,6 +2,7 @@
 package net.z2six.featheredfriend.platform.services;
 
 import net.minecraft.server.level.ServerPlayer;
+import net.z2six.featheredfriend.calendar.CalendarDefinition;
 
 /**
  * Platform abstraction for MultiLoader.
@@ -44,4 +45,15 @@ public interface IPlatformHelper {
      * Called from UnsealedScrollItem#use on the logical server.
      */
     void openScrollSealingScreen(ServerPlayer player);
+
+    /**
+     * Returns the active calendar definition for this runtime.
+     *
+     * On NeoForge, this is backed by a SERVER config (ModConfig.Type.SERVER),
+     * which is server-authoritative and synced to clients, so all sides see
+     * the same month names and era suffix.
+     *
+     * On other platforms, this may simply return CalendarDefinition.defaultDefinition().
+     */
+    CalendarDefinition getCalendarDefinition();
 }

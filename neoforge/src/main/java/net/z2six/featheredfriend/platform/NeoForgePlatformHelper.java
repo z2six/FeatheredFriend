@@ -10,12 +10,16 @@ import net.minecraft.world.entity.player.Player;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.loading.FMLLoader;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.calendar.CalendarDefinition;
+import net.z2six.featheredfriend.config.FFCalendarConfig;
 import net.z2six.featheredfriend.neoforge.menu.ScrollSealingMenu;
 import net.z2six.featheredfriend.platform.services.IPlatformHelper;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 /**
+ * // neoforge/src/main/java/net/z2six/featheredfriend/platform/NeoForgePlatformHelper.java
+ *
  * NeoForgePlatformHelper
  *
  * NeoForge-specific implementation of the platform abstraction.
@@ -24,6 +28,10 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
 
     private static final Logger LOG = LogUtils.getLogger();
 
+    public NeoForgePlatformHelper() {
+        LOG.debug("[NeoForgePlatformHelper] Constructed for platform '{}'", getPlatformName());
+    }
+
     @Override
     public String getPlatformName() {
         return "NeoForge";
@@ -31,12 +39,22 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
 
     @Override
     public boolean isModLoaded(String modId) {
-        return ModList.get().isLoaded(modId);
+        try {
+            return ModList.get().isLoaded(modId);
+        } catch (Throwable t) {
+            LOG.error("[NeoForgePlatformHelper] isModLoaded('{}') failed", modId, t);
+            return false;
+        }
     }
 
     @Override
     public boolean isDevelopmentEnvironment() {
-        return !FMLLoader.isProduction();
+        try {
+            return !FMLLoader.isProduction();
+        } catch (Throwable t) {
+            LOG.error("[NeoForgePlatformHelper] isDevelopmentEnvironment() failed, assuming production", t);
+            return false;
+        }
     }
 
     @Override
@@ -51,6 +69,26 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
             ));
         } catch (Throwable t) {
             LOG.error("[NeoForgePlatformHelper] Failed to open Scroll Sealing menu", t);
+        }
+    }
+
+    /**
+     * Return the current calendar definition.
+     *
+     * This uses a SERVER config (ModConfig.Type.SERVER) defined in FFCalendarConfig.
+     * On a dedicated server, that config is stored per-world. On clients, NeoForge
+     * will automatically sync the SERVER config from the server, so getCalendarDefinition()
+     * returns server-authoritative values on both logical sides.
+     */
+    @Override
+    public CalendarDefinition getCalendarDefinition() {
+        try {
+            CalendarDefinition def = FFCalendarConfig.getCalendarDefinition();
+            LOG.debug("[NeoForgePlatformHelper] getCalendarDefinition -> {}", def);
+            return def;
+        } catch (Throwable t) {
+            LOG.error("[NeoForgePlatformHelper] getCalendarDefinition() failed, returning default", t);
+            return CalendarDefinition.defaultDefinition();
         }
     }
 }
