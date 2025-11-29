@@ -44,8 +44,7 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
 
     private final List<LineInfo> visualLines = new ArrayList<>();
 
-    private record LineInfo(int start, int end) {
-    }
+    private record LineInfo(int start, int end) {}
 
     public MultiLineScrollTextWidget(
             @NotNull Font font,
@@ -100,6 +99,14 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
 
     public void setEditable(boolean editable) {
         this.editable = editable;
+    }
+
+    /**
+     * Expose focus state so the parent screen can decide whether
+     * to swallow inventory key presses ('E', etc.).
+     */
+    public boolean isFocusedForInput() {
+        return this.isFocused();
     }
 
     // ---------------------------------------------------------------------
