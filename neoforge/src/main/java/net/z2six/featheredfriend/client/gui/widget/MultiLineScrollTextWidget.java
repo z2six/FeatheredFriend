@@ -328,6 +328,24 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             // Recompute in case something changed
             reflowLines();
 
+            // SPECIAL CASE: caret is immediately after a trailing newline.
+            // Visually we want it at the start of a "virtual" next line.
+            if (allowNewlines
+                    && !this.text.isEmpty()
+                    && this.text.charAt(this.text.length() - 1) == '\n'
+                    && this.cursorIndex == this.text.length()
+                    && !this.visualLines.isEmpty()) {
+
+                int lineIdx = this.visualLines.size(); // virtual empty line after last
+                caretX = this.getX() + 2;
+                caretY = this.getY() + 2 + (lineIdx * this.font.lineHeight);
+
+                int top = caretY;
+                int bottom = caretY + this.font.lineHeight;
+                guiGraphics.fill(caretX, top, caretX + 1, bottom, 0xFF000000);
+                return;
+            }
+
             int lineIdx = 0;
             boolean placed = false;
 
@@ -341,7 +359,7 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                     break;
                 }
 
-                // Treat index exactly at a '\n' boundary as belonging to the next line
+                // Boundary at end of a '\n' line belongs to next line.
                 if (cursorIndex > end ||
                         (cursorIndex == end && end > start && this.text.charAt(end - 1) == '\n')) {
                     lineIdx++;
@@ -540,10 +558,12 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                     yield true;
                 }
 
+                // HOME: start of current visual line (not whole text)
                 case GLFW.GLFW_KEY_HOME -> {
                     moveCursorToStart(shift);
                     yield true;
                 }
+                // END: keep as-is (end of full text)
                 case GLFW.GLFW_KEY_END -> {
                     moveCursorToEnd(shift);
                     yield true;
@@ -708,7 +728,54 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                 return;
             }
 
-            // Find current line + horizontal X offset (in pixels) within that line.
+            // SPECIAL CASE: caret is after trailing newline -> treat as virtual line after last.
+            if (allowNewlines
+                    && !this.text.isEmpty()
+                    && this.text.charAt(this.text.length() - 1) == '\n'
+                    && this.cursorIndex == this.text.length()
+                    && !this.visualLines.isEmpty()) {
+
+                int currentLineIdx = this.visualLines.size(); // virtual line index
+                int columnX = 0; // start of line
+
+                int targetLineIdx = currentLineIdx + direction;
+                if (targetLineIdx < 0 || targetLineIdx >= this.visualLines.size()) {
+                    // No valid target line
+                    return;
+                }
+
+                LineInfo targetInfo = this.visualLines.get(targetLineIdx);
+                int lineStart = targetInfo.start();
+                int lineEnd = targetInfo.end();
+                String lineText = safeSubstring(this.text, lineStart, lineEnd);
+
+                boolean endsWithNewline = !lineText.isEmpty() && lineText.charAt(lineText.length() - 1) == '\n';
+                if (endsWithNewline) {
+                    lineText = lineText.substring(0, lineText.length() - 1);
+                }
+
+                int runningX = 0;
+                int bestIndex = lineStart;
+                int bestDiff = Math.abs(columnX);
+
+                for (int i = 0; i <= lineText.length(); i++) {
+                    if (i > 0) {
+                        char c = lineText.charAt(i - 1);
+                        Component comp = applyCustomFont(Component.literal(String.valueOf(c)));
+                        runningX += this.font.width(comp);
+                    }
+                    int diff = Math.abs(runningX - columnX);
+                    if (diff <= bestDiff) {
+                        bestDiff = diff;
+                        bestIndex = lineStart + i;
+                    }
+                }
+
+                updateCursorAndSelection(bestIndex, false);
+                return;
+            }
+
+            // Normal vertical movement path.
             int currentLineIdx = 0;
             int columnX = 0;
             boolean found = false;
@@ -722,7 +789,7 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                     break;
                 }
 
-                // Boundary after '\n' belongs to next line.
+                // Boundary at end of a '\n' line belongs to next line.
                 if (cursorIndex > end ||
                         (cursorIndex == end && end > start && this.text.charAt(end - 1) == '\n')) {
                     continue;
@@ -894,8 +961,48 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         }
     }
 
+    /**
+     * HOME: move to start of the *current visual line* (not absolute start of text).
+     */
     private void moveCursorToStart(boolean shift) {
-        updateCursorAndSelection(0, shift);
+        try {
+            reflowLines();
+            if (visualLines.isEmpty()) {
+                updateCursorAndSelection(0, shift);
+                return;
+            }
+
+            int targetIndex = 0;
+            boolean found = false;
+
+            for (LineInfo info : visualLines) {
+                int start = info.start();
+                int end = info.end();
+
+                if (cursorIndex < start) {
+                    break;
+                }
+
+                // Boundary at end of '\n' line belongs to next line.
+                if (cursorIndex > end ||
+                        (cursorIndex == end && end > start && this.text.charAt(end - 1) == '\n')) {
+                    continue;
+                }
+
+                targetIndex = start;
+                found = true;
+                break;
+            }
+
+            if (!found) {
+                targetIndex = 0;
+            }
+
+            updateCursorAndSelection(targetIndex, shift);
+        } catch (Throwable t) {
+            LOG.error("[MultiLineScrollTextWidget] moveCursorToStart(line) failed", t);
+            updateCursorAndSelection(0, shift);
+        }
     }
 
     private void moveCursorToEnd(boolean shift) {
