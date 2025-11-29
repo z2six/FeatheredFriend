@@ -514,6 +514,12 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                 // ENTER / keypad ENTER -> newline (when allowed)
                 case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> {
                     if (allowNewlines) {
+                        // NEW: don't move caret / insert newline if it would create a "virtual" line
+                        // beyond our maxLines (caret at end of text and already full).
+                        if (!canInsertNewlineHere()) {
+                            // Consume the key so it doesn't bubble, but do nothing visually.
+                            yield true;
+                        }
                         insertText("\n");
                         yield true;
                     }
@@ -563,7 +569,7 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                     moveCursorToStart(shift);
                     yield true;
                 }
-                // END: keep as-is (end of full text)
+                // END: end of full text
                 case GLFW.GLFW_KEY_END -> {
                     moveCursorToEnd(shift);
                     yield true;
@@ -650,6 +656,41 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
     private static boolean isAllowedCharacter(char c) {
         // Roughly: printable ASCII + whatever else the user types, minus control chars.
         return c >= 32 && c != 127;
+    }
+
+    /**
+     * Decide whether we should allow inserting a newline at the current caret position.
+     *
+     * Special case we care about:
+     *  - If the caret is at the *end of the text*
+     *  - AND reflowed text already uses all maxLines
+     *  -> then inserting a newline would only create a "virtual" extra line where the caret
+     *     moves below the visible box, with no room for any characters.
+     *  In that case we return false (block ENTER).
+     */
+    private boolean canInsertNewlineHere() {
+        try {
+            // If we don't even have text, always allow (first newline just starts a line).
+            if (this.text.isEmpty()) {
+                return true;
+            }
+
+            reflowLines();
+
+            // Only care about the edge case when:
+            //  - caret is exactly at the end of the text
+            //  - we already have maxLines visible lines
+            if (this.cursorIndex == this.text.length() && this.visualLines.size() >= this.maxLines) {
+                LOG.debug("[MultiLineScrollTextWidget] Blocking newline: caret at end and maxLines already used");
+                return false;
+            }
+
+            return true;
+        } catch (Throwable t) {
+            LOG.error("[MultiLineScrollTextWidget] canInsertNewlineHere failed, allowing newline by default", t);
+            // Fail-safe: don't unexpectedly block typing if something goes wrong.
+            return true;
+        }
     }
 
     /**
