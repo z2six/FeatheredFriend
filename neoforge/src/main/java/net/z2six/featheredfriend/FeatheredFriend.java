@@ -4,6 +4,7 @@ package net.z2six.featheredfriend;
 import com.mojang.logging.LogUtils;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
+import net.z2six.featheredfriend.client.FFNeoForgeClient;
 import net.z2six.featheredfriend.config.FFCalendarConfig;
 import net.z2six.featheredfriend.registry.FFCreativeTabsNeoForge;
 import net.z2six.featheredfriend.registry.FFNeoForgeItems;
@@ -13,15 +14,13 @@ import org.slf4j.Logger;
 /**
  * neoforge/src/main/java/net/z2six/featheredfriend/FeatheredFriend.java
  *
- * Main NeoForge entrypoint.
+ * NeoForge entrypoint for FeatheredFriend.
  *
- * NOTE:
- * - Client-only stuff (calendar popup, screen registration) is handled by
- *   FFNeoForgeClient, which is invoked via `clientModInitializer` in mods.toml:
- *
- *     clientModInitializer="net.z2six.featheredfriend.client.FFNeoForgeClient::init"
- *
- * - This class only does common + NeoForge-side registry / config wiring.
+ * Responsibilities:
+ *  - Invoke common init code.
+ *  - Register NeoForge-specific registries (items, menus, creative tabs).
+ *  - Register server-side calendar config.
+ *  - Hook client-only registration (menu screens) via the mod event bus.
  */
 @Mod(Constants.MOD_ID)
 public class FeatheredFriend {
@@ -31,41 +30,34 @@ public class FeatheredFriend {
     public FeatheredFriend(IEventBus modEventBus) {
         LOG.info("[FeatheredFriend] Initializing NeoForge side");
 
+        // Common initialization (shared between platforms)
         try {
-            // Common init (shared logic)
             CommonClass.init();
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] CommonClass.init() failed", t);
         }
 
+        // Server-side calendar config (NeoForge-specific)
         try {
-            // Register SERVER calendar config (NeoForge-side, server-authoritative)
             FFCalendarConfig.register();
-            LOG.debug("[FeatheredFriend] FFCalendarConfig registered");
         } catch (Throwable t) {
-            LOG.error("[FeatheredFriend] Failed to register FFCalendarConfig", t);
+            LOG.error("[FeatheredFriend] FFCalendarConfig.register() failed", t);
         }
 
+        // NeoForge registries
         try {
-            // NeoForge-specific registries
             FFNeoForgeItems.register(modEventBus);
-            LOG.debug("[FeatheredFriend] FFNeoForgeItems registered");
-        } catch (Throwable t) {
-            LOG.error("[FeatheredFriend] Failed to register items", t);
-        }
-
-        try {
             FFCreativeTabsNeoForge.register(modEventBus);
-            LOG.debug("[FeatheredFriend] FFCreativeTabsNeoForge registered");
+            FFNeoForgeMenus.register(modEventBus);
         } catch (Throwable t) {
-            LOG.error("[FeatheredFriend] Failed to register creative tab hooks", t);
+            LOG.error("[FeatheredFriend] Failed to register NeoForge registries", t);
         }
 
+        // Client-only: menu screens (called only on physical client)
         try {
-            FFNeoForgeMenus.register(modEventBus);
-            LOG.debug("[FeatheredFriend] FFNeoForgeMenus registered");
+            modEventBus.addListener(FFNeoForgeClient::onRegisterMenuScreens);
         } catch (Throwable t) {
-            LOG.error("[FeatheredFriend] Failed to register menus", t);
+            LOG.error("[FeatheredFriend] Failed to hook client menu screen registration", t);
         }
 
         LOG.info("[FeatheredFriend] NeoForge initialization complete");
