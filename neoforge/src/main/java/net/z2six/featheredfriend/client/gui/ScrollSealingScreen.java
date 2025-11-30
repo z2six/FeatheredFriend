@@ -43,6 +43,11 @@ import java.util.UUID;
  *              "Signed by: <name>, Day X of Month, Y AN"
  *          - Populates a dedicated signature field below the message body.
  *
+ * Signature field behaviour:
+ *  - Initially shows grey placeholder text: "Signature" (like other placeholders).
+ *  - After clicking Sign (and passing checks), it is replaced with:
+ *      "Signed by: <name>, Day X of Month, Y AN"
+ *
  * If a custom GUI texture is not found at:
  *  assets/featheredfriend/textures/gui/scroll_sealing.png
  * it will fall back to drawing a simple colored rectangle.
@@ -63,7 +68,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private static final int GUI_HEIGHT = 200;
 
     // Recipient field config (relative to GUI origin)
-    private static final int RECIPIENT_X = 40;
     private static final int RECIPIENT_Y = 24;
     private static final int RECIPIENT_WIDTH = 168;
     private static final int RECIPIENT_HEIGHT = 14;
@@ -78,25 +82,27 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private static final int MESSAGE_MAX_LINES = 10;
 
     // Signature widget config (below the message, near bottom-left)
-    // NOTE: If you want to force word-wrapping for testing, temporarily reduce SIGNATURE_WIDTH.
-    private static final int SIGNATURE_X = 20;
-    private static final int SIGNATURE_Y = GUI_HEIGHT - 44;
+    // Adjusted so it DOES NOT overlap with the Sign button.
+    private static final int SIGNATURE_X = MESSAGE_X;
+    private static final int SIGNATURE_Y = GUI_HEIGHT - 52;  // 148
     private static final int SIGNATURE_WIDTH = 208;
-    private static final int SIGNATURE_HEIGHT = 2 * 9 + 6; // room for ~2 lines
+    // Enough for 2 wrapped lines (2*9 + a bit of padding).
+    private static final int SIGNATURE_HEIGHT = 24;          // 148..172
     private static final int SIGNATURE_MAX_CHARS = 128;
     private static final int SIGNATURE_MAX_LINES = 2;
 
     // "Sign" button config (bottom-left, under signature line)
-    private static final int SIGN_BUTTON_X = 20;
-    private static final int SIGN_BUTTON_Y = GUI_HEIGHT - 22;
+    // Starts below signature area with a clear gap (no overlap).
+    private static final int SIGN_BUTTON_X = MESSAGE_X;
+    private static final int SIGN_BUTTON_Y = GUI_HEIGHT - 22; // 178
     private static final int SIGN_BUTTON_WIDTH = 80;
-    private static final int SIGN_BUTTON_HEIGHT = 18;
+    private static final int SIGN_BUTTON_HEIGHT = 18;         // 178..196
 
     // Ender pearl icon (no vanilla button) relative to GUI origin
-    // Now positioned ABOVE the "Dear Recipient" line, not in front of it.
+    // Moved clearly above the recipient field.
+    private static final int PEARL_ICON_X = MESSAGE_X;
+    private static final int PEARL_ICON_Y = 10;
     private static final int PEARL_ICON_SIZE = 16;
-    private static final int PEARL_ICON_X = RECIPIENT_X;
-    private static final int PEARL_ICON_Y = RECIPIENT_Y - PEARL_ICON_SIZE - 4;
 
     private static final ItemStack PEARL_STACK = new ItemStack(Items.ENDER_PEARL);
 
@@ -134,7 +140,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         this.clearWidgets();
 
         // Recipient field (single-line custom widget) using Gothic font, NO newlines
-        // NOTE: X now uses MESSAGE_X so "Dear Dev" lines up with the main text block.
+        // NOTE: X uses MESSAGE_X so "Dear Dev" lines up with the main text block.
         this.recipientField = new MultiLineScrollTextWidget(
                 this.font,
                 this.leftPos + MESSAGE_X,
@@ -165,6 +171,10 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         this.addRenderableWidget(this.messageWidget);
 
         // Signature widget (Gothic, up to 2 wrapped lines, non-editable)
+        // IMPORTANT:
+        //  - Placeholder "Signature" is passed as the placeholder component.
+        //  - We DO NOT setText("Signature") here.
+        //    That way it behaves like other placeholders, rendered in grey.
         this.signatureWidget = new MultiLineScrollTextWidget(
                 this.font,
                 this.leftPos + SIGNATURE_X,
@@ -173,11 +183,10 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 SIGNATURE_HEIGHT,
                 SIGNATURE_MAX_CHARS,
                 SIGNATURE_MAX_LINES,
-                Component.literal("Signed by: "),
+                Component.literal("Signature"),
                 GOTHIC_FONT_ID,
                 true // allowNewlines for internal wrapping; user can't edit anyway
         );
-        this.signatureWidget.setText("Signed by: ");
         this.signatureWidget.setEditable(false);
         this.addRenderableWidget(this.signatureWidget);
 
@@ -198,7 +207,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         // Recipient overlay: position just under the recipient field, expanding downward
         int overlayWidth = 180;
         int overlayHeight = 90;
-        int overlayX = this.leftPos + MESSAGE_X; // match recipient X
+        int overlayX = this.leftPos + MESSAGE_X;
         int overlayY = this.topPos + RECIPIENT_Y + RECIPIENT_HEIGHT + 4;
 
         this.recipientOverlay = new RecipientOverlay(
@@ -239,7 +248,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             LOG.debug("[ScrollSealingScreen] Opening recipient overlay, clearing previous UUID");
             selectedRecipientUuid = null;
             recipientOverlay.setPosition(
-                    this.leftPos + RECIPIENT_X,
+                    this.leftPos + MESSAGE_X,
                     this.topPos + RECIPIENT_Y + RECIPIENT_HEIGHT + 4
             );
             recipientOverlay.open();
@@ -262,10 +271,12 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
      *      * Use ClientCalendarEvents.buildDateMessage(...) to format date.
      *      * Populate the signature field:
      *          "Signed by: <name>, Day X of Month, Y AN"
-     *      * Signature text will word-wrap onto a second line if it exceeds SIGNATURE_WIDTH.
+     *
+     * The placeholder "Signature" is replaced entirely.
      */
     private void onSignButtonClicked() {
         try {
+            LOG.debug("[ScrollSealingScreen] onSignButtonClicked invoked");
             Minecraft mc = Minecraft.getInstance();
             if (mc == null || mc.player == null || mc.level == null) {
                 LOG.warn("[ScrollSealingScreen] onSignButtonClicked: Minecraft/level/player not ready");
@@ -305,8 +316,12 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             String fullSignature = "Signed by: " + signerName + ", " + dateString;
 
             if (signatureWidget != null) {
+                // Temporarily mark widget editable so setText definitely applies,
+                // then lock it again to keep it user-read-only.
+                signatureWidget.setEditable(true);
                 signatureWidget.setText(fullSignature);
                 signatureWidget.setCursorToEnd();
+                signatureWidget.setEditable(false);
             }
 
             LOG.info("[ScrollSealingScreen] Scroll signed by {} ({}) on {}", signerName, signerUuid, dateString);
@@ -374,7 +389,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 );
             }
 
-            // Render the ender pearl icon (no button background), now above the recipient line
+            // Render the ender pearl icon (no button background)
             guiGraphics.renderItem(
                     PEARL_STACK,
                     this.leftPos + PEARL_ICON_X,
