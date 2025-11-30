@@ -51,7 +51,7 @@ public final class FFCalendarConfig {
             "Darkrest"
     };
 
-    public static final String DEFAULT_YEAR_SUFFIX = "AN";
+    public static final String DEFAULT_YEAR_SUFFIX = "A.N.";
 
     // Simple constants for now; if you ever want 20-minute days etc.,
     // change here + in your common CalendarDefinition usage.

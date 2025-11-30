@@ -53,7 +53,7 @@ public final class CalendarDefinition {
             "Darkrest"
     };
 
-    private static final String HARD_DEFAULT_YEAR_SUFFIX = "AN";
+    private static final String HARD_DEFAULT_YEAR_SUFFIX = "A.N.";
     private static final int HARD_DEFAULT_DAYS_PER_MONTH = 28;
     private static final long HARD_DEFAULT_TICKS_PER_DAY = 24000L;
 
@@ -116,7 +116,7 @@ public final class CalendarDefinition {
             // Last-resort fallback, should basically never happen.
             return new CalendarDefinition(
                     new String[]{"Month1"},
-                    "AN",
+                    "A.N.",
                     28,
                     24000L
             );
