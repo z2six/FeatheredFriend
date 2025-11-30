@@ -27,7 +27,7 @@ import org.slf4j.Logger;
  * - Computes the in-world calendar date (Day X of Month, Year Suffix).
  * - Shows a centered popup at the top of the screen with a fade-in/hold/fade-out.
  *
- * Uses the custom Gothic font (assets/featheredfriend/font/gothic24.json).
+ * Uses the custom Gothic font (assets/featheredfriend/font/gothic12.json).
  *
  * This class is wired via @EventBusSubscriber on the GAME bus, client side only.
  */
@@ -50,7 +50,7 @@ public final class ClientCalendarEvents {
     private static int popupAgeTicks = 0;
     private static boolean popupActive = false;
 
-    // IMPORTANT: currently using featheredfriend:gothic24
+    // IMPORTANT: currently using featheredfriend:gothic12
     private static final ResourceLocation GOTHIC_FONT_ID =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12");
 
@@ -303,8 +303,11 @@ public final class ClientCalendarEvents {
      * Builds the display string for a given day index using FFCalendarConfig.
      *
      * Day index 0 -> "Day 1 of Dawnroot, 1 AN" (with defaults).
+     *
+     * Made public so other client-side UI (e.g. ScrollSealingScreen) can reuse
+     * the exact same calendar formatting.
      */
-    private static @NotNull Component buildDateMessage(long dayIndex) {
+    public static @NotNull Component buildDateMessage(long dayIndex) {
         try {
             int daysPerMonth = FFCalendarConfig.DAYS_PER_MONTH;
             int monthsPerYear = FFCalendarConfig.MONTHS_PER_YEAR;

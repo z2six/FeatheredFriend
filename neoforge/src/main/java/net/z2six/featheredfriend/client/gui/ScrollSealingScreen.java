@@ -4,6 +4,7 @@ package net.z2six.featheredfriend.client.gui;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -11,8 +12,10 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.client.ClientCalendarEvents;
 import net.z2six.featheredfriend.client.gui.widget.MultiLineScrollTextWidget;
 import net.z2six.featheredfriend.client.gui.widget.RecipientOverlay;
+import net.z2six.featheredfriend.config.FFCalendarConfig;
 import net.z2six.featheredfriend.neoforge.menu.ScrollSealingMenu;
 import org.jetbrains.annotations.NotNull;
 import org.lwjgl.glfw.GLFW;
@@ -31,7 +34,14 @@ import java.util.UUID;
  *  - Multi-line message body widget using Gothic font + newline support.
  *  - Player list overlay using RecipientOverlay (vanilla font).
  *  - Rendered Ender Pearl icon acting as a clickable "items attachment" entry point.
- *  - Placeholder "Seal" button logic still not implemented (just logs).
+ *  - "Sign" button in the bottom-left that:
+ *      * Checks recipient UUID is set.
+ *      * Checks recipient text is non-empty.
+ *      * If both pass:
+ *          - Stores the current player's UUID as signer.
+ *          - Appends a signature line with current in-world date:
+ *              "Signed by: <name>, Day X of Month, Y AN"
+ *          - Populates a dedicated signature field below the message body.
  *
  * If a custom GUI texture is not found at:
  *  assets/featheredfriend/textures/gui/scroll_sealing.png
@@ -67,19 +77,39 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private static final int MESSAGE_MAX_CHARS = 512;
     private static final int MESSAGE_MAX_LINES = 10;
 
+    // Signature widget config (below the message, near bottom-left)
+    // NOTE: If you want to force word-wrapping for testing, temporarily reduce SIGNATURE_WIDTH.
+    private static final int SIGNATURE_X = 20;
+    private static final int SIGNATURE_Y = GUI_HEIGHT - 44;
+    private static final int SIGNATURE_WIDTH = 208;
+    private static final int SIGNATURE_HEIGHT = 2 * 9 + 6; // room for ~2 lines
+    private static final int SIGNATURE_MAX_CHARS = 128;
+    private static final int SIGNATURE_MAX_LINES = 2;
+
+    // "Sign" button config (bottom-left, under signature line)
+    private static final int SIGN_BUTTON_X = 20;
+    private static final int SIGN_BUTTON_Y = GUI_HEIGHT - 22;
+    private static final int SIGN_BUTTON_WIDTH = 80;
+    private static final int SIGN_BUTTON_HEIGHT = 18;
+
     // Ender pearl icon (no vanilla button) relative to GUI origin
-    private static final int PEARL_ICON_X = 20;
-    private static final int PEARL_ICON_Y = 24;
+    // Now positioned ABOVE the "Dear Recipient" line, not in front of it.
     private static final int PEARL_ICON_SIZE = 16;
+    private static final int PEARL_ICON_X = RECIPIENT_X;
+    private static final int PEARL_ICON_Y = RECIPIENT_Y - PEARL_ICON_SIZE - 4;
 
     private static final ItemStack PEARL_STACK = new ItemStack(Items.ENDER_PEARL);
 
     // Widgets
     private MultiLineScrollTextWidget recipientField;
     private MultiLineScrollTextWidget messageWidget;
+    private MultiLineScrollTextWidget signatureWidget;
 
     // Recipient player selection (UUID is our ground truth)
     private UUID selectedRecipientUuid = null;
+
+    // Signer (current player) UUID when the scroll is signed
+    private UUID signerUuid = null;
 
     // Player overlay (uses vanilla font)
     private RecipientOverlay recipientOverlay;
@@ -104,9 +134,10 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         this.clearWidgets();
 
         // Recipient field (single-line custom widget) using Gothic font, NO newlines
+        // NOTE: X now uses MESSAGE_X so "Dear Dev" lines up with the main text block.
         this.recipientField = new MultiLineScrollTextWidget(
                 this.font,
-                this.leftPos + RECIPIENT_X,
+                this.leftPos + MESSAGE_X,
                 this.topPos + RECIPIENT_Y,
                 RECIPIENT_WIDTH,
                 RECIPIENT_HEIGHT,
@@ -133,10 +164,41 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         );
         this.addRenderableWidget(this.messageWidget);
 
+        // Signature widget (Gothic, up to 2 wrapped lines, non-editable)
+        this.signatureWidget = new MultiLineScrollTextWidget(
+                this.font,
+                this.leftPos + SIGNATURE_X,
+                this.topPos + SIGNATURE_Y,
+                SIGNATURE_WIDTH,
+                SIGNATURE_HEIGHT,
+                SIGNATURE_MAX_CHARS,
+                SIGNATURE_MAX_LINES,
+                Component.literal("Signed by: "),
+                GOTHIC_FONT_ID,
+                true // allowNewlines for internal wrapping; user can't edit anyway
+        );
+        this.signatureWidget.setText("Signed by: ");
+        this.signatureWidget.setEditable(false);
+        this.addRenderableWidget(this.signatureWidget);
+
+        // "Sign" button (bottom-left, under signature field)
+        Button signButton = Button.builder(
+                        Component.literal("Sign"),
+                        b -> onSignButtonClicked()
+                )
+                .bounds(
+                        this.leftPos + SIGN_BUTTON_X,
+                        this.topPos + SIGN_BUTTON_Y,
+                        SIGN_BUTTON_WIDTH,
+                        SIGN_BUTTON_HEIGHT
+                )
+                .build();
+        this.addRenderableWidget(signButton);
+
         // Recipient overlay: position just under the recipient field, expanding downward
         int overlayWidth = 180;
         int overlayHeight = 90;
-        int overlayX = this.leftPos + RECIPIENT_X;
+        int overlayX = this.leftPos + MESSAGE_X; // match recipient X
         int overlayY = this.topPos + RECIPIENT_Y + RECIPIENT_HEIGHT + 4;
 
         this.recipientOverlay = new RecipientOverlay(
@@ -185,6 +247,75 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     }
 
     // ---------------------------------------------------------------------
+    // Signing logic
+    // ---------------------------------------------------------------------
+
+    /**
+     * Called when the "Sign" button is clicked.
+     *
+     * Behaviour:
+     *  - If no recipient UUID is set, log and do nothing.
+     *  - If recipient text is empty/blank, log and do nothing.
+     *  - Otherwise:
+     *      * Store current player's UUID as signerUuid.
+     *      * Compute current in-world date index via FFCalendarConfig.
+     *      * Use ClientCalendarEvents.buildDateMessage(...) to format date.
+     *      * Populate the signature field:
+     *          "Signed by: <name>, Day X of Month, Y AN"
+     *      * Signature text will word-wrap onto a second line if it exceeds SIGNATURE_WIDTH.
+     */
+    private void onSignButtonClicked() {
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null || mc.player == null || mc.level == null) {
+                LOG.warn("[ScrollSealingScreen] onSignButtonClicked: Minecraft/level/player not ready");
+                return;
+            }
+
+            // Check recipient UUID
+            if (selectedRecipientUuid == null) {
+                LOG.info("[ScrollSealingScreen] onSignButtonClicked: No recipient UUID set, aborting sign");
+                return;
+            }
+
+            // Check recipient text (user might have deleted it)
+            String recipientText = recipientField != null ? recipientField.getText() : null;
+            if (recipientText == null || recipientText.trim().isEmpty()) {
+                LOG.info("[ScrollSealingScreen] onSignButtonClicked: Recipient field is empty, aborting sign");
+                return;
+            }
+
+            // Determine the current day index from world time + config
+            long dayTime = mc.level.getDayTime();
+            long ticksPerDay = FFCalendarConfig.TICKS_PER_DAY;
+            if (ticksPerDay <= 0L) {
+                LOG.warn("[ScrollSealingScreen] onSignButtonClicked: FFCalendarConfig.TICKS_PER_DAY <= 0 ({}), using 24000 fallback", ticksPerDay);
+                ticksPerDay = 24000L;
+            }
+            long dayIndex = dayTime / ticksPerDay;
+
+            // Use shared date formatter from ClientCalendarEvents
+            Component dateComponent = ClientCalendarEvents.buildDateMessage(dayIndex);
+            String dateString = dateComponent.getString();
+
+            // Store signer UUID
+            signerUuid = mc.player.getUUID();
+            String signerName = mc.player.getGameProfile().getName();
+
+            String fullSignature = "Signed by: " + signerName + ", " + dateString;
+
+            if (signatureWidget != null) {
+                signatureWidget.setText(fullSignature);
+                signatureWidget.setCursorToEnd();
+            }
+
+            LOG.info("[ScrollSealingScreen] Scroll signed by {} ({}) on {}", signerName, signerUuid, dateString);
+        } catch (Throwable t) {
+            LOG.error("[ScrollSealingScreen] onSignButtonClicked failed", t);
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // Ticking
     // ---------------------------------------------------------------------
 
@@ -197,6 +328,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             }
             if (this.messageWidget != null) {
                 this.messageWidget.tick();
+            }
+            if (this.signatureWidget != null) {
+                this.signatureWidget.tick();
             }
             if (this.recipientOverlay != null && this.recipientOverlay.isActive()) {
                 this.recipientOverlay.tick();
@@ -240,7 +374,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 );
             }
 
-            // Render the ender pearl icon (no button background)
+            // Render the ender pearl icon (no button background), now above the recipient line
             guiGraphics.renderItem(
                     PEARL_STACK,
                     this.leftPos + PEARL_ICON_X,
@@ -305,7 +439,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 return true;
             }
 
-            // Normal screen handling
+            // Normal screen handling (buttons, widgets)
             boolean result = super.mouseClicked(mouseX, mouseY, button);
 
             // After vanilla click handling, if recipient field is focused and empty, open overlay
@@ -362,7 +496,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 }
             }
 
-            // Then message / recipient fields
+            // Then message / recipient fields (signature is non-editable)
             boolean handled = false;
 
             if (this.recipientField != null && this.recipientField.isFocused()) {
@@ -422,10 +556,12 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     @SuppressWarnings("unused")
     private void onSealClickedPlaceholder() {
         try {
-            LOG.info("[ScrollSealingScreen] Seal placeholder clicked. UUID={}", selectedRecipientUuid);
+            LOG.info("[ScrollSealingScreen] Seal placeholder clicked. RecipientUUID={} SignerUUID={}",
+                    selectedRecipientUuid, signerUuid);
             // Future sealing logic will:
             //  - Require selectedRecipientUuid != null
             //  - Use messageWidget.getText()
+            //  - Use signatureWidget.getText()
             //  - Verify player has Ender Pearl and consume it
             //  - Build sealed scroll with NBT and hand it to player
         } catch (Throwable t) {
