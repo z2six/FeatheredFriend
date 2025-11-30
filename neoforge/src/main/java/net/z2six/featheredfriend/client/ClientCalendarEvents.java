@@ -27,7 +27,7 @@ import org.slf4j.Logger;
  * - Computes the in-world calendar date (Day X of Month, Year Suffix).
  * - Shows a centered popup at the top of the screen with a fade-in/hold/fade-out.
  *
- * Uses the custom Gothic font (assets/featheredfriend/font/gothic12.json).
+ * Uses the custom Gothic font (assets/featheredfriend/font/gothic24.json).
  *
  * This class is wired via @EventBusSubscriber on the GAME bus, client side only.
  */
@@ -50,8 +50,7 @@ public final class ClientCalendarEvents {
     private static int popupAgeTicks = 0;
     private static boolean popupActive = false;
 
-    // IMPORTANT: match ScrollSealing font usage: featheredfriend:gothic12
-    // This expects assets/featheredfriend/font/gothic12.json to exist.
+    // IMPORTANT: currently using featheredfriend:gothic24
     private static final ResourceLocation GOTHIC_FONT_ID =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12");
 
@@ -87,7 +86,6 @@ public final class ClientCalendarEvents {
                 long old = lastSeenDayIndex;
                 lastSeenDayIndex = dayIndex;
 
-                // Use INFO so this is visible in your normal logs.
                 LOG.info("[ClientCalendarEvents] Detected new day: oldDayIndex={} newDayIndex={}", old, dayIndex);
 
                 Component msg = buildDateMessage(dayIndex);
@@ -143,16 +141,22 @@ public final class ClientCalendarEvents {
                     .setStyle(Style.EMPTY.withFont(GOTHIC_FONT_ID));
 
             int screenWidth = mc.getWindow().getGuiScaledWidth();
-            int x = (screenWidth - font.width(styled)) / 2;
+            int textWidth = font.width(styled);
+            int textHeight = font.lineHeight;
+
+            int x = (screenWidth - textWidth) / 2;
             int y = 24; // near top, but below boss bar / title
 
             // Color: white with computed alpha
             int argb = (alpha << 24) | 0x00FFFFFF;
 
-            // Simple drop shadow: draw darker text behind
-            int shadowArgb = (alpha << 24) | 0x00222222;
+            // Simple drop shadow
+            int shadowArgb = (alpha << 24) | 0x00101010;
             g.drawString(font, styled, x + 1, y + 1, shadowArgb, false);
             g.drawString(font, styled, x, y, argb, false);
+
+            // Draw custom decorative ornament around the text (bars + small "diamond")
+            drawDecorativeOrnament(g, x, y, textWidth, textHeight, alpha);
 
         } catch (Throwable t) {
             LOG.error("[ClientCalendarEvents] onRenderGui failed", t);
@@ -210,6 +214,84 @@ public final class ClientCalendarEvents {
             LOG.error("[ClientCalendarEvents] computeCurrentAlpha failed", t);
             // Fail-safe: no popup instead of broken visuals
             return 0;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Custom ornament drawing
+    // -------------------------------------------------------------------------
+
+    /**
+     * Draws a small “calligraphy-ish” ornament:
+     *
+     *   [====\     Day X of Month, Year Suffix     /====]
+     *                      ◊
+     *
+     * Bars are drawn using rectangles; the little “diamond” is a tiny cross of pixels.
+     * All tinted by the same alpha as the main text.
+     */
+    private static void drawDecorativeOrnament(
+            @NotNull GuiGraphics g,
+            int textX,
+            int textY,
+            int textWidth,
+            int textHeight,
+            int alpha
+    ) {
+        try {
+            if (alpha <= 0) {
+                return;
+            }
+
+            // Slightly dimmer than the text itself.
+            // Use same alpha channel, but a warmer-ish RGB (soft beige).
+            int ornamentColor = (alpha << 24) | 0x00E0D0B0;
+
+            // Geometry:
+            // - Bars are horizontally aligned with the vertical center of the text.
+            // - A gap between text and bar to avoid touching.
+            int centerY = textY + textHeight / 2;
+
+            int gap = 6;          // distance from text to start of bar
+            int barLength = 40;   // length of each side bar
+            int barThickness = 2; // vertical thickness of the bar
+
+            // Left bar: [====\
+            int leftBarEndX = textX - gap;
+            int leftBarStartX = leftBarEndX - barLength;
+
+            // Right bar: /====]
+            int rightBarStartX = textX + textWidth + gap;
+            int rightBarEndX = rightBarStartX + barLength;
+
+            int barTop = centerY - barThickness / 2;
+            int barBottom = barTop + barThickness;
+
+            // Draw straight bars
+            g.fill(leftBarStartX, barTop, leftBarEndX, barBottom, ornamentColor);
+            g.fill(rightBarStartX, barTop, rightBarEndX, barBottom, ornamentColor);
+
+            // Add a subtle “taper” at the inner ends of each bar using 1-pixel steps
+            // to fake a little angled flourish.
+            // Left inner tip
+            g.fill(leftBarEndX, barTop - 1, leftBarEndX + 1, barTop, ornamentColor);
+            g.fill(leftBarEndX, barBottom, leftBarEndX + 1, barBottom + 1, ornamentColor);
+
+            // Right inner tip
+            g.fill(rightBarStartX - 1, barTop - 1, rightBarStartX, barTop, ornamentColor);
+            g.fill(rightBarStartX - 1, barBottom, rightBarStartX, barBottom + 1, ornamentColor);
+
+            // Small “diamond” under the center of the text: a tiny cross / plus shape.
+            int centerX = textX + textWidth / 2;
+            int diamondY = textY + textHeight + 3; // just below the baseline
+
+            // Vertical stroke
+            g.fill(centerX, diamondY - 1, centerX + 1, diamondY + 2, ornamentColor);
+            // Horizontal stroke
+            g.fill(centerX - 1, diamondY, centerX + 2, diamondY + 1, ornamentColor);
+
+        } catch (Throwable t) {
+            LOG.error("[ClientCalendarEvents] drawDecorativeOrnament failed", t);
         }
     }
 
