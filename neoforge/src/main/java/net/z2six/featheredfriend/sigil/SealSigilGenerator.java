@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/sigil/SealSigilGenerator.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/sigil/SealSigilGenerator.java
 package net.z2six.featheredfriend.sigil;
 
 import com.mojang.logging.LogUtils;
@@ -13,33 +13,45 @@ import java.util.Locale;
 import java.util.UUID;
 
 /**
+ * neoforge/src/main/java/net/z2six/featheredfriend/sigil/SealSigilGenerator.java
+ *
  * SealSigilGenerator
  *
- * Deterministic "sigil" generator based on:
+ * Deterministic sigil generator based on:
  *  - Player UUID
- *  - A player-chosen secret string (seed)
+ *  - Player-chosen secret string
  *
- * Output is a small symmetric boolean grid ("pixels") that we can render as
- * an abstract seal / glyph.
+ * Output:
+ *  - A circular boolean bitmap (SigilPattern) that we can render as a wax seal.
  *
- * For now the pattern is:
- *  - Square grid (odd size, default 17x17)
- *  - Radial + horizontal symmetry:
- *      * Concentric "rings" approximated by discrete samples
- *      * "Spikes" drawn as radial lines
- *      * Some inner dots for extra flavor
+ * Design (NEW VERSION):
+ *  - Work in a polar/circular space, not a square grid aesthetic.
+ *  - Sigil is composed from multiple layers:
+ *      * Wavy outer ring band (not a solid circle).
+ *      * Radial spokes (lines) with symmetry, plus jitter.
+ *      * Inner orbital arcs (ring segments at various radii).
+ *      * Central motif (cross/diamond) to break up sameness.
  *
- * The visual design can be iterated later without breaking the storage model,
- * because we only store the *seed*, not the final bitmap.
+ *  - The number of spokes, arc positions, symmetry count, etc. are all
+ *    driven by the 64-bit seed, so different seeds look noticeably different.
+ *
+ *  - We *only* store the 64-bit seed for stamps; the final bitmap is
+ *    always generated on demand.
  */
 public final class SealSigilGenerator {
 
     private static final Logger LOG = LogUtils.getLogger();
 
     /**
-     * Default sigil grid size. Must be odd so we have a perfect center.
+     * Default radius for the sigil in "pixels".
+     * Grid size will be (2 * DEFAULT_RADIUS + 1).
      */
-    public static final int DEFAULT_SIZE = 17;
+    public static final int DEFAULT_RADIUS = 64;
+
+    /**
+     * Default square grid size, derived from radius.
+     */
+    public static final int DEFAULT_SIZE = DEFAULT_RADIUS * 2 + 1;
 
     private SealSigilGenerator() {
         // no instances
@@ -55,14 +67,13 @@ public final class SealSigilGenerator {
     public static @NotNull SigilPattern generateForPlayer(@NotNull UUID playerUuid,
                                                           @NotNull String secret) {
         long seed = computeSeed(playerUuid, secret);
-        return generateFromSeed(seed, DEFAULT_SIZE);
+        return generateFromSeed(seed, DEFAULT_RADIUS);
     }
 
     /**
      * Compute a 64-bit seed from (playerUUID + secretString).
      *
-     * This is one-way (SHA-256); the original secret string is not recoverable
-     * from the seed in any practical sense.
+     * One-way SHA-256; original secret is not practically recoverable from the seed.
      */
     public static long computeSeed(@NotNull UUID playerUuid, @NotNull String secret) {
         String input = playerUuid.toString() + "|" + secret;
@@ -86,50 +97,69 @@ public final class SealSigilGenerator {
     }
 
     /**
-     * Generate a sigil pattern from a 64-bit seed. This is the core procedural generator.
+     * Generate a sigil pattern from a 64-bit seed.
+     *
+     * @param seed   64-bit seed (e.g. from computeSeed or any other hash).
+     * @param radius desired radius in pixels; grid size will be (2*radius + 1).
      */
-    public static @NotNull SigilPattern generateFromSeed(long seed, int size) {
-        if (size <= 3) {
-            size = DEFAULT_SIZE;
-        }
-        if (size % 2 == 0) {
-            size += 1; // ensure odd
-        }
-
-        boolean[][] pixels = new boolean[size][size];
-        RandomSource rng = RandomSource.create(seed);
-
-        int center = size / 2;
-        double maxRadius = center - 1;
-
-        LOG.debug("[SealSigilGenerator] generateFromSeed: seed={} size={}", seed, size);
-
+    public static @NotNull SigilPattern generateFromSeed(long seed, int radius) {
         try {
-            // 1) Base circular "frame"
-            drawOuterFrame(pixels, center, maxRadius);
-
-            // 2) Concentric "rings"
-            int ringCount = 2 + rng.nextInt(3); // 2..4
-            for (int i = 0; i < ringCount; i++) {
-                double t = (i + 1) / (double) (ringCount + 1);
-                double radius = 1.5 + t * (maxRadius - 2.0);
-                drawRing(pixels, center, radius, rng);
+            if (radius < 8) {
+                radius = DEFAULT_RADIUS;
             }
 
-            // 3) Spikes / rays
-            int spikeCount = 4 + rng.nextInt(9); // 4..12
-            drawSpikes(pixels, center, maxRadius, spikeCount, rng);
+            int size = radius * 2 + 1;
+            int center = radius;
 
-            // 4) Inner motif dots
-            drawInnerMotif(pixels, center, rng);
+            boolean[][] pixels = new boolean[size][size];
+            RandomSource rng = RandomSource.create(seed);
 
+            LOG.debug("[SealSigilGenerator] generateFromSeed: seed={} radius={} size={}", seed, radius, size);
+
+            // Pick a rotational symmetry count: 3..8
+            int symmetry = 3 + rng.nextInt(6); // 3,4,5,6,7,8
+
+            // Base ring band parameters
+            double outerRadius = radius - 1.5;
+            double innerBase = radius * (0.45 + rng.nextDouble() * 0.08); // 0.45..0.53 R
+            double bandThickness = radius * (0.18 + rng.nextDouble() * 0.10); // 0.18..0.28 R
+
+            // Harmonic noise for ring wobble
+            int freq1 = symmetry;
+            int freq2 = symmetry * 2;
+            int freq3 = symmetry * 3;
+
+            double phase1 = rng.nextDouble() * Math.PI * 2.0;
+            double phase2 = rng.nextDouble() * Math.PI * 2.0;
+            double phase3 = rng.nextDouble() * Math.PI * 2.0;
+
+            // Draw the wavy outer ring band
+            drawWavyRingBand(pixels, center, radius,
+                    innerBase, bandThickness,
+                    freq1, freq2, freq3,
+                    phase1, phase2, phase3,
+                    rng);
+
+            // Add symmetric radial spokes
+            addRadialSpokes(pixels, center, radius, symmetry, innerBase, bandThickness, rng);
+
+            // Add orbital ring arcs inside the main band
+            addInnerOrbits(pixels, center, radius, symmetry, innerBase, bandThickness, rng);
+
+            // Add a central motif (cross + diamond-ish)
+            addCentralMotif(pixels, center, radius, rng);
+
+            return new SigilPattern(size, pixels, seed);
         } catch (Throwable t) {
-            LOG.error("[SealSigilGenerator] generateFromSeed failed (seed={}, size={}), " +
-                            "pattern may be sparse but game will continue",
-                    seed, size, t);
+            LOG.error("[SealSigilGenerator] generateFromSeed failed (seed={}, radius={}), " +
+                            "returning minimal pattern",
+                    seed, radius, t);
+            int safeRadius = Math.max(8, radius);
+            int safeSize = safeRadius * 2 + 1;
+            boolean[][] fallback = new boolean[safeSize][safeSize];
+            fallback[safeRadius][safeRadius] = true;
+            return new SigilPattern(safeSize, fallback, seed);
         }
-
-        return new SigilPattern(size, pixels, seed);
     }
 
     // -------------------------------------------------------------------------
@@ -143,126 +173,246 @@ public final class SealSigilGenerator {
         return trimmed.substring(0, 8) + "...";
     }
 
-    private static void drawOuterFrame(boolean[][] pixels, int center, double maxRadius) {
-        int size = pixels.length;
-        double r = maxRadius;
-
-        // Approximate a circle with a handful of samples, then mirror via symmetry.
-        int samples = 96;
-        for (int i = 0; i < samples; i++) {
-            double angle = (2.0 * Math.PI * i) / samples;
-            int x = center + (int) Math.round(r * Math.cos(angle));
-            int y = center + (int) Math.round(r * Math.sin(angle));
-            setPixelSafe(pixels, x, y, true);
-        }
-
-        // Also thicken frame slightly by marking a smaller radius.
-        double inner = r - 1.0;
-        for (int i = 0; i < samples; i++) {
-            double angle = (2.0 * Math.PI * i) / samples;
-            int x = center + (int) Math.round(inner * Math.cos(angle));
-            int y = center + (int) Math.round(inner * Math.sin(angle));
-            setPixelSafe(pixels, x, y, true);
-        }
-    }
-
-    private static void drawRing(boolean[][] pixels, int center, double radius, RandomSource rng) {
-        int samples = 64;
+    /**
+     * Draw a wavy ring band with harmonic noise in radius and thickness.
+     */
+    private static void drawWavyRingBand(boolean[][] pixels,
+                                         int center,
+                                         int radius,
+                                         double innerBase,
+                                         double bandThickness,
+                                         int freq1,
+                                         int freq2,
+                                         int freq3,
+                                         double phase1,
+                                         double phase2,
+                                         double phase3,
+                                         RandomSource rng) {
         int size = pixels.length;
 
-        for (int i = 0; i < samples; i++) {
-            double angle = (2.0 * Math.PI * i) / samples;
+        // Additional phase just for thickness variation
+        double thicknessPhase = rng.nextDouble() * Math.PI * 2.0;
 
-            // Slight random jitter in radius for a less "perfect" look.
-            double jitter = (rng.nextDouble() - 0.5) * 0.4;
-            double r = Math.max(1.0, radius + jitter);
+        // Step size in radians; smaller gives smoother circles but is more expensive.
+        double step = Math.toRadians(0.6); // ~600 samples around circle
 
-            int x = center + (int) Math.round(r * Math.cos(angle));
-            int y = center + (int) Math.round(r * Math.sin(angle));
-            if (x < 0 || y < 0 || x >= size || y >= size) {
-                continue;
+        double maxRadius = radius - 1.0;
+
+        for (double theta = 0.0; theta < Math.PI * 2.0; theta += step) {
+            // Harmonic combination for radius variation
+            double n1 = Math.sin(freq1 * theta + phase1);
+            double n2 = Math.sin(freq2 * theta + phase2);
+            double n3 = Math.sin(freq3 * theta + phase3);
+
+            double radialOffset = (n1 * 0.22 + n2 * 0.18 + n3 * 0.12) * (radius * 0.3);
+            double innerRadius = innerBase + radialOffset * 0.45;
+
+            double thicknessNoise = Math.sin(freq2 * theta + thicknessPhase) * 0.20;
+            double localThickness = bandThickness * (0.9 + thicknessNoise);
+
+            if (localThickness < radius * 0.10) {
+                localThickness = radius * 0.10;
             }
 
-            // Enforce horizontal & vertical symmetry explicitly.
-            setSymmetricPixels(pixels, center, x, y);
+            double outerRadius = innerRadius + localThickness;
+            if (outerRadius > maxRadius) {
+                outerRadius = maxRadius;
+            }
+
+            // Rasterize the band by sampling radii between inner/outer at this angle.
+            double rStep = 0.5;
+            for (double r = innerRadius; r <= outerRadius; r += rStep) {
+                int x = center + (int) Math.round(r * Math.cos(theta));
+                int y = center + (int) Math.round(r * Math.sin(theta));
+                setPixelSafe(pixels, x, y, true);
+            }
         }
+
+        LOG.debug("[SealSigilGenerator] Wavy ring band drawn (innerBase={}, bandThickness={})",
+                innerBase, bandThickness);
     }
 
-    private static void drawSpikes(boolean[][] pixels,
-                                   int center,
-                                   double maxRadius,
-                                   int spikeCount,
-                                   RandomSource rng) {
-        int size = pixels.length;
+    /**
+     * Add symmetric radial spokes (lines) across the band and slightly inside it.
+     */
+    private static void addRadialSpokes(boolean[][] pixels,
+                                        int center,
+                                        int radius,
+                                        int symmetry,
+                                        double innerBase,
+                                        double bandThickness,
+                                        RandomSource rng) {
+        int spokeSets = 1 + rng.nextInt(3); // 1..3 groups of spokes
 
-        for (int i = 0; i < spikeCount; i++) {
-            // Spread spikes around the circle.
-            double baseAngle = (2.0 * Math.PI * i) / spikeCount;
-            double angle = baseAngle + (rng.nextDouble() - 0.5) * (Math.PI / 12.0); // slight random
-            double length = maxRadius * (0.5 + rng.nextDouble() * 0.5); // between 50% and 100%
+        for (int s = 0; s < spokeSets; s++) {
+            // Each set can have its own angle offset
+            double setOffset = rng.nextDouble() * (Math.PI * 2.0 / symmetry);
+            double innerRadius = innerBase * (0.65 + rng.nextDouble() * 0.10);
+            double outerRadius = innerBase + bandThickness * (0.80 + rng.nextDouble() * 0.20);
 
-            int steps = (int) (length * 2.0);
-            for (int s = 1; s <= steps; s++) {
-                double r = (length * s) / steps;
-                int x = center + (int) Math.round(r * Math.cos(angle));
-                int y = center + (int) Math.round(r * Math.sin(angle));
-                if (x < 0 || y < 0 || x >= size || y >= size) {
-                    break;
-                }
-                setSymmetricPixels(pixels, center, x, y);
+            for (int i = 0; i < symmetry; i++) {
+                double baseAngle = (Math.PI * 2.0 * i) / symmetry + setOffset;
+                // Slight random jitter so they aren't perfectly regular.
+                double angle = baseAngle + (rng.nextDouble() - 0.5) * (Math.PI / (symmetry * 3.0));
+
+                int x0 = center + (int) Math.round(innerRadius * Math.cos(angle));
+                int y0 = center + (int) Math.round(innerRadius * Math.sin(angle));
+                int x1 = center + (int) Math.round(outerRadius * Math.cos(angle));
+                int y1 = center + (int) Math.round(outerRadius * Math.sin(angle));
+
+                drawThickLine(pixels, x0, y0, x1, y1,
+                        1 + rng.nextInt(2)); // thickness 1..2
+            }
+        }
+
+        LOG.debug("[SealSigilGenerator] Added {}-sym radial spokes (sets={})", symmetry, spokeSets);
+    }
+
+    /**
+     * Add inner orbital arcs: partial rings at different radii, repeated with symmetry.
+     */
+    private static void addInnerOrbits(boolean[][] pixels,
+                                       int center,
+                                       int radius,
+                                       int symmetry,
+                                       double innerBase,
+                                       double bandThickness,
+                                       RandomSource rng) {
+        int orbitCount = 1 + rng.nextInt(3); // 1..3 orbital radii
+
+        for (int o = 0; o < orbitCount; o++) {
+            double orbitRadius = innerBase * (0.55 + rng.nextDouble() * 0.35); // 0.55..0.90 innerBase
+            double thickness = radius * (0.04 + rng.nextDouble() * 0.04);      // 4..8% of radius
+
+            // Arc length per sector (in radians)
+            double sectorAngle = (Math.PI * 2.0) / symmetry;
+            double arcSpan = sectorAngle * (0.35 + rng.nextDouble() * 0.35); // 35%..70% of sector
+
+            double baseOffset = rng.nextDouble() * sectorAngle;
+
+            for (int i = 0; i < symmetry; i++) {
+                double sectorStart = sectorAngle * i + baseOffset;
+                double startAngle = sectorStart - arcSpan / 2.0;
+                double endAngle = sectorStart + arcSpan / 2.0;
+
+                drawArcBand(pixels, center, orbitRadius, thickness, startAngle, endAngle);
+            }
+        }
+
+        LOG.debug("[SealSigilGenerator] Added inner orbits (count={})", orbitCount);
+    }
+
+    /**
+     * Draw an arc-shaped band with given radius/thickness over angle range.
+     */
+    private static void drawArcBand(boolean[][] pixels,
+                                    int center,
+                                    double radius,
+                                    double thickness,
+                                    double startAngle,
+                                    double endAngle) {
+        if (endAngle < startAngle) {
+            double tmp = startAngle;
+            startAngle = endAngle;
+            endAngle = tmp;
+        }
+
+        double innerR = radius - thickness / 2.0;
+        double outerR = radius + thickness / 2.0;
+        if (innerR < 0.0) innerR = 0.0;
+
+        double step = Math.toRadians(0.8); // angular resolution
+        double rStep = 0.6;
+
+        for (double theta = startAngle; theta <= endAngle; theta += step) {
+            for (double r = innerR; r <= outerR; r += rStep) {
+                int x = center + (int) Math.round(r * Math.cos(theta));
+                int y = center + (int) Math.round(r * Math.sin(theta));
+                setPixelSafe(pixels, x, y, true);
             }
         }
     }
 
-    private static void drawInnerMotif(boolean[][] pixels, int center, RandomSource rng) {
+    /**
+     * Central motif: a small cross + diamond-ish cluster to add visual focus.
+     */
+    private static void addCentralMotif(boolean[][] pixels,
+                                        int center,
+                                        int radius,
+                                        RandomSource rng) {
         int size = pixels.length;
 
-        // Simple "flower" in the center
+        // Ensure center point is always marked
         setPixelSafe(pixels, center, center, true);
 
-        int petals = 4 + rng.nextInt(5); // 4..8
-        double innerRadius = 2.0 + rng.nextDouble() * 2.0;
-        for (int i = 0; i < petals; i++) {
-            double angle = (2.0 * Math.PI * i) / petals;
-            int x = center + (int) Math.round(innerRadius * Math.cos(angle));
-            int y = center + (int) Math.round(innerRadius * Math.sin(angle));
-            setSymmetricPixels(pixels, center, x, y);
+        int armLength = Math.max(2, radius / 10); // small cross arms
+
+        // Vertical line
+        drawThickLine(pixels, center, center - armLength, center, center + armLength, 1);
+
+        // Horizontal line
+        drawThickLine(pixels, center - armLength, center, center + armLength, center, 1);
+
+        // Optional diamond / rotated square
+        int diamondRadius = Math.max(2, radius / 12);
+        double step = Math.toRadians(4.0);
+        for (double theta = 0.0; theta < Math.PI * 2.0; theta += step) {
+            int x = center + (int) Math.round(diamondRadius * Math.cos(theta));
+            int y = center + (int) Math.round(diamondRadius * Math.sin(theta));
+            setPixelSafe(pixels, x, y, true);
         }
 
-        // Optionally sprinkle a few random "stars" near the center.
+        // Sprinkle a few random near-center dots for variation.
         int extras = 3 + rng.nextInt(5);
         for (int i = 0; i < extras; i++) {
-            double r = 1.5 + rng.nextDouble() * 3.0;
-            double angle = rng.nextDouble() * 2.0 * Math.PI;
-            int x = center + (int) Math.round(r * Math.cos(angle));
-            int y = center + (int) Math.round(r * Math.sin(angle));
-            setSymmetricPixels(pixels, center, x, y);
+            double r = radius * (0.05 + rng.nextDouble() * 0.15); // within inner region
+            double theta = rng.nextDouble() * Math.PI * 2.0;
+            int x = center + (int) Math.round(r * Math.cos(theta));
+            int y = center + (int) Math.round(r * Math.sin(theta));
+            setPixelSafe(pixels, x, y, true);
         }
 
-        LOG.debug("[SealSigilGenerator] drawInnerMotif: size={} center={} extras={}",
-                size, center, extras);
+        LOG.debug("[SealSigilGenerator] Central motif added (armLength={} extras={})", armLength, extras);
     }
 
-    private static void setSymmetricPixels(boolean[][] pixels, int center, int x, int y) {
-        int size = pixels.length;
+    /**
+     * Draw a line with simple DDA-style stepping and a configurable thickness.
+     */
+    private static void drawThickLine(boolean[][] pixels,
+                                      int x0,
+                                      int y0,
+                                      int x1,
+                                      int y1,
+                                      int thickness) {
+        int dx = x1 - x0;
+        int dy = y1 - y0;
 
-        // Primary pixel.
-        setPixelSafe(pixels, x, y, true);
+        int steps = Math.max(Math.abs(dx), Math.abs(dy));
+        if (steps <= 0) {
+            setPixelSafe(pixels, x0, y0, true);
+            return;
+        }
 
-        // Mirror horizontally
-        int mx = 2 * center - x;
-        int my = y;
-        setPixelSafe(pixels, mx, my, true);
+        double sx = dx / (double) steps;
+        double sy = dy / (double) steps;
 
-        // Mirror vertically
-        mx = x;
-        my = 2 * center - y;
-        setPixelSafe(pixels, mx, my, true);
+        for (int i = 0; i <= steps; i++) {
+            int x = (int) Math.round(x0 + sx * i);
+            int y = (int) Math.round(y0 + sy * i);
+            drawThickPoint(pixels, x, y, thickness);
+        }
+    }
 
-        // Mirror both
-        mx = 2 * center - x;
-        my = 2 * center - y;
-        setPixelSafe(pixels, mx, my, true);
+    /**
+     * Mark a small square of pixels around (x, y) to approximate line thickness.
+     */
+    private static void drawThickPoint(boolean[][] pixels, int x, int y, int thickness) {
+        int half = thickness / 2;
+        for (int dy = -half; dy <= half; dy++) {
+            for (int dx = -half; dx <= half; dx++) {
+                setPixelSafe(pixels, x + dx, y + dy, true);
+            }
+        }
     }
 
     private static void setPixelSafe(boolean[][] pixels, int x, int y, boolean value) {

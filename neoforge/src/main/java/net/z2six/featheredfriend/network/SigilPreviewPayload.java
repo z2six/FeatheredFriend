@@ -1,5 +1,5 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/network/SigilPreviewPayload.java
-package net.z2six.featheredfriend.network;
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/network/payload/SigilPreviewPayload.java
+package net.z2six.featheredfriend.network.payload;
 
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -16,12 +16,12 @@ public record SigilPreviewPayload(String seed) implements CustomPacketPayload {
     public static final StreamCodec<RegistryFriendlyByteBuf, SigilPreviewPayload> STREAM_CODEC =
             StreamCodec.of(SigilPreviewPayload::encode, SigilPreviewPayload::decode);
 
-    private static void encode(RegistryFriendlyByteBuf buf, SigilPreviewPayload payload) {
-        buf.writeUtf(payload.seed(), 2048);
+    private static void encode(RegistryFriendlyByteBuf buf, SigilPreviewPayload p) {
+        buf.writeUtf(p.seed(), 128);
     }
 
     private static SigilPreviewPayload decode(RegistryFriendlyByteBuf buf) {
-        return new SigilPreviewPayload(buf.readUtf(2048));
+        return new SigilPreviewPayload(buf.readUtf(128));
     }
 
     @Override
