@@ -51,6 +51,9 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
     private int textColor = 0x000000;
     private final int placeholderColor = 0x707070;
 
+    // Per-widget alpha (0–255). 255 = fully opaque, 0 = fully transparent.
+    private int alpha = 255;
+
     private final List<LineInfo> visualLines = new ArrayList<>();
 
     @Nullable
@@ -187,6 +190,23 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             LOG.error("[MultiLineScrollTextWidget] setTextColor failed", t);
         }
     }
+
+    /**
+     * Set a global alpha multiplier for this widget's text rendering.
+     * 0   = fully transparent
+     * 255 = fully opaque
+     */
+    public void setAlpha(int alpha) {
+        try {
+            if (alpha < 0) alpha = 0;
+            if (alpha > 255) alpha = 255;
+            this.alpha = alpha;
+            LOG.debug("[MultiLineScrollTextWidget] setAlpha -> {}", this.alpha);
+        } catch (Throwable t) {
+            LOG.error("[MultiLineScrollTextWidget] setAlpha failed", t);
+        }
+    }
+
 
     // ---------------------------------------------------------------------
     // Selection helpers
@@ -427,7 +447,9 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             int color
     ) {
         Component toDraw = applyCustomFont(base);
-        guiGraphics.drawString(this.font, toDraw, x, y, color, false);
+        // Treat `color` as RGB, combine with our current alpha.
+        int argb = (this.alpha << 24) | (color & 0x00FFFFFF);
+        guiGraphics.drawString(this.font, toDraw, x, y, argb, false);
     }
 
     @SuppressWarnings("unused")
@@ -440,7 +462,8 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             boolean shadow
     ) {
         Component toDraw = applyCustomFont(base);
-        guiGraphics.drawString(this.font, toDraw, x, y, color, shadow);
+        int argb = (this.alpha << 24) | (color & 0x00FFFFFF);
+        guiGraphics.drawString(this.font, toDraw, x, y, argb, shadow);
     }
 
     private Component applyCustomFont(@NotNull Component base) {

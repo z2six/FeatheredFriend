@@ -32,6 +32,7 @@ import java.util.UUID;
  * For now:
  *  - "Dear Recipient" field (single-line via MultiLineScrollTextWidget) using Gothic font.
  *  - Multi-line message body widget using Gothic font + newline support.
+ *  - Signature field ("Signature" placeholder) using Gothic font, auto-wrapping to 2 lines.
  *  - Player list overlay using RecipientOverlay (vanilla font).
  *  - Rendered Ender Pearl icon acting as a clickable "items attachment" entry point.
  *  - "Sign" button in the bottom-left that:
@@ -41,12 +42,9 @@ import java.util.UUID;
  *          - Stores the current player's UUID as signer.
  *          - Appends a signature line with current in-world date:
  *              "Signed by: <name>, Day X of Month, Y AN"
- *          - Populates a dedicated signature field below the message body.
- *
- * Signature field behaviour:
- *  - Initially shows grey placeholder text: "Signature" (like other placeholders).
- *  - After clicking Sign (and passing checks), it is replaced with:
- *      "Signed by: <name>, Day X of Month, Y AN"
+ *          - Populates the signature field.
+ *      * Triggers an outro fade of all text fields.
+ *  - After text fades out, a placeholder "Seal" button appears (no logic yet).
  *
  * If a custom GUI texture is not found at:
  *  assets/featheredfriend/textures/gui/scroll_sealing.png
@@ -63,13 +61,47 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private static final ResourceLocation GOTHIC_FONT_ID =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12");
 
+    // ---------------------------------------------------------------------
+    // Timing constants (A, B, C) – all in ticks (20 ticks = 1 second)
+    // ---------------------------------------------------------------------
+
+    /**
+     * A: Intro delay before any text elements appear (in ticks).
+     * Example: 20 ticks = 1 second.
+     */
+    private static final int INTRO_DELAY_TICKS = 20;
+
+    /**
+     * B: Intro fade-in duration (in ticks).
+     * Example: 20 ticks = 1 second.
+     */
+    private static final int INTRO_FADE_TICKS = 20;
+
+    /**
+     * C: Outro fade-out duration (in ticks) after the scroll is signed.
+     * Example: 20 ticks = 1 second.
+     */
+    private static final int OUTRO_FADE_TICKS = 60;
+
+    private enum UiPhase {
+        INTRO_DELAY,
+        INTRO_FADE_IN,
+        IDLE,
+        OUTRO_FADE_OUT,
+        SEALED
+    }
+
+    private UiPhase uiPhase = UiPhase.INTRO_DELAY;
+    private int uiPhaseTicks = 0;
+
     // GUI dimensions
     private static final int GUI_WIDTH = 248;
     private static final int GUI_HEIGHT = 200;
 
     // Recipient field config (relative to GUI origin)
+    private static final int RECIPIENT_X = 20;   // aligned with message & signature
     private static final int RECIPIENT_Y = 24;
-    private static final int RECIPIENT_WIDTH = 168;
+    private static final int RECIPIENT_WIDTH = 188;
     private static final int RECIPIENT_HEIGHT = 14;
     private static final int RECIPIENT_MAX_CHARS = 64;
 
@@ -82,26 +114,27 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private static final int MESSAGE_MAX_LINES = 10;
 
     // Signature widget config (below the message, near bottom-left)
-    // Adjusted so it DOES NOT overlap with the Sign button.
-    private static final int SIGNATURE_X = MESSAGE_X;
-    private static final int SIGNATURE_Y = GUI_HEIGHT - 52;  // 148
+    private static final int SIGNATURE_X = 20;
+    private static final int SIGNATURE_Y = GUI_HEIGHT - 40;
     private static final int SIGNATURE_WIDTH = 208;
-    // Enough for 2 wrapped lines (2*9 + a bit of padding).
-    private static final int SIGNATURE_HEIGHT = 24;          // 148..172
+    private static final int SIGNATURE_HEIGHT = 14;
     private static final int SIGNATURE_MAX_CHARS = 128;
-    private static final int SIGNATURE_MAX_LINES = 2;
 
     // "Sign" button config (bottom-left, under signature line)
-    // Starts below signature area with a clear gap (no overlap).
-    private static final int SIGN_BUTTON_X = MESSAGE_X;
-    private static final int SIGN_BUTTON_Y = GUI_HEIGHT - 22; // 178
+    private static final int SIGN_BUTTON_X = 20;
+    private static final int SIGN_BUTTON_Y = GUI_HEIGHT - 22;
     private static final int SIGN_BUTTON_WIDTH = 80;
-    private static final int SIGN_BUTTON_HEIGHT = 18;         // 178..196
+    private static final int SIGN_BUTTON_HEIGHT = 18;
+
+    // "Seal" button config (appears after fade-out)
+    private static final int SEAL_BUTTON_X = 20;
+    private static final int SEAL_BUTTON_Y = GUI_HEIGHT - 22;
+    private static final int SEAL_BUTTON_WIDTH = 80;
+    private static final int SEAL_BUTTON_HEIGHT = 18;
 
     // Ender pearl icon (no vanilla button) relative to GUI origin
-    // Moved clearly above the recipient field.
-    private static final int PEARL_ICON_X = MESSAGE_X;
-    private static final int PEARL_ICON_Y = 10;
+    private static final int PEARL_ICON_X = 20;
+    private static final int PEARL_ICON_Y = 10; // moved above recipient field
     private static final int PEARL_ICON_SIZE = 16;
 
     private static final ItemStack PEARL_STACK = new ItemStack(Items.ENDER_PEARL);
@@ -110,6 +143,10 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private MultiLineScrollTextWidget recipientField;
     private MultiLineScrollTextWidget messageWidget;
     private MultiLineScrollTextWidget signatureWidget;
+
+    // Buttons
+    private Button signButton;
+    private Button sealButton;
 
     // Recipient player selection (UUID is our ground truth)
     private UUID selectedRecipientUuid = null;
@@ -140,10 +177,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         this.clearWidgets();
 
         // Recipient field (single-line custom widget) using Gothic font, NO newlines
-        // NOTE: X uses MESSAGE_X so "Dear Dev" lines up with the main text block.
         this.recipientField = new MultiLineScrollTextWidget(
                 this.font,
-                this.leftPos + MESSAGE_X,
+                this.leftPos + RECIPIENT_X,
                 this.topPos + RECIPIENT_Y,
                 RECIPIENT_WIDTH,
                 RECIPIENT_HEIGHT,
@@ -170,11 +206,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         );
         this.addRenderableWidget(this.messageWidget);
 
-        // Signature widget (Gothic, up to 2 wrapped lines, non-editable)
-        // IMPORTANT:
-        //  - Placeholder "Signature" is passed as the placeholder component.
-        //  - We DO NOT setText("Signature") here.
-        //    That way it behaves like other placeholders, rendered in grey.
+        // Signature widget (two lines, Gothic, no newlines from user; auto-wrap by width)
         this.signatureWidget = new MultiLineScrollTextWidget(
                 this.font,
                 this.leftPos + SIGNATURE_X,
@@ -182,16 +214,29 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 SIGNATURE_WIDTH,
                 SIGNATURE_HEIGHT,
                 SIGNATURE_MAX_CHARS,
-                SIGNATURE_MAX_LINES,
+                2,
                 Component.literal("Signature"),
                 GOTHIC_FONT_ID,
-                true // allowNewlines for internal wrapping; user can't edit anyway
+                false // allowNewlines
         );
+        // Initial content is empty; placeholder "Signature" is handled by the widget
+        this.signatureWidget.setText("");
         this.signatureWidget.setEditable(false);
         this.addRenderableWidget(this.signatureWidget);
 
+        // Initially: text widgets exist but are completely hidden; they'll fade in later.
+        if (this.recipientField != null) {
+            this.recipientField.visible = false;
+        }
+        if (this.messageWidget != null) {
+            this.messageWidget.visible = false;
+        }
+        if (this.signatureWidget != null) {
+            this.signatureWidget.visible = false;
+        }
+
         // "Sign" button (bottom-left, under signature field)
-        Button signButton = Button.builder(
+        this.signButton = Button.builder(
                         Component.literal("Sign"),
                         b -> onSignButtonClicked()
                 )
@@ -202,12 +247,15 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                         SIGN_BUTTON_HEIGHT
                 )
                 .build();
-        this.addRenderableWidget(signButton);
+        this.addRenderableWidget(this.signButton);
+
+        // Seal button is created later when we reach SEALED phase
+        this.sealButton = null;
 
         // Recipient overlay: position just under the recipient field, expanding downward
         int overlayWidth = 180;
         int overlayHeight = 90;
-        int overlayX = this.leftPos + MESSAGE_X;
+        int overlayX = this.leftPos + RECIPIENT_X;
         int overlayY = this.topPos + RECIPIENT_Y + RECIPIENT_HEIGHT + 4;
 
         this.recipientOverlay = new RecipientOverlay(
@@ -234,6 +282,20 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                     }
                 }
         );
+
+        // -----------------------------------------------------------------
+        // Initial phase state (INTRO_DELAY) and alpha/interaction
+        // -----------------------------------------------------------------
+        uiPhase = UiPhase.INTRO_DELAY;
+        uiPhaseTicks = 0;
+
+        setWidgetsAlpha(0.0f);          // fully transparent
+        setWidgetsInteractive(false);   // non-editable, no typing
+
+        if (this.signButton != null) {
+            this.signButton.visible = false;
+            this.signButton.active = false;
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -248,7 +310,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             LOG.debug("[ScrollSealingScreen] Opening recipient overlay, clearing previous UUID");
             selectedRecipientUuid = null;
             recipientOverlay.setPosition(
-                    this.leftPos + MESSAGE_X,
+                    this.leftPos + RECIPIENT_X,
                     this.topPos + RECIPIENT_Y + RECIPIENT_HEIGHT + 4
             );
             recipientOverlay.open();
@@ -271,12 +333,15 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
      *      * Use ClientCalendarEvents.buildDateMessage(...) to format date.
      *      * Populate the signature field:
      *          "Signed by: <name>, Day X of Month, Y AN"
-     *
-     * The placeholder "Signature" is replaced entirely.
+     *      * Start OUTRO_FADE_OUT phase.
      */
     private void onSignButtonClicked() {
         try {
-            LOG.debug("[ScrollSealingScreen] onSignButtonClicked invoked");
+            if (uiPhase != UiPhase.IDLE) {
+                LOG.debug("[ScrollSealingScreen] onSignButtonClicked ignored: uiPhase={}", uiPhase);
+                return;
+            }
+
             Minecraft mc = Minecraft.getInstance();
             if (mc == null || mc.player == null || mc.level == null) {
                 LOG.warn("[ScrollSealingScreen] onSignButtonClicked: Minecraft/level/player not ready");
@@ -316,18 +381,186 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             String fullSignature = "Signed by: " + signerName + ", " + dateString;
 
             if (signatureWidget != null) {
-                // Temporarily mark widget editable so setText definitely applies,
-                // then lock it again to keep it user-read-only.
-                signatureWidget.setEditable(true);
                 signatureWidget.setText(fullSignature);
                 signatureWidget.setCursorToEnd();
-                signatureWidget.setEditable(false);
             }
 
             LOG.info("[ScrollSealingScreen] Scroll signed by {} ({}) on {}", signerName, signerUuid, dateString);
+
+            // Start outro fade
+            beginOutroFade();
         } catch (Throwable t) {
             LOG.error("[ScrollSealingScreen] onSignButtonClicked failed", t);
         }
+    }
+
+    private void beginOutroFade() {
+        if (uiPhase == UiPhase.OUTRO_FADE_OUT || uiPhase == UiPhase.SEALED) {
+            return;
+        }
+
+        uiPhase = UiPhase.OUTRO_FADE_OUT;
+        uiPhaseTicks = 0;
+
+        setWidgetsInteractive(false);
+
+        if (this.signButton != null) {
+            this.signButton.active = false;
+            this.signButton.visible = false;
+        }
+
+        LOG.debug("[ScrollSealingScreen] beginOutroFade -> uiPhase={}", uiPhase);
+    }
+
+    // ---------------------------------------------------------------------
+    // UI phase ticking
+    // ---------------------------------------------------------------------
+
+    private void tickUiPhase() {
+        uiPhaseTicks++;
+
+        switch (uiPhase) {
+            case INTRO_DELAY: {
+                // Nothing visible / interactive yet; just wait.
+                if (uiPhaseTicks >= INTRO_DELAY_TICKS) {
+                    // Switch to fade-in; actual alpha/visibility setup happens
+                    // on the *first* INTRO_FADE_IN tick.
+                    uiPhase = UiPhase.INTRO_FADE_IN;
+                    uiPhaseTicks = 0;
+                    LOG.debug("[ScrollSealingScreen] Intro delay finished -> INTRO_FADE_IN");
+                }
+                break;
+            }
+            case INTRO_FADE_IN: {
+                // On the very first fade-in tick, force alpha to 0 and
+                // enable widget visibility. This prevents any "flash" of
+                // fully opaque text just as the fade begins.
+                if (uiPhaseTicks == 1) {
+                    setWidgetsAlpha(0.0f);
+
+                    if (this.recipientField != null) {
+                        this.recipientField.visible = true;
+                    }
+                    if (this.messageWidget != null) {
+                        this.messageWidget.visible = true;
+                    }
+                    if (this.signatureWidget != null) {
+                        this.signatureWidget.visible = true;
+                    }
+                }
+
+                float t = (INTRO_FADE_TICKS <= 0)
+                        ? 1.0f
+                        : (uiPhaseTicks / (float) INTRO_FADE_TICKS);
+                float alpha = Math.min(1.0f, Math.max(0.0f, t));
+                setWidgetsAlpha(alpha);
+
+                if (uiPhaseTicks >= INTRO_FADE_TICKS) {
+                    // Fully visible, now interactive
+                    setWidgetsAlpha(1.0f);
+                    setWidgetsInteractive(true);
+                    if (this.signButton != null) {
+                        this.signButton.visible = true;
+                        this.signButton.active = true;
+                    }
+                    uiPhase = UiPhase.IDLE;
+                    uiPhaseTicks = 0;
+                    LOG.debug("[ScrollSealingScreen] Intro fade finished -> IDLE");
+                }
+                break;
+            }
+            case IDLE: {
+                // Normal interactive state; nothing special here.
+                break;
+            }
+            case OUTRO_FADE_OUT: {
+                float t = (OUTRO_FADE_TICKS <= 0)
+                        ? 1.0f
+                        : (uiPhaseTicks / (float) OUTRO_FADE_TICKS);
+                float alpha = 1.0f - t;
+                alpha = Math.min(1.0f, Math.max(0.0f, alpha));
+                setWidgetsAlpha(alpha);
+
+                if (uiPhaseTicks >= OUTRO_FADE_TICKS) {
+                    setWidgetsAlpha(0.0f);
+                    setWidgetsInteractive(false);
+
+                    // Once fully faded, hide the widgets so they can't "pop back"
+                    if (this.recipientField != null) {
+                        this.recipientField.visible = false;
+                    }
+                    if (this.messageWidget != null) {
+                        this.messageWidget.visible = false;
+                    }
+                    if (this.signatureWidget != null) {
+                        this.signatureWidget.visible = false;
+                    }
+
+                    uiPhase = UiPhase.SEALED;
+                    uiPhaseTicks = 0;
+                    LOG.debug("[ScrollSealingScreen] Outro fade finished -> SEALED");
+
+                    // Spawn Seal button once we are fully sealed
+                    if (this.sealButton == null) {
+                        this.sealButton = Button.builder(
+                                        Component.literal("Seal"),
+                                        b -> onSealClickedPlaceholder()
+                                )
+                                .bounds(
+                                        this.leftPos + SEAL_BUTTON_X,
+                                        this.topPos + SEAL_BUTTON_Y,
+                                        SEAL_BUTTON_WIDTH,
+                                        SEAL_BUTTON_HEIGHT
+                                )
+                                .build();
+                        this.addRenderableWidget(this.sealButton);
+                    }
+                }
+                break;
+            }
+            case SEALED: {
+                // Text remains fully invisible; only Seal button is present.
+                break;
+            }
+        }
+    }
+
+    private void setWidgetsAlpha(float alpha) {
+        int a = (int) (alpha * 255.0f);
+        if (a < 0) a = 0;
+        if (a > 255) a = 255;
+
+        if (this.recipientField != null) {
+            this.recipientField.setAlpha(a);
+        }
+        if (this.messageWidget != null) {
+            this.messageWidget.setAlpha(a);
+        }
+        if (this.signatureWidget != null) {
+            this.signatureWidget.setAlpha(a);
+        }
+    }
+
+    private void setWidgetsInteractive(boolean enabled) {
+        if (this.recipientField != null) {
+            this.recipientField.setEditable(enabled);
+        }
+        if (this.messageWidget != null) {
+            this.messageWidget.setEditable(enabled);
+        }
+        // Signature is always non-editable (just shows result)
+        if (!enabled) {
+            if (this.recipientField != null) {
+                this.recipientField.setFocused(false);
+            }
+            if (this.messageWidget != null) {
+                this.messageWidget.setFocused(false);
+            }
+        }
+    }
+
+    private boolean isUiInteractive() {
+        return uiPhase == UiPhase.IDLE;
     }
 
     // ---------------------------------------------------------------------
@@ -350,6 +583,8 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             if (this.recipientOverlay != null && this.recipientOverlay.isActive()) {
                 this.recipientOverlay.tick();
             }
+
+            tickUiPhase();
         } catch (Throwable t) {
             LOG.error("[ScrollSealingScreen] containerTick failed", t);
         }
@@ -492,6 +727,11 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
 
     private void onEnderPearlClicked() {
         try {
+            if (!isUiInteractive()) {
+                LOG.debug("[ScrollSealingScreen] Ender pearl click ignored; uiPhase={}", uiPhase);
+                return;
+            }
+
             LOG.info("[ScrollSealingScreen] Ender pearl icon clicked (placeholder – will open item sending UI later)");
             // Future:
             //  - Check if player has a pearl in inventory.
