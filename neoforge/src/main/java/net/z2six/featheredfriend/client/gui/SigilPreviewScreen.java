@@ -12,63 +12,89 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/client/gui/SigilPreviewScreen.java
- *
- * SigilPreviewScreen
- *
- * Simple client-only debug screen that renders a sigil pattern as a filled,
- * circular glyph (no visible grid / disconnected cells).
- *
- * This screen is opened via SigilPreviewPayload -> FFNetwork.handleSigilPreviewOnClient.
+
+ neoforge/src/main/java/net/z2six/featheredfriend/client/gui/SigilPreviewScreen.java
+
+ SigilPreviewScreen
+
+ Client-only debug screen that renders a sigil pattern as a filled,
+
+ circular glyph (no visible grid / disconnected cells).
+
+ This screen is opened via SigilPreviewPayload -> FFNetwork.handleSigilPreviewOnClient.
+
+ It now supports:
+
+ slices: number of symmetry slices
+
+ shapeSetIndex: which shape set to use
+
+ seed: string that is hashed into a 64-bit seed
  */
 public class SigilPreviewScreen extends Screen {
 
     private static final Logger LOG = LogUtils.getLogger();
 
     /**
-     * Maximum seed length we honour in the preview.
-     * Anything longer is truncated before hashing.
+
+     Maximum seed length we honour in the preview.
+
+     Anything longer is truncated before hashing.
      */
     private static final int MAX_SEED_LENGTH = 128;
 
     /**
-     * Radius used for preview rendering; must match what we pass to SealSigilGenerator.
+
+     Radius used for preview rendering; must match what we pass to SealSigilGenerator.
      */
     private static final int PREVIEW_RADIUS = SealSigilGenerator.DEFAULT_RADIUS;
 
+    private final int slices;
+    private final int shapeSetIndex;
     private final String seed;
     private final SigilPattern pattern;
     private final boolean[][] pixels;
     private final int patternSize;
 
-    public SigilPreviewScreen(@NotNull String rawSeed) {
+    public SigilPreviewScreen(int slices,
+                              int shapeSetIndex,
+                              @NotNull String rawSeed) {
         super(Component.literal("Sigil Preview"));
 
+        this.slices = slices;
+        this.shapeSetIndex = shapeSetIndex;
         this.seed = clampSeed(rawSeed);
 
         long hash = computeHash(this.seed);
-        this.pattern = SealSigilGenerator.generateFromSeed(hash, PREVIEW_RADIUS);
+        this.pattern = SealSigilGenerator.generateFromSeed(hash, PREVIEW_RADIUS, slices, shapeSetIndex);
         this.pixels = pattern.getPixels();
         this.patternSize = pattern.getSize();
 
-        LOG.debug("[SigilPreviewScreen] Constructed for seed='{}' (hash={}) size={}",
-                this.seed, hash, this.patternSize);
+        LOG.debug("[SigilPreviewScreen] Constructed for seed='{}' (hash={}) size={} slices={} shapeSetIndex={}",
+                this.seed, hash, this.patternSize, this.slices, this.shapeSetIndex);
+
+
     }
 
     /**
-     * Convenience opener for client-side usage.
-     * Safe-guards against null Minecraft instance.
+
+     Convenience opener for client-side usage.
+
+     Safe-guards against null Minecraft instance.
      */
-    public static void open(@NotNull String seed) {
+    public static void open(int slices,
+                            int shapeSetIndex,
+                            @NotNull String seed) {
         try {
             Minecraft mc = Minecraft.getInstance();
             if (mc == null) {
                 LOG.warn("[SigilPreviewScreen] Minecraft instance is null; cannot open screen");
                 return;
             }
-            mc.setScreen(new SigilPreviewScreen(seed));
+            mc.setScreen(new SigilPreviewScreen(slices, shapeSetIndex, seed));
         } catch (Throwable t) {
-            LOG.error("[SigilPreviewScreen] Failed to open screen for seed '{}'", seed, t);
+            LOG.error("[SigilPreviewScreen] Failed to open screen for seed '{}' slices={} shapeSetIndex={}",
+                    seed, slices, shapeSetIndex, t);
         }
     }
 
@@ -80,12 +106,14 @@ public class SigilPreviewScreen extends Screen {
             // Semi-transparent dark overlay
             guiGraphics.fill(0, 0, this.width, this.height, 0xC0000000);
 
-            // Draw title + seed (truncated version)
+            // Draw title + seed + params
             String title = "Sigil Preview";
             String seedLabel = "Seed: " + seed;
+            String paramsLabel = "Slices: " + slices + "   ShapeSet: " + shapeSetIndex;
 
             int titleWidth = this.font.width(title);
             int seedWidth = this.font.width(seedLabel);
+            int paramsWidth = this.font.width(paramsLabel);
 
             int centerX = this.width / 2;
 
@@ -107,6 +135,15 @@ public class SigilPreviewScreen extends Screen {
                     false
             );
 
+            guiGraphics.drawString(
+                    this.font,
+                    paramsLabel,
+                    centerX - paramsWidth / 2,
+                    44,
+                    0xFFAAAAAA,
+                    false
+            );
+
             // Draw the sigil as a filled glyph (no cell spacing, no grid)
             drawSigil(guiGraphics);
 
@@ -114,17 +151,19 @@ public class SigilPreviewScreen extends Screen {
         } catch (Throwable t) {
             LOG.error("[SigilPreviewScreen] render() failed", t);
         }
+
+
     }
 
     @Override
     public boolean isPauseScreen() {
-        // Don't pause the game for this debug preview.
+// Don't pause the game for this debug preview.
         return false;
     }
 
-    // ---------------------------------------------------------------------
-    // Rendering helpers
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Rendering helpers
+// ---------------------------------------------------------------------
 
     private void drawSigil(@NotNull GuiGraphics guiGraphics) {
         try {
@@ -199,11 +238,13 @@ public class SigilPreviewScreen extends Screen {
         } catch (Throwable t) {
             LOG.error("[SigilPreviewScreen] drawSigil() failed", t);
         }
+
+
     }
 
-    // ---------------------------------------------------------------------
-    // Hash + seed clamp
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Hash + seed clamp
+// ---------------------------------------------------------------------
 
     private static @NotNull String clampSeed(@NotNull String raw) {
         String s = raw;
@@ -214,8 +255,10 @@ public class SigilPreviewScreen extends Screen {
     }
 
     /**
-     * Simple deterministic hash for the preview command/network.
-     * This is independent of the UUID+secret crypto seed used for real stamps.
+
+     Simple deterministic hash for the preview command/network.
+
+     This is independent of the UUID+secret crypto seed used for real stamps.
      */
     private static long computeHash(@NotNull String seed) {
         long h = 1125899906842597L; // prime-ish

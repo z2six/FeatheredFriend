@@ -25,13 +25,16 @@ import java.util.Collection;
 import java.util.List;
 
 /**
- * // neoforge/src/main/java/net/z2six/featheredfriend/network/FFNetwork.java
- *
- * FFNetwork
- *
- * Handles NeoForge networking for FeatheredFriend.
- * - KnownPlayersPayload (S2C): list of known player names.
- * - SigilPreviewPayload (S2C): opens sigil preview screen with a seed.
+
+ // neoforge/src/main/java/net/z2six/featheredfriend/network/FFNetwork.java
+
+ FFNetwork
+
+ Handles NeoForge networking for FeatheredFriend.
+
+ KnownPlayersPayload (S2C): list of known player names.
+
+ SigilPreviewPayload (S2C): opens sigil preview screen with slices + shapeSetIndex + seed.
  */
 @EventBusSubscriber(modid = Constants.MOD_ID, bus = EventBusSubscriber.Bus.MOD)
 public final class FFNetwork {
@@ -41,9 +44,9 @@ public final class FFNetwork {
     private FFNetwork() {
     }
 
-    // -------------------------------------------------------------------------
-    // Payload registration
-    // -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
+// Payload registration
+// -------------------------------------------------------------------------
 
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
@@ -68,11 +71,13 @@ public final class FFNetwork {
         } catch (Throwable t) {
             LOG.error("[FFNetwork] Failed to register payload handlers", t);
         }
+
+
     }
 
-    // -------------------------------------------------------------------------
-    // KnownPlayers S2C
-    // -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
+// KnownPlayers S2C
+// -------------------------------------------------------------------------
 
     public static void sendKnownPlayersTo(@NotNull ServerPlayer player,
                                           @NotNull Collection<String> names) {
@@ -98,16 +103,18 @@ public final class FFNetwork {
         });
     }
 
-    // -------------------------------------------------------------------------
-    // SigilPreview S2C
-    // -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
+// SigilPreview S2C
+// -------------------------------------------------------------------------
 
     public static void sendSigilPreview(@NotNull ServerPlayer player,
+                                        int slices,
+                                        int shapeSetIndex,
                                         @NotNull String seed) {
         try {
-            PacketDistributor.sendToPlayer(player, new SigilPreviewPayload(seed));
-            LOG.debug("[FFNetwork] Sent SigilPreviewPayload to {} (seed='{}')",
-                    player.getGameProfile().getName(), seed);
+            PacketDistributor.sendToPlayer(player, new SigilPreviewPayload(slices, shapeSetIndex, seed));
+            LOG.debug("[FFNetwork] Sent SigilPreviewPayload to {} (slices={} shapeSetIndex={} seed='{}')",
+                    player.getGameProfile().getName(), slices, shapeSetIndex, seed);
         } catch (Throwable t) {
             LOG.error("[FFNetwork] Failed to send SigilPreviewPayload to {}", player.getGameProfile().getName(), t);
         }
@@ -122,17 +129,18 @@ public final class FFNetwork {
                     LOG.warn("[FFNetwork] Minecraft instance is null in SigilPreview handler");
                     return;
                 }
-                SigilPreviewScreen.open(payload.seed());
-                LOG.debug("[FFNetwork] Opened SigilPreviewScreen for seed='{}'", payload.seed());
+                SigilPreviewScreen.open(payload.slices(), payload.shapeSetIndex(), payload.seed());
+                LOG.debug("[FFNetwork] Opened SigilPreviewScreen for slices={} shapeSetIndex={} seed='{}'",
+                        payload.slices(), payload.shapeSetIndex(), payload.seed());
             } catch (Throwable t) {
                 LOG.error("[FFNetwork] Failed to handle SigilPreviewPayload on client", t);
             }
         });
     }
 
-    // -------------------------------------------------------------------------
-    // KnownPlayers payload type
-    // -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
+// KnownPlayers payload type
+// -------------------------------------------------------------------------
 
     public record KnownPlayersPayload(List<String> names) implements CustomPacketPayload {
 
@@ -171,5 +179,7 @@ public final class FFNetwork {
         public @NotNull Type<KnownPlayersPayload> type() {
             return TYPE;
         }
+
+
     }
 }
