@@ -31,7 +31,9 @@ import java.util.UUID;
  *
  *  3) Shape sets (modular)
  *     - A SealSigilShapeSet implementation carves shapes into a full-size mask.
- *     - For now: SealSigilShapeSetMedieval0 is index 0.
+ *     - For now:
+ *         * index 0 => SealSigilShapeSetMedieval0  (heraldic / medieval)
+ *         * index 1 => SealSigilShapeSetHighFantasy1 (high-fantasy: dragons, magic)
  *
  *  4) Slice replication
  *     - For every pixel that is set in the base slice mask, we:
@@ -123,7 +125,7 @@ public final class SealSigilGenerator {
      * @param seed          64-bit deterministic seed
      * @param radius        requested radius (will be clamped to >= 16)
      * @param slices        number of symmetry slices (2–8)
-     * @param shapeSetIndex index of shape set (0 => Medieval0, others reserved)
+     * @param shapeSetIndex index of shape set (0 => Medieval0, 1 => HighFantasy1)
      */
     public static @NotNull SigilPattern generateFromSeed(long seed,
                                                          int radius,
@@ -226,18 +228,32 @@ public final class SealSigilGenerator {
 
     /**
      * Resolve a shape set implementation by index.
-     * For now: only index 0 is implemented (SealSigilShapeSetMedieval0).
+     * For now:
+     *   0 => SealSigilShapeSetMedieval0
+     *   1 => SealSigilShapeSetHighFantasy1
+     *   2 => SealSigilShapeSetFloral2
+     * Any other index falls back to Medieval0 with a warning.
      */
     private static @NotNull SealSigilShapeSet resolveShapeSet(int shapeSetIndex) {
         try {
-            if (shapeSetIndex == 0) {
-                LOG.debug("[SealSigilGenerator] Using shape set 0: SealSigilShapeSetMedieval0");
-                return new SealSigilShapeSetMedieval0();
-            }
-
-            // Future: add cases for 1, 2, 3...
-            LOG.warn("[SealSigilGenerator] Unknown shapeSetIndex={} — falling back to Medieval0", shapeSetIndex);
-            return new SealSigilShapeSetMedieval0();
+            return switch (shapeSetIndex) {
+                case 0 -> {
+                    LOG.debug("[SealSigilGenerator] Using shape set 0: SealSigilShapeSetMedieval0");
+                    yield new SealSigilShapeSetMedieval0();
+                }
+                case 1 -> {
+                    LOG.debug("[SealSigilGenerator] Using shape set 1: SealSigilShapeSetHighFantasy1");
+                    yield new SealSigilShapeSetHighFantasy1();
+                }
+                case 2 -> {
+                    LOG.debug("[SealSigilGenerator] Using shape set 2: SealSigilShapeSetFloral2");
+                    yield new SealSigilShapeSetFloral2();
+                }
+                default -> {
+                    LOG.warn("[SealSigilGenerator] Unknown shapeSetIndex={} — falling back to Medieval0", shapeSetIndex);
+                    yield new SealSigilShapeSetMedieval0();
+                }
+            };
         } catch (Throwable t) {
             LOG.error("[SealSigilGenerator] resolveShapeSet failed for index={}, falling back to Medieval0", shapeSetIndex, t);
             return new SealSigilShapeSetMedieval0();
