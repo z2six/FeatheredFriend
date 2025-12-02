@@ -1,7 +1,8 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/network/FFNetwork.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/network/FFNetwork.java
 package net.z2six.featheredfriend.network;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.client.Minecraft;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -13,6 +14,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.client.gui.SigilPreviewScreen;
 import net.z2six.featheredfriend.client.data.KnownPlayersClientCache;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -21,117 +23,91 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-/**
- * // neoforge/src/main/java/net/z2six/featheredfriend/network/FFNetwork.java
- *
- * FFNetwork
- *
- * Handles NeoForge networking for FeatheredFriend.
- * Currently:
- *  - S2C payload: KnownPlayersPayload (list of all known player names).
- *
- * IMPORTANT:
- *  Payload handlers MUST be registered on BOTH physical sides (client + server),
- *  otherwise NeoForge will refuse to send the payload with
- *  "may not be sent to the client!" errors.
- */
 @EventBusSubscriber(modid = Constants.MOD_ID, bus = EventBusSubscriber.Bus.MOD)
 public final class FFNetwork {
 
     private static final Logger LOG = LogUtils.getLogger();
 
-    private FFNetwork() {
-    }
-
-    // -------------------------------------------------------------------------
-    // Payload registration
-    // -------------------------------------------------------------------------
+    private FFNetwork() {}
 
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
-        try {
-            // "1" is a simple protocol version string; bump if you ever break payload formats.
-            var registrar = event.registrar("1");
+        var registrar = event.registrar("1");
 
-            registrar.playToClient(
-                    KnownPlayersPayload.TYPE,
-                    KnownPlayersPayload.STREAM_CODEC,
-                    FFNetwork::handleKnownPlayersOnClient
-            );
+        // Known players payload (existing)
+        registrar.playToClient(
+                KnownPlayersPayload.TYPE,
+                KnownPlayersPayload.STREAM_CODEC,
+                FFNetwork::handleKnownPlayersOnClient
+        );
 
-            LOG.info("[FFNetwork] Registered KnownPlayersPayload S2C handler");
-        } catch (Throwable t) {
-            LOG.error("[FFNetwork] Failed to register payload handlers", t);
-        }
+        // NEW: Sigil preview payload
+        registrar.playToClient(
+                SigilPreviewPayload.TYPE,
+                SigilPreviewPayload.STREAM_CODEC,
+                FFNetwork::handleSigilPreview
+        );
+
+        LOG.info("[FFNetwork] Registered KnownPlayersPayload + SigilPreviewPayload");
     }
 
-    // -------------------------------------------------------------------------
-    // S2C: KnownPlayersPayload
-    // -------------------------------------------------------------------------
-
-    public static void sendKnownPlayersTo(@NotNull ServerPlayer player, @NotNull Collection<String> names) {
-        try {
-            List<String> copy = new ArrayList<>(names);
-            KnownPlayersPayload payload = new KnownPlayersPayload(copy);
-            PacketDistributor.sendToPlayer(player, payload);
-            LOG.debug("[FFNetwork] Sent {} known players to {}", copy.size(), player.getGameProfile().getName());
-        } catch (Throwable t) {
-            LOG.error("[FFNetwork] Failed to send KnownPlayersPayload to {}", player.getGameProfile().getName(), t);
-        }
-    }
-
-    private static void handleKnownPlayersOnClient(@NotNull KnownPlayersPayload payload,
-                                                   @NotNull IPayloadContext context) {
-        // NeoForge 1.21 style: use enqueueWork
-        context.enqueueWork(() -> {
+    // ------------------------------------
+    // NEW: Handle sigil preview on client
+    // ------------------------------------
+    private static void handleSigilPreview(@NotNull SigilPreviewPayload payload,
+                                           @NotNull IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
             try {
-                KnownPlayersClientCache.update(payload.names());
-                LOG.debug("[FFNetwork] Client cache updated with {} known players", payload.names().size());
+                Minecraft mc = Minecraft.getInstance();
+                if (mc != null) {
+                    SigilPreviewScreen.open(payload.seed());
+                }
             } catch (Throwable t) {
-                LOG.error("[FFNetwork] Failed to handle KnownPlayersPayload on client", t);
+                LOG.error("[FFNetwork] Failed to handle SigilPreviewPayload", t);
             }
         });
     }
 
-    // -------------------------------------------------------------------------
-    // Payload type
-    // -------------------------------------------------------------------------
+    // ------------------------------------
+    // Existing known players handling
+    // ------------------------------------
+    private static void handleKnownPlayersOnClient(@NotNull KnownPlayersPayload payload,
+                                                   @NotNull IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            try {
+                KnownPlayersClientCache.update(payload.names());
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] Failed to handle KnownPlayersPayload", t);
+            }
+        });
+    }
 
+    // Existing S2C sender
+    public static void sendKnownPlayersTo(@NotNull ServerPlayer player, @NotNull Collection<String> names) {
+        PacketDistributor.sendToPlayer(player, new KnownPlayersPayload(new ArrayList<>(names)));
+    }
+
+    // Existing KnownPlayersPayload remains unchanged
     public record KnownPlayersPayload(List<String> names) implements CustomPacketPayload {
-
         public static final Type<KnownPlayersPayload> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "known_players"));
 
-        /**
-         * Simple manual StreamCodec implementation. Encodes:
-         *  - varint size
-         *  - for each: utf string (up to 1024 characters, arbitrarily generous)
-         */
         public static final StreamCodec<RegistryFriendlyByteBuf, KnownPlayersPayload> STREAM_CODEC =
                 StreamCodec.of(KnownPlayersPayload::encode, KnownPlayersPayload::decode);
 
-        private static void encode(@NotNull RegistryFriendlyByteBuf buf, @NotNull KnownPlayersPayload payload) {
-            List<String> list = payload.names();
-            int size = list.size();
-            buf.writeVarInt(size);
-            for (String name : list) {
-                buf.writeUtf(name, 1024);
-            }
+        private static void encode(RegistryFriendlyByteBuf buf, KnownPlayersPayload p) {
+            buf.writeVarInt(p.names().size());
+            for (String n : p.names()) buf.writeUtf(n, 1024);
         }
 
-        private static @NotNull KnownPlayersPayload decode(@NotNull RegistryFriendlyByteBuf buf) {
+        private static KnownPlayersPayload decode(RegistryFriendlyByteBuf buf) {
             int size = buf.readVarInt();
-            List<String> list = new ArrayList<>(Math.max(0, size));
-            for (int i = 0; i < size; i++) {
-                String name = buf.readUtf(1024);
-                list.add(name);
-            }
-            return new KnownPlayersPayload(list);
+            List<String> names = new ArrayList<>(size);
+            for (int i = 0; i < size; i++) names.add(buf.readUtf(1024));
+            return new KnownPlayersPayload(names);
         }
 
         @Override
-        public @NotNull Type<KnownPlayersPayload> type() {
-            return TYPE;
-        }
+        public @NotNull Type<KnownPlayersPayload> type() { return TYPE; }
     }
 }

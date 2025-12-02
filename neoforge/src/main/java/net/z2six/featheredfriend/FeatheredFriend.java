@@ -53,6 +53,11 @@ public class FeatheredFriend {
             LOG.error("[FeatheredFriend] Failed to register NeoForge registries", t);
         }
 
+        // Register commands
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                net.z2six.featheredfriend.neoforge.commands.FFSigilCommandsNeoForge::register
+        );
+
         // Client-only: menu screens (called only on physical client)
         try {
             modEventBus.addListener(FFNeoForgeClient::onRegisterMenuScreens);
