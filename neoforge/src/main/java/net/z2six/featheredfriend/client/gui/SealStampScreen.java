@@ -5,10 +5,13 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.player.Inventory;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.widget.MultiLineScrollTextWidget;
@@ -16,20 +19,23 @@ import net.z2six.featheredfriend.neoforge.menu.SealStampMenu;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * // neoforge/src/main/java/net/z2six/featheredfriend/client/gui/SealStampScreen.java
  *
- * SealStampScreen – Step 2 GUI
+ * SealStampScreen
  *
- * Layout:
- *  - Secret field at the top, centered.
- *  - Left column (below secret):
- *      * Etchings dropdown (slices 2–8)
- *      * Style dropdown (Medieval, Fantasy, Floral)
- *      * Carve button
- *  - Right side: Sigil preview box.
- *
- * No sigil rendering or NBT writing yet – just UI.
+ * - Uses Gothic font + MultiLineScrollTextWidget for the secret passphrase.
+ * - Left column: Etchings dropdown, Style dropdown, Carve button, GUI-scale toggle button.
+ * - Right side: "Sigil Preview" area with a wooden circular disc using vanilla oak planks.
+ * - On "Carve" click:
+ *      * Spawns a burst of client-side particles (based on texture_etching16x.png) that drift downward,
+ *        rotate, fade out, and die quickly.
+ * - Sigil generation / NBT saving will be wired in a later step.
  */
 public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
@@ -41,6 +47,10 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     // Gothic font id (same as used by ScrollSealingScreen / MultiLineScrollTextWidget)
     private static final ResourceLocation GOTHIC_FONT_ID =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12");
+
+    // Wood disc background: vanilla oak planks texture
+    private static final ResourceLocation DISC_TEXTURE =
+            ResourceLocation.fromNamespaceAndPath("minecraft", "textures/block/oak_planks.png");
 
     // ---------------------------------------------------------------------
     // GUI dimensions
@@ -65,7 +75,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     private static final int SECRET_X_OFFSET = -32; // negative -> shift left, positive -> shift right
 
     // ---------------------------------------------------------------------
-    // Left column (Etchings / Style / Carve) config
+    // Left column (Etchings / Style / Carve / Scale) config
     // ---------------------------------------------------------------------
 
     // Base X for the left column (relative to GUI origin).
@@ -79,9 +89,13 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     private static final int DROPDOWN_HEIGHT = 20;
     private static final int CONTROL_VERTICAL_GAP = 6; // gap between stacked controls
 
-    // Carve button size (can differ from dropdowns if you want)
+    // Carve button size
     private static final int CARVE_WIDTH = 90;
     private static final int CARVE_HEIGHT = 20;
+
+    // GUI scale toggle button size
+    private static final int SCALE_WIDTH = 90;
+    private static final int SCALE_HEIGHT = 20;
 
     // ---------------------------------------------------------------------
     // Preview area config (right side of GUI)
@@ -101,19 +115,45 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     private static final int PREVIEW_LABEL_OFFSET_Y = -12;
 
     // ---------------------------------------------------------------------
-    // Widgets
+    // Etching options
+    // ---------------------------------------------------------------------
+
+    private static final int MIN_SLICES = 2;
+    private static final int MAX_SLICES = 8;
+
+    private static final String[] STYLE_NAMES = {"Medieval", "Fantasy", "Floral"};
+
+    // ---------------------------------------------------------------------
+    // Particle tuning
+    // ---------------------------------------------------------------------
+
+    /**
+     * Base particle size multiplier. Increase to make chips larger.
+     */
+    private static final float PARTICLE_SIZE_BASE = 8.0f;
+
+    /**
+     * Multiplier applied to downward velocity, to make them fall faster.
+     */
+    private static final double PARTICLE_FALL_MULTIPLIER = 1.5;
+
+    // ---------------------------------------------------------------------
+    // State & widgets
     // ---------------------------------------------------------------------
 
     private MultiLineScrollTextWidget secretField;
-    private CycleButton<Integer> slicesButton;
-    private CycleButton<ShapesetStyle> styleButton;
+    private Button etchingsButton;
+    private Button styleButton;
     private Button carveButton;
+    private AbstractWidget scaleButton;
 
-    // Sigil preview area absolute coordinates
-    private int previewX;
-    private int previewY;
-    private int previewWidth;
-    private int previewHeight;
+    private int currentSlices = 6;       // default
+    private int currentStyleIndex = 0;   // "Medieval"
+
+    private final RandomSource random = RandomSource.createNewThreadLocalInstance();
+
+    // Simple client-side particle list for the "Carve" effect
+    private final List<SigilEtchingParticle> particles = new ArrayList<>();
 
     public SealStampScreen(@NotNull SealStampMenu menu,
                            @NotNull Inventory playerInventory,
@@ -122,7 +162,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         this.imageWidth = GUI_WIDTH;
         this.imageHeight = GUI_HEIGHT;
 
-        // Hide vanilla titles for now; we draw nothing from the base labels.
+        // Hide vanilla container labels; we draw our own (minimal).
         this.titleLabelX = 10000;
         this.titleLabelY = 10000;
         this.inventoryLabelX = 10000;
@@ -130,147 +170,189 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     }
 
     // ---------------------------------------------------------------------
-    // Shapeset style enum (index mapping for later sigil logic)
-    // ---------------------------------------------------------------------
-
-    private enum ShapesetStyle {
-        MEDIEVAL(0, "Medieval"),
-        FANTASY(1, "Fantasy"),
-        FLORAL(2, "Floral");
-
-        private final int index;
-        private final String displayName;
-
-        ShapesetStyle(int index, String displayName) {
-            this.index = index;
-            this.displayName = displayName;
-        }
-
-        public int index() {
-            return index;
-        }
-
-        public String displayName() {
-            return displayName;
-        }
-
-        @Override
-        public String toString() {
-            return displayName;
-        }
-    }
-
-    // ---------------------------------------------------------------------
-    // Init & layout
+    // Init
     // ---------------------------------------------------------------------
 
     @Override
     protected void init() {
         super.init();
 
+        LOG.debug("[SealStampScreen] init at leftPos={}, topPos={}", this.leftPos, this.topPos);
+
+        this.clearWidgets();
+        this.renderables.clear();
+        this.children().clear();
+
+        // Center of GUI for secret field placement
+        int guiCenterX = this.leftPos + this.imageWidth / 2;
+
+        // -----------------------------------------------------------------
+        // Secret field (MultiLineScrollTextWidget with Gothic font)
+        // -----------------------------------------------------------------
+        int secretX = guiCenterX + SECRET_X_OFFSET - (SECRET_WIDTH / 2);
+        int secretY = this.topPos + SECRET_Y;
+
+        this.secretField = new MultiLineScrollTextWidget(
+                this.font,
+                secretX,
+                secretY,
+                SECRET_WIDTH,
+                SECRET_HEIGHT,
+                SECRET_MAX_CHARS,
+                SECRET_MAX_LINES,
+                gothic("Secret") // placeholder text; no separate label above
+        );
+        this.secretField.setCustomFontId(GOTHIC_FONT_ID);
+        this.secretField.setEditable(true);
+
+        this.addRenderableWidget(this.secretField);
+
+        // -----------------------------------------------------------------
+        // Left column controls (Etchings / Style / Carve / Scale)
+        // -----------------------------------------------------------------
+        int colX = this.leftPos + LEFT_COLUMN_X;
+        int rowY = this.topPos + LEFT_COLUMN_FIRST_Y;
+
+        this.etchingsButton = Button.builder(
+                        Component.empty(),
+                        b -> cycleSlices()
+                )
+                .bounds(colX, rowY, DROPDOWN_WIDTH, DROPDOWN_HEIGHT)
+                .build();
+        this.addRenderableWidget(this.etchingsButton);
+
+        rowY += DROPDOWN_HEIGHT + CONTROL_VERTICAL_GAP;
+
+        this.styleButton = Button.builder(
+                        Component.empty(),
+                        b -> cycleStyle()
+                )
+                .bounds(colX, rowY, DROPDOWN_WIDTH, DROPDOWN_HEIGHT)
+                .build();
+        this.addRenderableWidget(this.styleButton);
+
+        rowY += DROPDOWN_HEIGHT + CONTROL_VERTICAL_GAP;
+
+        this.carveButton = Button.builder(
+                        Component.empty(),
+                        b -> onCarveClicked()
+                )
+                .bounds(colX, rowY, CARVE_WIDTH, CARVE_HEIGHT)
+                .build();
+        this.addRenderableWidget(this.carveButton);
+
+        rowY += CARVE_HEIGHT + CONTROL_VERTICAL_GAP;
+
         try {
-            LOG.debug("[SealStampScreen] init at leftPos={}, topPos={}", this.leftPos, this.topPos);
+            Minecraft mc = Minecraft.getInstance();
+            var options = mc.options;
 
-            this.clearWidgets();
-
-            int guiLeft = this.leftPos;
-            int guiTop = this.topPos;
-
-            // -------------------------------------------------------------
-            // Secret field (top, centered)
-            // -------------------------------------------------------------
-            int secretXCentered = guiLeft + (this.imageWidth - SECRET_WIDTH) / 2;
-            int secretX = secretXCentered + SECRET_X_OFFSET;
-            int secretY = guiTop + SECRET_Y;
-
-            this.secretField = new MultiLineScrollTextWidget(
-                    this.font,
-                    secretX,
-                    secretY,
-                    SECRET_WIDTH,
-                    SECRET_HEIGHT,
-                    SECRET_MAX_CHARS,
-                    SECRET_MAX_LINES,
-                    gothicLiteral("Secret passphrase"),
-                    GOTHIC_FONT_ID,
-                    false // allowNewlines
+            this.scaleButton = options.guiScale().createButton(
+                    options,
+                    colX,
+                    rowY,
+                    SCALE_WIDTH
             );
-            this.secretField.setEditable(true);
-            this.addRenderableWidget(this.secretField);
+            this.addRenderableWidget(this.scaleButton);
 
-            // -------------------------------------------------------------
-            // Left column: Etchings / Style / Carve
-            // -------------------------------------------------------------
-            int leftX = guiLeft + LEFT_COLUMN_X;
-            int currentY = guiTop + LEFT_COLUMN_FIRST_Y;
-
-            // Etchings (slices)
-            this.slicesButton = CycleButton.<Integer>builder(value ->
-                            gothicLiteral(String.valueOf(value)))
-                    .withValues(2, 3, 4, 5, 6, 7, 8)
-                    .withInitialValue(4)
-                    .create(
-                            leftX,
-                            currentY,
-                            DROPDOWN_WIDTH,
-                            DROPDOWN_HEIGHT,
-                            gothicLiteral("Etchings"),
-                            (btn, value) -> {
-                                try {
-                                    LOG.debug("[SealStampScreen] Etchings changed to {}", value);
-                                } catch (Throwable t) {
-                                    LOG.error("[SealStampScreen] slicesButton onValueChange failed", t);
-                                }
-                            }
-                    );
-            this.addRenderableWidget(this.slicesButton);
-
-            currentY += DROPDOWN_HEIGHT + CONTROL_VERTICAL_GAP;
-
-            // Style (shapeset)
-            this.styleButton = CycleButton.<ShapesetStyle>builder(style ->
-                            gothicLiteral(style.displayName()))
-                    .withValues(ShapesetStyle.values())
-                    .withInitialValue(ShapesetStyle.MEDIEVAL)
-                    .create(
-                            leftX,
-                            currentY,
-                            DROPDOWN_WIDTH,
-                            DROPDOWN_HEIGHT,
-                            gothicLiteral("Style"),
-                            (btn, value) -> {
-                                try {
-                                    LOG.debug("[SealStampScreen] Style changed to {} (index={})",
-                                            value.displayName(), value.index());
-                                } catch (Throwable t) {
-                                    LOG.error("[SealStampScreen] styleButton onValueChange failed", t);
-                                }
-                            }
-                    );
-            this.addRenderableWidget(this.styleButton);
-
-            currentY += DROPDOWN_HEIGHT + CONTROL_VERTICAL_GAP;
-
-            // Carve button
-            this.carveButton = Button.builder(
-                            gothicLiteral("Carve"),
-                            b -> onCarveClicked()
-                    )
-                    .bounds(leftX, currentY, CARVE_WIDTH, CARVE_HEIGHT)
-                    .build();
-            this.addRenderableWidget(this.carveButton);
-
-            // -------------------------------------------------------------
-            // Right side: Sigil preview reserved box
-            // -------------------------------------------------------------
-            this.previewWidth = PREVIEW_WIDTH;
-            this.previewHeight = PREVIEW_HEIGHT;
-
-            this.previewX = guiLeft + this.imageWidth - PREVIEW_RIGHT_MARGIN - this.previewWidth;
-            this.previewY = guiTop + PREVIEW_TOP_Y;
-
+            LOG.debug("[SealStampScreen] Added GUI scale button at x={}, y={}", colX, rowY);
         } catch (Throwable t) {
-            LOG.error("[SealStampScreen] init failed", t);
+            LOG.error("[SealStampScreen] Failed to create GUI scale button", t);
+            this.scaleButton = null;
+        }
+
+        updateButtonLabels();
+    }
+
+    // ---------------------------------------------------------------------
+    // Button label helpers
+    // ---------------------------------------------------------------------
+
+    private void updateButtonLabels() {
+        try {
+            if (this.etchingsButton != null) {
+                this.etchingsButton.setMessage(gothic("Etchings: " + currentSlices));
+            }
+            if (this.styleButton != null) {
+                String styleName = STYLE_NAMES[Math.max(0, Math.min(currentStyleIndex, STYLE_NAMES.length - 1))];
+                this.styleButton.setMessage(gothic("Style: " + styleName));
+            }
+            if (this.carveButton != null) {
+                this.carveButton.setMessage(gothic("Carve"));
+            }
+        } catch (Throwable t) {
+            LOG.error("[SealStampScreen] updateButtonLabels failed", t);
+        }
+    }
+
+    private void cycleSlices() {
+        try {
+            currentSlices++;
+            if (currentSlices > MAX_SLICES) {
+                currentSlices = MIN_SLICES;
+            }
+            LOG.debug("[SealStampScreen] cycleSlices -> {}", currentSlices);
+            updateButtonLabels();
+        } catch (Throwable t) {
+            LOG.error("[SealStampScreen] cycleSlices failed", t);
+        }
+    }
+
+    private void cycleStyle() {
+        try {
+            currentStyleIndex++;
+            if (currentStyleIndex >= STYLE_NAMES.length) {
+                currentStyleIndex = 0;
+            }
+            LOG.debug("[SealStampScreen] cycleStyle -> {} ({})",
+                    currentStyleIndex, STYLE_NAMES[currentStyleIndex]);
+            updateButtonLabels();
+        } catch (Throwable t) {
+            LOG.error("[SealStampScreen] cycleStyle failed", t);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Carve button behaviour (particles only for now)
+    // ---------------------------------------------------------------------
+
+    private void onCarveClicked() {
+        try {
+            LOG.info("[SealStampScreen] Carve clicked. slices={} style={} secret='{}'",
+                    currentSlices,
+                    STYLE_NAMES[Math.max(0, Math.min(currentStyleIndex, STYLE_NAMES.length - 1))],
+                    secretField != null ? secretField.getText() : "<null>");
+
+            // Quicker, more lively burst
+            spawnCarveParticles(80);
+        } catch (Throwable t) {
+            LOG.error("[SealStampScreen] onCarveClicked failed", t);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Ticking (for secret field + particles)
+    // ---------------------------------------------------------------------
+
+    @Override
+    protected void containerTick() {
+        super.containerTick();
+        try {
+            if (this.secretField != null) {
+                this.secretField.tick();
+            }
+
+            if (!this.particles.isEmpty()) {
+                for (int i = this.particles.size() - 1; i >= 0; i--) {
+                    SigilEtchingParticle p = this.particles.get(i);
+                    p.tick();
+                    if (!p.isAlive()) {
+                        this.particles.remove(i);
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            LOG.error("[SealStampScreen] containerTick failed", t);
         }
     }
 
@@ -298,7 +380,6 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                         this.imageHeight
                 );
             } else {
-                // Fallback: simple parchment-ish rectangle
                 guiGraphics.fill(
                         this.leftPos,
                         this.topPos,
@@ -307,30 +388,6 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                         0xC0F5F0D8
                 );
             }
-
-            // Draw "Sigil Preview" label in gothic font above the preview box
-            Component label = gothicLiteral("Sigil Preview");
-            int labelWidth = this.font.width(label);
-            int labelX = this.previewX + (this.previewWidth - labelWidth) / 2;
-            int labelY = this.previewY + PREVIEW_LABEL_OFFSET_Y;
-            guiGraphics.drawString(this.font, label, labelX, labelY, 0xFF000000, false);
-
-            // Draw the preview box (reserved area for sigil rendering later)
-            int x0 = this.previewX;
-            int y0 = this.previewY;
-            int x1 = this.previewX + this.previewWidth;
-            int y1 = this.previewY + this.previewHeight;
-
-            // Fill background (slightly translucent parchment-ish)
-            guiGraphics.fill(x0, y0, x1, y1, 0x40F5F0D8);
-
-            // Simple border
-            int borderColor = 0xFF000000;
-            guiGraphics.fill(x0, y0, x1, y0 + 1, borderColor); // top
-            guiGraphics.fill(x0, y1 - 1, x1, y1, borderColor); // bottom
-            guiGraphics.fill(x0, y0, x0 + 1, y1, borderColor); // left
-            guiGraphics.fill(x1 - 1, y0, x1, y1, borderColor); // right
-
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] renderBg failed, falling back to simple fill", t);
             guiGraphics.fill(
@@ -344,7 +401,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     }
 
     // ---------------------------------------------------------------------
-    // Foreground / main rendering
+    // Foreground rendering (preview, labels, particles)
     // ---------------------------------------------------------------------
 
     @Override
@@ -352,6 +409,10 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         try {
             this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
             super.render(guiGraphics, mouseX, mouseY, partialTick);
+
+            renderPreviewArea(guiGraphics);
+            renderParticles(guiGraphics, partialTick);
+
             this.renderTooltip(guiGraphics, mouseX, mouseY);
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] render failed", t);
@@ -360,89 +421,184 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
     @Override
     protected void renderLabels(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        // Intentionally empty (we handle text in renderBg/render()).
+        // Intentionally empty; we draw minimal labels in render().
     }
 
-    // ---------------------------------------------------------------------
-    // Input handling
-    // ---------------------------------------------------------------------
-
-    @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+    private void renderPreviewArea(@NotNull GuiGraphics guiGraphics) {
         try {
-            // Swallow inventory/JEI keys while this screen is open
-            if (keyCode == Minecraft.getInstance().options.keyInventory.getKey().getValue()
-                    || keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_R
-                    || keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_U) {
-                return true;
+            int previewX = this.leftPos + this.imageWidth - PREVIEW_RIGHT_MARGIN - PREVIEW_WIDTH;
+            int previewY = this.topPos + PREVIEW_TOP_Y;
+
+            Component label = gothic("Sigil Preview");
+            int labelWidth = this.font.width(label);
+            int labelX = previewX + (PREVIEW_WIDTH - labelWidth) / 2;
+            int labelY = previewY + PREVIEW_LABEL_OFFSET_Y;
+
+            guiGraphics.drawString(this.font, label, labelX, labelY, 0xFF000000, false);
+
+            guiGraphics.fill(
+                    previewX,
+                    previewY,
+                    previewX + PREVIEW_WIDTH,
+                    previewY + PREVIEW_HEIGHT,
+                    0x20FFFFFF
+            );
+
+            guiGraphics.fill(previewX, previewY, previewX + PREVIEW_WIDTH, previewY + 1, 0x80000000);
+            guiGraphics.fill(previewX, previewY + PREVIEW_HEIGHT - 1, previewX + PREVIEW_WIDTH, previewY + PREVIEW_HEIGHT, 0x80000000);
+            guiGraphics.fill(previewX, previewY, previewX + 1, previewY + PREVIEW_HEIGHT, 0x80000000);
+            guiGraphics.fill(previewX + PREVIEW_WIDTH - 1, previewY, previewX + PREVIEW_WIDTH, previewY + PREVIEW_HEIGHT, 0x80000000);
+
+            renderWoodenDisc(guiGraphics, previewX, previewY);
+        } catch (Throwable t) {
+            LOG.error("[SealStampScreen] renderPreviewArea failed", t);
+        }
+    }
+
+    private void renderWoodenDisc(@NotNull GuiGraphics guiGraphics, int previewX, int previewY) {
+        try {
+            var resourceManager = Minecraft.getInstance().getResourceManager();
+            boolean hasTexture = resourceManager.getResource(DISC_TEXTURE).isPresent();
+            if (!hasTexture) {
+                renderFallbackDisc(guiGraphics, previewX, previewY);
+                return;
             }
 
-            // Let our secret field handle text editing keys first
-            if (this.secretField != null && this.secretField.isFocused()) {
-                if (this.secretField.keyPressed(keyCode, scanCode, modifiers)) {
-                    return true;
+            int centerX = previewX + PREVIEW_WIDTH / 2;
+            int centerY = previewY + PREVIEW_HEIGHT / 2;
+
+            int radius = Math.min(PREVIEW_WIDTH, PREVIEW_HEIGHT) / 2 - 6;
+            if (radius <= 0) {
+                return;
+            }
+
+            int tileSize = 4;
+
+            for (int dy = -radius; dy <= radius; dy += tileSize) {
+                for (int dx = -radius; dx <= radius; dx += tileSize) {
+                    int distSq = dx * dx + dy * dy;
+                    if (distSq > radius * radius) {
+                        continue;
+                    }
+
+                    int drawX = centerX + dx - tileSize / 2;
+                    int drawY = centerY + dy - tileSize / 2;
+
+                    guiGraphics.blit(
+                            DISC_TEXTURE,
+                            drawX,
+                            drawY,
+                            tileSize,
+                            tileSize,
+                            0,
+                            0,
+                            16,
+                            16,
+                            16,
+                            16
+                    );
                 }
             }
-
-            return super.keyPressed(keyCode, scanCode, modifiers);
         } catch (Throwable t) {
-            LOG.error("[SealStampScreen] keyPressed failed", t);
-            return false;
+            LOG.error("[SealStampScreen] renderWoodenDisc failed; falling back to simple disc", t);
+            renderFallbackDisc(guiGraphics, previewX, previewY);
         }
     }
 
-    @Override
-    public boolean charTyped(char codePoint, int modifiers) {
-        try {
-            if (this.secretField != null && this.secretField.isFocused()) {
-                if (this.secretField.charTyped(codePoint, modifiers)) {
-                    return true;
+    private void renderFallbackDisc(@NotNull GuiGraphics guiGraphics, int previewX, int previewY) {
+        int centerX = previewX + PREVIEW_WIDTH / 2;
+        int centerY = previewY + PREVIEW_HEIGHT / 2;
+
+        int radius = Math.min(PREVIEW_WIDTH, PREVIEW_HEIGHT) / 2 - 6;
+        if (radius <= 0) {
+            return;
+        }
+
+        for (int dy = -radius; dy <= radius; dy++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                if (dx * dx + dy * dy <= radius * radius) {
+                    int x = centerX + dx;
+                    int y = centerY + dy;
+                    guiGraphics.fill(x, y, x + 1, y + 1, 0xFF8B5A2B);
                 }
             }
-            return super.charTyped(codePoint, modifiers);
-        } catch (Throwable t) {
-            LOG.error("[SealStampScreen] charTyped failed", t);
-            return false;
         }
     }
 
     // ---------------------------------------------------------------------
-    // Carve button behaviour (placeholder)
+    // Particles
     // ---------------------------------------------------------------------
 
-    private void onCarveClicked() {
+    private void spawnCarveParticles(int count) {
         try {
-            String secret = this.secretField != null ? this.secretField.getText() : "";
-            int slices = this.slicesButton != null ? this.slicesButton.getValue() : 4;
-            ShapesetStyle style = this.styleButton != null ? this.styleButton.getValue() : ShapesetStyle.MEDIEVAL;
+            if (count <= 0) {
+                return;
+            }
 
-            LOG.info("[SealStampScreen] Carve clicked. secret='{}' slices={} style={} (index={})",
-                    secret, slices, style.displayName(), style.index());
+            int previewX = this.leftPos + this.imageWidth - PREVIEW_RIGHT_MARGIN - PREVIEW_WIDTH;
+            int previewY = this.topPos + PREVIEW_TOP_Y;
+            int centerX = previewX + PREVIEW_WIDTH / 2;
+            int centerY = previewY + PREVIEW_HEIGHT / 2;
+            int radius = Math.min(PREVIEW_WIDTH, PREVIEW_HEIGHT) / 2 - 6;
 
-            // Step 3 will:
-            //  - Compute a seed from (playerUUID + secret)
-            //  - Store:
-            //      * Seed
-            //      * Slices
-            //      * Shapeset index
-            //      * Owner UUID
-            //    into the SealStampItem's CUSTOM_DATA
-            //  - Generate sigil preview graphic client-side.
+            if (radius <= 0) {
+                return;
+            }
+
+            for (int i = 0; i < count; i++) {
+                double angle = random.nextDouble() * Math.PI * 2.0;
+                double r = radius * Math.sqrt(random.nextDouble());
+                double px = centerX + r * Math.cos(angle);
+                double py = centerY + r * Math.sin(angle);
+
+                double vx = (random.nextDouble() - 0.5) * 0.4;
+
+                // Faster downward motion, scaled up by PARTICLE_FALL_MULTIPLIER
+                double baseVy = 0.6 + random.nextDouble() * 0.6;
+                double vy = baseVy * PARTICLE_FALL_MULTIPLIER;
+
+                // Shorter lifetime: ~10–16 ticks
+                int lifetime = 10 + random.nextInt(7);
+
+                float size = PARTICLE_SIZE_BASE * (0.8f + random.nextFloat() * 0.6f);
+
+                SigilEtchingParticle particle = new SigilEtchingParticle(px, py, vx, vy, size, lifetime);
+                this.particles.add(particle);
+            }
+
+            LOG.debug("[SealStampScreen] spawnCarveParticles: spawned {} particles (total now {})",
+                    count, this.particles.size());
         } catch (Throwable t) {
-            LOG.error("[SealStampScreen] onCarveClicked failed", t);
+            LOG.error("[SealStampScreen] spawnCarveParticles failed", t);
+        }
+    }
+
+    private void renderParticles(@NotNull GuiGraphics guiGraphics, float partialTick) {
+        try {
+            if (this.particles.isEmpty()) {
+                return;
+            }
+
+            for (SigilEtchingParticle p : this.particles) {
+                p.render(guiGraphics, partialTick);
+            }
+        } catch (Throwable t) {
+            LOG.error("[SealStampScreen] renderParticles failed", t);
         }
     }
 
     // ---------------------------------------------------------------------
-    // Helpers
+    // Gothic helper
     // ---------------------------------------------------------------------
 
-    private Component gothicLiteral(String text) {
+    private Component gothic(String text) {
         try {
-            return Component.literal(text)
-                    .withStyle(style -> style.withFont(GOTHIC_FONT_ID));
+            MutableComponent c = Component.literal(text);
+            Style style = c.getStyle().withFont(GOTHIC_FONT_ID);
+            c.setStyle(style);
+            return c;
         } catch (Throwable t) {
-            LOG.error("[SealStampScreen] gothicLiteral failed for text='{}', falling back to vanilla font", text, t);
+            LOG.error("[SealStampScreen] gothic() failed, falling back to plain text", t);
             return Component.literal(text);
         }
     }
