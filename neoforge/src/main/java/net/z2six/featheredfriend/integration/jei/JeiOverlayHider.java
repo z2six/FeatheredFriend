@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/integration/jei/JeiOverlayHider.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/integration/jei/JeiOverlayHider.java
 package net.z2six.featheredfriend.integration.jei;
 
 import com.mojang.logging.LogUtils;
@@ -9,6 +9,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.ScrollSealingScreen;
+import net.z2six.featheredfriend.client.gui.SealStampScreen;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
@@ -23,12 +24,14 @@ import java.util.Locale;
  * JeiOverlayHider
  *
  * Client-only helper that hides the JEI ingredient list overlay while our
- * ScrollSealingScreen is open.
+ * custom FeatheredFriend GUIs are open:
+ *  - ScrollSealingScreen
+ *  - SealStampScreen
  *
  * Design:
  *  - JEI runtime (IJeiRuntime) is stored as an Object to avoid tight coupling.
  *  - Each client tick, we check the current screen:
- *      * If it's ScrollSealingScreen -> hide overlay.
+ *      * If it's one of our GUIs -> hide overlay.
  *      * Otherwise -> restore overlay (if we hid it).
  *  - We use reflection to:
  *      * Call runtime.getIngredientListOverlay()
@@ -74,7 +77,7 @@ public final class JeiOverlayHider {
     /**
      * Runs every client tick (POST). We:
      *  - Check the current screen.
-     *  - If it's ScrollSealingScreen, hide the JEI overlay.
+     *  - If it's one of our custom GUIs, hide the JEI overlay.
      *  - Otherwise, restore the overlay if we previously hid it.
      */
     @SubscribeEvent
@@ -93,7 +96,12 @@ public final class JeiOverlayHider {
                 return;
             }
 
-            boolean isOurScreen = mc.screen instanceof ScrollSealingScreen;
+            // Our GUIs where we want JEI overlay hidden:
+            //  - ScrollSealingScreen
+            //  - SealStampScreen (etching GUI)
+            boolean isOurScreen =
+                    (mc.screen instanceof ScrollSealingScreen) ||
+                            (mc.screen instanceof SealStampScreen);
 
             if (isOurScreen) {
                 hideOverlayIfNeeded();
@@ -141,7 +149,7 @@ public final class JeiOverlayHider {
 
             methods.setter.invoke(overlay, Boolean.FALSE);
             overlayHiddenForOurScreen = true;
-            LOG.debug("[JeiOverlayHider] JEI ingredient overlay hidden for ScrollSealingScreen using setter '{}'",
+            LOG.debug("[JeiOverlayHider] JEI ingredient overlay hidden for FeatheredFriend GUI using setter '{}'",
                     methods.setter.getName());
         } catch (Throwable t) {
             LOG.error("[JeiOverlayHider] Failed to hide JEI overlay", t);

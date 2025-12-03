@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/integration/jei/FeatheredFriendJeiPlugin.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/integration/jei/FeatheredFriendJeiPlugin.java
 package net.z2six.featheredfriend.integration.jei;
 
 import mezz.jei.api.IModPlugin;
@@ -13,6 +13,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.ScrollSealingScreen;
+import net.z2six.featheredfriend.client.gui.SealStampScreen;
 import net.z2six.featheredfriend.registry.FFItems;
 import org.slf4j.Logger;
 
@@ -26,12 +27,15 @@ import java.util.List;
  *
  * Currently:
  *  - Registers an ingredient info page for the sealed scroll item.
- *  - Registers GUI handlers for ScrollSealingScreen so JEI knows about our layout.
+ *  - Registers GUI handlers for:
+ *      * ScrollSealingScreen
+ *      * SealStampScreen
+ *    so JEI knows about our layout and tries not to overlap with it.
  *
  * NOTE:
- *  We do NOT (and cannot cleanly) force JEI's ingredient overlay to hide.
- *  JEI does not expose a stable public API in 1.21.x to fully toggle that
- *  overlay from another mod. Players can still toggle JEI with its keybind.
+ *  We do NOT (and cannot cleanly) force JEI's ingredient overlay to hide
+ *  from here. That is done (best-effort) by JeiOverlayHider using reflection.
+ *  Players can always toggle JEI with its keybind.
  */
 @JeiPlugin
 public class FeatheredFriendJeiPlugin implements IModPlugin {
@@ -120,7 +124,46 @@ public class FeatheredFriendJeiPlugin implements IModPlugin {
             );
 
         } catch (Throwable t) {
-            LOG.error("FeatheredFriendJeiPlugin: registerGuiHandlers failed", t);
+            LOG.error("FeatheredFriendJeiPlugin: registerGuiHandlers failed for ScrollSealingScreen", t);
+        }
+
+        // ---------------------------------------------------------------------
+        // SealStampScreen: same idea, tell JEI that our whole window is GUI area.
+        // ---------------------------------------------------------------------
+        try {
+            LOG.debug("FeatheredFriendJeiPlugin: Registering GUI handler for SealStampScreen");
+
+            registration.addGuiContainerHandler(
+                    SealStampScreen.class,
+                    new IGuiContainerHandler<SealStampScreen>() {
+                        @Override
+                        public List<Rect2i> getGuiExtraAreas(SealStampScreen screen) {
+                            try {
+                                int x = 0;
+                                int y = 0;
+                                int width = screen.width;
+                                int height = screen.height;
+
+                                Rect2i fullScreen = new Rect2i(x, y, width, height);
+
+                                LOG.debug(
+                                        "FeatheredFriendJeiPlugin: getGuiExtraAreas for SealStampScreen -> {}x{} at {},{}",
+                                        width, height, x, y
+                                );
+
+                                return Collections.singletonList(fullScreen);
+                            } catch (Throwable t) {
+                                LOG.error(
+                                        "FeatheredFriendJeiPlugin: getGuiExtraAreas failed for SealStampScreen",
+                                        t
+                                );
+                                return Collections.emptyList();
+                            }
+                        }
+                    }
+            );
+        } catch (Throwable t) {
+            LOG.error("FeatheredFriendJeiPlugin: registerGuiHandlers failed for SealStampScreen", t);
         }
     }
 }
