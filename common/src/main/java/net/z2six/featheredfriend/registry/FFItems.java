@@ -1,10 +1,11 @@
-// common/src/main/java/net/z2six/featheredfriend/registry/FFItems.java
+// MainFile: common/src/main/java/net/z2six/featheredfriend/registry/FFItems.java
 package net.z2six.featheredfriend.registry;
 
 import com.mojang.logging.LogUtils;
 import com.google.common.base.Suppliers;
 import net.minecraft.world.item.Item;
 import net.z2six.featheredfriend.content.item.UnsealedScrollItem;
+import net.z2six.featheredfriend.content.item.SealStampItem;
 import org.slf4j.Logger;
 
 import java.util.LinkedHashMap;
@@ -49,10 +50,10 @@ public final class FFItems {
             () -> new Item(new Item.Properties().stacksTo(1))
     );
 
-    // Seal stamp: example with low durability.
+    // Seal stamp: custom item that opens the seal-etching GUI on RMB if not yet etched.
     public static final Supplier<Item> SEAL_STAMP = register(
             "seal_stamp",
-            () -> new Item(new Item.Properties()
+            () -> new SealStampItem(new Item.Properties()
                     .stacksTo(1)
                     .durability(256))
     );

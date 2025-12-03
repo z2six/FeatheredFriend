@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/platform/NeoForgePlatformHelper.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/platform/NeoForgePlatformHelper.java
 package net.z2six.featheredfriend.platform;
 
 import com.mojang.logging.LogUtils;
@@ -13,6 +13,7 @@ import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.calendar.CalendarDefinition;
 import net.z2six.featheredfriend.config.FFCalendarConfig;
 import net.z2six.featheredfriend.neoforge.menu.ScrollSealingMenu;
+import net.z2six.featheredfriend.neoforge.menu.SealStampMenu;
 import net.z2six.featheredfriend.platform.services.IPlatformHelper;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -60,7 +61,8 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     @Override
     public void openScrollSealingScreen(@NotNull ServerPlayer player) {
         try {
-            LOG.debug("[NeoForgePlatformHelper] Opening Scroll Sealing menu for {}", player.getGameProfile().getName());
+            LOG.debug("[NeoForgePlatformHelper] Opening Scroll Sealing menu for {}",
+                    player.getGameProfile().getName());
 
             player.openMenu(new SimpleMenuProvider(
                     (int containerId, Inventory inventory, Player p) ->
@@ -69,6 +71,22 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
             ));
         } catch (Throwable t) {
             LOG.error("[NeoForgePlatformHelper] Failed to open Scroll Sealing menu", t);
+        }
+    }
+
+    @Override
+    public void openSealStampScreen(@NotNull ServerPlayer player) {
+        try {
+            LOG.debug("[NeoForgePlatformHelper] Opening Seal Stamp menu for {}",
+                    player.getGameProfile().getName());
+
+            player.openMenu(new SimpleMenuProvider(
+                    (int containerId, Inventory inventory, Player p) ->
+                            new SealStampMenu(containerId, inventory),
+                    Component.translatable("screen.featheredfriend.seal_stamp")
+            ));
+        } catch (Throwable t) {
+            LOG.error("[NeoForgePlatformHelper] Failed to open Seal Stamp menu", t);
         }
     }
 

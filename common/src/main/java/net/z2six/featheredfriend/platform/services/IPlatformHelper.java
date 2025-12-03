@@ -1,4 +1,4 @@
-// common/src/main/java/net/z2six/featheredfriend/platform/services/IPlatformHelper.java
+// MainFile: common/src/main/java/net/z2six/featheredfriend/platform/services/IPlatformHelper.java
 package net.z2six.featheredfriend.platform.services;
 
 import net.minecraft.server.level.ServerPlayer;
@@ -45,6 +45,12 @@ public interface IPlatformHelper {
      * Called from UnsealedScrollItem#use on the logical server.
      */
     void openScrollSealingScreen(ServerPlayer player);
+
+    /**
+     * Open the Seal Stamp carving screen for the given player.
+     * Called from SealStampItem#use on the logical server.
+     */
+    void openSealStampScreen(ServerPlayer player);
 
     /**
      * Returns the active calendar definition for this runtime.
