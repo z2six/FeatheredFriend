@@ -1,4 +1,3 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/sigil/SealSigilGenerator.java
 package net.z2six.featheredfriend.sigil;
 
 import com.mojang.logging.LogUtils;
@@ -34,6 +33,7 @@ import java.util.UUID;
  *     - For now:
  *         * index 0 => SealSigilShapeSetMedieval0  (heraldic / medieval)
  *         * index 1 => SealSigilShapeSetHighFantasy1 (high-fantasy: dragons, magic)
+ *         * index 2 => SealSigilShapeSetFloral2 (floral / botanical)
  *
  *  4) Slice replication
  *     - For every pixel that is set in the base slice mask, we:
@@ -51,12 +51,13 @@ import java.util.UUID;
  *  6) Determinism
  *     - All randomness is driven by a deterministic RandomSource created from a 64-bit seed.
  *     - Seed is derived either from:
- *         * (playerUUID + secretString[0..128]) via SHA-256 (real stamps), or
- *         * a simple hash of a preview string (debug screen).
+ *         * (playerUUID + secretString[0..128]) via SHA-256 (legacy path), or
+ *         * a one-way hash over (secret + slices + shapeSetIndex) for secret-only behavior.
  *
  * Public entry points:
- *  - generateForPlayer(UUID, String)                     // uses defaults, for stamps
- *  - generateFromSeed(long, int, int, int)               // full control for preview
+ *  - generateForPlayer(UUID, String)                     // legacy UUID+secret path
+ *  - generateFromSeed(long, int, int, int)               // full control for preview/GUI
+ *  - computeSeedFromSecretOnly(String, int, int)         // secret+slices+shapeSet -> seed (no UUID)
  */
 public final class SealSigilGenerator {
 
@@ -85,18 +86,20 @@ public final class SealSigilGenerator {
      * a fixed shape set + slices for now (can be exposed later).
      *
      * This is mainly intended for actual “stamp” logic, not the debug preview.
+     *
+     * NOTE: This path still uses the UUID+secret-based seed (legacy behavior).
+     * For secret-only / RP-friendly behavior, prefer computeSeedFromSecretOnly().
      */
     public static @NotNull SigilPattern generateForPlayer(@NotNull UUID playerUuid,
                                                           @NotNull String secret) {
         long seed = computeSeed(playerUuid, secret);
-        // For now: default slices=4, shapeSetIndex=0 for stamps.
         int slices = 4;
         int shapeSetIndex = 0;
         return generateFromSeed(seed, DEFAULT_RADIUS, slices, shapeSetIndex);
     }
 
     /**
-     * Compute a deterministic 64-bit seed from (UUID + secret[0..128]) using SHA-256.
+     * Legacy: compute a deterministic 64-bit seed from (UUID + secret[0..128]) using SHA-256.
      */
     public static long computeSeed(@NotNull UUID playerUuid, @NotNull String secret) {
         String trimmedSecret = secret;
@@ -120,12 +123,47 @@ public final class SealSigilGenerator {
     }
 
     /**
-     * Main generator entry point for external callers (e.g. preview).
+     * Option B: secret-only seed derivation.
+     *
+     * Deterministic:
+     *  - Same (secret, slices, shapeSetIndex) => same seed.
+     *
+     * One-way:
+     *  - Given only the seed, you can't recover the secret except by brute-forcing
+     *    candidate secrets and checking which sigil matches.
+     */
+    public static long computeSeedFromSecretOnly(@NotNull String secret,
+                                                 int slices,
+                                                 int shapeSetIndex) {
+        String trimmed = secret;
+        if (trimmed.length() > MAX_SECRET_LENGTH) {
+            trimmed = trimmed.substring(0, MAX_SECRET_LENGTH);
+        }
+
+        // Domain separate this so it can never collide with the UUID-based seed.
+        String input = trimmed + "|" + slices + "|" + shapeSetIndex + "|featheredfriend_sigil_secret";
+
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(input.getBytes(StandardCharsets.UTF_8));
+            ByteBuffer buf = ByteBuffer.wrap(hash);
+            long seed = buf.getLong();
+            LOG.debug("[SealSigilGenerator] computeSeedFromSecretOnly: secretPreview='{}' len={} slices={} shapeset={} -> seed={}",
+                    safeSecretPreview(trimmed), trimmed.length(), slices, shapeSetIndex, seed);
+            return seed;
+        } catch (Throwable t) {
+            LOG.error("[SealSigilGenerator] computeSeedFromSecretOnly failed, falling back to String.hashCode()", t);
+            return input.hashCode();
+        }
+    }
+
+    /**
+     * Main generator entry point for external callers (e.g. preview / GUI).
      *
      * @param seed          64-bit deterministic seed
      * @param radius        requested radius (will be clamped to >= 16)
      * @param slices        number of symmetry slices (2–8)
-     * @param shapeSetIndex index of shape set (0 => Medieval0, 1 => HighFantasy1)
+     * @param shapeSetIndex index of shape set (0 => Medieval0, 1 => HighFantasy1, 2 => Floral2)
      */
     public static @NotNull SigilPattern generateFromSeed(long seed,
                                                          int radius,
@@ -166,7 +204,6 @@ public final class SealSigilGenerator {
 
             SealSigilShapeSet shapeSet = resolveShapeSet(shapeSetIndex);
             try {
-                // We generate for sliceIndex 0 (base slice).
                 shapeSet.applyShapesInSlice(slicePixels, cx, cy, radius, radiusSq, slices, 0, rng);
             } catch (Throwable t) {
                 LOG.error("[SealSigilGenerator] ShapeSet generation failed for index={}", shapeSetIndex, t);
@@ -179,7 +216,7 @@ public final class SealSigilGenerator {
             boolean[][] shapeMask = new boolean[size][size];
             replicateSliceIntoAllSlices(slicePixels, shapeMask, cx, cy, slices);
 
-            // 4b) Cleanup / regularize shape mask (fill tiny holes, remove specks)
+            // 4b) Cleanup mask
             cleanupShapeMask(shapeMask);
 
             // 5) Subtract shapes from boundary
@@ -218,7 +255,6 @@ public final class SealSigilGenerator {
             }
         }
 
-        // NOTE: use actual 'size' here, not DEFAULT_SIZE.
         return new SigilPattern(size, finalPixels, seed, slices, shapeSetIndex);
     }
 
@@ -226,14 +262,6 @@ public final class SealSigilGenerator {
     // Shape set resolution
     // -------------------------------------------------------------------------
 
-    /**
-     * Resolve a shape set implementation by index.
-     * For now:
-     *   0 => SealSigilShapeSetMedieval0
-     *   1 => SealSigilShapeSetHighFantasy1
-     *   2 => SealSigilShapeSetFloral2
-     * Any other index falls back to Medieval0 with a warning.
-     */
     private static @NotNull SealSigilShapeSet resolveShapeSet(int shapeSetIndex) {
         try {
             return switch (shapeSetIndex) {
@@ -261,20 +289,9 @@ public final class SealSigilGenerator {
     }
 
     // -------------------------------------------------------------------------
-    // Wavy boundary generation (extra smoothed)
+    // Wavy boundary generation
     // -------------------------------------------------------------------------
 
-    /**
-     * Fill the given mask with a smoothed wavy boundary:
-     *  - A smooth random walk around the base radius defines a radius per angle.
-     *  - Multiple stronger smoothing passes are applied to the radial profile.
-     *  - For each pixel we check if its radius is inside the (interpolated) per-angle radius.
-     *
-     *  This version is tuned to be even smoother / less jagged:
-     *   - More samples (3072).
-     *   - Smaller random step per sample.
-     *   - More smoothing passes with a wider window.
-     */
     private static void fillWavyBoundary(boolean[][] mask,
                                          int cx,
                                          int cy,
@@ -283,19 +300,17 @@ public final class SealSigilGenerator {
         try {
             int size = mask.length;
 
-            // Higher angular resolution -> smoother outline.
-            int radialSamples = 3072; // increased for smoother curvature
+            int radialSamples = 3072;
             double[] radialR = new double[radialSamples];
 
             double twoPi = Math.PI * 2.0;
             double angleStep = twoPi / radialSamples;
 
             double maxR = radius - 1;
-            double minR = radius * 0.80; // keep enough meat inside
+            double minR = radius * 0.80;
 
-            // Random walk parameters tuned for smoother curves.
             double currentR = (maxR + minR) * 0.5;
-            double maxStep = 0.35; // smaller => less jagged perturbations
+            double maxStep = 0.35;
 
             double minSeen = Double.POSITIVE_INFINITY;
             double maxSeen = Double.NEGATIVE_INFINITY;
@@ -311,9 +326,8 @@ public final class SealSigilGenerator {
                 if (currentR > maxSeen) maxSeen = currentR;
             }
 
-            // Apply several circular smoothing passes (box blur) to remove sharp spikes.
-            int smoothRadius = 9;    // wider blur window
-            int smoothPasses = 4;    // extra pass
+            int smoothRadius = 9;
+            int smoothPasses = 4;
             double[] temp = new double[radialSamples];
 
             for (int pass = 0; pass < smoothPasses; pass++) {
@@ -329,13 +343,11 @@ public final class SealSigilGenerator {
                     }
                     temp[i] = sum / (double) count;
                 }
-                // swap arrays
                 double[] swap = radialR;
                 radialR = temp;
                 temp = swap;
             }
 
-            // Final gentle 3-tap smoothing pass to kill residual jaggies.
             for (int i = 0; i < radialSamples; i++) {
                 int i0 = (i - 1 + radialSamples) % radialSamples;
                 int i1 = i;
@@ -371,7 +383,7 @@ public final class SealSigilGenerator {
                         continue;
                     }
 
-                    double angle = Math.atan2(dy, dx); // -π..π
+                    double angle = Math.atan2(dy, dx);
                     if (angle < 0) {
                         angle += twoPi;
                     }
@@ -416,9 +428,6 @@ public final class SealSigilGenerator {
         }
     }
 
-    /**
-     * Simple fallback: perfect disc if the wavy generator fails.
-     */
     private static void fillFallbackDisc(boolean[][] mask, int cx, int cy, int radius) {
         int size = mask.length;
         int rSq = radius * radius;
@@ -445,10 +454,6 @@ public final class SealSigilGenerator {
     // Slice restriction + replication
     // -------------------------------------------------------------------------
 
-    /**
-     * Restrict the existing slicePixels mask to the base slice wedge [0, 2π/slices).
-     * Everything outside this wedge is cleared.
-     */
     private static void restrictToBaseSlice(boolean[][] slicePixels,
                                             int cx,
                                             int cy,
@@ -473,7 +478,7 @@ public final class SealSigilGenerator {
                         continue;
                     }
 
-                    double angle = Math.atan2(dy, dx); // -π..π
+                    double angle = Math.atan2(dy, dx);
                     if (angle < 0) {
                         angle += twoPi;
                     }
@@ -494,10 +499,6 @@ public final class SealSigilGenerator {
         }
     }
 
-    /**
-     * Replicate all set pixels from slicePixels into all slices around the circle.
-     * Result is written into targetMask.
-     */
     private static void replicateSliceIntoAllSlices(boolean[][] slicePixels,
                                                     boolean[][] targetMask,
                                                     int cx,
@@ -533,7 +534,7 @@ public final class SealSigilGenerator {
                         continue;
                     }
 
-                    double angle = Math.atan2(dy, dx); // -π..π
+                    double angle = Math.atan2(dy, dx);
                     if (angle < 0) {
                         angle += twoPi;
                     }
@@ -564,13 +565,6 @@ public final class SealSigilGenerator {
         }
     }
 
-    /**
-     * Cleanup step for shapeMask:
-     *  - Fill small "holes" (false pixels surrounded by many true neighbors).
-     *  - Remove tiny isolated specks (true pixels with almost no true neighbors).
-     *
-     * This reduces single-pixel noise and makes motifs look more solid.
-     */
     private static void cleanupShapeMask(boolean[][] mask) {
         try {
             int size = mask.length;
@@ -601,13 +595,11 @@ public final class SealSigilGenerator {
                     }
 
                     if (cur) {
-                        // Remove isolated specks / thin single pixels.
                         if (neighborsTrue <= 1) {
                             mask[y][x] = false;
                             removed++;
                         }
                     } else {
-                        // Fill small holes inside solid areas.
                         if (neighborsTrue >= 5) {
                             mask[y][x] = true;
                             filled++;
