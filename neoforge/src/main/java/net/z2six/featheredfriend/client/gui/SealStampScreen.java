@@ -4,9 +4,9 @@ package net.z2six.featheredfriend.client.gui;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
-import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
@@ -19,8 +19,6 @@ import net.z2six.featheredfriend.neoforge.menu.SealStampMenu;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -213,6 +211,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         int colX = this.leftPos + LEFT_COLUMN_X;
         int rowY = this.topPos + LEFT_COLUMN_FIRST_Y;
 
+        // Etchings button
         this.etchingsButton = Button.builder(
                         Component.empty(),
                         b -> cycleSlices()
@@ -223,6 +222,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
         rowY += DROPDOWN_HEIGHT + CONTROL_VERTICAL_GAP;
 
+        // Style button
         this.styleButton = Button.builder(
                         Component.empty(),
                         b -> cycleStyle()
@@ -233,6 +233,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
         rowY += DROPDOWN_HEIGHT + CONTROL_VERTICAL_GAP;
 
+        // Carve button
         this.carveButton = Button.builder(
                         Component.empty(),
                         b -> onCarveClicked()
@@ -243,6 +244,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
         rowY += CARVE_HEIGHT + CONTROL_VERTICAL_GAP;
 
+        // GUI scale button (vanilla OptionInstance button)
         try {
             Minecraft mc = Minecraft.getInstance();
             var options = mc.options;
@@ -262,6 +264,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         }
 
         updateButtonLabels();
+        updateScaleButtonLabelFromOptions();
     }
 
     // ---------------------------------------------------------------------
@@ -282,6 +285,26 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             }
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] updateButtonLabels failed", t);
+        }
+    }
+
+    private void updateScaleButtonLabelFromOptions() {
+        if (this.scaleButton == null) {
+            return;
+        }
+
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null || mc.options == null) {
+                return;
+            }
+
+            int scale = mc.options.guiScale().get(); // 0 = Auto
+            String scaleLabel = (scale == 0) ? "Auto" : Integer.toString(scale);
+
+            this.scaleButton.setMessage(gothic("GUI: " + scaleLabel));
+        } catch (Throwable t) {
+            LOG.error("[SealStampScreen] updateScaleButtonLabelFromOptions failed", t);
         }
     }
 
@@ -331,7 +354,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     }
 
     // ---------------------------------------------------------------------
-    // Ticking (for secret field + particles)
+    // Ticking (for secret field + particles + GUI scale label)
     // ---------------------------------------------------------------------
 
     @Override
@@ -351,6 +374,9 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                     }
                 }
             }
+
+            // Keep GUI scale button text in sync & gothic-styled
+            updateScaleButtonLabelFromOptions();
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] containerTick failed", t);
         }
