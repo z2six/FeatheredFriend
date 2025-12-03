@@ -23,17 +23,25 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * // neoforge/src/main/java/net/z2six/featheredfriend/client/gui/SealStampScreen.java
- *
- * SealStampScreen
- *
- * - Uses Gothic font + MultiLineScrollTextWidget for the secret passphrase.
- * - Left column: Etchings dropdown, Style dropdown, Carve button, GUI-scale toggle button.
- * - Right side: "Sigil Preview" area with a wooden circular disc using vanilla oak planks.
- * - On "Carve" click:
- *      * Spawns a burst of client-side particles (based on texture_etching16x.png) that drift downward,
- *        rotate, fade out, and die quickly.
- * - Sigil generation / NBT saving will be wired in a later step.
+
+ // neoforge/src/main/java/net/z2six/featheredfriend/client/gui/SealStampScreen.java
+
+ SealStampScreen
+
+ Uses Gothic font + MultiLineScrollTextWidget for the secret passphrase.
+
+ Left column: Etchings dropdown, Style dropdown, Carve button, GUI-scale toggle button.
+
+ Right side: "Sigil Preview" area with a wooden circular disc using vanilla oak planks.
+
+ On "Carve" click:
+
+ * Spawns a burst of SigilEtchingParticle chips from the disc.
+
+ All particle behavior is tuned inside SigilEtchingParticle.
+
+
+ Sigil generation / NBT saving will be wired in a later step.
  */
 public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
@@ -50,16 +58,16 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     private static final ResourceLocation DISC_TEXTURE =
             ResourceLocation.fromNamespaceAndPath("minecraft", "textures/block/oak_planks.png");
 
-    // ---------------------------------------------------------------------
-    // GUI dimensions
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// GUI dimensions
+// ---------------------------------------------------------------------
 
     private static final int GUI_WIDTH = 300;
     private static final int GUI_HEIGHT = 200;
 
-    // ---------------------------------------------------------------------
-    // "Secret" field config (relative to GUI origin)
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// "Secret" field config (relative to GUI origin)
+// ---------------------------------------------------------------------
 
     // Size
     private static final int SECRET_WIDTH = 200;
@@ -68,13 +76,13 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     private static final int SECRET_MAX_LINES = 2;
 
     // Position
-    // Y is absolute from top of GUI; X is centered + offset.
+// Y is absolute from top of GUI; X is centered + offset.
     private static final int SECRET_Y = 20;
     private static final int SECRET_X_OFFSET = -32; // negative -> shift left, positive -> shift right
 
-    // ---------------------------------------------------------------------
-    // Left column (Etchings / Style / Carve / Scale) config
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Left column (Etchings / Style / Carve / Scale) config
+// ---------------------------------------------------------------------
 
     // Base X for the left column (relative to GUI origin).
     private static final int LEFT_COLUMN_X = 20;
@@ -95,9 +103,9 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     private static final int SCALE_WIDTH = 90;
     private static final int SCALE_HEIGHT = 20;
 
-    // ---------------------------------------------------------------------
-    // Preview area config (right side of GUI)
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Preview area config (right side of GUI)
+// ---------------------------------------------------------------------
 
     // Size
     private static final int PREVIEW_WIDTH = 160;
@@ -112,32 +120,18 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     // Label relative to preview box top.
     private static final int PREVIEW_LABEL_OFFSET_Y = -12;
 
-    // ---------------------------------------------------------------------
-    // Etching options
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Etching options
+// ---------------------------------------------------------------------
 
     private static final int MIN_SLICES = 2;
     private static final int MAX_SLICES = 8;
 
     private static final String[] STYLE_NAMES = {"Medieval", "Fantasy", "Floral"};
 
-    // ---------------------------------------------------------------------
-    // Particle tuning
-    // ---------------------------------------------------------------------
-
-    /**
-     * Base particle size multiplier. Increase to make chips larger.
-     */
-    private static final float PARTICLE_SIZE_BASE = 8.0f;
-
-    /**
-     * Multiplier applied to downward velocity, to make them fall faster.
-     */
-    private static final double PARTICLE_FALL_MULTIPLIER = 1.5;
-
-    // ---------------------------------------------------------------------
-    // State & widgets
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// State & widgets
+// ---------------------------------------------------------------------
 
     private MultiLineScrollTextWidget secretField;
     private Button etchingsButton;
@@ -145,8 +139,8 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     private Button carveButton;
     private AbstractWidget scaleButton;
 
-    private int currentSlices = 6;       // default
-    private int currentStyleIndex = 0;   // "Medieval"
+    private int currentSlices = 6; // default
+    private int currentStyleIndex = 0; // "Medieval"
 
     private final RandomSource random = RandomSource.createNewThreadLocalInstance();
 
@@ -165,11 +159,13 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         this.titleLabelY = 10000;
         this.inventoryLabelX = 10000;
         this.inventoryLabelY = 10000;
+
+
     }
 
-    // ---------------------------------------------------------------------
-    // Init
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------
 
     @Override
     protected void init() {
@@ -265,11 +261,13 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
         updateButtonLabels();
         updateScaleButtonLabelFromOptions();
+
+
     }
 
-    // ---------------------------------------------------------------------
-    // Button label helpers
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Button label helpers
+// ---------------------------------------------------------------------
 
     private void updateButtonLabels() {
         try {
@@ -306,6 +304,8 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] updateScaleButtonLabelFromOptions failed", t);
         }
+
+
     }
 
     private void cycleSlices() {
@@ -335,9 +335,9 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Carve button behaviour (particles only for now)
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Carve button behaviour (particles only for now)
+// ---------------------------------------------------------------------
 
     private void onCarveClicked() {
         try {
@@ -346,16 +346,18 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                     STYLE_NAMES[Math.max(0, Math.min(currentStyleIndex, STYLE_NAMES.length - 1))],
                     secretField != null ? secretField.getText() : "<null>");
 
-            // Quicker, more lively burst
+            // Lively burst; all motion/feel logic is inside SigilEtchingParticle.
             spawnCarveParticles(80);
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] onCarveClicked failed", t);
         }
+
+
     }
 
-    // ---------------------------------------------------------------------
-    // Ticking (for secret field + particles + GUI scale label)
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Ticking (for secret field + particles + GUI scale label)
+// ---------------------------------------------------------------------
 
     @Override
     protected void containerTick() {
@@ -380,11 +382,13 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] containerTick failed", t);
         }
+
+
     }
 
-    // ---------------------------------------------------------------------
-    // Background rendering
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Background rendering
+// ---------------------------------------------------------------------
 
     @Override
     protected void renderBg(@NotNull GuiGraphics guiGraphics,
@@ -424,11 +428,13 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                     0xC0F5F0D8
             );
         }
+
+
     }
 
-    // ---------------------------------------------------------------------
-    // Foreground rendering (preview, labels, particles)
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Foreground rendering (preview, labels, particles)
+// ---------------------------------------------------------------------
 
     @Override
     public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
@@ -443,11 +449,13 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] render failed", t);
         }
+
+
     }
 
     @Override
     protected void renderLabels(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        // Intentionally empty; we draw minimal labels in render().
+// Intentionally empty; we draw minimal labels in render().
     }
 
     private void renderPreviewArea(@NotNull GuiGraphics guiGraphics) {
@@ -479,6 +487,8 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] renderPreviewArea failed", t);
         }
+
+
     }
 
     private void renderWoodenDisc(@NotNull GuiGraphics guiGraphics, int previewX, int previewY) {
@@ -529,6 +539,8 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             LOG.error("[SealStampScreen] renderWoodenDisc failed; falling back to simple disc", t);
             renderFallbackDisc(guiGraphics, previewX, previewY);
         }
+
+
     }
 
     private void renderFallbackDisc(@NotNull GuiGraphics guiGraphics, int previewX, int previewY) {
@@ -549,11 +561,13 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                 }
             }
         }
+
+
     }
 
-    // ---------------------------------------------------------------------
-    // Particles
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Particles
+// ---------------------------------------------------------------------
 
     private void spawnCarveParticles(int count) {
         try {
@@ -572,24 +586,15 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             }
 
             for (int i = 0; i < count; i++) {
-                double angle = random.nextDouble() * Math.PI * 2.0;
-                double r = radius * Math.sqrt(random.nextDouble());
-                double px = centerX + r * Math.cos(angle);
-                double py = centerY + r * Math.sin(angle);
-
-                double vx = (random.nextDouble() - 0.5) * 0.4;
-
-                // Faster downward motion, scaled up by PARTICLE_FALL_MULTIPLIER
-                double baseVy = 0.6 + random.nextDouble() * 0.6;
-                double vy = baseVy * PARTICLE_FALL_MULTIPLIER;
-
-                // Shorter lifetime: ~10–16 ticks
-                int lifetime = 10 + random.nextInt(7);
-
-                float size = PARTICLE_SIZE_BASE * (0.8f + random.nextFloat() * 0.6f);
-
-                SigilEtchingParticle particle = new SigilEtchingParticle(px, py, vx, vy, size, lifetime);
-                this.particles.add(particle);
+                SigilEtchingParticle p = SigilEtchingParticle.createForCarve(
+                        this.random,
+                        centerX,
+                        centerY,
+                        radius
+                );
+                if (p != null) {
+                    this.particles.add(p);
+                }
             }
 
             LOG.debug("[SealStampScreen] spawnCarveParticles: spawned {} particles (total now {})",
@@ -597,6 +602,8 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] spawnCarveParticles failed", t);
         }
+
+
     }
 
     private void renderParticles(@NotNull GuiGraphics guiGraphics, float partialTick) {
@@ -611,11 +618,13 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] renderParticles failed", t);
         }
+
+
     }
 
-    // ---------------------------------------------------------------------
-    // Gothic helper
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Gothic helper
+// ---------------------------------------------------------------------
 
     private Component gothic(String text) {
         try {
