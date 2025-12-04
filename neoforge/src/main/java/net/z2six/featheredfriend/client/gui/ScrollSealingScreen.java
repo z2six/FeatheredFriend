@@ -44,44 +44,96 @@ import java.util.UUID;
  *              "Signed by: <name>, Day X of Month, Y AN"
  *          - Populates the signature field.
  *      * Triggers an outro fade of all text fields.
- *  - After text fades out, a placeholder "Seal" button appears (no logic yet).
+ *  - After text fades out and a configurable delay, a "Seal" button appears (placeholder).
  *
- * If a custom GUI texture is not found at:
- *  assets/featheredfriend/textures/gui/scroll_sealing.png
- * it will fall back to drawing a simple colored rectangle.
+ * Animated GUI behaviour (synchronous with timing constants):
+ *  Flow:
+ *    1. INTRO_DELAY_TICKS
+ *       - During this period, scroll_opening.png plays from frame 0→6.
+ *       - At the end, scroll is fully open and sticks on the last frame.
+ *    2. INTRO_FADE_TICKS
+ *       - Text fades in on top of the fully opened scroll.
+ *    3. User writes message / selects recipient.
+ *    4. OUTRO_FADE_TICKS
+ *       - Text fades out.
+ *    5. OUTRO_DELAY_TICKS
+ *       - During this period, scroll_closing.png plays from frame 0→6.
+ *       - At the end, scroll is fully closed and sticks on the last frame.
+ *       - The "Seal" button appears exactly when the closing animation finishes.
+ *
+ * The PNGs must live at:
+ *  assets/featheredfriend/textures/gui/scrollscreen/scroll_opening.png
+ *  assets/featheredfriend/textures/gui/scrollscreen/scroll_closing.png
  */
 public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMenu> {
 
     private static final Logger LOG = LogUtils.getLogger();
 
+    // Legacy single-frame texture (kept as ultimate fallback)
     private static final ResourceLocation SCROLL_GUI_TEXTURE =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scroll_sealing.png");
 
-    // Our custom Gothic TTF font id (from assets/featheredfriend/font/gothic12.json)
+    // Animated scroll textures (sprite sheets: 1680x208, 7 frames horizontally)
+    private static final ResourceLocation SCROLL_OPENING_TEXTURE =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scrollscreen/scroll_opening.png");
+    private static final ResourceLocation SCROLL_CLOSING_TEXTURE =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scrollscreen/scroll_closing.png");
+
+    // Gothic font id (from assets/featheredfriend/font/gothic12.json)
     private static final ResourceLocation GOTHIC_FONT_ID =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12");
 
     // ---------------------------------------------------------------------
-    // Timing constants (A, B, C) – all in ticks (20 ticks = 1 second)
+    // Scroll animation configuration
     // ---------------------------------------------------------------------
 
     /**
-     * A: Intro delay before any text elements appear (in ticks).
-     * Example: 20 ticks = 1 second.
+     * Single frame size. The PNGs are 1680x208: 7 * 240 = 1680.
      */
-    private static final int INTRO_DELAY_TICKS = 20;
+    private static final int SCROLL_FRAME_WIDTH = 240;
+    private static final int SCROLL_FRAME_HEIGHT = 208;
+    private static final int SCROLL_TOTAL_FRAMES = 7;
+
+    private enum ScrollAnimPhase {
+        OPENING,
+        OPEN_STILL,
+        CLOSING,
+        CLOSED_STILL
+    }
+
+    private ScrollAnimPhase scrollAnimPhase = ScrollAnimPhase.OPENING;
+
+    // ---------------------------------------------------------------------
+    // Timing constants (all in ticks; 20 ticks = 1 second)
+    // ---------------------------------------------------------------------
 
     /**
-     * B: Intro fade-in duration (in ticks).
-     * Example: 20 ticks = 1 second.
+     * 1. INTRO_DELAY_TICKS:
+     *    - Duration for the opening scroll animation.
+     *    - During this entire period, scroll_opening.png plays.
+     *    - Text is fully hidden and non-interactive.
      */
-    private static final int INTRO_FADE_TICKS = 20;
+    private static final int INTRO_DELAY_TICKS = 10;
 
     /**
-     * C: Outro fade-out duration (in ticks) after the scroll is signed.
-     * Example: 20 ticks = 1 second.
+     * 2. INTRO_FADE_TICKS:
+     *    - Fade-in duration for text after the scroll is fully open.
      */
-    private static final int OUTRO_FADE_TICKS = 60;
+    private static final int INTRO_FADE_TICKS = 30;
+
+    /**
+     * 4. OUTRO_FADE_TICKS:
+     *    - Fade-out duration for text after "Sign" is clicked.
+     */
+    private static final int OUTRO_FADE_TICKS = 30;
+
+    /**
+     * 5. OUTRO_DELAY_TICKS:
+     *    - Time window after text has fully faded out.
+     *    - During this period, scroll_closing.png plays from frame 0→6.
+     *    - At the end of this delay, the scroll is fully closed and the "Seal" button appears.
+     */
+    private static final int OUTRO_DELAY_TICKS = 10;
 
     private enum UiPhase {
         INTRO_DELAY,
@@ -95,7 +147,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private int uiPhaseTicks = 0;
 
     // GUI dimensions
-    private static final int GUI_WIDTH = 248;
+    private static final int GUI_WIDTH = SCROLL_FRAME_WIDTH; // 240
     private static final int GUI_HEIGHT = 200;
 
     // Recipient field config (relative to GUI origin)
@@ -126,7 +178,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private static final int SIGN_BUTTON_WIDTH = 80;
     private static final int SIGN_BUTTON_HEIGHT = 18;
 
-    // "Seal" button config (appears after fade-out)
+    // "Seal" button config (appears after OUTRO_DELAY_TICKS)
     private static final int SEAL_BUTTON_X = 20;
     private static final int SEAL_BUTTON_Y = GUI_HEIGHT - 22;
     private static final int SEAL_BUTTON_WIDTH = 80;
@@ -176,6 +228,11 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         LOG.debug("[ScrollSealingScreen] init at leftPos={}, topPos={}", this.leftPos, this.topPos);
         this.clearWidgets();
 
+        // --- Scroll + UI initial state ---
+        scrollAnimPhase = ScrollAnimPhase.OPENING;
+        uiPhase = UiPhase.INTRO_DELAY;
+        uiPhaseTicks = 0;
+
         // Recipient field (single-line custom widget) using Gothic font, NO newlines
         this.recipientField = new MultiLineScrollTextWidget(
                 this.font,
@@ -219,7 +276,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 GOTHIC_FONT_ID,
                 false // allowNewlines
         );
-        // Initial content is empty; placeholder "Signature" is handled by the widget
         this.signatureWidget.setText("");
         this.signatureWidget.setEditable(false);
         this.addRenderableWidget(this.signatureWidget);
@@ -249,7 +305,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 .build();
         this.addRenderableWidget(this.signButton);
 
-        // Seal button is created later when we reach SEALED phase
+        // Seal button is created later after OUTRO_DELAY_TICKS
         this.sealButton = null;
 
         // Recipient overlay: position just under the recipient field, expanding downward
@@ -270,7 +326,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                     public void onPlayerSelected(UUID uuid, String name) {
                         LOG.debug("[ScrollSealingScreen] Recipient selected: {} ({})", name, uuid);
                         selectedRecipientUuid = uuid;
-                        // Autofill text and move caret to the end ("Dear Dev,|")
                         recipientField.setText("Dear " + name + ",");
                         recipientField.setCursorToEnd();
                     }
@@ -278,16 +333,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                     @Override
                     public void onOverlayClosedWithoutSelection() {
                         LOG.debug("[ScrollSealingScreen] Recipient overlay closed without selection");
-                        // Do not change text or UUID here.
                     }
                 }
         );
-
-        // -----------------------------------------------------------------
-        // Initial phase state (INTRO_DELAY) and alpha/interaction
-        // -----------------------------------------------------------------
-        uiPhase = UiPhase.INTRO_DELAY;
-        uiPhaseTicks = 0;
 
         setWidgetsAlpha(0.0f);          // fully transparent
         setWidgetsInteractive(false);   // non-editable, no typing
@@ -296,6 +344,8 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             this.signButton.visible = false;
             this.signButton.active = false;
         }
+
+        LOG.debug("[ScrollSealingScreen] init complete: scrollAnimPhase={}, uiPhase={}", scrollAnimPhase, uiPhase);
     }
 
     // ---------------------------------------------------------------------
@@ -303,7 +353,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     // ---------------------------------------------------------------------
 
     private void openRecipientOverlayIfEmpty() {
-        if (recipientOverlay == null) return;
+        if (recipientOverlay == null) {
+            return;
+        }
 
         String txt = recipientField.getText();
         if (txt == null || txt.isEmpty()) {
@@ -321,20 +373,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     // Signing logic
     // ---------------------------------------------------------------------
 
-    /**
-     * Called when the "Sign" button is clicked.
-     *
-     * Behaviour:
-     *  - If no recipient UUID is set, log and do nothing.
-     *  - If recipient text is empty/blank, log and do nothing.
-     *  - Otherwise:
-     *      * Store current player's UUID as signerUuid.
-     *      * Compute current in-world date index via FFCalendarConfig.
-     *      * Use ClientCalendarEvents.buildDateMessage(...) to format date.
-     *      * Populate the signature field:
-     *          "Signed by: <name>, Day X of Month, Y AN"
-     *      * Start OUTRO_FADE_OUT phase.
-     */
     private void onSignButtonClicked() {
         try {
             if (uiPhase != UiPhase.IDLE) {
@@ -348,20 +386,17 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 return;
             }
 
-            // Check recipient UUID
             if (selectedRecipientUuid == null) {
                 LOG.info("[ScrollSealingScreen] onSignButtonClicked: No recipient UUID set, aborting sign");
                 return;
             }
 
-            // Check recipient text (user might have deleted it)
             String recipientText = recipientField != null ? recipientField.getText() : null;
             if (recipientText == null || recipientText.trim().isEmpty()) {
                 LOG.info("[ScrollSealingScreen] onSignButtonClicked: Recipient field is empty, aborting sign");
                 return;
             }
 
-            // Determine the current day index from world time + config
             long dayTime = mc.level.getDayTime();
             long ticksPerDay = FFCalendarConfig.TICKS_PER_DAY;
             if (ticksPerDay <= 0L) {
@@ -370,11 +405,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             }
             long dayIndex = dayTime / ticksPerDay;
 
-            // Use shared date formatter from ClientCalendarEvents
             Component dateComponent = ClientCalendarEvents.buildDateMessage(dayIndex);
             String dateString = dateComponent.getString();
 
-            // Store signer UUID
             signerUuid = mc.player.getUUID();
             String signerName = mc.player.getGameProfile().getName();
 
@@ -387,7 +420,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
 
             LOG.info("[ScrollSealingScreen] Scroll signed by {} ({}) on {}", signerName, signerUuid, dateString);
 
-            // Start outro fade
             beginOutroFade();
         } catch (Throwable t) {
             LOG.error("[ScrollSealingScreen] onSignButtonClicked failed", t);
@@ -417,24 +449,23 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     // ---------------------------------------------------------------------
 
     private void tickUiPhase() {
-        uiPhaseTicks++;
-
         switch (uiPhase) {
             case INTRO_DELAY: {
-                // Nothing visible / interactive yet; just wait.
+                uiPhaseTicks++;
+
+                // During INTRO_DELAY the opening scroll animation runs
+                // and text is fully hidden/inactive.
                 if (uiPhaseTicks >= INTRO_DELAY_TICKS) {
-                    // Switch to fade-in; actual alpha/visibility setup happens
-                    // on the *first* INTRO_FADE_IN tick.
                     uiPhase = UiPhase.INTRO_FADE_IN;
                     uiPhaseTicks = 0;
-                    LOG.debug("[ScrollSealingScreen] Intro delay finished -> INTRO_FADE_IN");
+                    scrollAnimPhase = ScrollAnimPhase.OPEN_STILL;
+                    LOG.debug("[ScrollSealingScreen] Intro delay finished -> INTRO_FADE_IN (scroll OPEN_STILL)");
                 }
                 break;
             }
             case INTRO_FADE_IN: {
-                // On the very first fade-in tick, force alpha to 0 and
-                // enable widget visibility. This prevents any "flash" of
-                // fully opaque text just as the fade begins.
+                uiPhaseTicks++;
+
                 if (uiPhaseTicks == 1) {
                     setWidgetsAlpha(0.0f);
 
@@ -456,7 +487,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 setWidgetsAlpha(alpha);
 
                 if (uiPhaseTicks >= INTRO_FADE_TICKS) {
-                    // Fully visible, now interactive
                     setWidgetsAlpha(1.0f);
                     setWidgetsInteractive(true);
                     if (this.signButton != null) {
@@ -470,10 +500,12 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 break;
             }
             case IDLE: {
-                // Normal interactive state; nothing special here.
+                // Normal interactive state.
                 break;
             }
             case OUTRO_FADE_OUT: {
+                uiPhaseTicks++;
+
                 float t = (OUTRO_FADE_TICKS <= 0)
                         ? 1.0f
                         : (uiPhaseTicks / (float) OUTRO_FADE_TICKS);
@@ -485,7 +517,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                     setWidgetsAlpha(0.0f);
                     setWidgetsInteractive(false);
 
-                    // Once fully faded, hide the widgets so they can't "pop back"
                     if (this.recipientField != null) {
                         this.recipientField.visible = false;
                     }
@@ -500,7 +531,25 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                     uiPhaseTicks = 0;
                     LOG.debug("[ScrollSealingScreen] Outro fade finished -> SEALED");
 
-                    // Spawn Seal button once we are fully sealed
+                    // Start closing animation during OUTRO_DELAY_TICKS
+                    scrollAnimPhase = ScrollAnimPhase.CLOSING;
+                }
+                break;
+            }
+            case SEALED: {
+                // In SEALED phase:
+                //  - scrollAnimPhase == CLOSING for OUTRO_DELAY_TICKS.
+                //  - After OUTRO_DELAY_TICKS, we freeze on last closing frame and show Seal button.
+                uiPhaseTicks++;
+
+                if (uiPhaseTicks >= OUTRO_DELAY_TICKS) {
+                    if (scrollAnimPhase == ScrollAnimPhase.CLOSING) {
+                        scrollAnimPhase = ScrollAnimPhase.CLOSED_STILL;
+                        LOG.debug("[ScrollSealingScreen] Closing animation completed within OUTRO_DELAY_TICKS");
+                    }
+
+                    uiPhaseTicks = OUTRO_DELAY_TICKS; // clamp
+
                     if (this.sealButton == null) {
                         this.sealButton = Button.builder(
                                         Component.literal("Seal"),
@@ -514,12 +563,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                                 )
                                 .build();
                         this.addRenderableWidget(this.sealButton);
+                        LOG.debug("[ScrollSealingScreen] Seal button created after OUTRO_DELAY_TICKS");
                     }
                 }
-                break;
-            }
-            case SEALED: {
-                // Text remains fully invisible; only Seal button is present.
                 break;
             }
         }
@@ -591,7 +637,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     }
 
     // ---------------------------------------------------------------------
-    // Background rendering
+    // Background rendering (scroll + pearl)
     // ---------------------------------------------------------------------
 
     @Override
@@ -600,29 +646,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                             int mouseX,
                             int mouseY) {
         try {
-            var resourceManager = Minecraft.getInstance().getResourceManager();
-            boolean hasTexture = resourceManager.getResource(SCROLL_GUI_TEXTURE).isPresent();
-
-            if (hasTexture) {
-                guiGraphics.blit(
-                        SCROLL_GUI_TEXTURE,
-                        this.leftPos,
-                        this.topPos,
-                        0,
-                        0,
-                        this.imageWidth,
-                        this.imageHeight
-                );
-            } else {
-                // Fallback: simple parchment-ish rectangle
-                guiGraphics.fill(
-                        this.leftPos,
-                        this.topPos,
-                        this.leftPos + this.imageWidth,
-                        this.topPos + this.imageHeight,
-                        0xC0F5F0D8
-                );
-            }
+            renderAnimatedScroll(guiGraphics);
 
             // Render the ender pearl icon (no button background)
             guiGraphics.renderItem(
@@ -642,6 +666,87 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         }
     }
 
+    /**
+     * Renders the scroll background using the opening/closing sprite sheets.
+     *
+     * The animation speed is locked to:
+     *  - INTRO_DELAY_TICKS for scroll_opening.png (phase OPENING).
+     *  - OUTRO_DELAY_TICKS for scroll_closing.png (phase CLOSING).
+     */
+    private void renderAnimatedScroll(GuiGraphics guiGraphics) {
+        ResourceLocation textureToUse;
+        int frameIndex;
+
+        switch (scrollAnimPhase) {
+            case OPENING: {
+                textureToUse = SCROLL_OPENING_TEXTURE;
+
+                int totalTicks = Math.max(1, INTRO_DELAY_TICKS);
+                int currentTicks = Math.min(uiPhaseTicks, totalTicks);
+                float progress = currentTicks / (float) totalTicks;
+
+                // Map 0..1 -> frames 0..SCROLL_TOTAL_FRAMES-1
+                frameIndex = (int) (progress * (SCROLL_TOTAL_FRAMES - 1));
+                if (frameIndex < 0) frameIndex = 0;
+                if (frameIndex >= SCROLL_TOTAL_FRAMES) frameIndex = SCROLL_TOTAL_FRAMES - 1;
+                break;
+            }
+            case OPEN_STILL: {
+                textureToUse = SCROLL_OPENING_TEXTURE;
+                frameIndex = SCROLL_TOTAL_FRAMES - 1; // fully open
+                break;
+            }
+            case CLOSING: {
+                textureToUse = SCROLL_CLOSING_TEXTURE;
+
+                int totalTicks = Math.max(1, OUTRO_DELAY_TICKS);
+                int currentTicks = Math.min(uiPhaseTicks, totalTicks);
+                float progress = currentTicks / (float) totalTicks;
+
+                frameIndex = (int) (progress * (SCROLL_TOTAL_FRAMES - 1));
+                if (frameIndex < 0) frameIndex = 0;
+                if (frameIndex >= SCROLL_TOTAL_FRAMES) frameIndex = SCROLL_TOTAL_FRAMES - 1;
+                break;
+            }
+            case CLOSED_STILL: {
+                textureToUse = SCROLL_CLOSING_TEXTURE;
+                frameIndex = SCROLL_TOTAL_FRAMES - 1; // fully closed
+                break;
+            }
+            default: {
+                // Fallback: legacy static texture
+                guiGraphics.blit(
+                        SCROLL_GUI_TEXTURE,
+                        this.leftPos,
+                        this.topPos,
+                        0,
+                        0,
+                        this.imageWidth,
+                        this.imageHeight
+                );
+                return;
+            }
+        }
+
+        int textureWidth = SCROLL_FRAME_WIDTH * SCROLL_TOTAL_FRAMES; // 1680
+        int textureHeight = SCROLL_FRAME_HEIGHT;                     // 208
+
+        int u = frameIndex * SCROLL_FRAME_WIDTH;
+        int v = 0;
+
+        guiGraphics.blit(
+                textureToUse,
+                this.leftPos,
+                this.topPos,
+                (float) u,
+                (float) v,
+                SCROLL_FRAME_WIDTH,
+                SCROLL_FRAME_HEIGHT,
+                textureWidth,
+                textureHeight
+        );
+    }
+
     // ---------------------------------------------------------------------
     // Foreground / main rendering
     // ---------------------------------------------------------------------
@@ -652,7 +757,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
             super.render(guiGraphics, mouseX, mouseY, partialTick);
 
-            // Render overlay on top
             if (this.recipientOverlay != null && this.recipientOverlay.isActive()) {
                 this.recipientOverlay.render(guiGraphics, mouseX, mouseY, partialTick);
             }
@@ -675,7 +779,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         try {
-            // Let overlay handle clicks first (including closing when clicking outside)
             if (this.recipientOverlay != null && this.recipientOverlay.isActive()) {
                 boolean consumed = this.recipientOverlay.mouseClicked(mouseX, mouseY, button);
                 if (consumed) {
@@ -683,28 +786,23 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 }
             }
 
-            // Handle clicks on the ender pearl icon
             if (button == 0 && isMouseOverPearlIcon(mouseX, mouseY)) {
                 onEnderPearlClicked();
                 return true;
             }
 
-            // Normal screen handling (buttons, widgets)
             boolean result = super.mouseClicked(mouseX, mouseY, button);
 
-            // After vanilla click handling, if recipient field is focused and empty, open overlay
             if (this.recipientField != null && this.recipientField.isFocused()) {
                 String txt = this.recipientField.getText();
                 if (txt == null || txt.isEmpty()) {
                     openRecipientOverlayIfEmpty();
                 } else {
-                    // If the user has typed something manually, close overlay (if open)
                     if (this.recipientOverlay != null && this.recipientOverlay.isActive()) {
                         this.recipientOverlay.close(true);
                     }
                 }
             } else {
-                // Clicking other parts of the screen closes overlay
                 if (this.recipientOverlay != null && this.recipientOverlay.isActive()) {
                     this.recipientOverlay.close(true);
                 }
@@ -733,9 +831,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             }
 
             LOG.info("[ScrollSealingScreen] Ender pearl icon clicked (placeholder – will open item sending UI later)");
-            // Future:
-            //  - Check if player has a pearl in inventory.
-            //  - Open combined inventory + "attachment" view for items to send.
         } catch (Throwable t) {
             LOG.error("[ScrollSealingScreen] onEnderPearlClicked failed", t);
         }
@@ -744,14 +839,12 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
         try {
-            // Overlay gets first crack
             if (this.recipientOverlay != null && this.recipientOverlay.isActive()) {
                 if (this.recipientOverlay.charTyped(codePoint, modifiers)) {
                     return true;
                 }
             }
 
-            // Then message / recipient fields (signature is non-editable)
             boolean handled = false;
 
             if (this.recipientField != null && this.recipientField.isFocused()) {
@@ -771,7 +864,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         try {
-            // Overlay first
             if (this.recipientOverlay != null && this.recipientOverlay.isActive()) {
                 if (this.recipientOverlay.keyPressed(keyCode, scanCode, modifiers)) {
                     return true;
@@ -785,7 +877,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 return true;
             }
 
-            // Let our text widgets consume keys
             boolean handled = false;
             if (this.recipientField != null && this.recipientField.isFocused()) {
                 handled |= this.recipientField.keyPressed(keyCode, scanCode, modifiers);
