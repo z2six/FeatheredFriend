@@ -9,8 +9,6 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.ClientCalendarEvents;
 import net.z2six.featheredfriend.client.gui.widget.MultiLineScrollTextWidget;
@@ -34,36 +32,12 @@ import java.util.UUID;
  *  - Multi-line message body widget using Gothic font + newline support.
  *  - Signature field ("Signature" placeholder) using Gothic font, auto-wrapping to 2 lines.
  *  - Player list overlay using RecipientOverlay (vanilla font).
- *  - Rendered Ender Pearl icon acting as a clickable "items attachment" entry point.
- *  - "Sign" button in the bottom-left that:
- *      * Checks recipient UUID is set.
- *      * Checks recipient text is non-empty.
- *      * If both pass:
- *          - Stores the current player's UUID as signer.
- *          - Appends a signature line with current in-world date:
- *              "Signed by: <name>, Day X of Month, Y AN"
- *          - Populates the signature field.
- *      * Triggers an outro fade of all text fields.
- *  - After text fades out and a configurable delay, a "Seal" button appears (placeholder).
- *
- * Animated GUI behaviour (synchronous with timing constants):
- *  Flow:
- *    1. INTRO_DELAY_TICKS
- *       - During this period, scroll_opening.png plays from frame 0→6.
- *       - At the end, scroll is fully open and sticks on the last frame.
- *    2. INTRO_FADE_TICKS
- *       - Text fades in on top of the fully opened scroll.
- *    3. User writes message / selects recipient.
- *    4. OUTRO_FADE_TICKS
- *       - Text fades out.
- *    5. OUTRO_DELAY_TICKS
- *       - During this period, scroll_closing.png plays from frame 0→6.
- *       - At the end, scroll is fully closed and sticks on the last frame.
- *       - The "Seal" button appears exactly when the closing animation finishes.
- *
- * The PNGs must live at:
- *  assets/featheredfriend/textures/gui/scrollscreen/scroll_opening.png
- *  assets/featheredfriend/textures/gui/scrollscreen/scroll_closing.png
+ *  - Custom animated scroll background (opening/closing) synced to UI timings.
+ *  - Animated custom pearl button on the right side of the scroll:
+ *      * Instantiates when text fade-in starts.
+ *      * Uses a special hover frame when the mouse is over it.
+ *      * Plays a disappearing animation when text fade-out starts.
+ *      * On click, delegates handling to EnderPearlInventoryScreen helper.
  */
 public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMenu> {
 
@@ -78,6 +52,10 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scrollscreen/scroll_opening.png");
     private static final ResourceLocation SCROLL_CLOSING_TEXTURE =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scrollscreen/scroll_closing.png");
+
+    // Animated pearl texture (sprite sheet: 64x704, 11 frames vertically)
+    private static final ResourceLocation PEARL_TEXTURE =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scrollscreen/pearl.png");
 
     // Gothic font id (from assets/featheredfriend/font/gothic12.json)
     private static final ResourceLocation GOTHIC_FONT_ID =
@@ -102,6 +80,54 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     }
 
     private ScrollAnimPhase scrollAnimPhase = ScrollAnimPhase.OPENING;
+
+    // ---------------------------------------------------------------------
+    // Pearl animation configuration
+    // ---------------------------------------------------------------------
+
+    /**
+     * Pearl spritesheet: 64x704, 11 frames stacked vertically.
+     * Frame indices (0-based):
+     *  - 0..6  => Phase A (instantiating)
+     *  - 7     => Phase B (hover)
+     *  - 8..10 => Phase C (disappearing)
+     */
+    private static final int PEARL_FRAME_WIDTH = 32;
+    private static final int PEARL_FRAME_HEIGHT = 32;
+    private static final int PEARL_TOTAL_FRAMES = 11;
+
+    private static final int PEARL_PHASE_A_START_FRAME = 0;
+    private static final int PEARL_PHASE_A_END_FRAME = 6;
+    private static final int PEARL_PHASE_B_HOVER_FRAME = 7;
+    private static final int PEARL_PHASE_C_START_FRAME = 8;
+    private static final int PEARL_PHASE_C_END_FRAME = 10;
+
+    /**
+     * Pearl animation speeds (independent of scroll timings):
+     *  - These are ticks per frame for instantiating (A) and disappearing (C).
+     */
+    private static final int PEARL_PHASE_A_TICKS_PER_FRAME = 2;
+    private static final int PEARL_PHASE_C_TICKS_PER_FRAME = 2;
+
+    /**
+     * Pearl placement / size (relative to GUI origin).
+     * It sits on the right side of the scroll and is fully adjustable via these constants.
+     */
+    private static final int PEARL_X = SCROLL_FRAME_WIDTH - PEARL_FRAME_WIDTH - 12;
+    private static final int PEARL_Y = 18;
+    private static final int PEARL_WIDTH = PEARL_FRAME_WIDTH;
+    private static final int PEARL_HEIGHT = PEARL_FRAME_HEIGHT;
+
+    private enum PearlPhase {
+        HIDDEN,         // not visible at all
+        INSTANTIATING,  // playing frames 0..6 once
+        IDLE,           // showing frame 6 (last instantiation frame)
+        DISAPPEARING,   // playing frames 8..10 once
+        GONE            // fully gone, nothing rendered or clickable
+    }
+
+    private PearlPhase pearlPhase = PearlPhase.HIDDEN;
+    private int pearlPhaseTicks = 0;
 
     // ---------------------------------------------------------------------
     // Timing constants (all in ticks; 20 ticks = 1 second)
@@ -151,22 +177,22 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private static final int GUI_HEIGHT = 200;
 
     // Recipient field config (relative to GUI origin)
-    private static final int RECIPIENT_X = 20;   // aligned with message & signature
+    private static final int RECIPIENT_X = 30;   // aligned with message & signature
     private static final int RECIPIENT_Y = 24;
-    private static final int RECIPIENT_WIDTH = 188;
+    private static final int RECIPIENT_WIDTH = 125;
     private static final int RECIPIENT_HEIGHT = 14;
     private static final int RECIPIENT_MAX_CHARS = 64;
 
     // Message widget config
-    private static final int MESSAGE_X = 20;
+    private static final int MESSAGE_X = 30;
     private static final int MESSAGE_Y = 50;
-    private static final int MESSAGE_WIDTH = 208;
+    private static final int MESSAGE_WIDTH = 125;
     private static final int MESSAGE_HEIGHT = 6 * 9 + 10; // about 6 lines
     private static final int MESSAGE_MAX_CHARS = 512;
-    private static final int MESSAGE_MAX_LINES = 10;
+    private static final int MESSAGE_MAX_LINES = 12;
 
     // Signature widget config (below the message, near bottom-left)
-    private static final int SIGNATURE_X = 20;
+    private static final int SIGNATURE_X = 30;
     private static final int SIGNATURE_Y = GUI_HEIGHT - 40;
     private static final int SIGNATURE_WIDTH = 208;
     private static final int SIGNATURE_HEIGHT = 14;
@@ -183,13 +209,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private static final int SEAL_BUTTON_Y = GUI_HEIGHT - 22;
     private static final int SEAL_BUTTON_WIDTH = 80;
     private static final int SEAL_BUTTON_HEIGHT = 18;
-
-    // Ender pearl icon (no vanilla button) relative to GUI origin
-    private static final int PEARL_ICON_X = 20;
-    private static final int PEARL_ICON_Y = 10; // moved above recipient field
-    private static final int PEARL_ICON_SIZE = 16;
-
-    private static final ItemStack PEARL_STACK = new ItemStack(Items.ENDER_PEARL);
 
     // Widgets
     private MultiLineScrollTextWidget recipientField;
@@ -232,6 +251,10 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         scrollAnimPhase = ScrollAnimPhase.OPENING;
         uiPhase = UiPhase.INTRO_DELAY;
         uiPhaseTicks = 0;
+
+        // Pearl starts hidden until intro fade-in begins
+        pearlPhase = PearlPhase.HIDDEN;
+        pearlPhaseTicks = 0;
 
         // Recipient field (single-line custom widget) using Gothic font, NO newlines
         this.recipientField = new MultiLineScrollTextWidget(
@@ -345,7 +368,8 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             this.signButton.active = false;
         }
 
-        LOG.debug("[ScrollSealingScreen] init complete: scrollAnimPhase={}, uiPhase={}", scrollAnimPhase, uiPhase);
+        LOG.debug("[ScrollSealingScreen] init complete: scrollAnimPhase={}, uiPhase={}, pearlPhase={}",
+                scrollAnimPhase, uiPhase, pearlPhase);
     }
 
     // ---------------------------------------------------------------------
@@ -441,7 +465,11 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             this.signButton.visible = false;
         }
 
-        LOG.debug("[ScrollSealingScreen] beginOutroFade -> uiPhase={}", uiPhase);
+        // Start pearl disappearing animation at the same time as text fade-out
+        pearlPhase = PearlPhase.DISAPPEARING;
+        pearlPhaseTicks = 0;
+
+        LOG.debug("[ScrollSealingScreen] beginOutroFade -> uiPhase={}, pearlPhase={}", uiPhase, pearlPhase);
     }
 
     // ---------------------------------------------------------------------
@@ -459,7 +487,12 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                     uiPhase = UiPhase.INTRO_FADE_IN;
                     uiPhaseTicks = 0;
                     scrollAnimPhase = ScrollAnimPhase.OPEN_STILL;
-                    LOG.debug("[ScrollSealingScreen] Intro delay finished -> INTRO_FADE_IN (scroll OPEN_STILL)");
+
+                    // Start pearl instantiation at the same moment text fade-in starts
+                    pearlPhase = PearlPhase.INSTANTIATING;
+                    pearlPhaseTicks = 0;
+
+                    LOG.debug("[ScrollSealingScreen] Intro delay finished -> INTRO_FADE_IN (scroll OPEN_STILL, pearl INSTANTIATING)");
                 }
                 break;
             }
@@ -529,10 +562,8 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
 
                     uiPhase = UiPhase.SEALED;
                     uiPhaseTicks = 0;
-                    LOG.debug("[ScrollSealingScreen] Outro fade finished -> SEALED");
-
-                    // Start closing animation during OUTRO_DELAY_TICKS
                     scrollAnimPhase = ScrollAnimPhase.CLOSING;
+                    LOG.debug("[ScrollSealingScreen] Outro fade finished -> SEALED, scrollAnimPhase=CLOSING");
                 }
                 break;
             }
@@ -610,6 +641,46 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     }
 
     // ---------------------------------------------------------------------
+    // Pearl ticking
+    // ---------------------------------------------------------------------
+
+    private void tickPearl() {
+        switch (pearlPhase) {
+            case HIDDEN:
+            case IDLE:
+            case GONE:
+                // No ticking needed.
+                break;
+            case INSTANTIATING: {
+                pearlPhaseTicks++;
+                int frames = PEARL_PHASE_A_END_FRAME - PEARL_PHASE_A_START_FRAME + 1;
+                int totalTicks = frames * Math.max(1, PEARL_PHASE_A_TICKS_PER_FRAME);
+                if (pearlPhaseTicks >= totalTicks) {
+                    pearlPhase = PearlPhase.IDLE;
+                    pearlPhaseTicks = 0;
+                    LOG.debug("[ScrollSealingScreen] Pearl instantiation finished -> IDLE");
+                }
+                break;
+            }
+            case DISAPPEARING: {
+                pearlPhaseTicks++;
+                int frames = PEARL_PHASE_C_END_FRAME - PEARL_PHASE_C_START_FRAME + 1;
+                int totalTicks = frames * Math.max(1, PEARL_PHASE_C_TICKS_PER_FRAME);
+                if (pearlPhaseTicks >= totalTicks) {
+                    pearlPhase = PearlPhase.GONE;
+                    pearlPhaseTicks = 0;
+                    LOG.debug("[ScrollSealingScreen] Pearl disappearing finished -> GONE");
+                }
+                break;
+            }
+        }
+    }
+
+    private boolean isPearlClickable() {
+        return pearlPhase == PearlPhase.IDLE && isUiInteractive();
+    }
+
+    // ---------------------------------------------------------------------
     // Ticking
     // ---------------------------------------------------------------------
 
@@ -631,6 +702,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             }
 
             tickUiPhase();
+            tickPearl();
         } catch (Throwable t) {
             LOG.error("[ScrollSealingScreen] containerTick failed", t);
         }
@@ -647,13 +719,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                             int mouseY) {
         try {
             renderAnimatedScroll(guiGraphics);
-
-            // Render the ender pearl icon (no button background)
-            guiGraphics.renderItem(
-                    PEARL_STACK,
-                    this.leftPos + PEARL_ICON_X,
-                    this.topPos + PEARL_ICON_Y
-            );
+            renderPearl(guiGraphics, mouseX, mouseY);
         } catch (Throwable t) {
             LOG.error("[ScrollSealingScreen] renderBg failed, falling back to simple fill", t);
             guiGraphics.fill(
@@ -683,9 +749,8 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
 
                 int totalTicks = Math.max(1, INTRO_DELAY_TICKS);
                 int currentTicks = Math.min(uiPhaseTicks, totalTicks);
-                float progress = currentTicks / (float) totalTicks;
+                float progress = totalTicks == 0 ? 1.0f : (currentTicks / (float) totalTicks);
 
-                // Map 0..1 -> frames 0..SCROLL_TOTAL_FRAMES-1
                 frameIndex = (int) (progress * (SCROLL_TOTAL_FRAMES - 1));
                 if (frameIndex < 0) frameIndex = 0;
                 if (frameIndex >= SCROLL_TOTAL_FRAMES) frameIndex = SCROLL_TOTAL_FRAMES - 1;
@@ -701,7 +766,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
 
                 int totalTicks = Math.max(1, OUTRO_DELAY_TICKS);
                 int currentTicks = Math.min(uiPhaseTicks, totalTicks);
-                float progress = currentTicks / (float) totalTicks;
+                float progress = totalTicks == 0 ? 1.0f : (currentTicks / (float) totalTicks);
 
                 frameIndex = (int) (progress * (SCROLL_TOTAL_FRAMES - 1));
                 if (frameIndex < 0) frameIndex = 0;
@@ -747,6 +812,86 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         );
     }
 
+    /**
+     * Render the animated pearl on top of the scroll.
+     *
+     * Phases:
+     *  A) INSTANTIATING  -> frames 0..6 (animated)
+     *  B) HOVER          -> frame 7 (while mouse is over, during IDLE)
+     *  C) DISAPPEARING   -> frames 8..10 (animated)
+     *
+     * HIDDEN/GONE phases render nothing.
+     */
+    private void renderPearl(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        if (pearlPhase == PearlPhase.HIDDEN || pearlPhase == PearlPhase.GONE) {
+            return;
+        }
+
+        boolean hovered = isMouseOverPearlIcon(mouseX, mouseY) && isUiInteractive();
+
+        int frameIndex;
+
+        if (hovered && pearlPhase == PearlPhase.IDLE) {
+            // Phase B: hover frame
+            frameIndex = PEARL_PHASE_B_HOVER_FRAME;
+        } else {
+            switch (pearlPhase) {
+                case INSTANTIATING: {
+                    int frames = PEARL_PHASE_A_END_FRAME - PEARL_PHASE_A_START_FRAME + 1;
+                    int ticksPerFrame = Math.max(1, PEARL_PHASE_A_TICKS_PER_FRAME);
+                    int maxTicks = frames * ticksPerFrame;
+                    int clampedTicks = Math.min(pearlPhaseTicks, maxTicks - 1);
+                    int offset = clampedTicks / ticksPerFrame;
+                    frameIndex = PEARL_PHASE_A_START_FRAME + offset;
+                    break;
+                }
+                case IDLE: {
+                    // Last frame of phase A
+                    frameIndex = PEARL_PHASE_A_END_FRAME;
+                    break;
+                }
+                case DISAPPEARING: {
+                    int frames = PEARL_PHASE_C_END_FRAME - PEARL_PHASE_C_START_FRAME + 1;
+                    int ticksPerFrame = Math.max(1, PEARL_PHASE_C_TICKS_PER_FRAME);
+                    int maxTicks = frames * ticksPerFrame;
+                    int clampedTicks = Math.min(pearlPhaseTicks, maxTicks - 1);
+                    int offset = clampedTicks / ticksPerFrame;
+                    frameIndex = PEARL_PHASE_C_START_FRAME + offset;
+                    break;
+                }
+                case HIDDEN:
+                case GONE:
+                default:
+                    return;
+            }
+        }
+
+        if (frameIndex < 0 || frameIndex >= PEARL_TOTAL_FRAMES) {
+            return;
+        }
+
+        int textureWidth = PEARL_FRAME_WIDTH;           // full width of the spritesheet
+        int textureHeight = PEARL_FRAME_HEIGHT * PEARL_TOTAL_FRAMES; // 64 * 11 = 704
+
+        int u = 0;
+        int v = frameIndex * PEARL_FRAME_HEIGHT;
+
+        int x = this.leftPos + PEARL_X;
+        int y = this.topPos + PEARL_Y;
+
+        guiGraphics.blit(
+                PEARL_TEXTURE,
+                x,
+                y,
+                (float) u,
+                (float) v,
+                PEARL_WIDTH,
+                PEARL_HEIGHT,
+                textureWidth,
+                textureHeight
+        );
+    }
+
     // ---------------------------------------------------------------------
     // Foreground / main rendering
     // ---------------------------------------------------------------------
@@ -786,7 +931,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 }
             }
 
-            if (button == 0 && isMouseOverPearlIcon(mouseX, mouseY)) {
+            if (button == 0 && isMouseOverPearlIcon(mouseX, mouseY) && isPearlClickable()) {
                 onEnderPearlClicked();
                 return true;
             }
@@ -816,21 +961,22 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     }
 
     private boolean isMouseOverPearlIcon(double mouseX, double mouseY) {
-        int x0 = this.leftPos + PEARL_ICON_X;
-        int y0 = this.topPos + PEARL_ICON_Y;
-        int x1 = x0 + PEARL_ICON_SIZE;
-        int y1 = y0 + PEARL_ICON_SIZE;
+        int x0 = this.leftPos + PEARL_X;
+        int y0 = this.topPos + PEARL_Y;
+        int x1 = x0 + PEARL_WIDTH;
+        int y1 = y0 + PEARL_HEIGHT;
         return mouseX >= x0 && mouseX < x1 && mouseY >= y0 && mouseY < y1;
     }
 
     private void onEnderPearlClicked() {
         try {
-            if (!isUiInteractive()) {
-                LOG.debug("[ScrollSealingScreen] Ender pearl click ignored; uiPhase={}", uiPhase);
+            if (!isPearlClickable()) {
+                LOG.debug("[ScrollSealingScreen] Ender pearl click ignored; pearlPhase={} uiPhase={}", pearlPhase, uiPhase);
                 return;
             }
 
-            LOG.info("[ScrollSealingScreen] Ender pearl icon clicked (placeholder – will open item sending UI later)");
+            Minecraft mc = Minecraft.getInstance();
+            EnderPearlInventoryScreen.handlePearlClicked(mc);
         } catch (Throwable t) {
             LOG.error("[ScrollSealingScreen] onEnderPearlClicked failed", t);
         }
