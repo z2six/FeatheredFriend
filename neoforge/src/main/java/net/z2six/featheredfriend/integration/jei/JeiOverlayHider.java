@@ -8,6 +8,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.client.gui.EnderPearlInventoryScreen;
 import net.z2six.featheredfriend.client.gui.ScrollSealingScreen;
 import net.z2six.featheredfriend.client.gui.SealStampScreen;
 import org.jetbrains.annotations.NotNull;
@@ -27,6 +28,7 @@ import java.util.Locale;
  * custom FeatheredFriend GUIs are open:
  *  - ScrollSealingScreen
  *  - SealStampScreen
+ *  - EnderPearlInventoryScreen (attachments inventory GUI)
  *
  * Design:
  *  - JEI runtime (IJeiRuntime) is stored as an Object to avoid tight coupling.
@@ -99,9 +101,11 @@ public final class JeiOverlayHider {
             // Our GUIs where we want JEI overlay hidden:
             //  - ScrollSealingScreen
             //  - SealStampScreen (etching GUI)
+            //  - EnderPearlInventoryScreen (attachments inventory GUI)
             boolean isOurScreen =
                     (mc.screen instanceof ScrollSealingScreen) ||
-                            (mc.screen instanceof SealStampScreen);
+                            (mc.screen instanceof SealStampScreen) ||
+                            (mc.screen instanceof EnderPearlInventoryScreen);
 
             if (isOurScreen) {
                 hideOverlayIfNeeded();
@@ -200,11 +204,10 @@ public final class JeiOverlayHider {
     private static Object getIngredientOverlay(@NotNull Object runtime) {
         try {
             Class<?> runtimeClass = runtime.getClass();
-            Method getOverlay = null;
+            Method getOverlay;
             try {
                 getOverlay = runtimeClass.getMethod("getIngredientListOverlay");
             } catch (NoSuchMethodException ignored) {
-                // Some JEI version might use a slightly different name; log and give up if so.
                 LOG.debug("[JeiOverlayHider] getIngredientListOverlay() not found on JEI runtime class {}", runtimeClass.getName());
                 return null;
             }
@@ -239,18 +242,6 @@ public final class JeiOverlayHider {
 
     /**
      * Try to find suitable visibility getter/setter methods on the overlay object.
-     *
-     * Strategy:
-     *  - Inspect all public methods of the overlay class.
-     *  - For setters:
-     *      * Must be "set*" with exactly one boolean parameter.
-     *      * Prefer names containing "visible", "display", "show", "enable".
-     *  - For getters:
-     *      * Must be no-arg, return boolean.
-     *      * Prefer names containing "visible", "display", "show", "enable".
-     *  - Pair them by matching suffix (e.g., setVisible <-> isVisible / getVisible).
-     *
-     * If nothing suitable is found, returns an instance with (null, null).
      */
     private static VisibilityMethods findVisibilityMethods(@NotNull Object overlay) {
         Class<?> clazz = overlay.getClass();
@@ -281,7 +272,6 @@ public final class JeiOverlayHider {
                 }
             }
 
-            // Rank setters by "how visibility-ish" their name looks
             bestSetter = pickBestVisibilitySetter(setterCandidates);
             bestGetter = pickMatchingGetter(bestSetter, getterCandidates);
 
@@ -323,9 +313,8 @@ public final class JeiOverlayHider {
             if (n.contains("show"))    score += 4;
             if (n.contains("enable"))  score += 3;
             if (n.contains("list"))    score += 1;
-            if (n.equals("setvisible")) score += 2; // very likely the right one
+            if (n.equals("setvisible")) score += 2;
 
-            // Prefer more "visibility-like" names
             if (score > bestScore) {
                 bestScore = score;
                 best = m;
@@ -344,7 +333,7 @@ public final class JeiOverlayHider {
         String suffix;
 
         if (setterName.startsWith("set")) {
-            suffix = setterName.substring(3); // "Visible" from "setVisible"
+            suffix = setterName.substring(3);
         } else {
             suffix = setterName;
         }

@@ -1,29 +1,137 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/neoforge/menu/ScrollSealingMenu.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/neoforge/menu/ScrollSealingMenu.java
 package net.z2six.featheredfriend.neoforge.menu;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.world.Container;
+import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
 import org.slf4j.Logger;
 
 /**
+ * // neoforge/src/main/java/net/z2six/featheredfriend/neoforge/menu/ScrollSealingMenu.java
+ *
  * ScrollSealingMenu
  *
- * Minimal backend for the Scroll Sealing GUI.
- * - Contains no custom slots or player inventory slots.
- * - Exists only so we can use an AbstractContainerScreen on the client.
+ * Backend for the Scroll Sealing GUI.
+ *
+ * Contains:
+ *  - 9-slot "attachment" bar used by the EnderPearlInventoryScreen (indices 0..8).
+ *  - Player inventory 3x9 (indices 9..35).
+ *  - Player hotbar 1x9 (indices 36..44).
+ *
+ * Behaviour:
+ *  - Items placed into the attachment bar stay in this menu while switching between
+ *    ScrollSealingScreen and EnderPearlInventoryScreen.
+ *  - When the container is actually closed (e.g. player ESC from ScrollSealingScreen),
+ *    all attachment items are refunded to the player (or dropped if inventory is full).
+ *
+ * It also maintains client-side text state for:
+ *  - date text
+ *  - recipient line
+ *  - message body
+ *  - signature text
+ *
+ * Text state is currently client-only and unsynced; it's just to preserve what the
+ * player typed while swapping between screens.
  */
 public class ScrollSealingMenu extends AbstractContainerMenu {
 
     private static final Logger LOG = LogUtils.getLogger();
 
+    // ---------------------------------------------------------------------
+    // Attachment / inventory slot layout
+    // ---------------------------------------------------------------------
+
+    // 9 attachment slots (input items to be sent with the scroll)
+    private static final int ATTACHMENT_SLOT_COUNT = 9;
+
+    // Slot index layout
+    public static final int ATTACHMENT_START = 0;
+    public static final int ATTACHMENT_END = ATTACHMENT_START + ATTACHMENT_SLOT_COUNT - 1; // 0..8
+
+    public static final int PLAYER_INV_START = ATTACHMENT_END + 1; // 9
+    public static final int PLAYER_INV_END = PLAYER_INV_START + 27 - 1; // 9..35 (3x9)
+
+    public static final int HOTBAR_START = PLAYER_INV_END + 1; // 36
+    public static final int HOTBAR_END = HOTBAR_START + 9 - 1; // 36..44
+
+    private final Container attachmentContainer;
+    private final Inventory playerInventory;
+
+    // ---------------------------------------------------------------------
+    // Client-side text state (not synced to server yet)
+    // ---------------------------------------------------------------------
+
+    private String clientDateText = "";
+    private String clientRecipientText = "";
+    private String clientMessageText = "";
+    private String clientSignatureText = "";
+
     public ScrollSealingMenu(int containerId, Inventory playerInventory) {
         super(FFNeoForgeMenus.SCROLL_SEALING_MENU.get(), containerId);
+        this.playerInventory = playerInventory;
+        this.attachmentContainer = new SimpleContainer(ATTACHMENT_SLOT_COUNT);
+
         LOG.debug("[ScrollSealingMenu] Creating menu id={} for player={}",
                 containerId, playerInventory.player.getGameProfile().getName());
+
+        // -----------------------------------------------------------------
+        // Attachment bar slots (0..8) — 1x9 top row in inventory.png
+        //
+        // Left-hand item slot:
+        //  - Slot 0: x = 8,  y = 17
+        //  - Slot 1: x = 26, y = 17
+        //  => x = 8 + 18 * i, y = 17
+        // -----------------------------------------------------------------
+        for (int i = 0; i < ATTACHMENT_SLOT_COUNT; i++) {
+            int x = 8 + (i * 18);
+            int y = 17;
+            this.addSlot(new Slot(this.attachmentContainer, i, x, y));
+        }
+
+        // -----------------------------------------------------------------
+        // Player inventory (3x9, indices 9..35) in inventory.png
+        //
+        // Top-left item slot in 3x9 grid:
+        //  - x = 8,  y = 49
+        // Second slot on 2nd row:
+        //  - x = 26, y = 67
+        // => rows: y = 49, 67, 85 (49 + 18 * row)
+        //    cols: x = 8 + 18 * col
+        // -----------------------------------------------------------------
+        for (int row = 0; row < 3; ++row) {
+            int y = 49 + row * 18;
+            for (int col = 0; col < 9; ++col) {
+                int index = col + row * 9 + 9; // player inventory index
+                int x = 8 + col * 18;
+                this.addSlot(new Slot(playerInventory, index, x, y));
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // Player hotbar (1x9, indices 36..44) in inventory.png
+        //
+        // First item slot in action bar:
+        //  - x = 8,  y = 107
+        // Second:
+        //  - x = 26, y = 107
+        // => x = 8 + 18 * col, y = 107
+        // -----------------------------------------------------------------
+        for (int col = 0; col < 9; ++col) {
+            int x = 8 + col * 18;
+            int y = 107;
+            this.addSlot(new Slot(playerInventory, col, x, y));
+        }
+
+        LOG.debug("[ScrollSealingMenu] Slot layout: attachment[{}..{}], inv[{}..{}], hotbar[{}..{}]",
+                ATTACHMENT_START, ATTACHMENT_END,
+                PLAYER_INV_START, PLAYER_INV_END,
+                HOTBAR_START, HOTBAR_END);
     }
 
     @Override
@@ -34,13 +142,149 @@ public class ScrollSealingMenu extends AbstractContainerMenu {
 
     @Override
     public ItemStack quickMoveStack(Player player, int index) {
-        // No slots -> nothing to quick-move.
-        return ItemStack.EMPTY;
+        try {
+            ItemStack empty = ItemStack.EMPTY;
+            if (index < 0 || index >= this.slots.size()) {
+                LOG.warn("[ScrollSealingMenu] quickMoveStack: index {} outside slots size {}", index, this.slots.size());
+                return empty;
+            }
+
+            Slot slot = this.slots.get(index);
+            if (slot == null || !slot.hasItem()) {
+                return empty;
+            }
+
+            ItemStack stackInSlot = slot.getItem();
+            ItemStack original = stackInSlot.copy();
+
+            // From attachment bar -> move to player inventory/hotbar
+            if (index >= ATTACHMENT_START && index <= ATTACHMENT_END) {
+                if (!this.moveItemStackTo(stackInSlot, PLAYER_INV_START, HOTBAR_END + 1, true)) {
+                    return empty;
+                }
+            }
+            // From player inventory/hotbar -> move to attachment bar
+            else if (index >= PLAYER_INV_START && index <= HOTBAR_END) {
+                if (!this.moveItemStackTo(stackInSlot, ATTACHMENT_START, ATTACHMENT_END + 1, false)) {
+                    return empty;
+                }
+            } else {
+                LOG.warn("[ScrollSealingMenu] quickMoveStack: index {} outside known ranges", index);
+                return empty;
+            }
+
+            if (stackInSlot.isEmpty()) {
+                slot.set(ItemStack.EMPTY);
+            } else {
+                slot.setChanged();
+            }
+
+            slot.onTake(player, stackInSlot);
+            return original;
+        } catch (Throwable t) {
+            LOG.error("[ScrollSealingMenu] quickMoveStack failed for index={}", index, t);
+            return ItemStack.EMPTY;
+        }
     }
 
     @Override
     public void removed(Player player) {
         super.removed(player);
-        // Nothing to clear; no internal inventory.
+
+        try {
+            if (player == null) {
+                LOG.warn("[ScrollSealingMenu] removed: player is null, skipping attachment refund");
+                return;
+            }
+
+            if (player.level().isClientSide) {
+                // Only refund on the logical server.
+                return;
+            }
+
+            LOG.debug("[ScrollSealingMenu] removed: refunding attachment items to player={}",
+                    player.getGameProfile().getName());
+
+            for (int i = 0; i < ATTACHMENT_SLOT_COUNT; i++) {
+                ItemStack stack = this.attachmentContainer.getItem(i);
+                if (stack.isEmpty()) {
+                    continue;
+                }
+
+                this.attachmentContainer.setItem(i, ItemStack.EMPTY);
+
+                boolean added = player.addItem(stack);
+                if (!added) {
+                    // Inventory full, drop safely at player's feet.
+                    player.drop(stack, false);
+                }
+            }
+        } catch (Throwable t) {
+            LOG.error("[ScrollSealingMenu] removed failed while refunding attachments", t);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Accessors for containers
+    // ---------------------------------------------------------------------
+
+    public Container getAttachmentContainer() {
+        return this.attachmentContainer;
+    }
+
+    public Inventory getPlayerInventory() {
+        return this.playerInventory;
+    }
+
+    // ---------------------------------------------------------------------
+    // Client text state accessors
+    // ---------------------------------------------------------------------
+
+    public String getClientDateText() {
+        return clientDateText;
+    }
+
+    public void setClientDateText(String clientDateText) {
+        String safe = clientDateText != null ? clientDateText : "";
+        if (!safe.equals(this.clientDateText)) {
+            LOG.debug("[ScrollSealingMenu] setClientDateText '{}'", safe);
+        }
+        this.clientDateText = safe;
+    }
+
+    public String getClientRecipientText() {
+        return clientRecipientText;
+    }
+
+    public void setClientRecipientText(String clientRecipientText) {
+        String safe = clientRecipientText != null ? clientRecipientText : "";
+        if (!safe.equals(this.clientRecipientText)) {
+            LOG.debug("[ScrollSealingMenu] setClientRecipientText '{}'", safe);
+        }
+        this.clientRecipientText = safe;
+    }
+
+    public String getClientMessageText() {
+        return clientMessageText;
+    }
+
+    public void setClientMessageText(String clientMessageText) {
+        String safe = clientMessageText != null ? clientMessageText : "";
+        if (!safe.equals(this.clientMessageText)) {
+            LOG.debug("[ScrollSealingMenu] setClientMessageText (len={})", safe.length());
+        }
+        this.clientMessageText = safe;
+    }
+
+    public String getClientSignatureText() {
+        return clientSignatureText;
+    }
+
+    public void setClientSignatureText(String clientSignatureText) {
+        String safe = clientSignatureText != null ? clientSignatureText : "";
+        if (!safe.equals(this.clientSignatureText)) {
+            LOG.debug("[ScrollSealingMenu] setClientSignatureText '{}'", safe);
+        }
+        this.clientSignatureText = safe;
     }
 }

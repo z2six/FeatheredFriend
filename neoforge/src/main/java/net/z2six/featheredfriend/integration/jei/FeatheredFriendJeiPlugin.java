@@ -12,6 +12,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.client.gui.EnderPearlInventoryScreen;
 import net.z2six.featheredfriend.client.gui.ScrollSealingScreen;
 import net.z2six.featheredfriend.client.gui.SealStampScreen;
 import net.z2six.featheredfriend.registry.FFItems;
@@ -30,6 +31,7 @@ import java.util.List;
  *  - Registers GUI handlers for:
  *      * ScrollSealingScreen
  *      * SealStampScreen
+ *      * EnderPearlInventoryScreen (attachments inventory)
  *    so JEI knows about our layout and tries not to overlap with it.
  *
  * NOTE:
@@ -80,6 +82,9 @@ public class FeatheredFriendJeiPlugin implements IModPlugin {
 
     @Override
     public void registerGuiHandlers(IGuiHandlerRegistration registration) {
+        // ---------------------------------------------------------------------
+        // ScrollSealingScreen: tell JEI our entire window is GUI area.
+        // ---------------------------------------------------------------------
         try {
             LOG.debug("FeatheredFriendJeiPlugin: Registering GUI handler for ScrollSealingScreen");
 
@@ -87,14 +92,6 @@ public class FeatheredFriendJeiPlugin implements IModPlugin {
                     ScrollSealingScreen.class,
                     new IGuiContainerHandler<ScrollSealingScreen>() {
 
-                        /**
-                         * Tell JEI about extra GUI areas so it can position its overlay
-                         * around our custom layout.
-                         *
-                         * Here we just say "our entire screen is GUI area", which tends
-                         * to make JEI try very hard not to overlap it. This does NOT
-                         * fully hide JEI, but it helps avoid overlay collisions.
-                         */
                         @Override
                         public List<Rect2i> getGuiExtraAreas(ScrollSealingScreen screen) {
                             try {
@@ -110,7 +107,6 @@ public class FeatheredFriendJeiPlugin implements IModPlugin {
                                         width, height, x, y
                                 );
 
-                                // Must return a List, not a generic Collection.
                                 return Collections.singletonList(fullScreen);
                             } catch (Throwable t) {
                                 LOG.error(
@@ -164,6 +160,46 @@ public class FeatheredFriendJeiPlugin implements IModPlugin {
             );
         } catch (Throwable t) {
             LOG.error("FeatheredFriendJeiPlugin: registerGuiHandlers failed for SealStampScreen", t);
+        }
+
+        // ---------------------------------------------------------------------
+        // EnderPearlInventoryScreen: attachments inventory GUI
+        //  - Mark entire window as GUI area so JEI moves away from it.
+        // ---------------------------------------------------------------------
+        try {
+            LOG.debug("FeatheredFriendJeiPlugin: Registering GUI handler for EnderPearlInventoryScreen");
+
+            registration.addGuiContainerHandler(
+                    EnderPearlInventoryScreen.class,
+                    new IGuiContainerHandler<EnderPearlInventoryScreen>() {
+                        @Override
+                        public List<Rect2i> getGuiExtraAreas(EnderPearlInventoryScreen screen) {
+                            try {
+                                int x = 0;
+                                int y = 0;
+                                int width = screen.width;
+                                int height = screen.height;
+
+                                Rect2i fullScreen = new Rect2i(x, y, width, height);
+
+                                LOG.debug(
+                                        "FeatheredFriendJeiPlugin: getGuiExtraAreas for EnderPearlInventoryScreen -> {}x{} at {},{}",
+                                        width, height, x, y
+                                );
+
+                                return Collections.singletonList(fullScreen);
+                            } catch (Throwable t) {
+                                LOG.error(
+                                        "FeatheredFriendJeiPlugin: getGuiExtraAreas failed for EnderPearlInventoryScreen",
+                                        t
+                                );
+                                return Collections.emptyList();
+                            }
+                        }
+                    }
+            );
+        } catch (Throwable t) {
+            LOG.error("FeatheredFriendJeiPlugin: registerGuiHandlers failed for EnderPearlInventoryScreen", t);
         }
     }
 }
