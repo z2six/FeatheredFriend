@@ -31,6 +31,7 @@ import java.util.UUID;
  *  - "Dear Recipient" field (single-line via MultiLineScrollTextWidget) using Gothic font.
  *  - Multi-line message body widget using Gothic font + newline support.
  *  - Signature field ("Signature" placeholder) using Gothic font, auto-wrapping to 2 lines.
+ *      * Acts as the "Sign" control: hover turns placeholder yellow, click performs signing.
  *  - Player list overlay using RecipientOverlay (vanilla font).
  *  - Custom animated scroll background (opening/closing) synced to UI timings.
  *  - Animated custom pearl button on the right side of the scroll:
@@ -192,17 +193,11 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private static final int MESSAGE_MAX_LINES = 12;
 
     // Signature widget config (below the message, near bottom-left)
-    private static final int SIGNATURE_X = 30;
-    private static final int SIGNATURE_Y = GUI_HEIGHT - 40;
+    private static final int SIGNATURE_X = 85;
+    private static final int SIGNATURE_Y = GUI_HEIGHT - 20;
     private static final int SIGNATURE_WIDTH = 208;
     private static final int SIGNATURE_HEIGHT = 14;
     private static final int SIGNATURE_MAX_CHARS = 128;
-
-    // "Sign" button config (bottom-left, under signature line)
-    private static final int SIGN_BUTTON_X = 20;
-    private static final int SIGN_BUTTON_Y = GUI_HEIGHT - 22;
-    private static final int SIGN_BUTTON_WIDTH = 80;
-    private static final int SIGN_BUTTON_HEIGHT = 18;
 
     // "Seal" button config (appears after OUTRO_DELAY_TICKS)
     private static final int SEAL_BUTTON_X = 20;
@@ -210,13 +205,16 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private static final int SEAL_BUTTON_WIDTH = 80;
     private static final int SEAL_BUTTON_HEIGHT = 18;
 
+    // Signature placeholder colors
+    private static final int SIGNATURE_PLACEHOLDER_COLOR_DEFAULT = 0x707070;
+    private static final int SIGNATURE_PLACEHOLDER_COLOR_HOVER = 0x000000;
+
     // Widgets
     private MultiLineScrollTextWidget recipientField;
     private MultiLineScrollTextWidget messageWidget;
     private MultiLineScrollTextWidget signatureWidget;
 
     // Buttons
-    private Button signButton;
     private Button sealButton;
 
     // Recipient player selection (UUID is our ground truth)
@@ -301,6 +299,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         );
         this.signatureWidget.setText("");
         this.signatureWidget.setEditable(false);
+        this.signatureWidget.setPlaceholderColor(SIGNATURE_PLACEHOLDER_COLOR_DEFAULT);
         this.addRenderableWidget(this.signatureWidget);
 
         // Initially: text widgets exist but are completely hidden; they'll fade in later.
@@ -313,20 +312,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         if (this.signatureWidget != null) {
             this.signatureWidget.visible = false;
         }
-
-        // "Sign" button (bottom-left, under signature field)
-        this.signButton = Button.builder(
-                        Component.literal("Sign"),
-                        b -> onSignButtonClicked()
-                )
-                .bounds(
-                        this.leftPos + SIGN_BUTTON_X,
-                        this.topPos + SIGN_BUTTON_Y,
-                        SIGN_BUTTON_WIDTH,
-                        SIGN_BUTTON_HEIGHT
-                )
-                .build();
-        this.addRenderableWidget(this.signButton);
 
         // Seal button is created later after OUTRO_DELAY_TICKS
         this.sealButton = null;
@@ -362,11 +347,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
 
         setWidgetsAlpha(0.0f);          // fully transparent
         setWidgetsInteractive(false);   // non-editable, no typing
-
-        if (this.signButton != null) {
-            this.signButton.visible = false;
-            this.signButton.active = false;
-        }
 
         LOG.debug("[ScrollSealingScreen] init complete: scrollAnimPhase={}, uiPhase={}, pearlPhase={}",
                 scrollAnimPhase, uiPhase, pearlPhase);
@@ -460,11 +440,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
 
         setWidgetsInteractive(false);
 
-        if (this.signButton != null) {
-            this.signButton.active = false;
-            this.signButton.visible = false;
-        }
-
         // Start pearl disappearing animation at the same time as text fade-out
         pearlPhase = PearlPhase.DISAPPEARING;
         pearlPhaseTicks = 0;
@@ -522,10 +497,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 if (uiPhaseTicks >= INTRO_FADE_TICKS) {
                     setWidgetsAlpha(1.0f);
                     setWidgetsInteractive(true);
-                    if (this.signButton != null) {
-                        this.signButton.visible = true;
-                        this.signButton.active = true;
-                    }
                     uiPhase = UiPhase.IDLE;
                     uiPhaseTicks = 0;
                     LOG.debug("[ScrollSealingScreen] Intro fade finished -> IDLE");
@@ -902,6 +873,15 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
             super.render(guiGraphics, mouseX, mouseY, partialTick);
 
+            // Update signature placeholder color (hover -> yellow) while acting as "Sign" control.
+            if (this.signatureWidget != null && uiPhase == UiPhase.IDLE) {
+                boolean hoverSignature = isMouseOverSignature(mouseX, mouseY)
+                        && this.signatureWidget.getText().isEmpty();
+                this.signatureWidget.setPlaceholderColor(
+                        hoverSignature ? SIGNATURE_PLACEHOLDER_COLOR_HOVER : SIGNATURE_PLACEHOLDER_COLOR_DEFAULT
+                );
+            }
+
             if (this.recipientOverlay != null && this.recipientOverlay.isActive()) {
                 this.recipientOverlay.render(guiGraphics, mouseX, mouseY, partialTick);
             }
@@ -929,6 +909,16 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 if (consumed) {
                     return true;
                 }
+            }
+
+            // Signature placeholder acts as "Sign" button:
+            if (button == 0
+                    && this.signatureWidget != null
+                    && isUiInteractive()
+                    && this.signatureWidget.getText().isEmpty()
+                    && isMouseOverSignature(mouseX, mouseY)) {
+                onSignButtonClicked();
+                return true;
             }
 
             if (button == 0 && isMouseOverPearlIcon(mouseX, mouseY) && isPearlClickable()) {
@@ -965,6 +955,17 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         int y0 = this.topPos + PEARL_Y;
         int x1 = x0 + PEARL_WIDTH;
         int y1 = y0 + PEARL_HEIGHT;
+        return mouseX >= x0 && mouseX < x1 && mouseY >= y0 && mouseY < y1;
+    }
+
+    private boolean isMouseOverSignature(double mouseX, double mouseY) {
+        if (this.signatureWidget == null) {
+            return false;
+        }
+        int x0 = this.signatureWidget.getX();
+        int y0 = this.signatureWidget.getY();
+        int x1 = x0 + this.signatureWidget.getWidth();
+        int y1 = y0 + this.signatureWidget.getHeight();
         return mouseX >= x0 && mouseX < x1 && mouseY >= y0 && mouseY < y1;
     }
 

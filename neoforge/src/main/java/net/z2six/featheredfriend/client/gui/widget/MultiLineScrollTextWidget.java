@@ -49,7 +49,9 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
 
     // Text color is now configurable per-instance (default: black).
     private int textColor = 0x000000;
-    private final int placeholderColor = 0x707070;
+
+    // Placeholder color is now configurable per-instance (default: grey).
+    private int placeholderColor = 0x707070;
 
     // Per-widget alpha (0–255). 255 = fully opaque, 0 = fully transparent.
     private int alpha = 255;
@@ -188,6 +190,19 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             LOG.debug("[MultiLineScrollTextWidget] setTextColor -> 0x{}", Integer.toHexString(argb));
         } catch (Throwable t) {
             LOG.error("[MultiLineScrollTextWidget] setTextColor failed", t);
+        }
+    }
+
+    /**
+     * Allow callers to override the placeholder color for this widget instance.
+     * Used by ScrollSealingScreen to highlight the "Signature" placeholder on hover.
+     */
+    public void setPlaceholderColor(int rgb) {
+        try {
+            this.placeholderColor = rgb;
+            LOG.debug("[MultiLineScrollTextWidget] setPlaceholderColor -> 0x{}", Integer.toHexString(rgb));
+        } catch (Throwable t) {
+            LOG.error("[MultiLineScrollTextWidget] setPlaceholderColor failed", t);
         }
     }
 
@@ -1097,8 +1112,16 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         }
     }
 
+    private void moveCursorToStart() {
+        moveCursorToStart(false);
+    }
+
     private void moveCursorToEnd(boolean shift) {
         updateCursorAndSelection(this.text.length(), shift);
+    }
+
+    private void moveCursorToEnd() {
+        moveCursorToEnd(false);
     }
 
     private int findWordBoundary(int direction) {
@@ -1364,14 +1387,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         this.cursorIndex = newIndex;
         clearSelection();
         this.selectionAnchor = this.cursorIndex;
-    }
-
-    private void moveCursorToStart() {
-        moveCursorToStart(false);
-    }
-
-    private void moveCursorToEnd() {
-        moveCursorToEnd(false);
     }
 
     private void reflowLines() {
