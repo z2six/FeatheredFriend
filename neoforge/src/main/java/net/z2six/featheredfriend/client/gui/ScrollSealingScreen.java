@@ -269,6 +269,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         LOG.debug("[ScrollSealingScreen] init at leftPos={}, topPos={}", this.leftPos, this.topPos);
         this.clearWidgets();
 
+        // Default: assume we are playing the full intro animation
         scrollAnimPhase = ScrollAnimPhase.OPENING;
         uiPhase = UiPhase.INTRO_DELAY;
         uiPhaseTicks = 0;
@@ -341,7 +342,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         this.signatureWidget.setPlaceholderColor(SIGNATURE_PLACEHOLDER_COLOR_DEFAULT);
         this.addRenderableWidget(this.signatureWidget);
 
-        // Initially hidden; fade in later
+        // Initially hidden; fade in later (unless we skip intro)
         if (this.dateWidget != null) this.dateWidget.visible = false;
         if (this.recipientField != null) this.recipientField.visible = false;
         if (this.messageWidget != null) this.messageWidget.visible = false;
@@ -380,11 +381,40 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
 
         restoreEditorStateFromMenu();
 
-        setWidgetsAlpha(0.0f);
-        setWidgetsInteractive(false);
+        ScrollSealingMenu m = getScrollMenu();
+        if (m.isClientSkipIntroAnimation()) {
+            // Returning from the pearl inventory screen:
+            //  - Skip intro delay + fade + scroll opening animation.
+            //  - Go straight to "scroll fully open, text visible, pearl instantiated".
+            uiPhase = UiPhase.IDLE;
+            uiPhaseTicks = 0;
+            scrollAnimPhase = ScrollAnimPhase.OPEN_STILL;
 
-        LOG.debug("[ScrollSealingScreen] init complete: scrollAnimPhase={}, uiPhase={}, pearlPhase={}",
-                scrollAnimPhase, uiPhase, pearlPhase);
+            pearlPhase = PearlPhase.IDLE;
+            pearlPhaseTicks = 0;
+
+            if (this.dateWidget != null) {
+                this.dateWidget.visible = true;
+                fillDateWidgetIfNeeded();
+            }
+            if (this.recipientField != null) this.recipientField.visible = true;
+            if (this.messageWidget != null) this.messageWidget.visible = true;
+            if (this.signatureWidget != null) this.signatureWidget.visible = true;
+
+            setWidgetsAlpha(1.0f);
+            setWidgetsInteractive(true);
+
+            // Consume the hint so the next fresh open (new container) plays the animation again.
+            m.setClientSkipIntroAnimation(false);
+
+            LOG.debug("[ScrollSealingScreen] init: skipping intro animation (return from pearl inventory)");
+        } else {
+            setWidgetsAlpha(0.0f);
+            setWidgetsInteractive(false);
+
+            LOG.debug("[ScrollSealingScreen] init complete: scrollAnimPhase={}, uiPhase={}, pearlPhase={}",
+                    scrollAnimPhase, uiPhase, pearlPhase);
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -972,6 +1002,22 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     @Override
     protected void renderLabels(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY) {
         // No default labels.
+    }
+
+    /**
+     * Make all vanilla container-slot hover checks report "not hovering" while
+     * this screen is active, so attachment/inventory slots are truly inert here.
+     */
+    @Override
+    protected boolean isHovering(int x, int y, int width, int height, double mouseX, double mouseY) {
+        return false;
+    }
+
+    @Override
+    protected void renderTooltip(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        // Ensure no slot tooltip pops up from the hidden inventory slots.
+        this.hoveredSlot = null;
+        super.renderTooltip(guiGraphics, mouseX, mouseY);
     }
 
     // ---------------------------------------------------------------------

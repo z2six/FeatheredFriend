@@ -72,6 +72,18 @@ public class ScrollSealingMenu extends AbstractContainerMenu {
     private String clientMessageText = "";
     private String clientSignatureText = "";
 
+    // ---------------------------------------------------------------------
+    // Client-side animation state hints
+    // ---------------------------------------------------------------------
+
+    /**
+     * When true, the next ScrollSealingScreen that opens for this menu should
+     * skip its intro animation and go straight to the “fully open” state.
+     *
+     * This is set by EnderPearlInventoryScreen when closing back to the scroll GUI.
+     */
+    private boolean clientSkipIntroAnimation = false;
+
     public ScrollSealingMenu(int containerId, Inventory playerInventory) {
         super(FFNeoForgeMenus.SCROLL_SEALING_MENU.get(), containerId);
         this.playerInventory = playerInventory;
@@ -286,5 +298,20 @@ public class ScrollSealingMenu extends AbstractContainerMenu {
             LOG.debug("[ScrollSealingMenu] setClientSignatureText '{}'", safe);
         }
         this.clientSignatureText = safe;
+    }
+
+    // ---------------------------------------------------------------------
+    // Client animation state accessors
+    // ---------------------------------------------------------------------
+
+    public boolean isClientSkipIntroAnimation() {
+        return clientSkipIntroAnimation;
+    }
+
+    public void setClientSkipIntroAnimation(boolean clientSkipIntroAnimation) {
+        if (this.clientSkipIntroAnimation != clientSkipIntroAnimation) {
+            LOG.debug("[ScrollSealingMenu] setClientSkipIntroAnimation {}", clientSkipIntroAnimation);
+        }
+        this.clientSkipIntroAnimation = clientSkipIntroAnimation;
     }
 }
