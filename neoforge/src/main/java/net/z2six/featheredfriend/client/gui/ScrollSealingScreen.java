@@ -27,11 +27,13 @@ import java.util.UUID;
  * ScrollSealingScreen
  *
  * Visual front-end for ScrollSealingMenu.
- * For now:
+ * Layout:
+ *  - Date field at the top (auto-filled, non-editable).
  *  - "Dear Recipient" field (single-line via MultiLineScrollTextWidget) using Gothic font.
  *  - Multi-line message body widget using Gothic font + newline support.
  *  - Signature field ("Signature" placeholder) using Gothic font, auto-wrapping to 2 lines.
- *      * Acts as the "Sign" control: hover turns placeholder yellow, click performs signing.
+ *      * Acts as the "Sign" control: hover turns placeholder black, click performs signing.
+ *      * Now only auto-fills the signer name (no date).
  *  - Player list overlay using RecipientOverlay (vanilla font).
  *  - Custom animated scroll background (opening/closing) synced to UI timings.
  *  - Animated custom pearl button on the right side of the scroll:
@@ -177,16 +179,23 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private static final int GUI_WIDTH = SCROLL_FRAME_WIDTH; // 240
     private static final int GUI_HEIGHT = 200;
 
-    // Recipient field config (relative to GUI origin)
+    // Date field config (relative to GUI origin) — at the old recipient position
+    private static final int DATE_X = 30;
+    private static final int DATE_Y = 18;
+    private static final int DATE_WIDTH = 125;
+    private static final int DATE_HEIGHT = 14;
+    private static final int DATE_MAX_CHARS = 64;
+
+    // Recipient field config (now slightly lower than before)
     private static final int RECIPIENT_X = 30;   // aligned with message & signature
-    private static final int RECIPIENT_Y = 24;
+    private static final int RECIPIENT_Y = 36;
     private static final int RECIPIENT_WIDTH = 125;
     private static final int RECIPIENT_HEIGHT = 14;
     private static final int RECIPIENT_MAX_CHARS = 64;
 
-    // Message widget config
+    // Message widget config (also shifted down a bit)
     private static final int MESSAGE_X = 30;
-    private static final int MESSAGE_Y = 50;
+    private static final int MESSAGE_Y = 62;
     private static final int MESSAGE_WIDTH = 125;
     private static final int MESSAGE_HEIGHT = 6 * 9 + 10; // about 6 lines
     private static final int MESSAGE_MAX_CHARS = 512;
@@ -210,6 +219,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private static final int SIGNATURE_PLACEHOLDER_COLOR_HOVER = 0x000000;
 
     // Widgets
+    private MultiLineScrollTextWidget dateWidget;
     private MultiLineScrollTextWidget recipientField;
     private MultiLineScrollTextWidget messageWidget;
     private MultiLineScrollTextWidget signatureWidget;
@@ -253,6 +263,23 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         // Pearl starts hidden until intro fade-in begins
         pearlPhase = PearlPhase.HIDDEN;
         pearlPhaseTicks = 0;
+
+        // Date field: auto-filled, non-editable, single line, Gothic font
+        this.dateWidget = new MultiLineScrollTextWidget(
+                this.font,
+                this.leftPos + DATE_X,
+                this.topPos + DATE_Y,
+                DATE_WIDTH,
+                DATE_HEIGHT,
+                DATE_MAX_CHARS,
+                1,
+                Component.literal("Date"),
+                GOTHIC_FONT_ID,
+                false // allowNewlines
+        );
+        this.dateWidget.setEditable(false);
+        this.dateWidget.setText(""); // will be auto-filled at fade-in start
+        this.addRenderableWidget(this.dateWidget);
 
         // Recipient field (single-line custom widget) using Gothic font, NO newlines
         this.recipientField = new MultiLineScrollTextWidget(
@@ -303,6 +330,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         this.addRenderableWidget(this.signatureWidget);
 
         // Initially: text widgets exist but are completely hidden; they'll fade in later.
+        if (this.dateWidget != null) {
+            this.dateWidget.visible = false;
+        }
         if (this.recipientField != null) {
             this.recipientField.visible = false;
         }
@@ -374,6 +404,56 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     }
 
     // ---------------------------------------------------------------------
+    // Date helper
+    // ---------------------------------------------------------------------
+
+    /**
+     * Uses the custom calendar system to build a user-facing date string.
+     * Falls back to "Unknown Date" if something fails.
+     */
+    private String computeCurrentDateString() {
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null || mc.level == null) {
+                LOG.warn("[ScrollSealingScreen] computeCurrentDateString: Minecraft/level not ready, using fallback");
+                return "Unknown Date";
+            }
+
+            long dayTime = mc.level.getDayTime();
+            long ticksPerDay = FFCalendarConfig.TICKS_PER_DAY;
+            if (ticksPerDay <= 0L) {
+                LOG.warn("[ScrollSealingScreen] computeCurrentDateString: FFCalendarConfig.TICKS_PER_DAY <= 0 ({}), using 24000 fallback", ticksPerDay);
+                ticksPerDay = 24000L;
+            }
+            long dayIndex = dayTime / ticksPerDay;
+
+            Component dateComponent = ClientCalendarEvents.buildDateMessage(dayIndex);
+            return dateComponent.getString();
+        } catch (Throwable t) {
+            LOG.error("[ScrollSealingScreen] computeCurrentDateString failed", t);
+            return "Unknown Date";
+        }
+    }
+
+    private void fillDateWidgetIfNeeded() {
+        if (this.dateWidget == null) {
+            return;
+        }
+        try {
+            String current = this.dateWidget.getText();
+            if (current != null && !current.isEmpty()) {
+                return;
+            }
+            String dateString = computeCurrentDateString();
+            this.dateWidget.setText(dateString);
+            this.dateWidget.setCursorToEnd();
+            LOG.debug("[ScrollSealingScreen] Date widget filled with '{}'", dateString);
+        } catch (Throwable t) {
+            LOG.error("[ScrollSealingScreen] fillDateWidgetIfNeeded failed", t);
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // Signing logic
     // ---------------------------------------------------------------------
 
@@ -401,28 +481,21 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 return;
             }
 
-            long dayTime = mc.level.getDayTime();
-            long ticksPerDay = FFCalendarConfig.TICKS_PER_DAY;
-            if (ticksPerDay <= 0L) {
-                LOG.warn("[ScrollSealingScreen] onSignButtonClicked: FFCalendarConfig.TICKS_PER_DAY <= 0 ({}), using 24000 fallback", ticksPerDay);
-                ticksPerDay = 24000L;
-            }
-            long dayIndex = dayTime / ticksPerDay;
-
-            Component dateComponent = ClientCalendarEvents.buildDateMessage(dayIndex);
-            String dateString = dateComponent.getString();
+            String dateString = computeCurrentDateString();
 
             signerUuid = mc.player.getUUID();
             String signerName = mc.player.getGameProfile().getName();
 
-            String fullSignature = "Signed by: " + signerName + ", " + dateString;
+            // Signature now only contains the signer name (no date).
+            String fullSignature = signerName;
 
             if (signatureWidget != null) {
                 signatureWidget.setText(fullSignature);
                 signatureWidget.setCursorToEnd();
             }
 
-            LOG.info("[ScrollSealingScreen] Scroll signed by {} ({}) on {}", signerName, signerUuid, dateString);
+            LOG.info("[ScrollSealingScreen] Scroll signed by {} ({}) on {}",
+                    signerName, signerUuid, dateString);
 
             beginOutroFade();
         } catch (Throwable t) {
@@ -477,6 +550,10 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 if (uiPhaseTicks == 1) {
                     setWidgetsAlpha(0.0f);
 
+                    if (this.dateWidget != null) {
+                        this.dateWidget.visible = true;
+                        fillDateWidgetIfNeeded(); // auto-fill date right as the fade-in starts
+                    }
                     if (this.recipientField != null) {
                         this.recipientField.visible = true;
                     }
@@ -521,6 +598,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                     setWidgetsAlpha(0.0f);
                     setWidgetsInteractive(false);
 
+                    if (this.dateWidget != null) {
+                        this.dateWidget.visible = false;
+                    }
                     if (this.recipientField != null) {
                         this.recipientField.visible = false;
                     }
@@ -578,6 +658,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         if (a < 0) a = 0;
         if (a > 255) a = 255;
 
+        if (this.dateWidget != null) {
+            this.dateWidget.setAlpha(a);
+        }
         if (this.recipientField != null) {
             this.recipientField.setAlpha(a);
         }
@@ -596,7 +679,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         if (this.messageWidget != null) {
             this.messageWidget.setEditable(enabled);
         }
-        // Signature is always non-editable (just shows result)
+        // Date is always non-editable, signature is always non-editable (just shows result)
         if (!enabled) {
             if (this.recipientField != null) {
                 this.recipientField.setFocused(false);
@@ -659,6 +742,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     protected void containerTick() {
         super.containerTick();
         try {
+            if (this.dateWidget != null) {
+                this.dateWidget.tick();
+            }
             if (this.recipientField != null) {
                 this.recipientField.tick();
             }
@@ -873,7 +959,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
             super.render(guiGraphics, mouseX, mouseY, partialTick);
 
-            // Update signature placeholder color (hover -> yellow) while acting as "Sign" control.
+            // Update signature placeholder color (hover -> black) while acting as "Sign" control.
             if (this.signatureWidget != null && uiPhase == UiPhase.IDLE) {
                 boolean hoverSignature = isMouseOverSignature(mouseX, mouseY)
                         && this.signatureWidget.getText().isEmpty();
