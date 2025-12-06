@@ -1,3 +1,4 @@
+// neoforge/src/main/java/net/z2six/featheredfriend/sigil/SealSigilGenerator.java
 package net.z2six.featheredfriend.sigil;
 
 import com.mojang.logging.LogUtils;
@@ -52,12 +53,13 @@ import java.util.UUID;
  *     - All randomness is driven by a deterministic RandomSource created from a 64-bit seed.
  *     - Seed is derived either from:
  *         * (playerUUID + secretString[0..128]) via SHA-256 (legacy path), or
- *         * a one-way hash over (secret + slices + shapeSetIndex) for secret-only behavior.
+ *         * a one-way hash over (secret) for secret-only behavior; slices + shapeSetIndex
+ *           are passed separately into the generator.
  *
  * Public entry points:
  *  - generateForPlayer(UUID, String)                     // legacy UUID+secret path
  *  - generateFromSeed(long, int, int, int)               // full control for preview/GUI
- *  - computeSeedFromSecretOnly(String, int, int)         // secret+slices+shapeSet -> seed (no UUID)
+ *  - computeSeedFromSecretOnly(String, int, int)         // secret -> SHA256 -> seed (no UUID)
  */
 public final class SealSigilGenerator {
 
@@ -123,36 +125,40 @@ public final class SealSigilGenerator {
     }
 
     /**
-     * Option B: secret-only seed derivation.
+     * Secret-only seed derivation.
      *
      * Deterministic:
-     *  - Same (secret, slices, shapeSetIndex) => same seed.
+     *  - Same secret => same seed.
      *
-     * One-way:
-     *  - Given only the seed, you can't recover the secret except by brute-forcing
-     *    candidate secrets and checking which sigil matches.
+     * Slices + shapeSetIndex are NOT mixed into the seed on purpose; they are
+     * supplied separately to the generator and stored separately in NBT.
      */
-    public static long computeSeedFromSecretOnly(@NotNull String secret,
-                                                 int slices,
-                                                 int shapeSetIndex) {
+    // -------------------------------------------------------------------------
+// Secret-only seed derivation (new v3):
+// Secret -> SHA256 -> Seed
+// No slices, no shapeSetIndex used in hashing.
+// -------------------------------------------------------------------------
+    public static long computeSeedFromSecretOnly(@NotNull String secret) {
         String trimmed = secret;
         if (trimmed.length() > MAX_SECRET_LENGTH) {
             trimmed = trimmed.substring(0, MAX_SECRET_LENGTH);
         }
 
-        // Domain separate this so it can never collide with the UUID-based seed.
-        String input = trimmed + "|" + slices + "|" + shapeSetIndex + "|featheredfriend_sigil_secret";
+        // Domain separation ensures secrets can't collide with legacy UUID+secret path.
+        String input = trimmed + "|featheredfriend_secret_v3";
 
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             byte[] hash = md.digest(input.getBytes(StandardCharsets.UTF_8));
             ByteBuffer buf = ByteBuffer.wrap(hash);
             long seed = buf.getLong();
-            LOG.debug("[SealSigilGenerator] computeSeedFromSecretOnly: secretPreview='{}' len={} slices={} shapeset={} -> seed={}",
-                    safeSecretPreview(trimmed), trimmed.length(), slices, shapeSetIndex, seed);
+
+            LOG.debug("[SealSigilGenerator] computeSeedFromSecretOnly(v3): secretPreview='{}' len={} -> seed={}",
+                    safeSecretPreview(trimmed), trimmed.length(), seed);
+
             return seed;
         } catch (Throwable t) {
-            LOG.error("[SealSigilGenerator] computeSeedFromSecretOnly failed, falling back to String.hashCode()", t);
+            LOG.error("[SealSigilGenerator] computeSeedFromSecretOnly(v3) failed, fallback to hashCode()", t);
             return input.hashCode();
         }
     }
@@ -306,11 +312,17 @@ public final class SealSigilGenerator {
             double twoPi = Math.PI * 2.0;
             double angleStep = twoPi / radialSamples;
 
-            double maxR = radius - 1;
-            double minR = radius * 0.80;
-
+            // Make the disc much closer to a true circle:
+            //  - minR very close to radius
+            //  - small random-walk step size
+            // This keeps only a subtle "hand-poured wax" wobble instead of a big splatter.
+            double maxR = radius - 1.0;
+            double minR = radius * 0.95; // was 0.80 => too blobby / splattery
             double currentR = (maxR + minR) * 0.5;
-            double maxStep = 0.35;
+
+            // Step size controls how jagged the boundary is.
+            // Lower value => smoother, more circular.
+            double maxStep = 0.12; // was 0.35 => significantly reduced jaggedness
 
             double minSeen = Double.POSITIVE_INFINITY;
             double maxSeen = Double.NEGATIVE_INFINITY;

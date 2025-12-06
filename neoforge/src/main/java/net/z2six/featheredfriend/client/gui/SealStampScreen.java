@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/client/gui/SealStampScreen.java
+// neoforge/src/main/java/net/z2six/featheredfriend/client/gui/SealStampScreen.java
 package net.z2six.featheredfriend.client.gui;
 
 import com.mojang.logging.LogUtils;
@@ -34,16 +34,19 @@ import java.util.List;
  *
  * Left column: Etchings dropdown, Style dropdown, Carve button, GUI-scale toggle button.
  *
- * Right side: "Sigil Preview" area with a wooden circular disc using vanilla oak planks.
+ * Right side: "Sigil Preview" area:
+ *  - Renders a wax seal texture in the center of the preview box.
+ *  - Overlays the generated sigil on top as a semi-transparent black mask.
  *
  * On "Carve" click:
- *  * Spawns a burst of SigilEtchingParticle chips from the disc.
+ *  * Spawns a burst of SigilEtchingParticle chips from the sigil area.
  *  * All motion / feel is controlled inside SigilEtchingParticle via createForCarve().
  *
  * Sigil preview:
- *  * Seed is derived from (secret, slices, styleIndex) using SealSigilGenerator.computeSeedFromSecretOnly().
+ *  * Seed is derived from secret only using SealSigilGenerator.computeSeedFromSecretOnly().
+ *  * Slices and styleIndex are applied afterwards via generateFromSeed().
  *  * Pattern is regenerated when secret changes or when slices/style buttons are clicked.
- *  * Rendered as carved lines inside the wooden disc, fitting the circle.
+ *  * Rendered as 25% opaque black strokes on the wax seal, fitting inside it.
  *
  * Sigil → NBT saving will be wired in a later step.
  */
@@ -51,16 +54,13 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
     private static final Logger LOG = LogUtils.getLogger();
 
-    private static final ResourceLocation SEAL_STAMP_GUI_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/seal_stamp.png");
-
     // Gothic font id (same as used by ScrollSealingScreen / MultiLineScrollTextWidget)
     private static final ResourceLocation GOTHIC_FONT_ID =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12");
 
-    // Wood disc background: vanilla oak planks texture
-    private static final ResourceLocation DISC_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath("minecraft", "textures/block/oak_planks.png");
+    // Wax seal texture used for the sigil preview (39x38px)
+    private static final ResourceLocation WAX_SEAL_TEXTURE =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/stampscreen/wax_seal.png");
 
     // ---------------------------------------------------------------------
     // GUI dimensions
@@ -82,7 +82,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     // Position
     // Y is absolute from top of GUI; X is centered + offset.
     private static final int SECRET_Y = 20;
-    private static final int SECRET_X_OFFSET = -32; // negative -> shift left, positive -> shift right
+    private static final int SECRET_X_OFFSET = -30; // negative -> shift left, positive -> shift right
 
     // ---------------------------------------------------------------------
     // Left column (Etchings / Style / Carve / Scale) config
@@ -124,17 +124,30 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     // Label relative to preview box top.
     private static final int PREVIEW_LABEL_OFFSET_Y = -12;
 
-    /**
-     * Wooden disc radius in screen pixels.
-     */
-    private static final int DISC_RADIUS =
-            Math.min(PREVIEW_WIDTH, PREVIEW_HEIGHT) / 2 - 6;
+    // Wax seal texture dimensions (matching wax_seal.png)
+    private static final int WAX_SEAL_WIDTH = 39;
+    private static final int WAX_SEAL_HEIGHT = 38;
 
     /**
-     * Sigil radius inside the preview / disc, in screen pixels.
-     * Slightly smaller than the wooden disc to avoid touching the "cube circle" border.
+     * Scale factor for rendering the wax seal.
+     * Tweak this to make the seal bigger/smaller.
      */
-    private static final int SIGIL_RADIUS = (int) (DISC_RADIUS * 0.99f);
+    private static final float WAX_SEAL_SCALE = 2.0f;
+
+    private static final int SCALED_WAX_SEAL_WIDTH = Math.round(WAX_SEAL_WIDTH * WAX_SEAL_SCALE);
+    private static final int SCALED_WAX_SEAL_HEIGHT = Math.round(WAX_SEAL_HEIGHT * WAX_SEAL_SCALE);
+
+    /**
+     * Fraction of the wax seal diameter used for the sigil radius.
+     * 1.0f = reaches the edge of the seal; lower values keep it inset.
+     */
+    private static final float SIGIL_RADIUS_SCALE = 0.85f;
+
+    /**
+     * Sigil radius inside the wax seal, in screen pixels.
+     */
+    private static final int SIGIL_RADIUS =
+            (int) (Math.min(SCALED_WAX_SEAL_WIDTH, SCALED_WAX_SEAL_HEIGHT) * 0.5f * SIGIL_RADIUS_SCALE);
 
     // ---------------------------------------------------------------------
     // Etching options
@@ -144,6 +157,15 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     private static final int MAX_SLICES = 8;
 
     private static final String[] STYLE_NAMES = {"Medieval", "Fantasy", "Floral"};
+
+    // ---------------------------------------------------------------------
+    // Sigil overlay config
+    // ---------------------------------------------------------------------
+
+    /**
+     * Alpha for the sigil strokes (0..1). 0.25 = 25% opaque black.
+     */
+    private static final float SIGIL_ALPHA = 0.25f;
 
     // ---------------------------------------------------------------------
     // State & widgets
@@ -367,10 +389,8 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
     /**
      * Regenerate the sigil pattern based on current secret, slices, and style index.
-     * Uses the secret-only seed (Option B) so that:
-     *  - same inputs => same sigil,
-     *  - no UUID dependency,
-     *  - the secret itself never leaves the client (only the derived seed/NBT will later be saved).
+     * Seed is derived from the secret only (Secret -> SHA256 -> Seed), and then
+     * slices + shapeSetIndex are fed into generateFromSeed().
      */
     private void regenerateSigilPattern() {
         try {
@@ -382,7 +402,8 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             int slices = currentSlices;
             int shapeSetIndex = Math.max(0, Math.min(currentStyleIndex, STYLE_NAMES.length - 1));
 
-            long seed = SealSigilGenerator.computeSeedFromSecretOnly(secret, slices, shapeSetIndex);
+            // Secret -> SHA256 -> Seed (no slices/style in the seed)
+            long seed = SealSigilGenerator.computeSeedFromSecretOnly(secret);
 
             int radius = SIGIL_RADIUS;
 
@@ -398,8 +419,14 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             this.currentPatternSize = pattern.getSize();
             this.lastSecretForSigil = secret;
 
-            LOG.debug("[SealStampScreen] regenerateSigilPattern: seed={} radius={} size={} slices={} shapeSetIndex={}",
-                    seed, radius, currentPatternSize, slices, shapeSetIndex);
+            LOG.debug(
+                    "[SealStampScreen] regenerateSigilPattern: seed={} radius={} size={} slices={} shapeSetIndex={}",
+                    seed,
+                    radius,
+                    currentPatternSize,
+                    slices,
+                    shapeSetIndex
+            );
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] regenerateSigilPattern failed", t);
             this.currentPattern = null;
@@ -472,30 +499,6 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                             int mouseX,
                             int mouseY) {
         try {
-            var resourceManager = Minecraft.getInstance().getResourceManager();
-            boolean hasTexture = resourceManager.getResource(SEAL_STAMP_GUI_TEXTURE).isPresent();
-
-            if (hasTexture) {
-                guiGraphics.blit(
-                        SEAL_STAMP_GUI_TEXTURE,
-                        this.leftPos,
-                        this.topPos,
-                        0,
-                        0,
-                        this.imageWidth,
-                        this.imageHeight
-                );
-            } else {
-                guiGraphics.fill(
-                        this.leftPos,
-                        this.topPos,
-                        this.leftPos + this.imageWidth,
-                        this.topPos + this.imageHeight,
-                        0xC0F5F0D8
-                );
-            }
-        } catch (Throwable t) {
-            LOG.error("[SealStampScreen] renderBg failed, falling back to simple fill", t);
             guiGraphics.fill(
                     this.leftPos,
                     this.topPos,
@@ -503,6 +506,8 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                     this.topPos + this.imageHeight,
                     0xC0F5F0D8
             );
+        } catch (Throwable t) {
+            LOG.error("[SealStampScreen] renderBg failed", t);
         }
     }
 
@@ -542,6 +547,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
             guiGraphics.drawString(this.font, label, labelX, labelY, 0xFF000000, false);
 
+            // Soft background behind the preview
             guiGraphics.fill(
                     previewX,
                     previewY,
@@ -556,107 +562,92 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             guiGraphics.fill(previewX, previewY, previewX + 1, previewY + PREVIEW_HEIGHT, 0x80000000);
             guiGraphics.fill(previewX + PREVIEW_WIDTH - 1, previewY, previewX + PREVIEW_WIDTH, previewY + PREVIEW_HEIGHT, 0x80000000);
 
-            renderWoodenDisc(guiGraphics, previewX, previewY);
-            renderSigilGlyph(guiGraphics, previewX, previewY);
+            // Center of the preview box
+            int centerX = previewX + PREVIEW_WIDTH / 2;
+            int centerY = previewY + PREVIEW_HEIGHT / 2;
+
+            // 1) Draw wax seal texture in the center (scaled up)
+            renderWaxSeal(guiGraphics, centerX, centerY);
+
+            // 2) Render sigil as 25% opaque black on top, centered on the seal
+            renderSigilGlyph(guiGraphics, centerX, centerY, previewX, previewY);
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] renderPreviewArea failed", t);
         }
     }
 
-    private void renderWoodenDisc(@NotNull GuiGraphics guiGraphics, int previewX, int previewY) {
+    /**
+     * Draw the wax seal texture centered at (centerX, centerY), scaled up.
+     */
+    private void renderWaxSeal(@NotNull GuiGraphics guiGraphics, int centerX, int centerY) {
         try {
+            int sealX = centerX - SCALED_WAX_SEAL_WIDTH / 2;
+            int sealY = centerY - SCALED_WAX_SEAL_HEIGHT / 2;
+
             var resourceManager = Minecraft.getInstance().getResourceManager();
-            boolean hasTexture = resourceManager.getResource(DISC_TEXTURE).isPresent();
-            if (!hasTexture) {
-                renderFallbackDisc(guiGraphics, previewX, previewY);
-                return;
-            }
+            boolean hasTexture = resourceManager.getResource(WAX_SEAL_TEXTURE).isPresent();
 
-            int centerX = previewX + PREVIEW_WIDTH / 2;
-            int centerY = previewY + PREVIEW_HEIGHT / 2;
-
-            int radius = DISC_RADIUS;
-            if (radius <= 0) {
-                return;
-            }
-
-            int tileSize = 4;
-
-            for (int dy = -radius; dy <= radius; dy += tileSize) {
-                for (int dx = -radius; dx <= radius; dx += tileSize) {
-                    int distSq = dx * dx + dy * dy;
-                    if (distSq > radius * radius) {
-                        continue;
+            if (hasTexture) {
+                guiGraphics.blit(
+                        WAX_SEAL_TEXTURE,
+                        sealX,
+                        sealY,
+                        SCALED_WAX_SEAL_WIDTH,
+                        SCALED_WAX_SEAL_HEIGHT,
+                        0,
+                        0,
+                        WAX_SEAL_WIDTH,
+                        WAX_SEAL_HEIGHT,
+                        WAX_SEAL_WIDTH,
+                        WAX_SEAL_HEIGHT
+                );
+            } else {
+                // Fallback: simple wax-colored disc approximating the scaled size
+                int radius = Math.min(SCALED_WAX_SEAL_WIDTH, SCALED_WAX_SEAL_HEIGHT) / 2;
+                if (radius <= 0) {
+                    return;
+                }
+                int rSq = radius * radius;
+                for (int dy = -radius; dy <= radius; dy++) {
+                    int dySq = dy * dy;
+                    for (int dx = -radius; dx <= radius; dx++) {
+                        if (dx * dx + dySq <= rSq) {
+                            int x = centerX + dx;
+                            int y = centerY + dy;
+                            guiGraphics.fill(x, y, x + 1, y + 1, 0xFF9B2F2F);
+                        }
                     }
-
-                    int drawX = centerX + dx - tileSize / 2;
-                    int drawY = centerY + dy - tileSize / 2;
-
-                    guiGraphics.blit(
-                            DISC_TEXTURE,
-                            drawX,
-                            drawY,
-                            tileSize,
-                            tileSize,
-                            0,
-                            0,
-                            16,
-                            16,
-                            16,
-                            16
-                    );
                 }
             }
         } catch (Throwable t) {
-            LOG.error("[SealStampScreen] renderWoodenDisc failed; falling back to simple disc", t);
-            renderFallbackDisc(guiGraphics, previewX, previewY);
-        }
-    }
-
-    private void renderFallbackDisc(@NotNull GuiGraphics guiGraphics, int previewX, int previewY) {
-        int centerX = previewX + PREVIEW_WIDTH / 2;
-        int centerY = previewY + PREVIEW_HEIGHT / 2;
-
-        int radius = DISC_RADIUS;
-        if (radius <= 0) {
-            return;
-        }
-
-        int rSq = radius * radius;
-
-        for (int dy = -radius; dy <= radius; dy++) {
-            int dySq = dy * dy;
-            for (int dx = -radius; dx <= radius; dx++) {
-                if (dx * dx + dySq <= rSq) {
-                    int x = centerX + dx;
-                    int y = centerY + dy;
-                    guiGraphics.fill(x, y, x + 1, y + 1, 0xFF8B5A2B);
-                }
-            }
+            LOG.error("[SealStampScreen] renderWaxSeal failed", t);
         }
     }
 
     /**
-     * Render the sigil pattern as carved lines onto the wooden disc.
+     * Render the sigil pattern as 25% opaque black strokes on top of the wax seal.
      *
      * Inverted vs previous version:
-     *  - finalPixels[y][x] == true  => wax present   => we darken this (sigil body).
-     *  - finalPixels[y][x] == false => carved void   => we leave the plank visible.
+     *  - finalPixels[y][x] == true  => sigil body => we draw a black pixel here.
+     *  - finalPixels[y][x] == false => background => we leave just the wax texture.
+     *
+     * This does NOT mask or cut the wax seal itself; it only overlays pixels.
      */
-    private void renderSigilGlyph(@NotNull GuiGraphics guiGraphics, int previewX, int previewY) {
+    private void renderSigilGlyph(@NotNull GuiGraphics guiGraphics,
+                                  int centerX,
+                                  int centerY,
+                                  int previewX,
+                                  int previewY) {
         try {
             if (this.currentPixels == null || this.currentPatternSize <= 0) {
                 return;
             }
 
-            int centerX = previewX + PREVIEW_WIDTH / 2;
-            int centerY = previewY + PREVIEW_HEIGHT / 2;
-
-            int discRadius = SIGIL_RADIUS;
-            if (discRadius <= 0) {
+            int sigilRadius = SIGIL_RADIUS;
+            if (sigilRadius <= 0) {
                 return;
             }
-            int discRadiusSq = discRadius * discRadius;
+            int sigilRadiusSq = sigilRadius * sigilRadius;
 
             int patternRadius = this.currentPatternSize / 2;
 
@@ -665,8 +656,15 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             int boxRight = previewX + PREVIEW_WIDTH;
             int boxBottom = previewY + PREVIEW_HEIGHT;
 
-            // Dark, slightly reddish "burnt wood" color with transparency
-            int filledColor = 0x80826539;
+            // Clamp alpha to [0, 1] and convert to 0..255
+            float alphaF = Math.max(0.0f, Math.min(1.0f, SIGIL_ALPHA));
+            int alpha = (int) (alphaF * 255.0f);
+            if (alpha <= 0) {
+                return;
+            }
+
+            // 0xAA000000 -> semi-transparent black; AA is alpha
+            int sigilColor = (alpha << 24);
 
             for (int py = 0; py < currentPatternSize; py++) {
                 boolean[] row;
@@ -686,15 +684,17 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                         continue;
                     }
 
-                    int dx = px - patternRadius;
-                    int dy = py - patternRadius;
-                    int distSq = dx * dx + dy * dy;
-                    if (distSq > discRadiusSq) {
+                    // Inverted: we now draw where the sigil pixels are true (body),
+                    // and leave holes (false) as untouched wax.
+                    if (!wax) {
                         continue;
                     }
 
-                    // Inverted: draw where wax is present (true).
-                    if (!wax) {
+                    int dx = px - patternRadius;
+                    int dy = py - patternRadius;
+                    int distSq = dx * dx + dy * dy;
+                    if (distSq > sigilRadiusSq) {
+                        // Outside the sigil radius: ignore. This only clips the overlay, not the wax.
                         continue;
                     }
 
@@ -705,7 +705,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                         continue;
                     }
 
-                    guiGraphics.fill(sx, sy, sx + 1, sy + 1, filledColor);
+                    guiGraphics.fill(sx, sy, sx + 1, sy + 1, sigilColor);
                 }
             }
         } catch (Throwable t) {
