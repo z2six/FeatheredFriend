@@ -44,10 +44,13 @@ import java.util.UUID;
  *               x', y' = center + round(r * (cos(angle'), sin(angle')))
  *               shapeMask[y'][x'] = true.
  *
- *  5) Boolean extrusion
- *     - boundaryMask = solid wax disc.
- *     - shapeMask    = union of shapes across all slices.
- *     - finalPixels[y][x] = boundaryMask[y][x] && !shapeMask[y][x].
+ *  5) Boolean extrusion (conceptual)
+ *     - discMask   = solid wax disc.
+ *     - shapeMask  = union of shapes across all slices.
+ *     - Classic "carved" view:
+ *           carved[y][x] = discMask[y][x] && !shapeMask[y][x].
+ *       This is no longer baked into the generator; callers decide how to
+ *       visualize disc vs. shapes.
  *
  *  6) Determinism
  *     - All randomness is driven by a deterministic RandomSource created from a 64-bit seed.
@@ -59,7 +62,13 @@ import java.util.UUID;
  * Public entry points:
  *  - generateForPlayer(UUID, String)                     // legacy UUID+secret path
  *  - generateFromSeed(long, int, int, int)               // full control for preview/GUI
- *  - computeSeedFromSecretOnly(String, int, int)         // secret -> SHA256 -> seed (no UUID)
+ *  - computeSeedFromSecretOnly(String)                   // secret -> SHA256 -> seed (no UUID)
+ *
+ * IMPORTANT:
+ *  - SigilPattern now exposes separate disc and shape masks:
+ *        * discMask[y][x]  => inside main disc
+ *        * shapeMask[y][x] => shape geometry (to interpret however the renderer wants)
+ *    plus a legacy "carved" mask via getPixels()/getCarvedMask().
  */
 public final class SealSigilGenerator {
 
@@ -134,10 +143,10 @@ public final class SealSigilGenerator {
      * supplied separately to the generator and stored separately in NBT.
      */
     // -------------------------------------------------------------------------
-// Secret-only seed derivation (new v3):
-// Secret -> SHA256 -> Seed
-// No slices, no shapeSetIndex used in hashing.
-// -------------------------------------------------------------------------
+    // Secret-only seed derivation (new v3):
+    // Secret -> SHA256 -> Seed
+    // No slices, no shapeSetIndex used in hashing.
+    // -------------------------------------------------------------------------
     public static long computeSeedFromSecretOnly(@NotNull String secret) {
         String trimmed = secret;
         if (trimmed.length() > MAX_SECRET_LENGTH) {
@@ -194,16 +203,18 @@ public final class SealSigilGenerator {
         int cy = radius;
         double radiusSq = radius * radius;
 
-        boolean[][] finalPixels = new boolean[size][size];
+        // Geometry masks (canonical representation)
+        boolean[][] discMask = new boolean[size][size];
+        boolean[][] shapeMask = new boolean[size][size];
+
         RandomSource rng = RandomSource.create(seed);
 
         try {
             LOG.debug("[SealSigilGenerator] generateFromSeed: seed={} radius={} size={} slices={} shapeSetIndex={}",
                     seed, radius, size, slices, shapeSetIndex);
 
-            // 1) Build wavy boundary
-            boolean[][] boundaryMask = new boolean[size][size];
-            fillWavyBoundary(boundaryMask, cx, cy, radius, rng);
+            // 1) Build wavy boundary => disc mask
+            fillWavyBoundary(discMask, cx, cy, radius, rng);
 
             // 2) Generate shapes into the base slice mask
             boolean[][] slicePixels = new boolean[size][size];
@@ -219,26 +230,21 @@ public final class SealSigilGenerator {
             restrictToBaseSlice(slicePixels, cx, cy, slices);
 
             // 4) Replicate slice into all slices => shapeMask
-            boolean[][] shapeMask = new boolean[size][size];
             replicateSliceIntoAllSlices(slicePixels, shapeMask, cx, cy, slices);
 
             // 4b) Cleanup mask
             cleanupShapeMask(shapeMask);
 
-            // 5) Subtract shapes from boundary
+            // 5) Coverage stats (conceptual "carved disc" without baking the mask)
             int carvedCount = 0;
             int insideBoundary = 0;
             for (int y = 0; y < size; y++) {
-                boolean[] boundaryRow = boundaryMask[y];
+                boolean[] discRow = discMask[y];
                 boolean[] shapeRow = shapeMask[y];
-                boolean[] outRow = finalPixels[y];
                 for (int x = 0; x < size; x++) {
-                    if (boundaryRow[x]) {
+                    if (discRow[x]) {
                         insideBoundary++;
-                        boolean carved = shapeRow[x];
-                        if (!carved) {
-                            outRow[x] = true;
-                        } else {
+                        if (shapeRow[x]) {
                             carvedCount++;
                         }
                     }
@@ -246,7 +252,7 @@ public final class SealSigilGenerator {
             }
 
             double coverage = insideBoundary == 0 ? 0.0 : (insideBoundary - carvedCount) / (double) insideBoundary;
-            LOG.debug("[SealSigilGenerator] final coverage after extrusion: {} (inside={} carved={})",
+            LOG.debug("[SealSigilGenerator] conceptual coverage after extrusion: {} (inside={} carved={})",
                     coverage, insideBoundary, carvedCount);
 
         } catch (Throwable t) {
@@ -255,13 +261,13 @@ public final class SealSigilGenerator {
             try {
                 int cxSafe = Math.max(0, Math.min(size - 1, cx));
                 int cySafe = Math.max(0, Math.min(size - 1, cy));
-                finalPixels[cySafe][cxSafe] = true;
+                discMask[cySafe][cxSafe] = true;
             } catch (Throwable ignored) {
                 // swallow
             }
         }
 
-        return new SigilPattern(size, finalPixels, seed, slices, shapeSetIndex);
+        return new SigilPattern(size, discMask, shapeMask, seed, slices, shapeSetIndex);
     }
 
     // -------------------------------------------------------------------------
@@ -641,38 +647,163 @@ public final class SealSigilGenerator {
     // Data holder
     // -------------------------------------------------------------------------
 
+    /**
+     * Canonical sigil geometry.
+     *
+     *  - discMask[y][x]   => inside the main wavy disc.
+     *  - shapeMask[y][x]  => shape geometry (to interpret however the renderer wants).
+     *
+     * Convenience:
+     *  - getCarvedMask() / getPixels() => classic "disc minus shapes" mask:
+     *        carved[y][x] = discMask[y][x] && !shapeMask[y][x].
+     *
+     * The legacy constructors (taking only "pixels") are kept for compatibility
+     * and treat the given pixels as an already-carved mask.
+     */
     public static final class SigilPattern {
 
         private final int size;
-        private final boolean[][] pixels;
+        private final boolean[][] discMask;
+        private final boolean[][] shapeMask;
+
+        /**
+         * Lazily computed carved mask (disc && !shape), or pre-supplied for legacy paths.
+         */
+        private boolean[][] carvedMask;
+
         private final long seed;
         private final int slices;
         private final int shapeSetIndex;
 
+        /**
+         * Legacy constructor: treat the provided pixels as an already-carved mask.
+         * discMask is set to those pixels, shapeMask is empty, carvedMask is pixels.
+         */
         public SigilPattern(int size,
                             boolean[][] pixels,
                             long seed) {
-            this(size, pixels, seed, 0, 0);
+            this(size,
+                    pixels,
+                    new boolean[pixels != null ? pixels.length : 0][pixels != null ? pixels.length : 0],
+                    seed,
+                    0,
+                    0);
+            this.carvedMask = pixels;
         }
 
+        /**
+         * Legacy constructor with slices + shapeSetIndex; pixels still represent a carved mask.
+         */
         public SigilPattern(int size,
                             boolean[][] pixels,
                             long seed,
                             int slices,
                             int shapeSetIndex) {
+            this(size,
+                    pixels,
+                    new boolean[pixels != null ? pixels.length : 0][pixels != null ? pixels.length : 0],
+                    seed,
+                    slices,
+                    shapeSetIndex);
+            this.carvedMask = pixels;
+        }
+
+        /**
+         * New canonical constructor: disc + shapes geometry.
+         */
+        public SigilPattern(int size,
+                            boolean[][] discMask,
+                            boolean[][] shapeMask,
+                            long seed,
+                            int slices,
+                            int shapeSetIndex) {
             this.size = size;
-            this.pixels = pixels;
+            this.discMask = discMask;
+            this.shapeMask = shapeMask;
             this.seed = seed;
             this.slices = slices;
             this.shapeSetIndex = shapeSetIndex;
+            this.carvedMask = null;
         }
 
         public int getSize() {
             return size;
         }
 
+        /**
+         * Canonical: main disc geometry (wavy boundary fill).
+         */
+        public boolean[][] getDiscMask() {
+            return discMask;
+        }
+
+        /**
+         * Canonical: shape geometry mask (marks where shapes exist).
+         */
+        public boolean[][] getShapeMask() {
+            return shapeMask;
+        }
+
+        /**
+         * Classic "carved disc" mask:
+         *  carved[y][x] = discMask[y][x] && !shapeMask[y][x].
+         *
+         * If this pattern was constructed via the legacy constructors, this simply
+         * returns the original pixels array.
+         */
+        public boolean[][] getCarvedMask() {
+            try {
+                if (carvedMask != null) {
+                    return carvedMask;
+                }
+                if (discMask == null) {
+                    return null;
+                }
+
+                int h = discMask.length;
+                if (h == 0) {
+                    carvedMask = discMask;
+                    return carvedMask;
+                }
+                int w = discMask[0].length;
+
+                boolean[][] out = new boolean[h][w];
+
+                if (shapeMask == null) {
+                    // No shapes => carved == disc
+                    for (int y = 0; y < h; y++) {
+                        boolean[] src = discMask[y];
+                        boolean[] dst = out[y];
+                        System.arraycopy(src, 0, dst, 0, Math.min(src.length, w));
+                    }
+                    carvedMask = out;
+                    return carvedMask;
+                }
+
+                for (int y = 0; y < h; y++) {
+                    boolean[] discRow = discMask[y];
+                    boolean[] shapeRow = shapeMask[y];
+                    boolean[] outRow = out[y];
+                    int rowLen = Math.min(Math.min(discRow.length, shapeRow.length), w);
+                    for (int x = 0; x < rowLen; x++) {
+                        outRow[x] = discRow[x] && !shapeRow[x];
+                    }
+                }
+
+                carvedMask = out;
+                return carvedMask;
+            } catch (Throwable t) {
+                LOG.error("[SealSigilGenerator.SigilPattern] getCarvedMask() failed", t);
+                return carvedMask != null ? carvedMask : discMask;
+            }
+        }
+
+        /**
+         * Legacy accessor: kept for compatibility.
+         * Returns the same as getCarvedMask().
+         */
         public boolean[][] getPixels() {
-            return pixels;
+            return getCarvedMask();
         }
 
         public long getSeed() {
@@ -700,9 +831,17 @@ public final class SealSigilGenerator {
                     .append(shapeSetIndex)
                     .append("}\n");
             try {
-                for (int y = 0; y < size; y++) {
-                    for (int x = 0; x < size; x++) {
-                        sb.append(pixels[y][x] ? '#' : '.');
+                boolean[][] mask = getCarvedMask();
+                if (mask == null) {
+                    sb.append("<null mask>\n");
+                    return sb.toString();
+                }
+                int h = mask.length;
+                for (int y = 0; y < h; y++) {
+                    boolean[] row = mask[y];
+                    int w = row.length;
+                    for (int x = 0; x < w; x++) {
+                        sb.append(row[x] ? '#' : '.');
                     }
                     sb.append('\n');
                 }
