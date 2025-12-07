@@ -38,8 +38,10 @@ import java.util.List;
  * Right side: "Sigil Preview" area:
  *  - Renders wax_seal.png (scaled) in the center of the preview box.
  *  - Uses SealSigilGenerator's disc + shape masks to draw:
- *      * A configurable disc overlay colour (excluding shape interiors).
- *      * A configurable, directional shadow band around the shapes, clipped to the disc.
+ *      * Shape-only sigil glyph with directional lighting:
+ *          - Base fill colour.
+ *          - Optional directional shadow band outside the shapes.
+ *          - Optional directional highlight band outside the shapes (currently disabled).
  *
  * On "Carve" click:
  *  * Spawns a burst of SigilEtchingParticle chips from the sigil area.
@@ -187,65 +189,77 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     private static final String[] STYLE_NAMES = {"Medieval", "Fantasy", "Floral"};
 
     // ---------------------------------------------------------------------
-    // Sigil visual config (colors & shadows)
+    // Sigil visual config (shape-only lighting)
     // ---------------------------------------------------------------------
 
     /**
-     * Fallback golden background color if the wax texture is missing.
+     * Fallback golden colour if the wax texture is missing.
+     * (Used only for the wax fallback circle, *not* the sigil disc.)
      */
-    private static final int GOLD_DISC_COLOR = 0xFFAC3232;
+    private static final int GOLD_DISC_COLOR = 0xFFE0C060;
+
+    // --- Shape fill ------------------------------------------------------
 
     /**
-     * Disc colour (overlay inside the wavy disc, excluding shape interiors).
-     * Fully opaque, RGB 68/20/20 -> ARGB = 0xFF441414.
-     * One variable: colour + alpha.
-     */
-    private static final int DISC_COLOR = 0xFFAC3232;
-
-    // --- Shape shadow band -----------------------------------------------
-
-    /**
-     * Maximum Chebyshev radius (in pixels) for the shape shadow band.
-     * This controls how thick the shadow halo is around shapes.
-     * 2px => 2 rings of shadow.
-     */
-    private static final int SHAPE_SHADOW_MAX_RADIUS = 2;
-
-    /**
-     * Shadow colour for the shapes.
+     * Base fill colour for the shape interiors.
      *
-     * Desired:
-     *  HEX:   #5b1f3a
-     *  RGB:   (91, 31, 58)
-     *  ARGB:  0xFF5B1F3A
-     *
-     * We keep alpha dynamic (per-ring), RGB comes from here.
+     *  HEX:  #C54750
+     *  ARGB: 0xFFC54750
      */
-    private static final int SHAPE_SHADOW_COLOR = 0xFF5B1F3A;
+    private static final int SHAPE_FILL_COLOR = 0xFFC54750;
+
+    // --- Shape highlight / shadow configuration --------------------------
 
     /**
-     * Alpha for the first (innermost) shadow ring, 0–255.
-     * This is the starting opacity of the shadow (first pixel).
+     * Enable/disable highlight band outside the shape.
      */
-    private static final int SHAPE_SHADOW_FIRST_RING_ALPHA = 0xFF; // 255 (100%)
+    private static final boolean SHAPE_ENABLE_HIGHLIGHT = false;
 
     /**
-     * Per-ring alpha falloff. For each step away from the shape, alpha is reduced
-     * by this amount:
-     *
-     *  ring 1: FIRST_RING_ALPHA
-     *  ring 2: FIRST_RING_ALPHA - FALL_OFF
-     *
-     * With MAX_RADIUS = 2 and FALL_OFF = 0x80, this yields:
-     *  ring 1 = 255 (100%)
-     *  ring 2 = 127 (~50%)
+     * Enable/disable shadow band outside the shape.
      */
-    private static final int SHAPE_SHADOW_ALPHA_FALLOFF_PER_RING = 0x80;
+    private static final boolean SHAPE_ENABLE_SHADOW = true;
 
     /**
-     * Direction of the shadow halo around shapes.
+     * Thickness of the shadow / highlight band, in pixels (Chebyshev radius
+     * along the chosen direction). 2 => 2px thick band.
      */
-    private static final int SHAPE_SHADOW_DIRECTION = 1;
+    private static final int SHAPE_EDGE_MAX_RADIUS = 2;
+
+    /**
+     * Highlight colour (outside, in the highlight direction).
+     * Currently unused visually because SHAPE_ENABLE_HIGHLIGHT = false.
+     *
+     * Example:
+     *  HEX:  #D36A62
+     *  ARGB: 0xFFD36A62
+     */
+    private static final int SHAPE_HIGHLIGHT_COLOR = 0xFFD36A62;
+
+    /**
+     * Shadow colour (outside, in the shadow direction).
+     *
+     * Shadow colour:
+     *  HEX:  #832134
+     *  ARGB: 0xFF832134
+     */
+    private static final int SHAPE_SHADOW_COLOR = 0xFF832134;
+
+    /**
+     * Direction of the shadow band relative to the shapes.
+     * 0 = omni-directional (unused here)
+     * 1 = NORTH      -> shadow extends downward
+     * 2 = EAST       -> shadow extends leftward
+     * 3 = SOUTH      -> shadow extends upward
+     * 4 = WEST       -> shadow extends rightward
+     * 5 = NORTH_EAST -> shadow extends down-left
+     * 6 = SOUTH_EAST -> shadow extends up-left
+     * 7 = SOUTH_WEST -> shadow extends up-right
+     * 8 = NORTH_WEST -> shadow extends down-right
+     *
+     * The highlight uses the exact opposite direction.
+     */
+    private static final int SHAPE_SHADOW_DIRECTION = 8;
 
     // ---------------------------------------------------------------------
     // State & widgets
@@ -267,7 +281,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
     // Sigil pattern currently shown in the preview.
     private SigilPattern currentPattern;
-    private boolean[][] currentDiscMask;   // wavy main disc mask
+    private boolean[][] currentDiscMask;   // wavy main disc mask (used only as a clip)
     private boolean[][] currentShapeMask;  // replicated shape mask
     private int currentPatternSize;
     private String lastSecretForSigil = "";
@@ -286,19 +300,17 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         this.inventoryLabelY = 10000;
 
         LOG.debug(
-                "[SealStampScreen] ctor: SIGIL_BASE_DIAMETER_PIXELS={} SIGIL_RADIUS_SCALE={} -> SIGIL_RADIUS={}  | WAX_SEAL_SCREEN_SCALE={} WAX_W={} WAX_H={} | shadowMaxRadius={} firstAlpha={} falloff={} dir={} | discColor=0x{} shadowColor=0x{}",
+                "[SealStampScreen] ctor: SIGIL_BASE_DIAMETER_PIXELS={} SIGIL_RADIUS_SCALE={} -> SIGIL_RADIUS={} | WAX_SEAL_SCREEN_SCALE={} WAX_W={} WAX_H={} | edgeMaxRadius={} shadowDir={} highlightEnabled={} shadowEnabled={}",
                 SIGIL_BASE_DIAMETER_PIXELS,
                 SIGIL_RADIUS_SCALE,
                 SIGIL_RADIUS,
                 WAX_SEAL_SCREEN_SCALE,
                 WAX_SEAL_SCREEN_WIDTH,
                 WAX_SEAL_SCREEN_HEIGHT,
-                SHAPE_SHADOW_MAX_RADIUS,
-                SHAPE_SHADOW_FIRST_RING_ALPHA,
-                SHAPE_SHADOW_ALPHA_FALLOFF_PER_RING,
+                SHAPE_EDGE_MAX_RADIUS,
                 SHAPE_SHADOW_DIRECTION,
-                Integer.toHexString(DISC_COLOR),
-                Integer.toHexString(SHAPE_SHADOW_COLOR & 0x00FFFFFF)
+                SHAPE_ENABLE_HIGHLIGHT,
+                SHAPE_ENABLE_SHADOW
         );
     }
 
@@ -721,6 +733,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                         WAX_SEAL_TEXTURE_HEIGHT
                 );
             } else {
+                // Fallback: simple golden circle if texture missing.
                 int radius = Math.min(sealWidth, sealHeight) / 2;
                 if (radius <= 0) {
                     return;
@@ -751,11 +764,11 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             if (this.currentPatternSize <= 0) {
                 return;
             }
-            if (this.currentDiscMask == null && this.currentShapeMask == null) {
+            if (this.currentShapeMask == null) {
                 return;
             }
 
-            // Ensure shader color is sane so our ARGB colours aren't multiplied to black
+            // Ensure shader colour is sane so our ARGB colours aren't multiplied to black.
             resetShaderColorForGui();
 
             int sigilRadius = SIGIL_RADIUS;
@@ -775,113 +788,163 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             boolean[][] disc = this.currentDiscMask;
             boolean[][] shapes = this.currentShapeMask;
 
-            // 1) Disc colour overlay, excluding shape interiors
-            if (disc != null && (DISC_COLOR >>> 24) != 0) {
-                try {
-                    for (int py = 0; py < size; py++) {
-                        boolean[] discRow = disc[py];
-                        if (discRow == null) continue;
+            // -----------------------------------------------------------------
+            // Compute highlight/shadow pixels OUTSIDE the shapes
+            // -----------------------------------------------------------------
 
-                        boolean[] shapeRow = (shapes != null && py >= 0 && py < size) ? shapes[py] : null;
+            int maxRadius = Math.max(1, SHAPE_EDGE_MAX_RADIUS);
 
-                        for (int px = 0; px < size; px++) {
-                            if (!discRow[px]) {
-                                continue;
-                            }
+            boolean[][] highlightPixels = SHAPE_ENABLE_HIGHLIGHT ? new boolean[size][size] : null;
+            boolean[][] shadowPixels = SHAPE_ENABLE_SHADOW ? new boolean[size][size] : null;
 
-                            // Do not colour inside shapes
-                            if (shapeRow != null && shapeRow.length > px && shapeRow[px]) {
-                                continue;
-                            }
+            int[] shadowDir = directionToUnitOffset(SHAPE_SHADOW_DIRECTION);
+            int sxDir = shadowDir[0];
+            int syDir = shadowDir[1];
 
-                            int dx = px - patternRadius;
-                            int dy = py - patternRadius;
-                            int distSq = dx * dx + dy * dy;
-                            if (distSq > sigilRadiusSq) {
-                                continue;
-                            }
+            int hxDir = -sxDir;
+            int hyDir = -syDir;
 
-                            int sx = centerX + dx;
-                            int sy = centerY + dy;
-                            if (sx < boxLeft || sy < boxTop || sx >= boxRight || sy >= boxBottom) {
-                                continue;
-                            }
+            try {
+                for (int py = 0; py < size; py++) {
+                    boolean[] shapeRow = shapes[py];
+                    if (shapeRow == null) continue;
 
-                            guiGraphics.fill(sx, sy, sx + 1, sy + 1, DISC_COLOR);
+                    boolean[] discRow = (disc != null && py >= 0 && py < disc.length) ? disc[py] : null;
+
+                    for (int px = 0; px < size; px++) {
+                        if (!shapeRow[px]) {
+                            continue;
                         }
-                    }
-                } catch (Throwable t) {
-                    LOG.error("[SealStampScreen] renderSigilGlyph: disc overlay failed", t);
-                }
-            }
 
-            // 2) Shape shadow band (directional halo outside shapes)
-            if (shapes != null && disc != null && SHAPE_SHADOW_MAX_RADIUS > 0 && SHAPE_SHADOW_FIRST_RING_ALPHA > 0) {
-                try {
-                    int[][] shapeShadowLevel = new int[size][size];
+                        // Optional clipping of shapes to the disc mask
+                        if (discRow != null && !discRow[px]) {
+                            continue;
+                        }
 
-                    for (int py = 0; py < size; py++) {
-                        boolean[] shapeRow = shapes[py];
-                        if (shapeRow == null) continue;
-                        for (int px = 0; px < size; px++) {
-                            if (!shapeRow[px]) {
-                                continue;
-                            }
+                        // --- Highlight: outside the shape in the opposite direction of shadow ---
+                        if (SHAPE_ENABLE_HIGHLIGHT) {
+                            for (int r = 1; r <= maxRadius; r++) {
+                                int nx = px + hxDir * r;
+                                int ny = py + hyDir * r;
 
-                            // For each shape pixel, cast shadow outward in configured direction.
-                            for (int oy = -SHAPE_SHADOW_MAX_RADIUS; oy <= SHAPE_SHADOW_MAX_RADIUS; oy++) {
-                                int ny = py + oy;
-                                if (ny < 0 || ny >= size) continue;
-                                boolean[] discRowN = disc[ny];
+                                if (nx < 0 || nx >= size || ny < 0 || ny >= size) {
+                                    break;
+                                }
+
                                 boolean[] shapeRowN = shapes[ny];
-                                if (discRowN == null || shapeRowN == null) continue;
+                                boolean insideShapeNeighbor =
+                                        shapeRowN != null && nx < shapeRowN.length && shapeRowN[nx];
 
-                                for (int ox = -SHAPE_SHADOW_MAX_RADIUS; ox <= SHAPE_SHADOW_MAX_RADIUS; ox++) {
-                                    int nx = px + ox;
-                                    if (nx < 0 || nx >= size) continue;
+                                // If neighbour in highlight direction is still inside the shape,
+                                // this is not an outer edge in this direction → stop for this ray.
+                                if (insideShapeNeighbor) {
+                                    break;
+                                }
 
-                                    // Skip offsets that are not in the chosen shadow direction
-                                    if (!isOffsetInShadowDirection(ox, oy)) {
-                                        continue;
-                                    }
-
-                                    if (!discRowN[nx]) {
-                                        // Shadow must stay within main disc
-                                        continue;
-                                    }
-                                    if (shapeRowN[nx]) {
-                                        // Do not shadow inside shapes
-                                        continue;
-                                    }
-
-                                    int chebyshev = Math.max(Math.abs(ox), Math.abs(oy));
-                                    if (chebyshev <= 0 || chebyshev > SHAPE_SHADOW_MAX_RADIUS) {
-                                        continue;
-                                    }
-
-                                    int ringIndex = chebyshev;
-                                    if (shapeShadowLevel[ny][nx] == 0 || ringIndex < shapeShadowLevel[ny][nx]) {
-                                        shapeShadowLevel[ny][nx] = ringIndex;
+                                boolean[] discRowN = (disc != null && ny >= 0 && ny < disc.length) ? disc[ny] : null;
+                                if (discRowN != null) {
+                                    if (nx < 0 || nx >= discRowN.length || !discRowN[nx]) {
+                                        // Outside disc – stop extending this ray.
+                                        break;
                                     }
                                 }
+
+                                // Outside the shape + inside disc → mark as highlight pixel.
+                                highlightPixels[ny][nx] = true;
+                            }
+                        }
+
+                        // --- Shadow: outside the shape along the shadow direction ---
+                        if (SHAPE_ENABLE_SHADOW) {
+                            for (int r = 1; r <= maxRadius; r++) {
+                                int nx = px + sxDir * r;
+                                int ny = py + syDir * r;
+
+                                if (nx < 0 || nx >= size || ny < 0 || ny >= size) {
+                                    break;
+                                }
+
+                                boolean[] shapeRowN = shapes[ny];
+                                boolean insideShapeNeighbor =
+                                        shapeRowN != null && nx < shapeRowN.length && shapeRowN[nx];
+
+                                if (insideShapeNeighbor) {
+                                    // Still inside shape in shadow direction → not an outer edge in
+                                    // this direction for this pixel; stop this ray.
+                                    break;
+                                }
+
+                                boolean[] discRowN = (disc != null && ny >= 0 && ny < disc.length) ? disc[ny] : null;
+                                if (discRowN != null) {
+                                    if (nx < 0 || nx >= discRowN.length || !discRowN[nx]) {
+                                        // Outside disc – stop extending this ray.
+                                        break;
+                                    }
+                                }
+
+                                // Outside shape + inside disc → mark as shadow pixel.
+                                shadowPixels[ny][nx] = true;
                             }
                         }
                     }
+                }
+            } catch (Throwable t) {
+                LOG.error("[SealStampScreen] renderSigilGlyph: edge analysis (highlight/shadow) failed", t);
+            }
 
-                    // Render the shadow band
+            // -----------------------------------------------------------------
+            // Pass 1: base fill for all shape pixels
+            // -----------------------------------------------------------------
+            try {
+                for (int py = 0; py < size; py++) {
+                    boolean[] shapeRow = shapes[py];
+                    if (shapeRow == null) continue;
+
+                    boolean[] discRow = (disc != null && py >= 0 && py < disc.length) ? disc[py] : null;
+
+                    for (int px = 0; px < size; px++) {
+                        if (!shapeRow[px]) {
+                            continue;
+                        }
+
+                        // Optional clipping of interior to disc.
+                        if (discRow != null && !discRow[px]) {
+                            continue;
+                        }
+
+                        int dx = px - patternRadius;
+                        int dy = py - patternRadius;
+                        int distSq = dx * dx + dy * dy;
+                        if (distSq > sigilRadiusSq) {
+                            continue;
+                        }
+
+                        int sx = centerX + dx;
+                        int sy = centerY + dy;
+                        if (sx < boxLeft || sy < boxTop || sx >= boxRight || sy >= boxBottom) {
+                            continue;
+                        }
+
+                        guiGraphics.fill(sx, sy, sx + 1, sy + 1, SHAPE_FILL_COLOR);
+                    }
+                }
+            } catch (Throwable t) {
+                LOG.error("[SealStampScreen] renderSigilGlyph: base shape fill failed", t);
+            }
+
+            // -----------------------------------------------------------------
+            // Pass 2: highlight overlay (outside shapes)
+            // -----------------------------------------------------------------
+            if (SHAPE_ENABLE_HIGHLIGHT && highlightPixels != null) {
+                try {
                     for (int py = 0; py < size; py++) {
-                        for (int px = 0; px < size; px++) {
-                            int ring = shapeShadowLevel[py][px];
-                            if (ring <= 0) {
-                                continue;
-                            }
+                        boolean[] row = highlightPixels[py];
+                        if (row == null) continue;
 
-                            int alpha = SHAPE_SHADOW_FIRST_RING_ALPHA
-                                    - (ring - 1) * SHAPE_SHADOW_ALPHA_FALLOFF_PER_RING;
-                            if (alpha <= 0) {
+                        for (int px = 0; px < size; px++) {
+                            if (!row[px]) {
                                 continue;
                             }
-                            if (alpha > 255) alpha = 255;
 
                             int dx = px - patternRadius;
                             int dy = py - patternRadius;
@@ -896,14 +959,49 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                                 continue;
                             }
 
-                            int color = ((alpha & 0xFF) << 24) | (SHAPE_SHADOW_COLOR & 0x00FFFFFF);
-                            guiGraphics.fill(sx, sy, sx + 1, sy + 1, color);
+                            guiGraphics.fill(sx, sy, sx + 1, sy + 1, SHAPE_HIGHLIGHT_COLOR);
                         }
                     }
                 } catch (Throwable t) {
-                    LOG.error("[SealStampScreen] renderSigilGlyph: shape shadow failed", t);
+                    LOG.error("[SealStampScreen] renderSigilGlyph: highlight overlay failed", t);
                 }
             }
+
+            // -----------------------------------------------------------------
+            // Pass 3: shadow overlay (outside shapes)
+            // -----------------------------------------------------------------
+            if (SHAPE_ENABLE_SHADOW && shadowPixels != null) {
+                try {
+                    for (int py = 0; py < size; py++) {
+                        boolean[] row = shadowPixels[py];
+                        if (row == null) continue;
+
+                        for (int px = 0; px < size; px++) {
+                            if (!row[px]) {
+                                continue;
+                            }
+
+                            int dx = px - patternRadius;
+                            int dy = py - patternRadius;
+                            int distSq = dx * dx + dy * dy;
+                            if (distSq > sigilRadiusSq) {
+                                continue;
+                            }
+
+                            int sx = centerX + dx;
+                            int sy = centerY + dy;
+                            if (sx < boxLeft || sy < boxTop || sx >= boxRight || sy >= boxBottom) {
+                                continue;
+                            }
+
+                            guiGraphics.fill(sx, sy, sx + 1, sy + 1, SHAPE_SHADOW_COLOR);
+                        }
+                    }
+                } catch (Throwable t) {
+                    LOG.error("[SealStampScreen] renderSigilGlyph: shadow overlay failed", t);
+                }
+            }
+
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] renderSigilGlyph failed", t);
         }
@@ -925,61 +1023,55 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     }
 
     /**
-     * Determine whether a given offset (ox, oy) from a shape pixel is in the active
-     * shadow direction.
+     * Convert our 1..8 direction index into a unit (dx, dy) offset representing
+     * the direction in which shadow "extends".
      *
-     * Screen coordinates: origin at top-left, +X = right, +Y = down.
-     *
-     * If SHAPE_SHADOW_DIRECTION == 0, we treat shadow as omni-directional and
-     * accept all directions.
+     * This is used for both the shadow direction and the opposite (highlight) direction.
      */
-    private static boolean isOffsetInShadowDirection(int ox, int oy) {
-        if (ox == 0 && oy == 0) {
-            return false;
-        }
+    private static int[] directionToUnitOffset(int dir) {
+        int dx;
+        int dy;
 
-        switch (SHAPE_SHADOW_DIRECTION) {
-            case 0 -> {
-                // Omni-directional halo
-                return true;
+        switch (dir) {
+            case 1 -> { // NORTH: shadow extends downward
+                dx = 0;
+                dy = 1;
             }
-            case 1 -> {
-                // NORTH: shadow extends downward (from top to bottom)
-                return oy > 0;
+            case 2 -> { // EAST: shadow extends leftward
+                dx = -1;
+                dy = 0;
             }
-            case 2 -> {
-                // EAST: shadow extends leftward
-                return ox < 0;
+            case 3 -> { // SOUTH: shadow extends upward
+                dx = 0;
+                dy = -1;
             }
-            case 3 -> {
-                // SOUTH: shadow extends upward
-                return oy < 0;
+            case 4 -> { // WEST: shadow extends rightward
+                dx = 1;
+                dy = 0;
             }
-            case 4 -> {
-                // WEST: shadow extends rightward
-                return ox > 0;
+            case 5 -> { // NORTH_EAST: shadow extends down-left
+                dx = -1;
+                dy = 1;
             }
-            case 5 -> {
-                // NORTH_EAST: shadow extends down-left
-                return oy > 0 && ox < 0;
+            case 6 -> { // SOUTH_EAST: shadow extends up-left
+                dx = -1;
+                dy = -1;
             }
-            case 6 -> {
-                // SOUTH_EAST: shadow extends up-left
-                return oy < 0 && ox < 0;
+            case 7 -> { // SOUTH_WEST: shadow extends up-right
+                dx = 1;
+                dy = -1;
             }
-            case 7 -> {
-                // SOUTH_WEST: shadow extends up-right
-                return oy < 0 && ox > 0;
-            }
-            case 8 -> {
-                // NORTH_WEST: shadow extends down-right
-                return oy > 0 && ox > 0;
+            case 8 -> { // NORTH_WEST: shadow extends down-right
+                dx = 1;
+                dy = 1;
             }
             default -> {
-                // Fallback: omni-directional if direction is out of range
-                return true;
+                dx = 1;
+                dy = 1;
             }
         }
+
+        return new int[]{dx, dy};
     }
 
     // ---------------------------------------------------------------------
