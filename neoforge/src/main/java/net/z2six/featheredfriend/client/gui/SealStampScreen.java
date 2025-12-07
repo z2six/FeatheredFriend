@@ -41,7 +41,7 @@ import java.util.List;
  *      * Shape-only sigil glyph with directional lighting:
  *          - Base fill colour.
  *          - Optional directional shadow band outside the shapes.
- *          - Optional directional highlight band outside the shapes (currently disabled).
+ *          - Optional directional highlight band outside the shapes.
  *
  * On "Carve" click:
  *  * Spawns a burst of SigilEtchingParticle chips from the sigil area.
@@ -206,14 +206,14 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
      *  HEX:  #C54750
      *  ARGB: 0xFFC54750
      */
-    private static final int SHAPE_FILL_COLOR = 0xFFC54750;
+    private static final int SHAPE_FILL_COLOR = 0xFFb83e3e;
 
     // --- Shape highlight / shadow configuration --------------------------
 
     /**
      * Enable/disable highlight band outside the shape.
      */
-    private static final boolean SHAPE_ENABLE_HIGHLIGHT = false;
+    private static final boolean SHAPE_ENABLE_HIGHLIGHT = true;
 
     /**
      * Enable/disable shadow band outside the shape.
@@ -221,29 +221,48 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     private static final boolean SHAPE_ENABLE_SHADOW = true;
 
     /**
-     * Thickness of the shadow / highlight band, in pixels (Chebyshev radius
-     * along the chosen direction). 2 => 2px thick band.
+     * Thickness of the highlight band (in pixels, Chebyshev radius).
+     * 1 => 1 px thick highlight band.
      */
-    private static final int SHAPE_EDGE_MAX_RADIUS = 2;
+    private static final int SHAPE_HIGHLIGHT_EDGE_MAX_RADIUS = 1;
+
+    /**
+     * Thickness of the shadow band (in pixels, Chebyshev radius).
+     * 2 => 2 px thick shadow band.
+     */
+    private static final int SHAPE_SHADOW_EDGE_MAX_RADIUS = 3;
 
     /**
      * Highlight colour (outside, in the highlight direction).
-     * Currently unused visually because SHAPE_ENABLE_HIGHLIGHT = false.
      *
-     * Example:
      *  HEX:  #D36A62
      *  ARGB: 0xFFD36A62
      */
-    private static final int SHAPE_HIGHLIGHT_COLOR = 0xFFD36A62;
+    private static final int SHAPE_HIGHLIGHT_COLOR = 0xFFd36a62;
 
     /**
      * Shadow colour (outside, in the shadow direction).
      *
-     * Shadow colour:
      *  HEX:  #832134
      *  ARGB: 0xFF832134
      */
     private static final int SHAPE_SHADOW_COLOR = 0xFF832134;
+
+    /**
+     * Direction of the highlight band relative to the shapes.
+     * Uses same mapping as shadow, but independent:
+     * 1 = NORTH      -> highlight extends downward (from top edge)
+     * 2 = EAST       -> highlight extends leftward  (from right edge)
+     * 3 = SOUTH      -> highlight extends upward   (from bottom edge)
+     * 4 = WEST       -> highlight extends rightward(from left edge)
+     * 5 = NORTH_EAST -> highlight extends down-left
+     * 6 = SOUTH_EAST -> highlight extends up-left   (top-left of sigil)
+     * 7 = SOUTH_WEST -> highlight extends up-right
+     * 8 = NORTH_WEST -> highlight extends down-right
+     *
+     * For a band at the **top-left** of the sigil, we use 6 (up-left).
+     */
+    private static final int SHAPE_HIGHLIGHT_DIRECTION = 6;
 
     /**
      * Direction of the shadow band relative to the shapes.
@@ -256,8 +275,6 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
      * 6 = SOUTH_EAST -> shadow extends up-left
      * 7 = SOUTH_WEST -> shadow extends up-right
      * 8 = NORTH_WEST -> shadow extends down-right
-     *
-     * The highlight uses the exact opposite direction.
      */
     private static final int SHAPE_SHADOW_DIRECTION = 8;
 
@@ -300,17 +317,19 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         this.inventoryLabelY = 10000;
 
         LOG.debug(
-                "[SealStampScreen] ctor: SIGIL_BASE_DIAMETER_PIXELS={} SIGIL_RADIUS_SCALE={} -> SIGIL_RADIUS={} | WAX_SEAL_SCREEN_SCALE={} WAX_W={} WAX_H={} | edgeMaxRadius={} shadowDir={} highlightEnabled={} shadowEnabled={}",
+                "[SealStampScreen] ctor: SIGIL_BASE_DIAMETER_PIXELS={} SIGIL_RADIUS_SCALE={} -> SIGIL_RADIUS={} | WAX_SEAL_SCREEN_SCALE={} WAX_W={} WAX_H={} | highlightEnabled={} highlightRadius={} highlightDir={} | shadowEnabled={} shadowRadius={} shadowDir={}",
                 SIGIL_BASE_DIAMETER_PIXELS,
                 SIGIL_RADIUS_SCALE,
                 SIGIL_RADIUS,
                 WAX_SEAL_SCREEN_SCALE,
                 WAX_SEAL_SCREEN_WIDTH,
                 WAX_SEAL_SCREEN_HEIGHT,
-                SHAPE_EDGE_MAX_RADIUS,
-                SHAPE_SHADOW_DIRECTION,
                 SHAPE_ENABLE_HIGHLIGHT,
-                SHAPE_ENABLE_SHADOW
+                SHAPE_HIGHLIGHT_EDGE_MAX_RADIUS,
+                SHAPE_HIGHLIGHT_DIRECTION,
+                SHAPE_ENABLE_SHADOW,
+                SHAPE_SHADOW_EDGE_MAX_RADIUS,
+                SHAPE_SHADOW_DIRECTION
         );
     }
 
@@ -689,7 +708,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                     previewY + PREVIEW_HEIGHT,
                     0x80000000
             );
-            guiGraphics.fill(previewX, previewY, previewX + 1, previewY + PREVIEW_HEIGHT, 0x80000000);
+            guiGraphics.fill(previewX, previewY, previewX + 1, previewX + PREVIEW_HEIGHT, 0x80000000);
             guiGraphics.fill(previewX + PREVIEW_WIDTH - 1, previewY, previewX + PREVIEW_WIDTH, previewY + PREVIEW_HEIGHT, 0x80000000);
 
             int centerX = previewX + PREVIEW_WIDTH / 2;
@@ -792,17 +811,23 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             // Compute highlight/shadow pixels OUTSIDE the shapes
             // -----------------------------------------------------------------
 
-            int maxRadius = Math.max(1, SHAPE_EDGE_MAX_RADIUS);
+            boolean[][] highlightPixels = (SHAPE_ENABLE_HIGHLIGHT ? new boolean[size][size] : null);
+            boolean[][] shadowPixels = (SHAPE_ENABLE_SHADOW ? new boolean[size][size] : null);
 
-            boolean[][] highlightPixels = SHAPE_ENABLE_HIGHLIGHT ? new boolean[size][size] : null;
-            boolean[][] shadowPixels = SHAPE_ENABLE_SHADOW ? new boolean[size][size] : null;
+            int maxHighlightRadius = (SHAPE_ENABLE_HIGHLIGHT
+                    ? Math.max(1, SHAPE_HIGHLIGHT_EDGE_MAX_RADIUS)
+                    : 0);
+            int maxShadowRadius = (SHAPE_ENABLE_SHADOW
+                    ? Math.max(1, SHAPE_SHADOW_EDGE_MAX_RADIUS)
+                    : 0);
 
             int[] shadowDir = directionToUnitOffset(SHAPE_SHADOW_DIRECTION);
             int sxDir = shadowDir[0];
             int syDir = shadowDir[1];
 
-            int hxDir = -sxDir;
-            int hyDir = -syDir;
+            int[] highlightDir = directionToUnitOffset(SHAPE_HIGHLIGHT_DIRECTION);
+            int hxDir = highlightDir[0];
+            int hyDir = highlightDir[1];
 
             try {
                 for (int py = 0; py < size; py++) {
@@ -821,69 +846,151 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                             continue;
                         }
 
-                        // --- Highlight: outside the shape in the opposite direction of shadow ---
-                        if (SHAPE_ENABLE_HIGHLIGHT) {
-                            for (int r = 1; r <= maxRadius; r++) {
-                                int nx = px + hxDir * r;
-                                int ny = py + hyDir * r;
+                        // --- Highlight: outside the shape in its own configured direction (or omni) ---
+                        if (SHAPE_ENABLE_HIGHLIGHT && highlightPixels != null && maxHighlightRadius > 0) {
+                            if (SHAPE_HIGHLIGHT_DIRECTION == 0) {
+                                // Omni-directional highlight ring around the shape (within Chebyshev radius).
+                                for (int oy = -maxHighlightRadius; oy <= maxHighlightRadius; oy++) {
+                                    for (int ox = -maxHighlightRadius; ox <= maxHighlightRadius; ox++) {
+                                        if (ox == 0 && oy == 0) {
+                                            continue;
+                                        }
+                                        // Chebyshev distance: square ring, not diamond.
+                                        if (Math.max(Math.abs(ox), Math.abs(oy)) > maxHighlightRadius) {
+                                            continue;
+                                        }
 
-                                if (nx < 0 || nx >= size || ny < 0 || ny >= size) {
-                                    break;
-                                }
+                                        int nx = px + ox;
+                                        int ny = py + oy;
 
-                                boolean[] shapeRowN = shapes[ny];
-                                boolean insideShapeNeighbor =
-                                        shapeRowN != null && nx < shapeRowN.length && shapeRowN[nx];
+                                        if (nx < 0 || nx >= size || ny < 0 || ny >= size) {
+                                            continue;
+                                        }
 
-                                // If neighbour in highlight direction is still inside the shape,
-                                // this is not an outer edge in this direction → stop for this ray.
-                                if (insideShapeNeighbor) {
-                                    break;
-                                }
+                                        boolean[] shapeRowN = shapes[ny];
+                                        boolean insideShapeNeighbor =
+                                                shapeRowN != null && nx < shapeRowN.length && shapeRowN[nx];
+                                        if (insideShapeNeighbor) {
+                                            // Only want pixels OUTSIDE the shape.
+                                            continue;
+                                        }
 
-                                boolean[] discRowN = (disc != null && ny >= 0 && ny < disc.length) ? disc[ny] : null;
-                                if (discRowN != null) {
-                                    if (nx < 0 || nx >= discRowN.length || !discRowN[nx]) {
-                                        // Outside disc – stop extending this ray.
-                                        break;
+                                        boolean[] discRowN = (disc != null && ny >= 0 && ny < disc.length) ? disc[ny] : null;
+                                        if (discRowN != null) {
+                                            if (nx < 0 || nx >= discRowN.length || !discRowN[nx]) {
+                                                // Must stay inside the disc mask if present.
+                                                continue;
+                                            }
+                                        }
+
+                                        highlightPixels[ny][nx] = true;
                                     }
                                 }
+                            } else {
+                                // Directional highlight: cast a ray along (hxDir, hyDir).
+                                for (int r = 1; r <= maxHighlightRadius; r++) {
+                                    int nx = px + hxDir * r;
+                                    int ny = py + hyDir * r;
 
-                                // Outside the shape + inside disc → mark as highlight pixel.
-                                highlightPixels[ny][nx] = true;
+                                    if (nx < 0 || nx >= size || ny < 0 || ny >= size) {
+                                        break;
+                                    }
+
+                                    boolean[] shapeRowN = shapes[ny];
+                                    boolean insideShapeNeighbor =
+                                            shapeRowN != null && nx < shapeRowN.length && shapeRowN[nx];
+
+                                    // If neighbour in highlight direction is still inside the shape,
+                                    // this is not an outer edge in this direction → stop for this ray.
+                                    if (insideShapeNeighbor) {
+                                        break;
+                                    }
+
+                                    boolean[] discRowN = (disc != null && ny >= 0 && ny < disc.length) ? disc[ny] : null;
+                                    if (discRowN != null) {
+                                        if (nx < 0 || nx >= discRowN.length || !discRowN[nx]) {
+                                            // Outside disc – stop extending this ray.
+                                            break;
+                                        }
+                                    }
+
+                                    // Outside the shape + inside disc → mark as highlight pixel.
+                                    highlightPixels[ny][nx] = true;
+                                }
                             }
                         }
 
-                        // --- Shadow: outside the shape along the shadow direction ---
-                        if (SHAPE_ENABLE_SHADOW) {
-                            for (int r = 1; r <= maxRadius; r++) {
-                                int nx = px + sxDir * r;
-                                int ny = py + syDir * r;
+                        // --- Shadow: outside the shape along its own configured direction (or omni) ---
+                        if (SHAPE_ENABLE_SHADOW && shadowPixels != null && maxShadowRadius > 0) {
+                            if (SHAPE_SHADOW_DIRECTION == 0) {
+                                // Omni-directional shadow ring around the shape (within Chebyshev radius).
+                                for (int oy = -maxShadowRadius; oy <= maxShadowRadius; oy++) {
+                                    for (int ox = -maxShadowRadius; ox <= maxShadowRadius; ox++) {
+                                        if (ox == 0 && oy == 0) {
+                                            continue;
+                                        }
+                                        // Chebyshev distance: square ring.
+                                        if (Math.max(Math.abs(ox), Math.abs(oy)) > maxShadowRadius) {
+                                            continue;
+                                        }
 
-                                if (nx < 0 || nx >= size || ny < 0 || ny >= size) {
-                                    break;
-                                }
+                                        int nx = px + ox;
+                                        int ny = py + oy;
 
-                                boolean[] shapeRowN = shapes[ny];
-                                boolean insideShapeNeighbor =
-                                        shapeRowN != null && nx < shapeRowN.length && shapeRowN[nx];
+                                        if (nx < 0 || nx >= size || ny < 0 || ny >= size) {
+                                            continue;
+                                        }
 
-                                if (insideShapeNeighbor) {
-                                    // Still inside shape in shadow direction → not an outer edge in
-                                    // this direction for this pixel; stop this ray.
-                                    break;
-                                }
+                                        boolean[] shapeRowN = shapes[ny];
+                                        boolean insideShapeNeighbor =
+                                                shapeRowN != null && nx < shapeRowN.length && shapeRowN[nx];
+                                        if (insideShapeNeighbor) {
+                                            // Only want pixels OUTSIDE the shape.
+                                            continue;
+                                        }
 
-                                boolean[] discRowN = (disc != null && ny >= 0 && ny < disc.length) ? disc[ny] : null;
-                                if (discRowN != null) {
-                                    if (nx < 0 || nx >= discRowN.length || !discRowN[nx]) {
-                                        // Outside disc – stop extending this ray.
-                                        break;
+                                        boolean[] discRowN = (disc != null && ny >= 0 && ny < disc.length) ? disc[ny] : null;
+                                        if (discRowN != null) {
+                                            if (nx < 0 || nx >= discRowN.length || !discRowN[nx]) {
+                                                // Must stay inside the disc mask if present.
+                                                continue;
+                                            }
+                                        }
+
+                                        shadowPixels[ny][nx] = true;
                                     }
                                 }
+                            } else {
+                                // Directional shadow: cast a ray along (sxDir, syDir).
+                                for (int r = 1; r <= maxShadowRadius; r++) {
+                                    int nx = px + sxDir * r;
+                                    int ny = py + syDir * r;
 
-                                // Outside shape + inside disc → mark as shadow pixel.
-                                shadowPixels[ny][nx] = true;
+                                    if (nx < 0 || nx >= size || ny < 0 || ny >= size) {
+                                        break;
+                                    }
+
+                                    boolean[] shapeRowN = shapes[ny];
+                                    boolean insideShapeNeighbor =
+                                            shapeRowN != null && nx < shapeRowN.length && shapeRowN[nx];
+
+                                    if (insideShapeNeighbor) {
+                                        // Still inside shape in shadow direction → not an outer edge in
+                                        // this direction for this pixel; stop this ray.
+                                        break;
+                                    }
+
+                                    boolean[] discRowN = (disc != null && ny >= 0 && ny < disc.length) ? disc[ny] : null;
+                                    if (discRowN != null) {
+                                        if (nx < 0 || nx >= discRowN.length || !discRowN[nx]) {
+                                            // Outside disc – stop extending this ray.
+                                            break;
+                                        }
+                                    }
+
+                                    // Outside shape + inside disc → mark as shadow pixel.
+                                    shadowPixels[ny][nx] = true;
+                                }
                             }
                         }
                     }
@@ -1024,44 +1131,44 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
     /**
      * Convert our 1..8 direction index into a unit (dx, dy) offset representing
-     * the direction in which shadow "extends".
+     * the direction in which the band "extends".
      *
-     * This is used for both the shadow direction and the opposite (highlight) direction.
+     * This is used for both the shadow direction and the highlight direction.
      */
     private static int[] directionToUnitOffset(int dir) {
         int dx;
         int dy;
 
         switch (dir) {
-            case 1 -> { // NORTH: shadow extends downward
+            case 1 -> { // NORTH: band extends downward
                 dx = 0;
                 dy = 1;
             }
-            case 2 -> { // EAST: shadow extends leftward
+            case 2 -> { // EAST: band extends leftward
                 dx = -1;
                 dy = 0;
             }
-            case 3 -> { // SOUTH: shadow extends upward
+            case 3 -> { // SOUTH: band extends upward
                 dx = 0;
                 dy = -1;
             }
-            case 4 -> { // WEST: shadow extends rightward
+            case 4 -> { // WEST: band extends rightward
                 dx = 1;
                 dy = 0;
             }
-            case 5 -> { // NORTH_EAST: shadow extends down-left
+            case 5 -> { // NORTH_EAST: band extends down-left
                 dx = -1;
                 dy = 1;
             }
-            case 6 -> { // SOUTH_EAST: shadow extends up-left
+            case 6 -> { // SOUTH_EAST: band extends up-left
                 dx = -1;
                 dy = -1;
             }
-            case 7 -> { // SOUTH_WEST: shadow extends up-right
+            case 7 -> { // SOUTH_WEST: band extends up-right
                 dx = 1;
                 dy = -1;
             }
-            case 8 -> { // NORTH_WEST: shadow extends down-right
+            case 8 -> { // NORTH_WEST: band extends down-right
                 dx = 1;
                 dy = 1;
             }
