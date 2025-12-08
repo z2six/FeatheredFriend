@@ -2,7 +2,6 @@
 package net.z2six.featheredfriend.network;
 
 import com.mojang.logging.LogUtils;
-import net.minecraft.client.Minecraft;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -15,8 +14,6 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.data.KnownPlayersClientCache;
-import net.z2six.featheredfriend.client.gui.SigilPreviewScreen;
-import net.z2six.featheredfriend.network.payload.SigilPreviewPayload;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
@@ -60,13 +57,6 @@ public final class FFNetwork {
                     FFNetwork::handleKnownPlayersOnClient
             );
 
-            // New: SigilPreviewPayload
-            registrar.playToClient(
-                    SigilPreviewPayload.TYPE,
-                    SigilPreviewPayload.STREAM_CODEC,
-                    FFNetwork::handleSigilPreviewOnClient
-            );
-
             LOG.info("[FFNetwork] Registered KnownPlayersPayload + SigilPreviewPayload handlers");
         } catch (Throwable t) {
             LOG.error("[FFNetwork] Failed to register payload handlers", t);
@@ -99,41 +89,6 @@ public final class FFNetwork {
                 LOG.debug("[FFNetwork] Client cache updated with {} known players", payload.names().size());
             } catch (Throwable t) {
                 LOG.error("[FFNetwork] Failed to handle KnownPlayersPayload on client", t);
-            }
-        });
-    }
-
-// -------------------------------------------------------------------------
-// SigilPreview S2C
-// -------------------------------------------------------------------------
-
-    public static void sendSigilPreview(@NotNull ServerPlayer player,
-                                        int slices,
-                                        int shapeSetIndex,
-                                        @NotNull String seed) {
-        try {
-            PacketDistributor.sendToPlayer(player, new SigilPreviewPayload(slices, shapeSetIndex, seed));
-            LOG.debug("[FFNetwork] Sent SigilPreviewPayload to {} (slices={} shapeSetIndex={} seed='{}')",
-                    player.getGameProfile().getName(), slices, shapeSetIndex, seed);
-        } catch (Throwable t) {
-            LOG.error("[FFNetwork] Failed to send SigilPreviewPayload to {}", player.getGameProfile().getName(), t);
-        }
-    }
-
-    private static void handleSigilPreviewOnClient(@NotNull SigilPreviewPayload payload,
-                                                   @NotNull IPayloadContext context) {
-        context.enqueueWork(() -> {
-            try {
-                Minecraft mc = Minecraft.getInstance();
-                if (mc == null) {
-                    LOG.warn("[FFNetwork] Minecraft instance is null in SigilPreview handler");
-                    return;
-                }
-                SigilPreviewScreen.open(payload.slices(), payload.shapeSetIndex(), payload.seed());
-                LOG.debug("[FFNetwork] Opened SigilPreviewScreen for slices={} shapeSetIndex={} seed='{}'",
-                        payload.slices(), payload.shapeSetIndex(), payload.seed());
-            } catch (Throwable t) {
-                LOG.error("[FFNetwork] Failed to handle SigilPreviewPayload on client", t);
             }
         });
     }

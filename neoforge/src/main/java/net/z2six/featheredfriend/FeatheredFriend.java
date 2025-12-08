@@ -54,9 +54,7 @@ public class FeatheredFriend {
         }
 
         // Register commands
-        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
-                net.z2six.featheredfriend.neoforge.commands.FFSigilCommandsNeoForge::register
-        );
+        // No commands yet
 
         // Client-only: menu screens (called only on physical client)
         try {
