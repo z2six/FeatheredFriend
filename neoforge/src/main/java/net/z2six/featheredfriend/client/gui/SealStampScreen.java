@@ -808,7 +808,8 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             boolean[][] shapes = this.currentShapeMask;
 
             // -----------------------------------------------------------------
-            // Compute highlight/shadow pixels OUTSIDE the shapes
+            // Compute highlight/shadow pixels OUTSIDE the shapes,
+            // edge-based with per-edge classification.
             // -----------------------------------------------------------------
 
             boolean[][] highlightPixels = (SHAPE_ENABLE_HIGHLIGHT ? new boolean[size][size] : null);
@@ -821,15 +822,42 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                     ? Math.max(1, SHAPE_SHADOW_EDGE_MAX_RADIUS)
                     : 0);
 
-            int[] shadowDir = directionToUnitOffset(SHAPE_SHADOW_DIRECTION);
-            int sxDir = shadowDir[0];
-            int syDir = shadowDir[1];
+            // Integer step vectors for band casting.
+            int[] shadowStep = directionToUnitOffset(SHAPE_SHADOW_DIRECTION);
+            int sxStep = shadowStep[0];
+            int syStep = shadowStep[1];
 
-            int[] highlightDir = directionToUnitOffset(SHAPE_HIGHLIGHT_DIRECTION);
-            int hxDir = highlightDir[0];
-            int hyDir = highlightDir[1];
+            int[] highlightStep = directionToUnitOffset(SHAPE_HIGHLIGHT_DIRECTION);
+            int hxStep = highlightStep[0];
+            int hyStep = highlightStep[1];
+
+            // Normalised float vectors for classification (dot products).
+            float hxNormX = hxStep;
+            float hxNormY = hyStep;
+            float hxLen = (float) Math.sqrt(hxNormX * hxNormX + hxNormY * hxNormY);
+            if (hxLen > 1.0e-4f) {
+                hxNormX /= hxLen;
+                hxNormY /= hxLen;
+            } else {
+                hxNormX = 0.0f;
+                hxNormY = 0.0f;
+            }
+
+            float sxNormX = sxStep;
+            float sxNormY = syStep;
+            float sxLen = (float) Math.sqrt(sxNormX * sxNormX + sxNormY * sxNormY);
+            if (sxLen > 1.0e-4f) {
+                sxNormX /= sxLen;
+                sxNormY /= sxLen;
+            } else {
+                sxNormX = 0.0f;
+                sxNormY = 0.0f;
+            }
 
             try {
+                // First build an edge mask: shape pixels that touch "air" (outside shape or outside disc).
+                boolean[][] edgeMask = new boolean[size][size];
+
                 for (int py = 0; py < size; py++) {
                     boolean[] shapeRow = shapes[py];
                     if (shapeRow == null) continue;
@@ -841,162 +869,208 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                             continue;
                         }
 
-                        // Optional clipping of shapes to the disc mask
                         if (discRow != null && !discRow[px]) {
                             continue;
                         }
 
-                        // --- Highlight: outside the shape in its own configured direction (or omni) ---
-                        if (SHAPE_ENABLE_HIGHLIGHT && highlightPixels != null && maxHighlightRadius > 0) {
-                            if (SHAPE_HIGHLIGHT_DIRECTION == 0) {
-                                // Omni-directional highlight ring around the shape (within Chebyshev radius).
-                                for (int oy = -maxHighlightRadius; oy <= maxHighlightRadius; oy++) {
-                                    for (int ox = -maxHighlightRadius; ox <= maxHighlightRadius; ox++) {
-                                        if (ox == 0 && oy == 0) {
-                                            continue;
-                                        }
-                                        // Chebyshev distance: square ring, not diamond.
-                                        if (Math.max(Math.abs(ox), Math.abs(oy)) > maxHighlightRadius) {
-                                            continue;
-                                        }
+                        boolean isEdge = false;
+                        for (int oy = -1; oy <= 1 && !isEdge; oy++) {
+                            for (int ox = -1; ox <= 1 && !isEdge; ox++) {
+                                if (ox == 0 && oy == 0) continue;
+                                int nx = px + ox;
+                                int ny = py + oy;
 
-                                        int nx = px + ox;
-                                        int ny = py + oy;
-
-                                        if (nx < 0 || nx >= size || ny < 0 || ny >= size) {
-                                            continue;
-                                        }
-
-                                        boolean[] shapeRowN = shapes[ny];
-                                        boolean insideShapeNeighbor =
-                                                shapeRowN != null && nx < shapeRowN.length && shapeRowN[nx];
-                                        if (insideShapeNeighbor) {
-                                            // Only want pixels OUTSIDE the shape.
-                                            continue;
-                                        }
-
-                                        boolean[] discRowN = (disc != null && ny >= 0 && ny < disc.length) ? disc[ny] : null;
-                                        if (discRowN != null) {
-                                            if (nx < 0 || nx >= discRowN.length || !discRowN[nx]) {
-                                                // Must stay inside the disc mask if present.
-                                                continue;
-                                            }
-                                        }
-
-                                        highlightPixels[ny][nx] = true;
-                                    }
-                                }
-                            } else {
-                                // Directional highlight: cast a ray along (hxDir, hyDir).
-                                for (int r = 1; r <= maxHighlightRadius; r++) {
-                                    int nx = px + hxDir * r;
-                                    int ny = py + hyDir * r;
-
-                                    if (nx < 0 || nx >= size || ny < 0 || ny >= size) {
-                                        break;
-                                    }
-
+                                boolean insideNeighbor = false;
+                                if (nx >= 0 && nx < size && ny >= 0 && ny < size) {
                                     boolean[] shapeRowN = shapes[ny];
                                     boolean insideShapeNeighbor =
                                             shapeRowN != null && nx < shapeRowN.length && shapeRowN[nx];
 
-                                    // If neighbour in highlight direction is still inside the shape,
-                                    // this is not an outer edge in this direction → stop for this ray.
-                                    if (insideShapeNeighbor) {
-                                        break;
-                                    }
-
-                                    boolean[] discRowN = (disc != null && ny >= 0 && ny < disc.length) ? disc[ny] : null;
-                                    if (discRowN != null) {
-                                        if (nx < 0 || nx >= discRowN.length || !discRowN[nx]) {
-                                            // Outside disc – stop extending this ray.
-                                            break;
+                                    boolean insideDiscNeighbor = true;
+                                    if (disc != null && ny >= 0 && ny < disc.length) {
+                                        boolean[] discRowN = disc[ny];
+                                        if (discRowN != null && nx >= 0 && nx < discRowN.length) {
+                                            insideDiscNeighbor = discRowN[nx];
+                                        } else {
+                                            insideDiscNeighbor = false;
                                         }
                                     }
 
-                                    // Outside the shape + inside disc → mark as highlight pixel.
-                                    highlightPixels[ny][nx] = true;
+                                    insideNeighbor = insideShapeNeighbor && insideDiscNeighbor;
+                                }
+
+                                if (!insideNeighbor) {
+                                    // Touching air (outside shape or outside disc) → edge.
+                                    isEdge = true;
                                 }
                             }
                         }
 
-                        // --- Shadow: outside the shape along its own configured direction (or omni) ---
-                        if (SHAPE_ENABLE_SHADOW && shadowPixels != null && maxShadowRadius > 0) {
-                            if (SHAPE_SHADOW_DIRECTION == 0) {
-                                // Omni-directional shadow ring around the shape (within Chebyshev radius).
-                                for (int oy = -maxShadowRadius; oy <= maxShadowRadius; oy++) {
-                                    for (int ox = -maxShadowRadius; ox <= maxShadowRadius; ox++) {
-                                        if (ox == 0 && oy == 0) {
-                                            continue;
-                                        }
-                                        // Chebyshev distance: square ring.
-                                        if (Math.max(Math.abs(ox), Math.abs(oy)) > maxShadowRadius) {
-                                            continue;
-                                        }
+                        edgeMask[py][px] = isEdge;
+                    }
+                }
 
-                                        int nx = px + ox;
-                                        int ny = py + oy;
+                // For each edge pixel, compute an outward vector and classify it as highlight or shadow,
+                // then cast the band outward in the chosen direction.
+                for (int py = 0; py < size; py++) {
+                    boolean[] shapeRow = shapes[py];
+                    if (shapeRow == null) continue;
 
-                                        if (nx < 0 || nx >= size || ny < 0 || ny >= size) {
-                                            continue;
-                                        }
+                    boolean[] edgeRow = edgeMask[py];
+                    if (edgeRow == null) continue;
 
-                                        boolean[] shapeRowN = shapes[ny];
-                                        boolean insideShapeNeighbor =
-                                                shapeRowN != null && nx < shapeRowN.length && shapeRowN[nx];
-                                        if (insideShapeNeighbor) {
-                                            // Only want pixels OUTSIDE the shape.
-                                            continue;
-                                        }
+                    boolean[] discRow = (disc != null && py >= 0 && py < disc.length) ? disc[py] : null;
 
-                                        boolean[] discRowN = (disc != null && ny >= 0 && ny < disc.length) ? disc[ny] : null;
-                                        if (discRowN != null) {
-                                            if (nx < 0 || nx >= discRowN.length || !discRowN[nx]) {
-                                                // Must stay inside the disc mask if present.
-                                                continue;
-                                            }
-                                        }
+                    for (int px = 0; px < size; px++) {
+                        if (!shapeRow[px]) {
+                            continue;
+                        }
+                        if (!edgeRow[px]) {
+                            continue;
+                        }
 
-                                        shadowPixels[ny][nx] = true;
-                                    }
-                                }
-                            } else {
-                                // Directional shadow: cast a ray along (sxDir, syDir).
-                                for (int r = 1; r <= maxShadowRadius; r++) {
-                                    int nx = px + sxDir * r;
-                                    int ny = py + syDir * r;
+                        if (discRow != null && !discRow[px]) {
+                            continue;
+                        }
 
-                                    if (nx < 0 || nx >= size || ny < 0 || ny >= size) {
-                                        break;
-                                    }
+                        // Compute outward vector by aggregating offsets to "air" neighbours.
+                        float outX = 0.0f;
+                        float outY = 0.0f;
 
+                        for (int oy = -1; oy <= 1; oy++) {
+                            for (int ox = -1; ox <= 1; ox++) {
+                                if (ox == 0 && oy == 0) continue;
+                                int nx = px + ox;
+                                int ny = py + oy;
+
+                                boolean insideNeighbor = false;
+                                if (nx >= 0 && nx < size && ny >= 0 && ny < size) {
                                     boolean[] shapeRowN = shapes[ny];
                                     boolean insideShapeNeighbor =
                                             shapeRowN != null && nx < shapeRowN.length && shapeRowN[nx];
 
-                                    if (insideShapeNeighbor) {
-                                        // Still inside shape in shadow direction → not an outer edge in
-                                        // this direction for this pixel; stop this ray.
-                                        break;
-                                    }
-
-                                    boolean[] discRowN = (disc != null && ny >= 0 && ny < disc.length) ? disc[ny] : null;
-                                    if (discRowN != null) {
-                                        if (nx < 0 || nx >= discRowN.length || !discRowN[nx]) {
-                                            // Outside disc – stop extending this ray.
-                                            break;
+                                    boolean insideDiscNeighbor = true;
+                                    if (disc != null && ny >= 0 && ny < disc.length) {
+                                        boolean[] discRowN = disc[ny];
+                                        if (discRowN != null && nx >= 0 && nx < discRowN.length) {
+                                            insideDiscNeighbor = discRowN[nx];
+                                        } else {
+                                            insideDiscNeighbor = false;
                                         }
                                     }
 
-                                    // Outside shape + inside disc → mark as shadow pixel.
-                                    shadowPixels[ny][nx] = true;
+                                    insideNeighbor = insideShapeNeighbor && insideDiscNeighbor;
                                 }
+
+                                if (!insideNeighbor) {
+                                    // Air neighbour: contributes to outward direction.
+                                    outX += ox;
+                                    outY += oy;
+                                }
+                            }
+                        }
+
+                        float outLen = (float) Math.sqrt(outX * outX + outY * outY);
+                        if (outLen > 1.0e-4f) {
+                            outX /= outLen;
+                            outY /= outLen;
+                        } else {
+                            // Degenerate: fall back to shadow direction, or highlight if shadow disabled.
+                            if (SHAPE_ENABLE_SHADOW && (sxNormX != 0.0f || sxNormY != 0.0f)) {
+                                outX = sxNormX;
+                                outY = sxNormY;
+                            } else if (SHAPE_ENABLE_HIGHLIGHT && (hxNormX != 0.0f || hxNormY != 0.0f)) {
+                                outX = hxNormX;
+                                outY = hxNormY;
+                            } else {
+                                // No usable direction; skip this edge pixel.
+                                continue;
+                            }
+                        }
+
+                        float dotHighlight = (SHAPE_ENABLE_HIGHLIGHT ? (outX * hxNormX + outY * hxNormY) : -Float.MAX_VALUE);
+                        float dotShadow = (SHAPE_ENABLE_SHADOW ? (outX * sxNormX + outY * sxNormY) : -Float.MAX_VALUE);
+
+                        boolean useHighlight = SHAPE_ENABLE_HIGHLIGHT &&
+                                (!SHAPE_ENABLE_SHADOW || dotHighlight >= dotShadow);
+                        boolean useShadow = SHAPE_ENABLE_SHADOW &&
+                                (!SHAPE_ENABLE_HIGHLIGHT || dotShadow > dotHighlight);
+
+                        // Emit highlight band outward from this edge pixel.
+                        if (useHighlight && highlightPixels != null && maxHighlightRadius > 0) {
+                            for (int k = 1; k <= maxHighlightRadius; k++) {
+                                int nx = px + hxStep * k;
+                                int ny = py + hyStep * k;
+
+                                if (nx < 0 || nx >= size || ny < 0 || ny >= size) {
+                                    break;
+                                }
+
+                                boolean[] shapeRowN = shapes[ny];
+                                boolean insideShapeNeighbor =
+                                        shapeRowN != null && nx < shapeRowN.length && shapeRowN[nx];
+                                if (insideShapeNeighbor) {
+                                    // Stay outside shape.
+                                    break;
+                                }
+
+                                boolean insideDiscNeighbor = true;
+                                if (disc != null && ny >= 0 && ny < disc.length) {
+                                    boolean[] discRowN = disc[ny];
+                                    if (discRowN != null && nx >= 0 && nx < discRowN.length) {
+                                        insideDiscNeighbor = discRowN[nx];
+                                    } else {
+                                        insideDiscNeighbor = false;
+                                    }
+                                }
+                                if (!insideDiscNeighbor) {
+                                    // Do not go outside disc.
+                                    break;
+                                }
+
+                                highlightPixels[ny][nx] = true;
+                            }
+                        }
+
+                        // Emit shadow band outward from this edge pixel.
+                        if (useShadow && shadowPixels != null && maxShadowRadius > 0) {
+                            for (int k = 1; k <= maxShadowRadius; k++) {
+                                int nx = px + sxStep * k;
+                                int ny = py + syStep * k;
+
+                                if (nx < 0 || nx >= size || ny < 0 || ny >= size) {
+                                    break;
+                                }
+
+                                boolean[] shapeRowN = shapes[ny];
+                                boolean insideShapeNeighbor =
+                                        shapeRowN != null && nx < shapeRowN.length && shapeRowN[nx];
+                                if (insideShapeNeighbor) {
+                                    // Stay outside shape.
+                                    break;
+                                }
+
+                                boolean insideDiscNeighbor = true;
+                                if (disc != null && ny >= 0 && ny < disc.length) {
+                                    boolean[] discRowN = disc[ny];
+                                    if (discRowN != null && nx >= 0 && nx < discRowN.length) {
+                                        insideDiscNeighbor = discRowN[nx];
+                                    } else {
+                                        insideDiscNeighbor = false;
+                                    }
+                                }
+                                if (!insideDiscNeighbor) {
+                                    // Do not go outside disc.
+                                    break;
+                                }
+
+                                shadowPixels[ny][nx] = true;
                             }
                         }
                     }
                 }
             } catch (Throwable t) {
-                LOG.error("[SealStampScreen] renderSigilGlyph: edge analysis (highlight/shadow) failed", t);
+                LOG.error("[SealStampScreen] renderSigilGlyph: edge-based analysis (highlight/shadow) failed", t);
             }
 
             // -----------------------------------------------------------------
