@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/FeatheredFriend.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/FeatheredFriend.java
 package net.z2six.featheredfriend;
 
 import com.mojang.logging.LogUtils;
@@ -6,6 +6,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.z2six.featheredfriend.client.FFNeoForgeClient;
 import net.z2six.featheredfriend.config.FFCalendarConfig;
+import net.z2six.featheredfriend.network.FFNetwork;
 import net.z2six.featheredfriend.registry.FFCreativeTabsNeoForge;
 import net.z2six.featheredfriend.registry.FFNeoForgeItems;
 import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
@@ -21,6 +22,7 @@ import org.slf4j.Logger;
  *  - Register NeoForge-specific registries (items, menus, creative tabs).
  *  - Register server-side calendar config.
  *  - Hook client-only registration (menu screens) via the mod event bus.
+ *  - Initialize NeoForge networking (FFNetwork).
  */
 @Mod(Constants.MOD_ID)
 public class FeatheredFriend {
@@ -53,8 +55,12 @@ public class FeatheredFriend {
             LOG.error("[FeatheredFriend] Failed to register NeoForge registries", t);
         }
 
-        // Register commands
-        // No commands yet
+        // Networking: SimpleChannel (C2S) registration
+        try {
+            FFNetwork.registerSimpleMessages();
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriend] FFNetwork.registerSimpleMessages() failed", t);
+        }
 
         // Client-only: menu screens (called only on physical client)
         try {

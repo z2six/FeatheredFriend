@@ -14,9 +14,14 @@ import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.player.Inventory;
+import net.neoforged.neoforge.network.PacketDistributor;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.widget.MultiLineScrollTextWidget;
+import net.z2six.featheredfriend.content.seal.SealStampCarveLogic;
 import net.z2six.featheredfriend.neoforge.menu.SealStampMenu;
+import net.z2six.featheredfriend.network.FFNetwork;
+import net.z2six.featheredfriend.content.item.SealStampItem;
+import net.z2six.featheredfriend.network.SealStampCarveResultPacket;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator.SigilPattern;
 import org.jetbrains.annotations.NotNull;
@@ -44,15 +49,15 @@ import java.util.List;
  *          - Optional directional highlight band outside the shapes.
  *
  * On "Carve" click:
- *  * Spawns a burst of SigilEtchingParticle chips from the sigil area.
- *  * All motion / feel is controlled inside SigilEtchingParticle via createForCarve().
+ *  * Runs a short carve animation sequence driven by SealStampCarveLogic.
+ *  * During the sequence, multiple bursts of SigilEtchingParticle chips spawn.
+ *  * When finished, a SealStampCarveResultPacket is sent to the server to
+ *    write the seal data into the stamp's CustomData.
  *
  * Sigil preview:
  *  * Seed is derived from secret only using SealSigilGenerator.computeSeedFromSecretOnly().
  *  * Slices and styleIndex are applied afterwards via generateFromSeed().
  *  * Pattern is regenerated when secret changes or when slices/style buttons are clicked.
- *
- * Sigil → NBT saving will be wired in a later step.
  */
 public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
@@ -228,7 +233,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
     /**
      * Thickness of the shadow band (in pixels, Chebyshev radius).
-     * 2 => 2 px thick shadow band.
+     * 3 => 3 px thick shadow band.
      */
     private static final int SHAPE_SHADOW_EDGE_MAX_RADIUS = 3;
 
@@ -250,31 +255,13 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
     /**
      * Direction of the highlight band relative to the shapes.
-     * Uses same mapping as shadow, but independent:
-     * 1 = NORTH      -> highlight extends downward (from top edge)
-     * 2 = EAST       -> highlight extends leftward  (from right edge)
-     * 3 = SOUTH      -> highlight extends upward   (from bottom edge)
-     * 4 = WEST       -> highlight extends rightward(from left edge)
-     * 5 = NORTH_EAST -> highlight extends down-left
-     * 6 = SOUTH_EAST -> highlight extends up-left   (top-left of sigil)
-     * 7 = SOUTH_WEST -> highlight extends up-right
-     * 8 = NORTH_WEST -> highlight extends down-right
-     *
-     * For a band at the **top-left** of the sigil, we use 6 (up-left).
+     * For a band at the top-left of the sigil, we use 6 (up-left).
      */
     private static final int SHAPE_HIGHLIGHT_DIRECTION = 6;
 
     /**
      * Direction of the shadow band relative to the shapes.
-     * 0 = omni-directional (unused here)
-     * 1 = NORTH      -> shadow extends downward
-     * 2 = EAST       -> shadow extends leftward
-     * 3 = SOUTH      -> shadow extends upward
-     * 4 = WEST       -> shadow extends rightward
-     * 5 = NORTH_EAST -> shadow extends down-left
-     * 6 = SOUTH_EAST -> shadow extends up-left
-     * 7 = SOUTH_WEST -> shadow extends up-right
-     * 8 = NORTH_WEST -> shadow extends down-right
+     * 8 = NORTH_WEST -> band extends down-right (bottom-right of sigil).
      */
     private static final int SHAPE_SHADOW_DIRECTION = 8;
 
@@ -303,12 +290,20 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     private int currentPatternSize;
     private String lastSecretForSigil = "";
 
+    // Carve orchestration + stamp slot binding
+    private final SealStampCarveLogic carveLogic = new SealStampCarveLogic();
+    private boolean carveButtonDisabled = false;
+    private final int stampSlot;
+
     public SealStampScreen(@NotNull SealStampMenu menu,
                            @NotNull Inventory playerInventory,
                            @NotNull Component title) {
         super(menu, playerInventory, title);
         this.imageWidth = GUI_WIDTH;
         this.imageHeight = GUI_HEIGHT;
+
+        // Bind stamp slot from menu so we know which stack to update on server.
+        this.stampSlot = menu.getStampSlotIndex();
 
         // Hide vanilla container labels; we draw our own (minimal).
         this.titleLabelX = 10000;
@@ -317,7 +312,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         this.inventoryLabelY = 10000;
 
         LOG.debug(
-                "[SealStampScreen] ctor: SIGIL_BASE_DIAMETER_PIXELS={} SIGIL_RADIUS_SCALE={} -> SIGIL_RADIUS={} | WAX_SEAL_SCREEN_SCALE={} WAX_W={} WAX_H={} | highlightEnabled={} highlightRadius={} highlightDir={} | shadowEnabled={} shadowRadius={} shadowDir={}",
+                "[SealStampScreen] ctor: SIGIL_BASE_DIAMETER_PIXELS={} SIGIL_RADIUS_SCALE={} -> SIGIL_RADIUS={} | WAX_SEAL_SCREEN_SCALE={} WAX_W={} WAX_H={} | highlightEnabled={} highlightRadius={} highlightDir={} | shadowEnabled={} shadowRadius={} shadowDir={} | stampSlot={}",
                 SIGIL_BASE_DIAMETER_PIXELS,
                 SIGIL_RADIUS_SCALE,
                 SIGIL_RADIUS,
@@ -329,7 +324,8 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                 SHAPE_HIGHLIGHT_DIRECTION,
                 SHAPE_ENABLE_SHADOW,
                 SHAPE_SHADOW_EDGE_MAX_RADIUS,
-                SHAPE_SHADOW_DIRECTION
+                SHAPE_SHADOW_DIRECTION,
+                this.stampSlot
         );
     }
 
@@ -456,6 +452,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             }
             if (this.carveButton != null) {
                 this.carveButton.setMessage(gothic("Carve"));
+                this.carveButton.active = !carveButtonDisabled;
             }
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] updateButtonLabels failed", t);
@@ -582,17 +579,38 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     }
 
     // ---------------------------------------------------------------------
-    // Carve button behaviour (particles only for now)
+    // Carve button behaviour (animation + networking)
     // ---------------------------------------------------------------------
 
     private void onCarveClicked() {
         try {
-            LOG.info("[SealStampScreen] Carve clicked. slices={} style={} secret='{}'",
-                    currentSlices,
-                    STYLE_NAMES[Math.max(0, Math.min(currentStyleIndex, STYLE_NAMES.length - 1))],
-                    secretField != null ? safeString(secretField.getText()) : "<null>");
+            if (carveLogic.isCarving()) {
+                LOG.debug("[SealStampScreen] Carve click ignored: carve animation already active");
+                return;
+            }
 
-            spawnCarveParticles(80);
+            if (this.carveButton == null) {
+                LOG.warn("[SealStampScreen] Carve clicked but carveButton is null");
+                return;
+            }
+
+            String secret = safeString(secretField != null ? secretField.getText() : "");
+            long seed = SealSigilGenerator.computeSeedFromSecretOnly(secret);
+            int slices = currentSlices;
+            int style = currentStyleIndex;
+
+            // Compute the actual slot that currently holds a SealStampItem.
+            // This is what will actually be sent to the server when the carve finishes.
+            int effectiveSlot = computeSealStampSlot(Minecraft.getInstance());
+
+            LOG.info("[SealStampScreen] Carve START → menuStampSlot={} effectiveStampSlot={} seed={} slices={} style={} secret='{}'",
+                    this.stampSlot, effectiveSlot, seed, slices, style, secret);
+
+            // Disable button for the duration of the carve animation.
+            carveButtonDisabled = true;
+            this.carveButton.active = false;
+
+            carveLogic.beginCarve(seed, slices, style);
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] onCarveClicked failed", t);
         }
@@ -626,7 +644,66 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                 }
             }
 
+            // Drive GUI-scale label
             updateScaleButtonLabelFromOptions();
+
+            // Drive carve animation + particle bursts + final packet
+            carveLogic.tick(new SealStampCarveLogic.Callback() {
+                @Override
+                public void onBurst(int burstIndex) {
+                    try {
+                        LOG.debug("[SealStampScreen] Carve burst #{} at tick={}", burstIndex, carveLogic.getElapsedTicks());
+                        spawnCarveParticles(80);
+                    } catch (Throwable t) {
+                        LOG.error("[SealStampScreen] carve burst callback failed", t);
+                    }
+                }
+
+                @Override
+                public void onFinished(long seed, int slices, int style) {
+                    try {
+                        Minecraft mc = Minecraft.getInstance();
+                        if (mc == null || mc.player == null) {
+                            LOG.error("[SealStampScreen] onFinished: Minecraft or player is null; aborting packet send");
+                            return;
+                        }
+
+                        int effectiveSlot = computeSealStampSlot(mc);
+
+                        if (effectiveSlot < 0) {
+                            LOG.error("[SealStampScreen] Carve FINISHED but could not locate a SealStampItem in player hands/inventory; aborting write");
+                            // Optionally re-enable the button so the user can try again
+                            carveButtonDisabled = false;
+                            if (carveButton != null) {
+                                carveButton.active = true;
+                            }
+                            return;
+                        }
+
+                        String ownerName = mc.player.getGameProfile().getName();
+
+                        LOG.info("[SealStampScreen] Carve FINISHED → sending SealStampCarveResultPacket (stampSlot={} owner='{}')",
+                                effectiveSlot, ownerName);
+
+                        // Send the result to the server for actual NBT write (payload-based)
+                        PacketDistributor.sendToServer(
+                                new SealStampCarveResultPacket(effectiveSlot, seed, slices, style, ownerName)
+                        );
+
+                        // Close the container / GUI after a successful carve
+                        try {
+                            mc.player.closeContainer();
+                            mc.setScreen(null);
+                        } catch (Throwable closeError) {
+                            LOG.error("[SealStampScreen] Failed to close container after carve", closeError);
+                        }
+
+                    } catch (Throwable t) {
+                        LOG.error("[SealStampScreen] carve finished callback failed", t);
+                    }
+                }
+            });
+
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] containerTick failed", t);
         }
@@ -1348,4 +1425,53 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     private String safeString(String s) {
         return (s == null) ? "" : s;
     }
+
+    // ---------------------------------------------------------------------
+    // Other helpers
+    // ---------------------------------------------------------------------
+
+    /**
+     * Determine which slot currently holds a SealStampItem.
+     *
+     * Slot mapping:
+     *  - 36 = main hand
+     *  - 37 = offhand
+     *  - 0..35 = main inventory list
+     *
+     * Returns -1 if no SealStampItem is found.
+     */
+    private static int computeSealStampSlot(Minecraft mc) {
+        try {
+            if (mc == null || mc.player == null) {
+                return -1;
+            }
+
+            var player = mc.player;
+
+            // 1) Check main hand
+            if (player.getMainHandItem().getItem() instanceof SealStampItem) {
+                return 36;
+            }
+
+            // 2) Check offhand
+            if (player.getOffhandItem().getItem() instanceof SealStampItem) {
+                return 37;
+            }
+
+            // 3) Scan main inventory (0..35)
+            var inv = player.getInventory();
+            for (int i = 0; i < inv.items.size(); i++) {
+                var stack = inv.items.get(i);
+                if (!stack.isEmpty() && stack.getItem() instanceof SealStampItem) {
+                    return i;
+                }
+            }
+
+            return -1;
+        } catch (Throwable t) {
+            LOG.error("[SealStampScreen] computeSealStampSlot failed", t);
+            return -1;
+        }
+    }
+
 }

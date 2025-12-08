@@ -22,16 +22,14 @@ import java.util.Collection;
 import java.util.List;
 
 /**
-
- // neoforge/src/main/java/net/z2six/featheredfriend/network/FFNetwork.java
-
- FFNetwork
-
- Handles NeoForge networking for FeatheredFriend.
-
- KnownPlayersPayload (S2C): list of known player names.
-
- SigilPreviewPayload (S2C): opens sigil preview screen with slices + shapeSetIndex + seed.
+ * // neoforge/src/main/java/net/z2six/featheredfriend/network/FFNetwork.java
+ *
+ * FFNetwork
+ *
+ * Handles NeoForge networking for FeatheredFriend.
+ *
+ * KnownPlayersPayload (S2C): list of known player names.
+ * SealStampCarveResultPacket (C2S): client → server seal carve result.
  */
 @EventBusSubscriber(modid = Constants.MOD_ID, bus = EventBusSubscriber.Bus.MOD)
 public final class FFNetwork {
@@ -41,33 +39,54 @@ public final class FFNetwork {
     private FFNetwork() {
     }
 
-// -------------------------------------------------------------------------
-// Payload registration
-// -------------------------------------------------------------------------
+    /**
+     * Legacy hook kept for compatibility with older bootstrap code.
+     * Your FeatheredFriend main class still calls FFNetwork.registerSimpleMessages().
+     *
+     * In the new payload-based NeoForge networking model, there is nothing to
+     * register here; all registration happens in the RegisterPayloadHandlersEvent
+     * handler below. We just log once so it's obvious what's happening.
+     */
+    public static void registerSimpleMessages() {
+        try {
+            LOG.info("[FFNetwork] registerSimpleMessages() called; using payload-based networking so this is a no-op");
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] registerSimpleMessages() failed (no-op stub)", t);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Payload registration
+    // ---------------------------------------------------------------------
 
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
         try {
             var registrar = event.registrar("1");
 
-            // Existing: KnownPlayersPayload
+            // Existing: KnownPlayersPayload (S2C)
             registrar.playToClient(
                     KnownPlayersPayload.TYPE,
                     KnownPlayersPayload.STREAM_CODEC,
                     FFNetwork::handleKnownPlayersOnClient
             );
 
-            LOG.info("[FFNetwork] Registered KnownPlayersPayload + SigilPreviewPayload handlers");
+            // New: SealStampCarveResultPacket (C2S)
+            registrar.playToServer(
+                    SealStampCarveResultPacket.TYPE,
+                    SealStampCarveResultPacket.STREAM_CODEC,
+                    FFNetwork::handleSealStampCarveResultOnServer
+            );
+
+            LOG.info("[FFNetwork] Registered KnownPlayersPayload (S2C) and SealStampCarveResultPacket (C2S) handlers");
         } catch (Throwable t) {
             LOG.error("[FFNetwork] Failed to register payload handlers", t);
         }
-
-
     }
 
-// -------------------------------------------------------------------------
-// KnownPlayers S2C
-// -------------------------------------------------------------------------
+    // ---------------------------------------------------------------------
+    // KnownPlayers S2C
+    // ---------------------------------------------------------------------
 
     public static void sendKnownPlayersTo(@NotNull ServerPlayer player,
                                           @NotNull Collection<String> names) {
@@ -93,9 +112,29 @@ public final class FFNetwork {
         });
     }
 
-// -------------------------------------------------------------------------
-// KnownPlayers payload type
-// -------------------------------------------------------------------------
+    // ---------------------------------------------------------------------
+    // SealStampCarveResult C2S
+    // ---------------------------------------------------------------------
+
+    private static void handleSealStampCarveResultOnServer(@NotNull SealStampCarveResultPacket payload,
+                                                           @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                if (!(context.player() instanceof ServerPlayer serverPlayer)) {
+                    LOG.error("[FFNetwork] handleSealStampCarveResultOnServer: context.player() is not a ServerPlayer");
+                    return;
+                }
+
+                SealStampCarveResultPacket.handle(payload, serverPlayer);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] Failed to handle SealStampCarveResultPacket on server", t);
+            }
+        });
+    }
+
+    // ---------------------------------------------------------------------
+    // KnownPlayers payload type
+    // ---------------------------------------------------------------------
 
     public record KnownPlayersPayload(List<String> names) implements CustomPacketPayload {
 
@@ -134,7 +173,5 @@ public final class FFNetwork {
         public @NotNull Type<KnownPlayersPayload> type() {
             return TYPE;
         }
-
-
     }
 }

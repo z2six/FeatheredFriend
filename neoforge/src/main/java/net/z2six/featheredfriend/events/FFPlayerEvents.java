@@ -1,4 +1,3 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/events/FFPlayerEvents.java
 package net.z2six.featheredfriend.events;
 
 import com.mojang.logging.LogUtils;
@@ -15,6 +14,8 @@ import org.slf4j.Logger;
 import java.util.List;
 
 /**
+ * // neoforge/src/main/java/net/z2six/featheredfriend/events/FFPlayerEvents.java
+ *
  * FFPlayerEvents
  *
  * Game-level player event handlers.

@@ -18,13 +18,6 @@ import net.z2six.featheredfriend.platform.services.IPlatformHelper;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
-/**
- * // neoforge/src/main/java/net/z2six/featheredfriend/platform/NeoForgePlatformHelper.java
- *
- * NeoForgePlatformHelper
- *
- * NeoForge-specific implementation of the platform abstraction.
- */
 public class NeoForgePlatformHelper implements IPlatformHelper {
 
     private static final Logger LOG = LogUtils.getLogger();
@@ -61,12 +54,9 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     @Override
     public void openScrollSealingScreen(@NotNull ServerPlayer player) {
         try {
-            LOG.debug("[NeoForgePlatformHelper] Opening Scroll Sealing menu for {}",
-                    player.getGameProfile().getName());
-
             player.openMenu(new SimpleMenuProvider(
-                    (int containerId, Inventory inventory, Player p) ->
-                            new ScrollSealingMenu(containerId, inventory),
+                    (int containerId, Inventory inv, Player p) ->
+                            new ScrollSealingMenu(containerId, inv),
                     Component.translatable("screen.featheredfriend.scroll_sealing")
             ));
         } catch (Throwable t) {
@@ -77,12 +67,11 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     @Override
     public void openSealStampScreen(@NotNull ServerPlayer player) {
         try {
-            LOG.debug("[NeoForgePlatformHelper] Opening Seal Stamp menu for {}",
-                    player.getGameProfile().getName());
+            int slot = player.getMainHandItem().isEmpty() ? 37 : 36;
 
             player.openMenu(new SimpleMenuProvider(
-                    (int containerId, Inventory inventory, Player p) ->
-                            new SealStampMenu(containerId, inventory),
+                    (int containerId, Inventory inv, Player p) ->
+                            new SealStampMenu(containerId, inv, slot),
                     Component.translatable("screen.featheredfriend.seal_stamp")
             ));
         } catch (Throwable t) {
@@ -90,22 +79,12 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
         }
     }
 
-    /**
-     * Return the current calendar definition.
-     *
-     * This uses a SERVER config (ModConfig.Type.SERVER) defined in FFCalendarConfig.
-     * On a dedicated server, that config is stored per-world. On clients, NeoForge
-     * will automatically sync the SERVER config from the server, so getCalendarDefinition()
-     * returns server-authoritative values on both logical sides.
-     */
     @Override
     public CalendarDefinition getCalendarDefinition() {
         try {
-            CalendarDefinition def = FFCalendarConfig.getCalendarDefinition();
-            LOG.debug("[NeoForgePlatformHelper] getCalendarDefinition -> {}", def);
-            return def;
+            return FFCalendarConfig.getCalendarDefinition();
         } catch (Throwable t) {
-            LOG.error("[NeoForgePlatformHelper] getCalendarDefinition() failed, returning default", t);
+            LOG.error("[NeoForgePlatformHelper] getCalendarDefinition() failed", t);
             return CalendarDefinition.defaultDefinition();
         }
     }

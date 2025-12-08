@@ -10,24 +10,47 @@ import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
 import org.slf4j.Logger;
 
 /**
- * // neoforge/src/main/java/net/z2six/featheredfriend/neoforge/menu/SealStampMenu.java
+ * neoforge/src/main/java/net/z2six/featheredfriend/neoforge/menu/SealStampMenu.java
  *
- * SealStampMenu
- *
- * Minimal backend for the Seal Stamp carving GUI.
- * - Contains no custom slots or player inventory slots for now.
- * - Exists only so we can use an AbstractContainerScreen on the client.
- *
- * Step 2 will add actual widgets and data binding.
+ * Updated for Step 2:
+ * - Stores EXACT item slot used to open the menu.
+ * - Slot = 0–35 inventory, 36 mainhand, 37 offhand.
+ * - Server will write NBT directly to that slot after carving completes.
  */
 public class SealStampMenu extends AbstractContainerMenu {
 
     private static final Logger LOG = LogUtils.getLogger();
 
-    public SealStampMenu(int containerId, Inventory playerInventory) {
+    private final int stampSlotIndex;
+
+    public SealStampMenu(int containerId, Inventory playerInventory, int stampSlotIndex) {
         super(FFNeoForgeMenus.SEAL_STAMP_MENU.get(), containerId);
-        LOG.debug("[SealStampMenu] Creating menu id={} for player={}",
-                containerId, playerInventory.player.getGameProfile().getName());
+        this.stampSlotIndex = stampSlotIndex;
+
+        LOG.debug("[SealStampMenu] Creating menu id={} for player={} stampSlot={}",
+                containerId, playerInventory.player.getGameProfile().getName(), stampSlotIndex);
+    }
+
+    /**
+     * Legacy ctor (no slot) – keeps old call sites compiling if any remain.
+     * Uses -1 as "unknown slot".
+     */
+    public SealStampMenu(int containerId, Inventory playerInventory) {
+        this(containerId, playerInventory, -1);
+    }
+
+    /**
+     * Original accessor name.
+     */
+    public int getStampSlotIndex() {
+        return stampSlotIndex;
+    }
+
+    /**
+     * New accessor used by SealStampScreen.
+     */
+    public int getStampSlot() {
+        return stampSlotIndex;
     }
 
     @Override
@@ -45,6 +68,6 @@ public class SealStampMenu extends AbstractContainerMenu {
     @Override
     public void removed(Player player) {
         super.removed(player);
-        // Nothing to clear; no internal inventory.
+        // Nothing additional to clear.
     }
 }
