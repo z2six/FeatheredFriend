@@ -225,12 +225,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private static final int SIGNATURE_HEIGHT = 14;
     private static final int SIGNATURE_MAX_CHARS = 128;
 
-    // "Seal" button config
-    private static final int SEAL_BUTTON_X = 20;
-    private static final int SEAL_BUTTON_Y = GUI_HEIGHT - 22;
-    private static final int SEAL_BUTTON_WIDTH = 80;
-    private static final int SEAL_BUTTON_HEIGHT = 18;
-
     // Signature placeholder colors
     private static final int SIGNATURE_PLACEHOLDER_COLOR_DEFAULT = 0x707070;
     private static final int SIGNATURE_PLACEHOLDER_COLOR_HOVER = 0x000000;
@@ -255,6 +249,15 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private static final int   WAX_SIGIL_CENTER_OFFSET_Y = 0;
     private static final float WAX_SIGIL_RADIUS_SCALE    = 0.85f; // 0.0..1.0 of min(WAX_BOX_W,H)/2
 
+    // Zoomed sigil preview (matches SealStampScreen sizing)
+    private static final int ZOOM_PREVIEW_WIDTH = 160;
+    private static final int ZOOM_PREVIEW_HEIGHT = 120;
+
+    // Same wax seal scale as SealStampScreen (WAX_SEAL_SCREEN_SCALE = 3.0f)
+    private static final float ZOOM_WAX_SEAL_SCREEN_SCALE = 3.0f;
+
+    // Same sigil radius as SealStampScreen (SIGIL_BASE_DIAMETER_PIXELS=90, SIGIL_RADIUS_SCALE=0.85)
+    private static final int ZOOM_SIGIL_RADIUS = 38; // (int)(90 * 0.5f * 0.85f)
 
     // Widgets
     private MultiLineScrollTextWidget dateWidget;
@@ -493,7 +496,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         }
     }
 
-    // -- Draws either the hover-preview or the placed seal (if present) --
+    // -- Draws the small in-place seal + optional zoomed preview on hover --
     private void renderWaxSeal(@NotNull GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         try {
             // Only active while we're in the sealing phase (after text faded out).
@@ -501,58 +504,101 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 return;
             }
 
-            // Clip rectangle = your wax box.
-            final int clipX = this.leftPos + WAX_BOX_X;
-            final int clipY = this.topPos + WAX_BOX_Y;
-            final int clipW = WAX_BOX_WIDTH;
-            final int clipH = WAX_BOX_HEIGHT;
+            final boolean inWaxArea = isMouseInWaxArea(mouseX, mouseY);
 
-            // Center inside the wax box (+ optional tweakable offsets).
-            final int centerX = clipX + (clipW / 2) + WAX_SIGIL_CENTER_OFFSET_X;
-            final int centerY = clipY + (clipH / 2) + WAX_SIGIL_CENTER_OFFSET_Y;
+            // Small in-place seal inside the wax gizmo box
+            final int smallClipX = this.leftPos + WAX_BOX_X;
+            final int smallClipY = this.topPos + WAX_BOX_Y;
+            final int smallClipW = WAX_BOX_WIDTH;
+            final int smallClipH = WAX_BOX_HEIGHT;
 
-            // Sigil radius derived from the box + scale (not the wax scale).
-            final int radiusPx = Math.max(6, (int)(Math.min(clipW, clipH) * 0.5f * WAX_SIGIL_RADIUS_SCALE));
+            final int smallCenterX = smallClipX + (smallClipW / 2) + WAX_SIGIL_CENTER_OFFSET_X;
+            final int smallCenterY = smallClipY + (smallClipH / 2) + WAX_SIGIL_CENTER_OFFSET_Y;
 
-            // Wax screen scale: keep 1.0f unless you want bigger/smaller wax impression
-            final float waxScale = 1.0f;
+            // Radius for the small in-place impression (shapes-only)
+            final int smallRadiusPx = Math.max(
+                    6,
+                    (int) (Math.min(smallClipW, smallClipH) * 0.5f * WAX_SIGIL_RADIUS_SCALE)
+            );
 
-            // If we've already placed the seal, always render that
+            // Pattern to use (placed wins over hover)
+            SigilPattern patternForSmall = null;
+
+            // 1) If we've already placed the seal, always render that impression
             if (placedSealShown && placedSigilPattern != null) {
-                waxSealVisualizer.render(
-                        g,
-                        centerX, centerY,
-                        clipX, clipY, clipW, clipH,
-                        radiusPx,
-                        waxScale,
-                        placedSigilPattern
-                );
-                return;
+                patternForSmall = placedSigilPattern;
+            } else {
+                // 2) Live preview while targeting inside wax area
+                if (this.sealStampTargetMode
+                        && this.sealStampSlotIndex >= 0
+                        && this.sealStampStackForRender != null
+                        && !this.sealStampStackForRender.isEmpty()
+                        && inWaxArea) {
+
+                    if (this.hoverSigilPattern == null) {
+                        this.hoverSigilPattern = buildPatternFromStamp(this.sealStampStackForRender);
+                    }
+                    if (this.hoverSigilPattern != null) {
+                        patternForSmall = this.hoverSigilPattern;
+                    }
+                }
             }
 
-            // Live preview requires: a selected stamp + valid pattern + cursor inside wax
-            if (this.sealStampTargetMode
-                    && this.sealStampSlotIndex >= 0
-                    && this.sealStampStackForRender != null
-                    && !this.sealStampStackForRender.isEmpty()
-                    && isMouseInWaxArea(mouseX, mouseY)) {
-
-                // Lazily (re)build the preview if missing
-                if (hoverSigilPattern == null) {
-                    hoverSigilPattern = buildPatternFromStamp(this.sealStampStackForRender);
+            // --- Small in-place impression: shapes only (no wax) ---
+            if (patternForSmall != null) {
+                try {
+                    waxSealVisualizer.renderShapesOnly(
+                            g,
+                            smallCenterX,
+                            smallCenterY,
+                            smallClipX,
+                            smallClipY,
+                            smallClipW,
+                            smallClipH,
+                            smallRadiusPx,
+                            1.0f, // unused by renderShapesOnly
+                            patternForSmall
+                    );
+                } catch (Throwable t) {
+                    LOG.error("[ScrollSealingScreen] renderWaxSeal: small shapes-only impression failed", t);
                 }
+            }
 
-                if (hoverSigilPattern != null) {
+            // --- Zoomed “inspect” view on hover: wax + sigil, SealStampScreen sizing ---
+            //
+            // Only while the cursor is actually hovering the gizmo area,
+            // AND we are NOT in the admiration fade (placedSealShown && placedFadeTicks >= 0).
+            if (inWaxArea
+                    && patternForSmall != null
+                    && !(placedSealShown && placedFadeTicks >= 0)) {
+                try {
+                    // Center the zoom around the same center as the small seal
+                    int zoomCenterX = smallCenterX;
+                    int zoomCenterY = smallCenterY;
+
+                    // Clip rect big enough to hold the full wax seal (same size as SealStampScreen preview)
+                    int zoomClipX = zoomCenterX - ZOOM_PREVIEW_WIDTH / 2;
+                    int zoomClipY = zoomCenterY - ZOOM_PREVIEW_HEIGHT / 2;
+                    int zoomClipW = ZOOM_PREVIEW_WIDTH;
+                    int zoomClipH = ZOOM_PREVIEW_HEIGHT;
+
                     waxSealVisualizer.render(
                             g,
-                            centerX, centerY,
-                            clipX, clipY, clipW, clipH,
-                            radiusPx,
-                            waxScale,
-                            hoverSigilPattern
+                            zoomCenterX,
+                            zoomCenterY,
+                            zoomClipX,
+                            zoomClipY,
+                            zoomClipW,
+                            zoomClipH,
+                            ZOOM_SIGIL_RADIUS,
+                            ZOOM_WAX_SEAL_SCREEN_SCALE,
+                            patternForSmall
                     );
+                } catch (Throwable t) {
+                    LOG.error("[ScrollSealingScreen] renderWaxSeal: zoomed preview failed", t);
                 }
             }
+
         } catch (Throwable t) {
             LOG.error("[ScrollSealingScreen] renderWaxSeal failed", t);
         }

@@ -52,6 +52,9 @@ public final class WaxSealVisualizer {
     /** Fallback golden colour (used only when texture missing). */
     private static final int GOLD_DISC_COLOR = 0xFFE0C060;
 
+    /** Whether to draw the wax seal texture / golden disc at all. */
+    private boolean waxEnabled = true;
+
     // ---------------------------------------------------------------------
     // Sigil visual config (identical defaults to SealStampScreen)
     // ---------------------------------------------------------------------
@@ -100,6 +103,12 @@ public final class WaxSealVisualizer {
     // ---------------------------------------------------------------------
     // Optional fluent setters (kept for reuse in other screens later)
     // ---------------------------------------------------------------------
+
+    /** Enable/disable drawing the wax seal texture / golden disc. */
+    public WaxSealVisualizer setWaxEnabled(boolean enabled) {
+        this.waxEnabled = enabled;
+        return this;
+    }
 
     public WaxSealVisualizer setShapeFillColor(int argb) {
         this.shapeFillColor = argb;
@@ -182,13 +191,48 @@ public final class WaxSealVisualizer {
                        float waxScale,
                        @NotNull SigilPattern pattern) {
         try {
-            // 1) Draw wax seal behind glyph
-            renderWaxSeal(gg, centerX, centerY, waxScale);
+            // 1) Draw wax seal behind glyph (optional)
+            if (waxEnabled) {
+                renderWaxSeal(gg, centerX, centerY, waxScale);
+            }
 
             // 2) Draw the sigil glyph (shape fill + highlight/shadow)
             renderSigilGlyph(gg, centerX, centerY, previewX, previewY, previewWidth, previewHeight, sigilRadius, pattern);
         } catch (Throwable t) {
             LOG.error("[WaxSealVisualizer] render failed", t);
+        }
+    }
+
+    /**
+     * Render only the sigil glyph (shapes + highlight/shadow), without drawing
+     * the wax seal background. Used by ScrollSealingScreen, while SealStampScreen
+     * continues to use {@link #render} which draws wax + glyph.
+     */
+    public void renderShapesOnly(@NotNull GuiGraphics gg,
+                                 int centerX,
+                                 int centerY,
+                                 int previewX,
+                                 int previewY,
+                                 int previewWidth,
+                                 int previewHeight,
+                                 int sigilRadius,
+                                 float unusedScale,
+                                 @NotNull SigilPattern pattern) {
+        try {
+            // Only draw the glyph; ignore the wax texture entirely.
+            renderSigilGlyph(
+                    gg,
+                    centerX,
+                    centerY,
+                    previewX,
+                    previewY,
+                    previewWidth,
+                    previewHeight,
+                    sigilRadius,
+                    pattern
+            );
+        } catch (Throwable t) {
+            LOG.error("[WaxSealVisualizer] renderShapesOnly failed", t);
         }
     }
 
