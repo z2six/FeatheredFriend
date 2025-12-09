@@ -25,11 +25,6 @@ import java.util.List;
  * // neoforge/src/main/java/net/z2six/featheredfriend/network/FFNetwork.java
  *
  * FFNetwork
- *
- * Handles NeoForge networking for FeatheredFriend.
- *
- * KnownPlayersPayload (S2C): list of known player names.
- * SealStampCarveResultPacket (C2S): client → server seal carve result.
  */
 @EventBusSubscriber(modid = Constants.MOD_ID, bus = EventBusSubscriber.Bus.MOD)
 public final class FFNetwork {
@@ -39,14 +34,6 @@ public final class FFNetwork {
     private FFNetwork() {
     }
 
-    /**
-     * Legacy hook kept for compatibility with older bootstrap code.
-     * Your FeatheredFriend main class still calls FFNetwork.registerSimpleMessages().
-     *
-     * In the new payload-based NeoForge networking model, there is nothing to
-     * register here; all registration happens in the RegisterPayloadHandlersEvent
-     * handler below. We just log once so it's obvious what's happening.
-     */
     public static void registerSimpleMessages() {
         try {
             LOG.info("[FFNetwork] registerSimpleMessages() called; using payload-based networking so this is a no-op");
@@ -71,14 +58,23 @@ public final class FFNetwork {
                     FFNetwork::handleKnownPlayersOnClient
             );
 
-            // New: SealStampCarveResultPacket (C2S)
+            // Existing: SealStampCarveResultPacket (C2S)
             registrar.playToServer(
                     SealStampCarveResultPacket.TYPE,
                     SealStampCarveResultPacket.STREAM_CODEC,
                     FFNetwork::handleSealStampCarveResultOnServer
             );
 
-            LOG.info("[FFNetwork] Registered KnownPlayersPayload (S2C) and SealStampCarveResultPacket (C2S) handlers");
+            // -------------------------------------------------------------
+            // *** ADDED: WaxSealPacket registration (C2S)
+            // -------------------------------------------------------------
+            registrar.playToServer(
+                    WaxSealPacket.TYPE,
+                    WaxSealPacket.STREAM_CODEC,
+                    FFNetwork::handleWaxSealOnServer
+            );
+
+            LOG.info("[FFNetwork] Registered KnownPlayersPayload (S2C), SealStampCarveResultPacket (C2S), WaxSealPacket (C2S)");
         } catch (Throwable t) {
             LOG.error("[FFNetwork] Failed to register payload handlers", t);
         }
@@ -133,6 +129,63 @@ public final class FFNetwork {
     }
 
     // ---------------------------------------------------------------------
+    // *** ADDED: WaxSealPacket sender (client → server)
+    // ---------------------------------------------------------------------
+
+    public static void sendWaxSealToServer(
+            int stampSlot,
+            String recipientName,
+            String recipientUUID,
+            String recipientText,
+            String messageText,
+            String signatureText,
+            long seed,
+            int slices,
+            int style,
+            String senderName
+    ) {
+        try {
+            WaxSealPacket p = new WaxSealPacket(
+                    stampSlot,
+                    recipientName,
+                    recipientUUID,
+                    recipientText,
+                    messageText,
+                    signatureText,
+                    seed,
+                    slices,
+                    style,
+                    senderName
+            );
+
+            PacketDistributor.sendToServer(p);
+            LOG.debug("[FFNetwork] Sent WaxSealPacket to server");
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendWaxSealToServer failed", t);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // *** ADDED: WaxSealPacket handler
+    // ---------------------------------------------------------------------
+
+    private static void handleWaxSealOnServer(@NotNull WaxSealPacket payload,
+                                              @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                if (!(context.player() instanceof ServerPlayer serverPlayer)) {
+                    LOG.error("[FFNetwork] handleWaxSealOnServer: context.player() is not a ServerPlayer");
+                    return;
+                }
+
+                WaxSealPacket.handle(payload, serverPlayer);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] Failed to handle WaxSealPacket on server", t);
+            }
+        });
+    }
+
+    // ---------------------------------------------------------------------
     // KnownPlayers payload type
     // ---------------------------------------------------------------------
 
@@ -141,31 +194,20 @@ public final class FFNetwork {
         public static final Type<KnownPlayersPayload> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "known_players"));
 
-        /**
-         * Simple manual StreamCodec implementation. Encodes:
-         *  - varint size
-         *  - for each: utf string (up to 1024 characters, arbitrarily generous)
-         */
         public static final StreamCodec<RegistryFriendlyByteBuf, KnownPlayersPayload> STREAM_CODEC =
                 StreamCodec.of(KnownPlayersPayload::encode, KnownPlayersPayload::decode);
 
         private static void encode(@NotNull RegistryFriendlyByteBuf buf,
                                    @NotNull KnownPlayersPayload payload) {
             List<String> list = payload.names();
-            int size = list.size();
-            buf.writeVarInt(size);
-            for (String name : list) {
-                buf.writeUtf(name, 1024);
-            }
+            buf.writeVarInt(list.size());
+            for (String name : list) buf.writeUtf(name, 1024);
         }
 
         private static @NotNull KnownPlayersPayload decode(@NotNull RegistryFriendlyByteBuf buf) {
             int size = buf.readVarInt();
-            List<String> list = new ArrayList<>(Math.max(0, size));
-            for (int i = 0; i < size; i++) {
-                String name = buf.readUtf(1024);
-                list.add(name);
-            }
+            List<String> list = new ArrayList<>(size);
+            for (int i = 0; i < size; i++) list.add(buf.readUtf(1024));
             return new KnownPlayersPayload(list);
         }
 

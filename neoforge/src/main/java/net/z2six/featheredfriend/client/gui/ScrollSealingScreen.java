@@ -17,6 +17,9 @@ import net.z2six.featheredfriend.client.gui.widget.MultiLineScrollTextWidget;
 import net.z2six.featheredfriend.client.gui.widget.RecipientOverlay;
 import net.z2six.featheredfriend.config.FFCalendarConfig;
 import net.z2six.featheredfriend.neoforge.menu.ScrollSealingMenu;
+import net.minecraft.world.item.ItemStack;
+import net.z2six.featheredfriend.client.gui.widget.SealStampSelectionOverlay;
+import net.z2six.featheredfriend.content.item.SealStampItem;
 import org.jetbrains.annotations.NotNull;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
@@ -233,8 +236,12 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private MultiLineScrollTextWidget messageWidget;
     private MultiLineScrollTextWidget signatureWidget;
 
-    // Buttons
-    private Button sealButton;
+    // Stamp selection / cursor state
+    private SealStampSelectionOverlay sealStampOverlay;
+    private boolean sealStampSelectionStarted = false;
+    private boolean sealStampTargetMode = false;
+    private int sealStampSlotIndex = -1;
+    private ItemStack sealStampStackForRender = ItemStack.EMPTY;
 
     // Recipient player selection (UUID is our ground truth)
     private UUID selectedRecipientUuid = null;
@@ -255,6 +262,16 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         this.titleLabelX = 10000;
         this.titleLabelY = 10000;
     }
+
+    // ---------------------------------------------------------------------
+    // Wax seal debug bounding box (for future hit-test; drawn as gizmo lines)
+    // ---------------------------------------------------------------------
+
+    private static final int WAX_BOX_X = 94;      // relative to GUI origin (leftPos)
+    private static final int WAX_BOX_Y = 74;       // adjust as needed
+    private static final int WAX_BOX_WIDTH = 36;
+    private static final int WAX_BOX_HEIGHT = 36;
+    private static final int WAX_BOX_COLOR = 0x80FF0000; // semi-transparent red
 
     // Handy helper so we always treat the menu as ScrollSealingMenu,
     // even if the class header was ever generic.
@@ -348,8 +365,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         if (this.messageWidget != null) this.messageWidget.visible = false;
         if (this.signatureWidget != null) this.signatureWidget.visible = false;
 
-        this.sealButton = null;
-
+        // Recipient overlay
         int overlayWidth = 180;
         int overlayHeight = 90;
         int overlayX = this.leftPos + RECIPIENT_X;
@@ -378,6 +394,40 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                     }
                 }
         );
+
+        // Seal stamp overlay (3x3 grid, 9 slots)
+        int stampOverlayWidth = 9 * 18 + 8;
+        int stampOverlayHeight = 3 * 18 + 8;
+        int stampOverlayX = this.leftPos + (GUI_WIDTH - stampOverlayWidth) / 2;
+        int stampOverlayY = this.topPos + MESSAGE_Y + MESSAGE_HEIGHT + 10;
+
+        this.sealStampOverlay = new SealStampSelectionOverlay(
+                Minecraft.getInstance(),
+                this.font,
+                stampOverlayX,
+                stampOverlayY,
+                stampOverlayWidth,
+                stampOverlayHeight,
+                new SealStampSelectionOverlay.SelectionCallback() {
+                    @Override
+                    public void onStampSelected(int slotIndex, @NotNull ItemStack stack) {
+                        LOG.debug("[ScrollSealingScreen] Seal stamp selected: slotIndex={} stack={}", slotIndex, stack);
+                        sealStampSlotIndex = slotIndex;
+                        sealStampStackForRender = stack.copy();
+                        sealStampTargetMode = !sealStampStackForRender.isEmpty();
+                    }
+
+                    @Override
+                    public void onOverlayClosedWithoutSelection() {
+                        LOG.debug("[ScrollSealingScreen] Seal stamp overlay closed without selection");
+                        sealStampTargetMode = false;
+                        sealStampSlotIndex = -1;
+                        sealStampStackForRender = ItemStack.EMPTY;
+                    }
+                }
+        );
+        this.sealStampOverlay.setActive(false);
+        this.sealStampSelectionStarted = false;
 
         restoreEditorStateFromMenu();
 
@@ -699,20 +749,21 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
 
                     uiPhaseTicks = OUTRO_DELAY_TICKS;
 
-                    if (this.sealButton == null) {
-                        this.sealButton = Button.builder(
-                                        Component.literal("Seal"),
-                                        b -> onSealClickedPlaceholder()
-                                )
-                                .bounds(
-                                        this.leftPos + SEAL_BUTTON_X,
-                                        this.topPos + SEAL_BUTTON_Y,
-                                        SEAL_BUTTON_WIDTH,
-                                        SEAL_BUTTON_HEIGHT
-                                )
-                                .build();
-                        this.addRenderableWidget(this.sealButton);
-                        LOG.debug("[ScrollSealingScreen] Seal button created after OUTRO_DELAY_TICKS");
+                    // Begin stamp-selection phase once.
+                    if (!sealStampSelectionStarted) {
+                        sealStampSelectionStarted = true;
+
+                        if (this.sealStampOverlay != null) {
+                            // Re-center overlay horizontally against the current GUI position.
+                            int stampOverlayX = this.leftPos + (GUI_WIDTH - this.sealStampOverlay.getWidth()) / 2;
+                            int stampOverlayY = this.topPos + MESSAGE_Y + MESSAGE_HEIGHT + 10;
+                            this.sealStampOverlay.setPosition(stampOverlayX, stampOverlayY);
+                            this.sealStampOverlay.setActive(true);
+                            this.sealStampOverlay.rebuildEntriesAndAutoSelectFavorite();
+                            LOG.debug("[ScrollSealingScreen] Seal stamp overlay activated for sealing");
+                        } else {
+                            LOG.warn("[ScrollSealingScreen] SEALED phase reached but sealStampOverlay is null");
+                        }
                     }
                 }
                 break;
@@ -799,6 +850,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             if (this.recipientOverlay != null && this.recipientOverlay.isActive()) {
                 this.recipientOverlay.tick();
             }
+            if (this.sealStampOverlay != null && this.sealStampOverlay.isActive()) {
+                this.sealStampOverlay.tick();
+            }
 
             tickUiPhase();
             tickPearl();
@@ -819,6 +873,27 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         try {
             renderAnimatedScroll(guiGraphics);
             renderPearl(guiGraphics, mouseX, mouseY);
+
+            // Only show the wax seal gizmo while in the sealing phase (SEALED).
+            if (this.uiPhase == UiPhase.SEALED) {
+                int waxX0 = this.leftPos + WAX_BOX_X;
+                int waxY0 = this.topPos + WAX_BOX_Y;
+                int waxX1 = waxX0 + WAX_BOX_WIDTH;
+                int waxY1 = waxY0 + WAX_BOX_HEIGHT;
+
+                // Outline rectangle
+                guiGraphics.fill(waxX0, waxY0, waxX1, waxY0 + 1, WAX_BOX_COLOR);           // top
+                guiGraphics.fill(waxX0, waxY1 - 1, waxX1, waxY1, WAX_BOX_COLOR);           // bottom
+                guiGraphics.fill(waxX0, waxY0, waxX0 + 1, waxY1, WAX_BOX_COLOR);           // left
+                guiGraphics.fill(waxX1 - 1, waxY0, waxX1, waxY1, WAX_BOX_COLOR);           // right
+
+                // Optional crosshair lines inside the box (gizmo style)
+                int midX = (waxX0 + waxX1) / 2;
+                int midY = (waxY0 + waxY1) / 2;
+                guiGraphics.fill(midX - 1, waxY0 + 2, midX + 1, waxY1 - 2, 0x40FF0000);
+                guiGraphics.fill(waxX0 + 2, midY - 1, waxX1 - 2, midY + 1, 0x40FF0000);
+            }
+
         } catch (Throwable t) {
             LOG.error("[ScrollSealingScreen] renderBg failed, falling back to simple fill", t);
             guiGraphics.fill(
@@ -993,6 +1068,22 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 this.recipientOverlay.render(guiGraphics, mouseX, mouseY, partialTick);
             }
 
+            if (this.sealStampOverlay != null && this.sealStampOverlay.isActive()) {
+                this.sealStampOverlay.render(guiGraphics, mouseX, mouseY, partialTick);
+            }
+
+            // Stamp cursor: render selected Seal Stamp item on top of the mouse
+            if (sealStampTargetMode && sealStampSlotIndex >= 0 && sealStampStackForRender != null && !sealStampStackForRender.isEmpty()) {
+                try {
+                    int iconX = mouseX - 8;
+                    int iconY = mouseY - 8;
+                    guiGraphics.renderItem(sealStampStackForRender, iconX, iconY);
+                    guiGraphics.renderItemDecorations(this.font, sealStampStackForRender, iconX, iconY);
+                } catch (Throwable t) {
+                    LOG.error("[ScrollSealingScreen] Failed to render seal stamp cursor", t);
+                }
+            }
+
             this.renderTooltip(guiGraphics, mouseX, mouseY);
         } catch (Throwable t) {
             LOG.error("[ScrollSealingScreen] render failed", t);
@@ -1027,6 +1118,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         try {
+            // 1) Recipient overlay has highest priority if active
             if (this.recipientOverlay != null && this.recipientOverlay.isActive()) {
                 boolean consumed = this.recipientOverlay.mouseClicked(mouseX, mouseY, button);
                 if (consumed) {
@@ -1034,7 +1126,196 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 }
             }
 
-            // Signature placeholder acts as "Sign" button:
+            // 2) Seal stamp overlay – only interactive during SEALED phase
+            if (this.sealStampOverlay != null
+                    && this.sealStampOverlay.isActive()
+                    && this.uiPhase == UiPhase.SEALED) {
+
+                boolean consumedStamp = this.sealStampOverlay.mouseClicked(mouseX, mouseY, button);
+                if (consumedStamp) {
+                    return true;
+                }
+            }
+
+            // 3) Stamp deselect / wax-click behaviour (only in SEALED phase)
+            if (this.uiPhase == UiPhase.SEALED
+                    && this.sealStampTargetMode
+                    && this.sealStampSlotIndex >= 0
+                    && this.sealStampStackForRender != null
+                    && !this.sealStampStackForRender.isEmpty()) {
+
+                int waxX0 = this.leftPos + WAX_BOX_X;
+                int waxY0 = this.topPos + WAX_BOX_Y;
+                int waxX1 = waxX0 + WAX_BOX_WIDTH;
+                int waxY1 = waxY0 + WAX_BOX_HEIGHT;
+
+                boolean inWaxArea = mouseX >= waxX0 && mouseX < waxX1 && mouseY >= waxY0 && mouseY < waxY1;
+
+                // LMB behaviour while a stamp is selected
+                if (button == 0) {
+                    if (inWaxArea) {
+                        // This is the "stamp the wax" click.
+                        LOG.info(
+                                "[ScrollSealingScreen] Wax seal area clicked with selected stamp: slotIndex={} stack={}",
+                                this.sealStampSlotIndex,
+                                this.sealStampStackForRender
+                        );
+
+                        // ---------------------------------------------------------------------
+                        // Build and send WaxSealPacket (client -> server)
+                        // ---------------------------------------------------------------------
+                        try {
+                            // Resolve the actual selected stamp stack from the player's inventory/offhand to ensure fresh data.
+                            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+                            if (mc == null || mc.player == null) {
+                                LOG.error("[ScrollSealingScreen] Cannot seal: Minecraft or player is null");
+                                return true;
+                            }
+
+                            net.minecraft.world.item.ItemStack actualStamp = net.minecraft.world.item.ItemStack.EMPTY;
+                            if (this.sealStampSlotIndex >= 0 && this.sealStampSlotIndex <= 35) {
+                                if (this.sealStampSlotIndex < mc.player.getInventory().items.size()) {
+                                    actualStamp = mc.player.getInventory().items.get(this.sealStampSlotIndex);
+                                }
+                            } else if (this.sealStampSlotIndex == 37) {
+                                actualStamp = mc.player.getOffhandItem();
+                            } else {
+                                LOG.warn("[ScrollSealingScreen] Unexpected stamp slot index {} (expected 0..35 or 37)", this.sealStampSlotIndex);
+                            }
+
+                            if (actualStamp == null || actualStamp.isEmpty() || !(actualStamp.getItem() instanceof SealStampItem)) {
+                                LOG.error("[ScrollSealingScreen] Selected stack is not a valid SealStampItem; aborting seal");
+                                return true;
+                            }
+
+                            // Must be etched; otherwise we cannot extract Seed/Slices/ShapeSet/Owner.
+                            if (!SealStampItem.isEtched(actualStamp)) {
+                                LOG.error("[ScrollSealingScreen] Selected SealStampItem is not etched; aborting seal");
+                                return true;
+                            }
+
+                            // Extract SealStamp data from CustomData.
+                            String senderName = "";
+                            long seed = 0L;
+                            int slices = 0;
+                            int style = 0;
+
+                            try {
+                                var cd = actualStamp.getOrDefault(
+                                        net.minecraft.core.component.DataComponents.CUSTOM_DATA,
+                                        net.minecraft.world.item.component.CustomData.EMPTY
+                                );
+                                net.minecraft.nbt.CompoundTag root = cd.copyTag();
+                                if (root == null || !root.contains("SealStamp")) {
+                                    LOG.error("[ScrollSealingScreen] SealStamp CustomData missing on etched stamp; aborting");
+                                    return true;
+                                }
+                                net.minecraft.nbt.CompoundTag seal = root.getCompound("SealStamp");
+                                senderName = seal.getString("Owner"); // Sender's name must come from the stamp itself (authoritative).
+                                seed = seal.getLong("Seed");
+                                slices = seal.getInt("Slices");
+                                style = seal.getInt("ShapeSet");
+                            } catch (Throwable te) {
+                                LOG.error("[ScrollSealingScreen] Failed extracting SealStamp CustomData", te);
+                                return true;
+                            }
+
+                            // Gather recipient + texts from widgets/state.
+                            String recipientText = this.recipientField != null ? this.recipientField.getText() : "";
+                            String messageText = this.messageWidget != null ? this.messageWidget.getText() : "";
+                            String signatureText = this.signatureWidget != null ? this.signatureWidget.getText() : "";
+
+                            // Resolve recipient UUID (must be present).
+                            String recipientUUIDStr = this.selectedRecipientUuid != null ? this.selectedRecipientUuid.toString() : "";
+                            if (recipientUUIDStr.isEmpty()) {
+                                LOG.error("[ScrollSealingScreen] No recipient UUID set; aborting seal");
+                                return true;
+                            }
+
+                            // Resolve recipient name:
+                            // - If recipientField follows "Dear <name>," pattern, extract <name>; else fall back to trimmed text.
+                            String recipientNameResolved = "";
+                            if (recipientText != null) {
+                                String t = recipientText.trim();
+                                String lower = t.toLowerCase(java.util.Locale.ROOT);
+                                if (lower.startsWith("dear ") && t.endsWith(",")) {
+                                    String mid = t.substring(5, Math.max(5, t.length() - 1)).trim();
+                                    recipientNameResolved = mid;
+                                } else {
+                                    recipientNameResolved = t;
+                                }
+                            }
+
+                            // Safety clamps for huge texts (StreamCodec allows large strings but we'll clamp client-side to be nice).
+                            if (recipientText.length() > 32760) recipientText = recipientText.substring(0, 32760);
+                            if (messageText.length() > 32760) messageText = messageText.substring(0, 32760);
+                            if (signatureText.length() > 32760) signatureText = signatureText.substring(0, 32760);
+                            if (recipientNameResolved.length() > 250) recipientNameResolved = recipientNameResolved.substring(0, 250);
+
+                            // Persist any latest edits before sending.
+                            saveEditorStateToMenu();
+
+                            LOG.debug("[ScrollSealingScreen] Sending WaxSealPacket: recName='{}' recUUID={} seed={} slices={} style={} sender='{}'",
+                                    recipientNameResolved, recipientUUIDStr, seed, slices, style, senderName);
+
+                            // Send to server; server removes one unsealed scroll, creates sealed scroll (non-stackable), adds or drops.
+                            net.z2six.featheredfriend.network.FFNetwork.sendWaxSealToServer(
+                                    this.sealStampSlotIndex,
+                                    recipientNameResolved,
+                                    recipientUUIDStr,
+                                    recipientText != null ? recipientText : "",
+                                    messageText != null ? messageText : "",
+                                    signatureText != null ? signatureText : "",
+                                    seed,
+                                    slices,
+                                    style,
+                                    senderName
+                            );
+
+                            // UX: Deselect stamp cursor and close the container screen.
+                            this.sealStampTargetMode = false;
+                            this.sealStampSlotIndex = -1;
+                            this.sealStampStackForRender = net.minecraft.world.item.ItemStack.EMPTY;
+
+                            if (this.sealStampOverlay != null) {
+                                this.sealStampOverlay.setActive(false);
+                            }
+
+                            try {
+                                if (mc.player != null) {
+                                    mc.player.closeContainer();
+                                }
+                                mc.setScreen(null);
+                            } catch (Throwable closeErr) {
+                                LOG.error("[ScrollSealingScreen] Failed to close container after sealing", closeErr);
+                            }
+
+                        } catch (Throwable sealErr) {
+                            LOG.error("[ScrollSealingScreen] Exception during wax sealing click handling", sealErr);
+                        }
+
+                        return true;
+                    } else {
+                        // Click anywhere else -> deselect
+                        LOG.debug("[ScrollSealingScreen] Deselecting seal stamp via LMB outside wax area");
+                        this.sealStampTargetMode = false;
+                        this.sealStampSlotIndex = -1;
+                        this.sealStampStackForRender = net.minecraft.world.item.ItemStack.EMPTY;
+                        return true;
+                    }
+                }
+
+                // RMB behaviour while a stamp is selected
+                if (button == 1) {
+                    LOG.debug("[ScrollSealingScreen] Deselecting seal stamp via RMB");
+                    this.sealStampTargetMode = false;
+                    this.sealStampSlotIndex = -1;
+                    this.sealStampStackForRender = net.minecraft.world.item.ItemStack.EMPTY;
+                    return true;
+                }
+            }
+
+            // 4) Signature placeholder acts as "Sign" button (only during typing / IDLE phase)
             if (button == 0
                     && this.signatureWidget != null
                     && isUiInteractive()
@@ -1044,13 +1325,14 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 return true;
             }
 
-            // Pearl click -> save text state, then open inventory GUI
+            // 5) Pearl click -> save text state, then open inventory GUI
             if (button == 0 && isMouseOverPearlIcon(mouseX, mouseY) && isPearlClickable()) {
                 saveEditorStateToMenu();
                 onEnderPearlClicked();
                 return true;
             }
 
+            // 6) Let base logic handle text widgets and whatever else
             boolean result = super.mouseClicked(mouseX, mouseY, button);
 
             if (this.recipientField != null && this.recipientField.isFocused()) {
