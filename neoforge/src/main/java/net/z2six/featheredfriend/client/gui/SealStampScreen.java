@@ -30,13 +30,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/client/gui/SealStampScreen.java
- *
- * SealStampScreen
- *
- * This version refactors the sigil rendering into WaxSealVisualizer while preserving
- * visuals and behaviour. All GUI logic, inputs, particles, networking, and layout
- * remain unchanged.
+
+ neoforge/src/main/java/net/z2six/featheredfriend/client/gui/SealStampScreen.java
+
+ SealStampScreen
+
+ This version refactors the sigil rendering into WaxSealVisualizer while preserving
+
+ visuals and behaviour. All GUI logic, inputs, particles, networking, and layout
+
+ remain unchanged.
  */
 public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
@@ -46,132 +49,157 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     private static final ResourceLocation GOTHIC_FONT_ID =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12");
 
-    // ---------------------------------------------------------------------
-    // GUI dimensions
-    // ---------------------------------------------------------------------
+    // New full-screen GUI texture (replaces old flat background + buttons)
+    private static final ResourceLocation STAMP_UI_TEXTURE =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/stampscreen/stamp_ui.png");
 
-    private static final int GUI_WIDTH = 300;
-    private static final int GUI_HEIGHT = 200;
+// ---------------------------------------------------------------------
+// GUI dimensions
+// ---------------------------------------------------------------------
 
-    // ---------------------------------------------------------------------
-    // "Secret" field config (relative to GUI origin)
-    // ---------------------------------------------------------------------
+    // Match the stamp_ui.png dimensions exactly (304x192)
+    private static final int GUI_WIDTH = 272;
+    private static final int GUI_HEIGHT = 160;
+
+// ---------------------------------------------------------------------
+// "Secret" field config (relative to GUI origin)
+// ---------------------------------------------------------------------
 
     // Size
-    private static final int SECRET_WIDTH = 200;
+    private static final int SECRET_WIDTH = 100;
     private static final int SECRET_HEIGHT = 28;
     private static final int SECRET_MAX_CHARS = 52;
     private static final int SECRET_MAX_LINES = 2;
 
     // Position
     // Y is absolute from top of GUI; X is centered + offset.
-    private static final int SECRET_Y = 20;
-    private static final int SECRET_X_OFFSET = -30; // negative -> shift left, positive -> shift right
+    private static final int SECRET_Y = 22;
+    private static final int SECRET_X_OFFSET = -52; // negative -> shift left, positive -> shift right
 
-    // ---------------------------------------------------------------------
-    // Left column (Etchings / Style / Carve / Scale) config
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Left column (Etchings / Style / Carve / Scale) config
+// ---------------------------------------------------------------------
 
     // Base X for the left column (relative to GUI origin).
-    private static final int LEFT_COLUMN_X = 20;
+    private static final int LEFT_COLUMN_X = 26;
 
     // Vertical placement for the first control in the column.
-    private static final int LEFT_COLUMN_FIRST_Y = 60;
+    private static final int LEFT_COLUMN_FIRST_Y = 54;
 
     // Common sizes
-    private static final int DROPDOWN_WIDTH = 90;
-    private static final int DROPDOWN_HEIGHT = 20;
+    private static final int DROPDOWN_WIDTH = 101;
+    private static final int DROPDOWN_HEIGHT = 16;
     private static final int CONTROL_VERTICAL_GAP = 6; // gap between stacked controls
 
     // Carve button size
-    private static final int CARVE_WIDTH = 90;
-    private static final int CARVE_HEIGHT = 20;
+    private static final int CARVE_WIDTH = 100;
+    private static final int CARVE_HEIGHT = 15;
 
     // GUI scale toggle button size
-    private static final int SCALE_WIDTH = 90;
-    private static final int SCALE_HEIGHT = 20;
+    private static final int SCALE_WIDTH = 100;
+    private static final int SCALE_HEIGHT = 15;
 
-    // ---------------------------------------------------------------------
-    // Preview area config (right side of GUI)
-    // ---------------------------------------------------------------------
+    // Debug: draw borders around the invisible buttons to see their exact hitboxes.
+    private static final boolean DEBUG_BUTTON_BORDERS = false; // set to false to disable
+
+// ---------------------------------------------------------------------
+// Preview area config (right side of GUI)
+// ---------------------------------------------------------------------
 
     // Size
     private static final int PREVIEW_WIDTH = 160;
     private static final int PREVIEW_HEIGHT = 120;
 
     // Horizontal placement: preview box anchored to the right with a margin.
-    private static final int PREVIEW_RIGHT_MARGIN = 20;
+    private static final int PREVIEW_RIGHT_MARGIN = 0;
 
     // Vertical placement: top of preview box.
-    private static final int PREVIEW_TOP_Y = 60;
+    private static final int PREVIEW_TOP_Y = 46;
 
-    // Label relative to preview box top.
+    // Label relative to preview box top (no longer drawn, but kept for reference)
     private static final int PREVIEW_LABEL_OFFSET_Y = -12;
 
-    // ---------------------------------------------------------------------
-    // Wax seal sizing (independent of sigil size)
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Wax seal sizing (independent of sigil size)
+// ---------------------------------------------------------------------
 
     /**
-     * Screen scale factor for the wax seal preview (forwarded to WaxSealVisualizer).
-     * This ONLY affects the wax seal, not the sigil size.
+
+     Screen scale factor for the wax seal preview (forwarded to WaxSealVisualizer).
+
+     This ONLY affects the wax seal, not the sigil size.
+
+     NOTE: For this screen we no longer draw the wax seal texture at all – we only
+
+     render the sigil glyph using renderShapesOnly(...). The scale is left here in
+
+     case we want to reuse it later, but it is currently unused by this screen.
      */
     private static final float WAX_SEAL_SCREEN_SCALE = 3.0f;
 
-    // ---------------------------------------------------------------------
-    // Sigil sizing (independent of wax seal)
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Sigil sizing (independent of wax seal)
+// ---------------------------------------------------------------------
 
     /**
-     * Base diameter for the sigil, in screen pixels. This is completely
-     * independent from the wax seal size. Increase/decrease to resize the sigil.
+
+     Base diameter for the sigil, in screen pixels. This is completely
+
+     independent from the wax seal size. Increase/decrease to resize the sigil.
      */
-    private static final int SIGIL_BASE_DIAMETER_PIXELS = 90;
+    private static final int SIGIL_BASE_DIAMETER_PIXELS = 100;
 
     /**
-     * Fraction of the base diameter used for the sigil radius.
-     * 1.0f = full diameter; lower values keep it inset.
+
+     Fraction of the base diameter used for the sigil radius.
+
+     1.0f = full diameter; lower values keep it inset.
      */
     private static final float SIGIL_RADIUS_SCALE = 0.85f;
 
     /**
-     * Sigil radius inside the preview area, in screen pixels.
-     * Changing SIGIL_BASE_DIAMETER_PIXELS or SIGIL_RADIUS_SCALE will
-     * resize the sigil without touching the wax seal.
+
+     Sigil radius inside the preview area, in screen pixels.
+
+     Changing SIGIL_BASE_DIAMETER_PIXELS or SIGIL_RADIUS_SCALE will
+
+     resize the sigil without touching the wax seal.
      */
     private static final int SIGIL_RADIUS =
             (int) (SIGIL_BASE_DIAMETER_PIXELS * 0.5f * SIGIL_RADIUS_SCALE);
 
-    // ---------------------------------------------------------------------
-    // Etching options
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Etching options
+// ---------------------------------------------------------------------
 
     private static final int MIN_SLICES = 2;
     private static final int MAX_SLICES = 8;
 
     private static final String[] STYLE_NAMES = {"Medieval", "Fantasy", "Floral"};
 
-    // ---------------------------------------------------------------------
-    // Sigil visual config (kept here for logging parity; visuals come from WaxSealVisualizer)
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Sigil visual config (kept here for logging parity; visuals come from WaxSealVisualizer)
+// ---------------------------------------------------------------------
 
     /**
-     * These values match the prior in-class constants and are applied to the
-     * WaxSealVisualizer instance to preserve exact visuals.
+
+     These values match the prior in-class constants and are applied to the
+
+     WaxSealVisualizer instance to preserve exact visuals.
      */
-    private static final int SHAPE_FILL_COLOR = 0xFFb83e3e;
+    private static final int SHAPE_FILL_COLOR = 0xFF6e432f;
     private static final boolean SHAPE_ENABLE_HIGHLIGHT = true;
     private static final boolean SHAPE_ENABLE_SHADOW = true;
     private static final int SHAPE_HIGHLIGHT_EDGE_MAX_RADIUS = 1;
-    private static final int SHAPE_SHADOW_EDGE_MAX_RADIUS = 3;
-    private static final int SHAPE_HIGHLIGHT_COLOR = 0xFFd36a62;
-    private static final int SHAPE_SHADOW_COLOR = 0xFF832134;
+    private static final int SHAPE_SHADOW_EDGE_MAX_RADIUS = 1;
+    private static final int SHAPE_HIGHLIGHT_COLOR = 0xFF573526;
+    private static final int SHAPE_SHADOW_COLOR = 0xFFd19b5a;
     private static final int SHAPE_HIGHLIGHT_DIRECTION = 6;
     private static final int SHAPE_SHADOW_DIRECTION = 8;
 
-    // ---------------------------------------------------------------------
-    // State & widgets
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// State & widgets
+// ---------------------------------------------------------------------
 
     private MultiLineScrollTextWidget secretField;
     private Button etchingsButton;
@@ -189,8 +217,8 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
     // Sigil pattern currently shown in the preview.
     private SigilPattern currentPattern;
-    private boolean[][] currentDiscMask;   // wavy main disc mask (used only as a clip)
-    private boolean[][] currentShapeMask;  // replicated shape mask
+    private boolean[][] currentDiscMask; // wavy main disc mask (used only as a clip)
+    private boolean[][] currentShapeMask; // replicated shape mask
     private int currentPatternSize;
     private String lastSecretForSigil = "";
 
@@ -241,11 +269,13 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                 SHAPE_SHADOW_DIRECTION,
                 this.stampSlot
         );
+
+
     }
 
-    // ---------------------------------------------------------------------
-    // Init
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------
 
     @Override
     protected void init() {
@@ -287,40 +317,43 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         int colX = this.leftPos + LEFT_COLUMN_X;
         int rowY = this.topPos + LEFT_COLUMN_FIRST_Y;
 
-        // Etchings button
+        // Etchings button (now invisible; functionality only)
         this.etchingsButton = Button.builder(
                         Component.empty(),
                         b -> cycleSlices()
                 )
                 .bounds(colX, rowY, DROPDOWN_WIDTH, DROPDOWN_HEIGHT)
                 .build();
+        this.etchingsButton.setAlpha(0.0F); // Invisible – our stamp_ui.png contains the drawn button
         this.addRenderableWidget(this.etchingsButton);
 
         rowY += DROPDOWN_HEIGHT + CONTROL_VERTICAL_GAP;
 
-        // Style button
+        // Style button (now invisible; functionality only)
         this.styleButton = Button.builder(
                         Component.empty(),
                         b -> cycleStyle()
                 )
                 .bounds(colX, rowY, DROPDOWN_WIDTH, DROPDOWN_HEIGHT)
                 .build();
+        this.styleButton.setAlpha(0.0F); // Invisible – background texture has the visuals
         this.addRenderableWidget(this.styleButton);
 
         rowY += DROPDOWN_HEIGHT + CONTROL_VERTICAL_GAP;
 
-        // Carve button
+        // Carve button (now invisible; functionality only)
         this.carveButton = Button.builder(
                         Component.empty(),
                         b -> onCarveClicked()
                 )
                 .bounds(colX, rowY, CARVE_WIDTH, CARVE_HEIGHT)
                 .build();
+        this.carveButton.setAlpha(0.0F); // Invisible – custom GUI texture shows the button art
         this.addRenderableWidget(this.carveButton);
 
         rowY += CARVE_HEIGHT + CONTROL_VERTICAL_GAP;
 
-        // GUI scale button (vanilla OptionInstance button)
+        // GUI scale button (vanilla OptionInstance button, made fully transparent)
         try {
             Minecraft mc = Minecraft.getInstance();
             var options = mc.options;
@@ -331,9 +364,13 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                     rowY,
                     SCALE_WIDTH
             );
+            // Make the vanilla button fully transparent so only the hand-drawn
+            // GUI button in stamp_ui.png is visible, while keeping all logic.
+            this.scaleButton.setAlpha(0.0F);
+
             this.addRenderableWidget(this.scaleButton);
 
-            LOG.debug("[SealStampScreen] Added GUI scale button at x={}, y={}", colX, rowY);
+            LOG.debug("[SealStampScreen] Added (invisible) GUI scale button at x={}, y={}", colX, rowY);
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] Failed to create GUI scale button", t);
             this.scaleButton = null;
@@ -349,11 +386,41 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] Initial sigil generation failed", t);
         }
+
+
     }
 
-    // ---------------------------------------------------------------------
-    // Button label helpers
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Button label helpers
+// ---------------------------------------------------------------------
+
+    private void drawDebugBorder(GuiGraphics guiGraphics, AbstractWidget widget, int argb) {
+        if (!DEBUG_BUTTON_BORDERS || widget == null) {
+            return;
+        }
+        try {
+            int x = widget.getX();
+            int y = widget.getY();
+            int w = widget.getWidth();
+            int h = widget.getHeight();
+
+            int left   = x;
+            int right  = x + w;
+            int top    = y;
+            int bottom = y + h;
+
+            // Top
+            guiGraphics.fill(left, top, right, top + 1, argb);
+            // Bottom
+            guiGraphics.fill(left, bottom - 1, right, bottom, argb);
+            // Left
+            guiGraphics.fill(left, top, left + 1, bottom, argb);
+            // Right
+            guiGraphics.fill(right - 1, top, right, bottom, argb);
+        } catch (Throwable t) {
+            LOG.error("[SealStampScreen] drawDebugBorder failed", t);
+        }
+    }
 
     private void updateButtonLabels() {
         try {
@@ -422,9 +489,9 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Sigil regeneration
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Sigil regeneration
+// ---------------------------------------------------------------------
 
     private void regenerateSigilPattern() {
         try {
@@ -472,6 +539,8 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             this.currentShapeMask = null;
             this.currentPatternSize = 0;
         }
+
+
     }
 
     private int countTrue(boolean[][] mask) {
@@ -492,9 +561,9 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         return count;
     }
 
-    // ---------------------------------------------------------------------
-    // Carve button behaviour (animation + networking)
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Carve button behaviour (animation + networking)
+// ---------------------------------------------------------------------
 
     private void onCarveClicked() {
         try {
@@ -528,11 +597,13 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] onCarveClicked failed", t);
         }
+
+
     }
 
-    // ---------------------------------------------------------------------
-    // Ticking
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Ticking
+// ---------------------------------------------------------------------
 
     @Override
     protected void containerTick() {
@@ -621,11 +692,13 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] containerTick failed", t);
         }
+
+
     }
 
-    // ---------------------------------------------------------------------
-    // Background rendering
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Background rendering
+// ---------------------------------------------------------------------
 
     @Override
     protected void renderBg(@NotNull GuiGraphics guiGraphics,
@@ -633,27 +706,46 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                             int mouseX,
                             int mouseY) {
         try {
-            guiGraphics.fill(
+// Draw the full stamp UI texture instead of the flat coloured background.
+// This completely replaces the previous white/yellow-ish square.
+            guiGraphics.blit(
+                    STAMP_UI_TEXTURE,
                     this.leftPos,
                     this.topPos,
-                    this.leftPos + this.imageWidth,
-                    this.topPos + this.imageHeight,
-                    0xC0F5F0D8
+                    this.imageWidth,
+                    this.imageHeight,
+                    0,
+                    0,
+                    GUI_WIDTH,
+                    GUI_HEIGHT,
+                    GUI_WIDTH,
+                    GUI_HEIGHT
             );
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] renderBg failed", t);
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Foreground rendering (preview, labels, particles)
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Foreground rendering (preview, labels, particles)
+// ---------------------------------------------------------------------
 
     @Override
     public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         try {
             this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
             super.render(guiGraphics, mouseX, mouseY, partialTick);
+
+            // Debug outlines for button hitboxes (drawn on top of everything else)
+            if (DEBUG_BUTTON_BORDERS) {
+                // Different colours so you can tell which is which
+                drawDebugBorder(guiGraphics, this.etchingsButton, 0xFFFF0000); // red
+                drawDebugBorder(guiGraphics, this.styleButton,   0xFF00FF00); // green
+                drawDebugBorder(guiGraphics, this.carveButton,   0xFF0000FF); // blue
+                if (this.scaleButton instanceof AbstractWidget widget) {
+                    drawDebugBorder(guiGraphics, widget, 0xFFFFFF00); // yellow
+                }
+            }
 
             renderPreviewArea(guiGraphics);
             renderParticles(guiGraphics, partialTick);
@@ -666,7 +758,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
     @Override
     protected void renderLabels(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        // Intentionally empty.
+// Intentionally empty.
     }
 
     private void renderPreviewArea(@NotNull GuiGraphics guiGraphics) {
@@ -674,40 +766,19 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             int previewX = this.leftPos + this.imageWidth - PREVIEW_RIGHT_MARGIN - PREVIEW_WIDTH;
             int previewY = this.topPos + PREVIEW_TOP_Y;
 
-            Component label = gothic("Sigil Preview");
-            int labelWidth = this.font.width(label);
-            int labelX = previewX + (PREVIEW_WIDTH - labelWidth) / 2;
-            int labelY = previewY + PREVIEW_LABEL_OFFSET_Y;
-
-            guiGraphics.drawString(this.font, label, labelX, labelY, 0xFF000000, false);
-
-            // Soft background
-            guiGraphics.fill(
-                    previewX,
-                    previewY,
-                    previewX + PREVIEW_WIDTH,
-                    previewY + PREVIEW_HEIGHT,
-                    0x20FFFFFF
-            );
-
-            // Border
-            guiGraphics.fill(previewX, previewY, previewX + PREVIEW_WIDTH, previewY + 1, 0x80000000);
-            guiGraphics.fill(
-                    previewX,
-                    previewY + PREVIEW_HEIGHT - 1,
-                    previewX + PREVIEW_WIDTH,
-                    previewY + PREVIEW_HEIGHT,
-                    0x80000000
-            );
-            guiGraphics.fill(previewX, previewY, previewX + 1, previewX + PREVIEW_HEIGHT, 0x80000000);
-            guiGraphics.fill(previewX + PREVIEW_WIDTH - 1, previewY, previewX + PREVIEW_WIDTH, previewY + PREVIEW_HEIGHT, 0x80000000);
+            // We no longer draw:
+            //  - The "Sigil Preview" text label
+            //  - The semi-transparent white background
+            //  - The dark border rectangle
+            //
+            // The stamp_ui.png texture now provides all visual framing and labels.
 
             int centerX = previewX + PREVIEW_WIDTH / 2;
             int centerY = previewY + PREVIEW_HEIGHT / 2;
 
-            // === Refactored call: draw wax + sigil glyph exactly as before ===
+            // Draw only the sigil glyph (shapes + highlight/shadow) – no wax seal texture.
             if (this.currentPattern != null) {
-                visualizer.render(
+                visualizer.renderShapesOnly(
                         guiGraphics,
                         centerX,
                         centerY,
@@ -716,18 +787,20 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                         PREVIEW_WIDTH,
                         PREVIEW_HEIGHT,
                         SIGIL_RADIUS,
-                        WAX_SEAL_SCREEN_SCALE,
+                        WAX_SEAL_SCREEN_SCALE, // unused by shapes-only, but kept for interface symmetry
                         this.currentPattern
                 );
             }
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] renderPreviewArea failed", t);
         }
+
+
     }
 
-    // ---------------------------------------------------------------------
-    // Particles
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Particles
+// ---------------------------------------------------------------------
 
     private void spawnCarveParticles(int count) {
         try {
@@ -762,6 +835,8 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] spawnCarveParticles failed", t);
         }
+
+
     }
 
     private void renderParticles(@NotNull GuiGraphics guiGraphics, float partialTick) {
@@ -776,11 +851,13 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] renderParticles failed", t);
         }
+
+
     }
 
-    // ---------------------------------------------------------------------
-    // Input handling (E key eating like ScrollSealingScreen)
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Input handling (E key eating like ScrollSealingScreen)
+// ---------------------------------------------------------------------
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
@@ -797,11 +874,13 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             LOG.error("[SealStampScreen] keyPressed failed", t);
             return false;
         }
+
+
     }
 
-    // ---------------------------------------------------------------------
-    // Gothic helper
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Gothic helper
+// ---------------------------------------------------------------------
 
     private Component gothic(String text) {
         try {
@@ -819,19 +898,23 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         return (s == null) ? "" : s;
     }
 
-    // ---------------------------------------------------------------------
-    // Other helpers
-    // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Other helpers
+// ---------------------------------------------------------------------
 
     /**
-     * Determine which slot currently holds a SealStampItem.
-     *
-     * Slot mapping:
-     *  - 36 = main hand
-     *  - 37 = offhand
-     *  - 0..35 = main inventory list
-     *
-     * Returns -1 if no SealStampItem is found.
+
+     Determine which slot currently holds a SealStampItem.
+
+     Slot mapping:
+
+     36 = main hand
+
+     37 = offhand
+
+     0..35 = main inventory list
+
+     Returns -1 if no SealStampItem is found.
      */
     private static int computeSealStampSlot(Minecraft mc) {
         try {
@@ -861,6 +944,8 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             }
 
             return -1;
+
+
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] computeSealStampSlot failed", t);
             return -1;

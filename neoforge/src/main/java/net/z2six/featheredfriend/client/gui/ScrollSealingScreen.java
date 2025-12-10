@@ -75,7 +75,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
 
     // Zoom variant for closing texture (same layout, different last frame)
     private static final ResourceLocation SCROLL_CLOSING_TEXTURE_ZOOM =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scrollscreen/scroll_closing_zoom.png");
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scrollscreen/scroll_closing.png");
 
     // Animated pearl texture (sprite sheet: 64x704, 11 frames vertically)
     private static final ResourceLocation PEARL_TEXTURE =
@@ -131,8 +131,8 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private static final int PEARL_PHASE_C_TICKS_PER_FRAME = 2;
 
     // Pearl placement / size (relative to GUI origin)
-    private static final int PEARL_X = SCROLL_FRAME_WIDTH - PEARL_FRAME_WIDTH - 12;
-    private static final int PEARL_Y = 18;
+    private static final int PEARL_X = SCROLL_FRAME_WIDTH - PEARL_FRAME_WIDTH - 25;
+    private static final int PEARL_Y = 10;
     private static final int PEARL_WIDTH = PEARL_FRAME_WIDTH;
     private static final int PEARL_HEIGHT = PEARL_FRAME_HEIGHT;
 
@@ -220,6 +220,10 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     // Wax gizmo areas
     // ---------------------------------------------------------------------
 
+    // Whether to render the red debug gizmo outlines/crosshairs.
+    // Set to true if you ever want to visualize the wax areas again.
+    private static final boolean DEBUG_SHOW_WAX_GIZMO = false;
+
     // Small gizmo: used when NOT zoomed (current logic)
     private static final int WAX_BOX_X = 94;      // relative to GUI origin (leftPos)
     private static final int WAX_BOX_Y = 74;
@@ -232,20 +236,20 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private boolean zoomActive = false;
 
     // Zoom gizmo: used when zoomed in (independent tunables)
-    private static final int ZOOM_WAX_BOX_X = 13;       // tweak to taste
-    private static final int ZOOM_WAX_BOX_Y = -10;
-    private static final int ZOOM_WAX_BOX_WIDTH = 200;
-    private static final int ZOOM_WAX_BOX_HEIGHT = 200;
+    private static final int ZOOM_WAX_BOX_X = 50;       // tweak to taste
+    private static final int ZOOM_WAX_BOX_Y = 30;
+    private static final int ZOOM_WAX_BOX_WIDTH = 125;
+    private static final int ZOOM_WAX_BOX_HEIGHT = 125;
 
     // Center offsets within whichever box is active
     private static final int WAX_SIGIL_CENTER_OFFSET_X = 0;
     private static final int WAX_SIGIL_CENTER_OFFSET_Y = 0;
 
     // How much to zoom the scroll texture (not the sigil)
-    private static final float HOVER_ZOOM_SCALE = 5.0f;
+    private static final float HOVER_ZOOM_SCALE = 3.5f;
 
     // Independent control for sigil size in zoom view
-    private static final int ZOOM_SIGIL_RADIUS_PIXELS = 70; // tweak this freely
+    private static final int ZOOM_SIGIL_RADIUS_PIXELS = 42; // tweak this freely
 
     // Widgets
     private MultiLineScrollTextWidget dateWidget;
@@ -1236,7 +1240,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             // Draw gizmo overlay:
             //  - small gizmo when NOT zoomed
             //  - zoom gizmo when zoomed
-            if (this.uiPhase == UiPhase.SEALED) {
+            if (this.uiPhase == UiPhase.SEALED && DEBUG_SHOW_WAX_GIZMO) {
                 final int boxX;
                 final int boxY;
                 final int boxW;
