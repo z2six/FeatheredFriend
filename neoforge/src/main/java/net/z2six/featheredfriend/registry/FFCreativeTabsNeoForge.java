@@ -50,6 +50,12 @@ public final class FFCreativeTabsNeoForge {
             }
 
             try {
+                event.accept(FFItems.SCROLL_OPENED.get());
+            } catch (Throwable t) {
+                LOG.error("Failed to add SCROLL_OPENED to Ingredients tab", t);
+            }
+
+            try {
                 event.accept(FFItems.SEAL_STAMP.get());
             } catch (Throwable t) {
                 LOG.error("Failed to add SEAL_STAMP to Ingredients tab", t);

@@ -44,6 +44,12 @@ public final class FFItems {
             () -> new UnsealedScrollItem(new Item.Properties().stacksTo(64))
     );
 
+    // Opened scroll: non-stackable (already read/opened by the player).
+    public static final Supplier<Item> SCROLL_OPENED = register(
+            "scroll_opened",
+            () -> new Item(new Item.Properties().stacksTo(1))
+    );
+
     // Sealed scroll: non-stackable (stacksTo(1)).
     public static final Supplier<Item> SCROLL_SEALED = register(
             "scroll_sealed",
