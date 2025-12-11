@@ -72,6 +72,9 @@ public class ScrollSealingMenu extends AbstractContainerMenu {
     private String clientMessageText = "";
     private String clientSignatureText = "";
 
+    // Storing recipient UUID while Pearl menu
+    private String clientRecipientUUID = "";
+
     // ---------------------------------------------------------------------
     // Client-side animation state hints
     // ---------------------------------------------------------------------
@@ -150,6 +153,14 @@ public class ScrollSealingMenu extends AbstractContainerMenu {
     public boolean stillValid(Player player) {
         // Item-based GUI; always valid while open.
         return true;
+    }
+
+    public void setClientRecipientUUID(String uuid) {
+        this.clientRecipientUUID = uuid != null ? uuid : "";
+    }
+
+    public String getClientRecipientUUID() {
+        return this.clientRecipientUUID;
     }
 
     @Override

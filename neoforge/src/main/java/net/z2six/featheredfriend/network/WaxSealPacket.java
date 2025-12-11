@@ -1,42 +1,31 @@
-// MainFile: common/src/main/java/net/z2six/featheredfriend/network/WaxSealPacket.java
+// common/src/main/java/net/z2six/featheredfriend/network/WaxSealPacket.java
 package net.z2six.featheredfriend.network;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.component.CustomData;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.neoforge.menu.ScrollSealingMenu;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 /**
  * // common/src/main/java/net/z2six/featheredfriend/network/WaxSealPacket.java
  *
- * Handles the "wax seal" action when the player clicks inside the wax area
- * on the ScrollSealingScreen with an etched Seal Stamp selected.
- *
- * Server-side behaviour:
- *  1) Remove 1x featheredfriend:scroll_unsealed from the player's inventory.
- *  2) Create 1x featheredfriend:scroll_sealed with all scroll NBT data:
- *     - RecipientName
- *     - RecipientUUID
- *     - RecipientText
- *     - MessageText
- *     - SignatureText
- *     - SenderName (from the Seal Stamp, not anything else)
- *     - Seed
- *     - Slices
- *     - Style
- *  3) Try to add the sealed scroll to the inventory; if full, drop at player.
+ * Handles the "wax seal" action when the player clicks inside the wax area.
  */
 public record WaxSealPacket(
         int selectedStampSlot,
@@ -104,20 +93,23 @@ public record WaxSealPacket(
             // 1) Remove one unsealed scroll
             ItemStack removed = removeOneUnsealedScroll(serverPlayer);
             if (removed == null) {
-                LOG.warn("[WaxSealPacket] Player {} tried sealing but has no featheredfriend:scroll_unsealed",
+                LOG.warn("[WaxSealPacket] Player {} tried sealing but has no scroll_unsealed",
                         serverPlayer.getGameProfile().getName());
                 return;
             }
 
-            // 2) Resolve sealed scroll item by ID (no hard dependency on registry wrapper)
+            // 2) Resolve sealed scroll item
             Item sealedItem = resolveItemByPath("scroll_sealed");
             if (sealedItem == null || sealedItem == Items.AIR) {
-                LOG.error("[WaxSealPacket] sealed scroll item featheredfriend:scroll_sealed not found; aborting");
+                LOG.error("[WaxSealPacket] sealed scroll item not found; aborting");
                 return;
             }
 
             ItemStack sealed = new ItemStack(sealedItem, 1);
 
+            // -----------------------------------------------------------------
+            // Build NBT
+            // -----------------------------------------------------------------
             CompoundTag root = new CompoundTag();
             CompoundTag seal = new CompoundTag();
 
@@ -131,16 +123,56 @@ public record WaxSealPacket(
             seal.putInt("Slices", p.slices());
             seal.putInt("Style", p.style());
 
+            // -----------------------------------------------------------------
+            // NEW: Attachment collection
+            // -----------------------------------------------------------------
+            try {
+                AbstractContainerMenu currentMenu = serverPlayer.containerMenu;
+                if (currentMenu instanceof ScrollSealingMenu sm) {
+
+                    ListTag attachmentsList = new ListTag();
+
+                    for (int slot = ScrollSealingMenu.ATTACHMENT_START;
+                         slot <= ScrollSealingMenu.ATTACHMENT_END;
+                         slot++) {
+
+                        ItemStack stack = sm.getAttachmentContainer().getItem(slot);
+
+                        if (!stack.isEmpty()) {
+                            CompoundTag att = new CompoundTag();
+                            att.putString("id", BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
+                            att.putByte("Count", (byte) stack.getCount());
+                            attachmentsList.add(att);
+
+                            // Wipe the slot so removed() does NOT refund
+                            sm.getAttachmentContainer().setItem(slot, ItemStack.EMPTY);
+                        }
+                    }
+
+                    if (!attachmentsList.isEmpty()) {
+                        seal.put("Attachments", attachmentsList);
+                        LOG.debug("[WaxSealPacket] Stored {} attachment items in sealed scroll",
+                                attachmentsList.size());
+                    }
+                } else {
+                    LOG.debug("[WaxSealPacket] No ScrollSealingMenu active; no attachments collected");
+                }
+            } catch (Throwable t) {
+                LOG.error("[WaxSealPacket] Failed to collect attachments", t);
+            }
+
             root.put("SealedScroll", seal);
 
+            // Apply CustomData
             try {
-                // Correct 1.21+ API: set CUSTOM_DATA via DataComponents
                 sealed.set(DataComponents.CUSTOM_DATA, CustomData.of(root));
             } catch (Throwable tSet) {
                 LOG.error("[WaxSealPacket] Failed to attach CustomData to sealed scroll", tSet);
             }
 
-            // 3) Add/deliver sealed scroll
+            // -----------------------------------------------------------------
+            // 3) Deliver sealed scroll
+            // -----------------------------------------------------------------
             boolean added = false;
             try {
                 added = serverPlayer.getInventory().add(sealed);
@@ -156,12 +188,9 @@ public record WaxSealPacket(
                 }
             }
 
-            LOG.info("[WaxSealPacket] Delivered sealed scroll to {} (sender='{}' seed={} slices={} style={})",
-                    serverPlayer.getGameProfile().getName(),
-                    p.senderName(),
-                    p.seed(),
-                    p.slices(),
-                    p.style());
+            LOG.info("[WaxSealPacket] Delivered sealed scroll to {} (attachments stored)",
+                    serverPlayer.getGameProfile().getName());
+
         } catch (Throwable t) {
             LOG.error("[WaxSealPacket] handle failed", t);
         }
@@ -171,16 +200,11 @@ public record WaxSealPacket(
     // Helpers
     // ---------------------------------------------------------------------
 
-    /**
-     * Attempts to remove exactly one featheredfriend:scroll_unsealed from
-     * the player's main inventory. Returns a copy of the removed stack (count=1),
-     * or null if none were found.
-     */
     private static ItemStack removeOneUnsealedScroll(@NotNull ServerPlayer player) {
         try {
             Item unsealed = resolveItemByPath("scroll_unsealed");
             if (unsealed == null || unsealed == Items.AIR) {
-                LOG.error("[WaxSealPacket] Unsealed scroll item featheredfriend:scroll_unsealed not found in registry");
+                LOG.error("[WaxSealPacket] unsealed scroll item not found");
                 return null;
             }
 
@@ -188,11 +212,7 @@ public record WaxSealPacket(
                 ItemStack s = player.getInventory().items.get(i);
                 if (!s.isEmpty() && s.getItem() == unsealed) {
                     ItemStack taken = s.copyWithCount(1);
-                    try {
-                        s.shrink(1);
-                    } catch (Throwable tShrink) {
-                        LOG.error("[WaxSealPacket] Failed to shrink unsealed scroll stack at slot {}", i, tShrink);
-                    }
+                    s.shrink(1);
                     return taken;
                 }
             }
@@ -202,42 +222,24 @@ public record WaxSealPacket(
         return null;
     }
 
-    /**
-     * Resolve an item from the built-in item registry by path within this mod's namespace.
-     * Returns null or Items.AIR if the item does not exist.
-     */
     private static Item resolveItemByPath(@NotNull String path) {
         try {
             ResourceLocation id = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, path);
             Item item = BuiltInRegistries.ITEM.get(id);
-            if (item == null) {
-                LOG.error("[WaxSealPacket] resolveItemByPath: item {} is null", id);
-                return Items.AIR;
-            }
-            if (item == Items.AIR) {
-                LOG.warn("[WaxSealPacket] resolveItemByPath: item {} returned as AIR", id);
-            }
-            return item;
+            return item != null ? item : Items.AIR;
         } catch (Throwable t) {
-            LOG.error("[WaxSealPacket] resolveItemByPath failed for path='{}'", path, t);
+            LOG.error("[WaxSealPacket] resolveItemByPath failed", t);
             return Items.AIR;
         }
     }
 
-    /**
-     * Defensive truncation for strings before stuffing them into NBT.
-     */
     private static String safeString(String input, int maxLen) {
-        if (input == null) {
-            return "";
-        }
-        if (input.length() <= maxLen) {
-            return input;
-        }
+        if (input == null) return "";
+        if (input.length() <= maxLen) return input;
         try {
-            return input.substring(0, Math.max(0, maxLen));
+            return input.substring(0, maxLen);
         } catch (Throwable t) {
-            LOG.error("[WaxSealPacket] safeString substring failed (len={} maxLen={})", input.length(), maxLen, t);
+            LOG.error("[WaxSealPacket] safeString failed", t);
             return "";
         }
     }

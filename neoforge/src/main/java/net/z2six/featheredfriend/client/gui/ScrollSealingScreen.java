@@ -696,11 +696,21 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private void saveEditorStateToMenu() {
         try {
             ScrollSealingMenu m = getScrollMenu();
+
             m.setClientDateText(this.dateWidget != null ? this.dateWidget.getText() : "");
             m.setClientRecipientText(this.recipientField != null ? this.recipientField.getText() : "");
             m.setClientMessageText(this.messageWidget != null ? this.messageWidget.getText() : "");
             m.setClientSignatureText(this.signatureWidget != null ? this.signatureWidget.getText() : "");
-            LOG.debug("[ScrollSealingScreen] Editor state saved to menu");
+
+            // NEW: also persist the selected recipient UUID so it survives
+            // the detour through EnderPearlInventoryScreen.
+            m.setClientRecipientUUID(
+                    this.selectedRecipientUuid != null
+                            ? this.selectedRecipientUuid.toString()
+                            : ""
+            );
+
+            LOG.debug("[ScrollSealingScreen] Editor state saved to menu (including recipient UUID)");
         } catch (Throwable t) {
             LOG.error("[ScrollSealingScreen] saveEditorStateToMenu failed", t);
         }
@@ -717,6 +727,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                     this.dateWidget.setCursorToEnd();
                 }
             }
+
             if (this.recipientField != null) {
                 String rt = m.getClientRecipientText();
                 if (!rt.isEmpty()) {
@@ -724,6 +735,22 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                     this.recipientField.setCursorToEnd();
                 }
             }
+
+            // NEW: restore the previously selected recipient UUID, if any.
+            // This is what fixes the "UUID missing after coming back
+            // from pearl inventory" problem.
+            this.selectedRecipientUuid = null;
+            String storedUuid = m.getClientRecipientUUID();
+            if (storedUuid != null && !storedUuid.isEmpty()) {
+                try {
+                    this.selectedRecipientUuid = UUID.fromString(storedUuid);
+                    LOG.debug("[ScrollSealingScreen] Restored recipient UUID from menu: {}", storedUuid);
+                } catch (IllegalArgumentException uuidErr) {
+                    LOG.error("[ScrollSealingScreen] Invalid stored recipient UUID '{}'", storedUuid, uuidErr);
+                    this.selectedRecipientUuid = null;
+                }
+            }
+
             if (this.messageWidget != null) {
                 String mt = m.getClientMessageText();
                 if (!mt.isEmpty()) {
@@ -731,6 +758,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                     this.messageWidget.setCursorToEnd();
                 }
             }
+
             if (this.signatureWidget != null) {
                 String st = m.getClientSignatureText();
                 if (!st.isEmpty()) {
@@ -738,7 +766,8 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                     this.signatureWidget.setCursorToEnd();
                 }
             }
-            LOG.debug("[ScrollSealingScreen] Editor state restored from menu");
+
+            LOG.debug("[ScrollSealingScreen] Editor state restored from menu (including recipient UUID)");
         } catch (Throwable t) {
             LOG.error("[ScrollSealingScreen] restoreEditorStateFromMenu failed", t);
         }
