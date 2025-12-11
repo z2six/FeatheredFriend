@@ -1635,6 +1635,20 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                                 return true;
                             }
 
+                            // Gather scroll text fields
+                            String dateText = "";
+                            if (this.dateWidget != null) {
+                                try {
+                                    dateText = this.dateWidget.getText();
+                                } catch (Throwable tDate) {
+                                    LOG.error("[ScrollSealingScreen] Failed to read date widget text, falling back to computeCurrentDateString()", tDate);
+                                    dateText = "";
+                                }
+                            }
+                            if (dateText == null || dateText.isEmpty()) {
+                                dateText = computeCurrentDateString();
+                            }
+
                             String recipientText = this.recipientField != null ? this.recipientField.getText() : "";
                             String messageText = this.messageWidget != null ? this.messageWidget.getText() : "";
                             String signatureText = this.signatureWidget != null ? this.signatureWidget.getText() : "";
@@ -1667,17 +1681,29 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
 
                             saveEditorStateToMenu();
 
-                            LOG.debug("[ScrollSealingScreen] Sending WaxSealPacket (admire fade after): rec='{}' uuid={} seed={} slices={} style={} sender='{}'",
-                                    recipientNameResolved, recipientUUIDStr, seed, slices, style, senderName);
+                            LOG.debug(
+                                    "[ScrollSealingScreen] Sending WaxSealPacket (admire fade after): date='{}' rec='{}' uuid={} seed={} slices={} style={} sender='{}'",
+                                    dateText,
+                                    recipientNameResolved,
+                                    recipientUUIDStr,
+                                    seed,
+                                    slices,
+                                    style,
+                                    senderName
+                            );
 
                             net.z2six.featheredfriend.network.FFNetwork.sendWaxSealToServer(
                                     this.sealStampSlotIndex,
+                                    dateText != null ? dateText : "",
                                     recipientNameResolved,
                                     recipientUUIDStr,
                                     recipientText != null ? recipientText : "",
                                     messageText != null ? messageText : "",
                                     signatureText != null ? signatureText : "",
-                                    seed, slices, style, senderName
+                                    seed,
+                                    slices,
+                                    style,
+                                    senderName
                             );
 
                             try {

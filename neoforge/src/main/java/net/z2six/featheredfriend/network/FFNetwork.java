@@ -65,9 +65,7 @@ public final class FFNetwork {
                     FFNetwork::handleSealStampCarveResultOnServer
             );
 
-            // -------------------------------------------------------------
-            // *** ADDED: WaxSealPacket registration (C2S)
-            // -------------------------------------------------------------
+            // WaxSealPacket registration (C2S)
             registrar.playToServer(
                     WaxSealPacket.TYPE,
                     WaxSealPacket.STREAM_CODEC,
@@ -129,11 +127,12 @@ public final class FFNetwork {
     }
 
     // ---------------------------------------------------------------------
-    // *** ADDED: WaxSealPacket sender (client → server)
+    // WaxSealPacket sender (client → server)
     // ---------------------------------------------------------------------
 
     public static void sendWaxSealToServer(
             int stampSlot,
+            String dateText,
             String recipientName,
             String recipientUUID,
             String recipientText,
@@ -147,15 +146,16 @@ public final class FFNetwork {
         try {
             WaxSealPacket p = new WaxSealPacket(
                     stampSlot,
-                    recipientName,
-                    recipientUUID,
-                    recipientText,
-                    messageText,
-                    signatureText,
+                    dateText != null ? dateText : "",
+                    recipientName != null ? recipientName : "",
+                    recipientUUID != null ? recipientUUID : "",
+                    recipientText != null ? recipientText : "",
+                    messageText != null ? messageText : "",
+                    signatureText != null ? signatureText : "",
                     seed,
                     slices,
                     style,
-                    senderName
+                    senderName != null ? senderName : ""
             );
 
             PacketDistributor.sendToServer(p);
@@ -166,7 +166,7 @@ public final class FFNetwork {
     }
 
     // ---------------------------------------------------------------------
-    // *** ADDED: WaxSealPacket handler
+    // WaxSealPacket handler
     // ---------------------------------------------------------------------
 
     private static void handleWaxSealOnServer(@NotNull WaxSealPacket payload,
@@ -199,16 +199,25 @@ public final class FFNetwork {
 
         private static void encode(@NotNull RegistryFriendlyByteBuf buf,
                                    @NotNull KnownPlayersPayload payload) {
-            List<String> list = payload.names();
-            buf.writeVarInt(list.size());
-            for (String name : list) buf.writeUtf(name, 1024);
+            try {
+                List<String> list = payload.names();
+                buf.writeVarInt(list.size());
+                for (String name : list) buf.writeUtf(name, 1024);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] KnownPlayersPayload encode failed", t);
+            }
         }
 
         private static @NotNull KnownPlayersPayload decode(@NotNull RegistryFriendlyByteBuf buf) {
-            int size = buf.readVarInt();
-            List<String> list = new ArrayList<>(size);
-            for (int i = 0; i < size; i++) list.add(buf.readUtf(1024));
-            return new KnownPlayersPayload(list);
+            try {
+                int size = buf.readVarInt();
+                List<String> list = new ArrayList<>(size);
+                for (int i = 0; i < size; i++) list.add(buf.readUtf(1024));
+                return new KnownPlayersPayload(list);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] KnownPlayersPayload decode failed", t);
+                return new KnownPlayersPayload(List.of());
+            }
         }
 
         @Override
