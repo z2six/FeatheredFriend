@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/integration/jei/JeiOverlayHider.java
+// neoforge/src/main/java/net/z2six/featheredfriend/integration/jei/JeiOverlayHider.java
 package net.z2six.featheredfriend.integration.jei;
 
 import com.mojang.logging.LogUtils;
@@ -11,6 +11,7 @@ import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.EnderPearlInventoryScreen;
 import net.z2six.featheredfriend.client.gui.ScrollSealingScreen;
 import net.z2six.featheredfriend.client.gui.SealStampScreen;
+import net.z2six.featheredfriend.client.gui.ScrollViewScreen;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
@@ -29,6 +30,7 @@ import java.util.Locale;
  *  - ScrollSealingScreen
  *  - SealStampScreen
  *  - EnderPearlInventoryScreen (attachments inventory GUI)
+ *  - ScrollViewScreen (sealed/opened scroll viewer)
  *
  * Design:
  *  - JEI runtime (IJeiRuntime) is stored as an Object to avoid tight coupling.
@@ -102,10 +104,12 @@ public final class JeiOverlayHider {
             //  - ScrollSealingScreen
             //  - SealStampScreen (etching GUI)
             //  - EnderPearlInventoryScreen (attachments inventory GUI)
+            //  - ScrollViewScreen (sealed/opened scroll viewer)
             boolean isOurScreen =
                     (mc.screen instanceof ScrollSealingScreen) ||
                             (mc.screen instanceof SealStampScreen) ||
-                            (mc.screen instanceof EnderPearlInventoryScreen);
+                            (mc.screen instanceof EnderPearlInventoryScreen) ||
+                            (mc.screen instanceof ScrollViewScreen);
 
             if (isOurScreen) {
                 hideOverlayIfNeeded();

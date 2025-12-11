@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/integration/jei/FeatheredFriendJeiPlugin.java
+// neoforge/src/main/java/net/z2six/featheredfriend/integration/jei/FeatheredFriendJeiPlugin.java
 package net.z2six.featheredfriend.integration.jei;
 
 import mezz.jei.api.IModPlugin;
@@ -15,6 +15,7 @@ import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.EnderPearlInventoryScreen;
 import net.z2six.featheredfriend.client.gui.ScrollSealingScreen;
 import net.z2six.featheredfriend.client.gui.SealStampScreen;
+import net.z2six.featheredfriend.client.gui.ScrollViewScreen;
 import net.z2six.featheredfriend.registry.FFItems;
 import org.slf4j.Logger;
 
@@ -32,6 +33,7 @@ import java.util.List;
  *      * ScrollSealingScreen
  *      * SealStampScreen
  *      * EnderPearlInventoryScreen (attachments inventory)
+ *      * ScrollViewScreen (sealed/opened scroll viewer)
  *    so JEI knows about our layout and tries not to overlap with it.
  *
  * NOTE:
@@ -200,6 +202,46 @@ public class FeatheredFriendJeiPlugin implements IModPlugin {
             );
         } catch (Throwable t) {
             LOG.error("FeatheredFriendJeiPlugin: registerGuiHandlers failed for EnderPearlInventoryScreen", t);
+        }
+
+        // ---------------------------------------------------------------------
+        // ScrollViewScreen: sealed/opened scroll viewer GUI
+        //  - Mark entire window as GUI area so JEI moves away from it.
+        // ---------------------------------------------------------------------
+        try {
+            LOG.debug("FeatheredFriendJeiPlugin: Registering GUI handler for ScrollViewScreen");
+
+            registration.addGuiContainerHandler(
+                    ScrollViewScreen.class,
+                    new IGuiContainerHandler<ScrollViewScreen>() {
+                        @Override
+                        public List<Rect2i> getGuiExtraAreas(ScrollViewScreen screen) {
+                            try {
+                                int x = 0;
+                                int y = 0;
+                                int width = screen.width;
+                                int height = screen.height;
+
+                                Rect2i fullScreen = new Rect2i(x, y, width, height);
+
+                                LOG.debug(
+                                        "FeatheredFriendJeiPlugin: getGuiExtraAreas for ScrollViewScreen -> {}x{} at {},{}",
+                                        width, height, x, y
+                                );
+
+                                return Collections.singletonList(fullScreen);
+                            } catch (Throwable t) {
+                                LOG.error(
+                                        "FeatheredFriendJeiPlugin: getGuiExtraAreas failed for ScrollViewScreen",
+                                        t
+                                );
+                                return Collections.emptyList();
+                            }
+                        }
+                    }
+            );
+        } catch (Throwable t) {
+            LOG.error("FeatheredFriendJeiPlugin: registerGuiHandlers failed for ScrollViewScreen", t);
         }
     }
 }

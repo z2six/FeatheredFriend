@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/client/ClientScreens.java
+// neoforge/src/main/java/net/z2six/featheredfriend/client/ClientScreens.java
 package net.z2six.featheredfriend.client;
 
 import com.mojang.logging.LogUtils;
@@ -9,8 +9,10 @@ import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.ScrollSealingScreen;
 import net.z2six.featheredfriend.client.gui.SealStampScreen;
+import net.z2six.featheredfriend.client.gui.ScrollViewScreen;
 import net.z2six.featheredfriend.neoforge.menu.ScrollSealingMenu;
 import net.z2six.featheredfriend.neoforge.menu.SealStampMenu;
+import net.z2six.featheredfriend.neoforge.menu.ScrollViewMenu;
 import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
 import org.slf4j.Logger;
 
@@ -22,9 +24,10 @@ import org.slf4j.Logger;
  * IMPORTANT:
  *  - This must live in the NeoForge source set.
  *  - The @EventBusSubscriber annotation must use the correct mod id (Constants.MOD_ID).
- *  - We register BOTH:
+ *  - We register:
  *      * scroll_sealing  -> ScrollSealingScreen
  *      * seal_stamp      -> SealStampScreen
+ *      * scroll_view     -> ScrollViewScreen
  */
 @EventBusSubscriber(
         value = Dist.CLIENT,
@@ -77,6 +80,24 @@ public final class ClientScreens {
             LOG.info("[ClientScreens] Successfully registered SealStampScreen");
         } catch (Throwable t) {
             LOG.error("[ClientScreens] Failed to register SealStampScreen", t);
+        }
+
+        // ---------------------------------------------------------------------
+        // Scroll view GUI (placeholder for sealed / opened scrolls)
+        // ---------------------------------------------------------------------
+        try {
+            LOG.info("[ClientScreens] Registering screen for menu type: {} (scroll_view)",
+                    FFNeoForgeMenus.SCROLL_VIEW_MENU.get().toString());
+
+            event.register(
+                    FFNeoForgeMenus.SCROLL_VIEW_MENU.get(),
+                    (ScrollViewMenu menu, net.minecraft.world.entity.player.Inventory inv, net.minecraft.network.chat.Component title) ->
+                            new ScrollViewScreen(menu, inv, title)
+            );
+
+            LOG.info("[ClientScreens] Successfully registered ScrollViewScreen");
+        } catch (Throwable t) {
+            LOG.error("[ClientScreens] Failed to register ScrollViewScreen", t);
         }
     }
 }

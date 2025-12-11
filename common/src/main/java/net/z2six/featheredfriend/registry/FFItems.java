@@ -1,9 +1,10 @@
-// MainFile: common/src/main/java/net/z2six/featheredfriend/registry/FFItems.java
+// common/src/main/java/net/z2six/featheredfriend/registry/FFItems.java
 package net.z2six.featheredfriend.registry;
 
 import com.mojang.logging.LogUtils;
 import com.google.common.base.Suppliers;
 import net.minecraft.world.item.Item;
+import net.z2six.featheredfriend.content.item.ScrollViewItem;
 import net.z2six.featheredfriend.content.item.UnsealedScrollItem;
 import net.z2six.featheredfriend.content.item.SealStampItem;
 import org.slf4j.Logger;
@@ -45,15 +46,17 @@ public final class FFItems {
     );
 
     // Opened scroll: non-stackable (already read/opened by the player).
+    // Now uses ScrollViewItem to open the placeholder GUI on RMB.
     public static final Supplier<Item> SCROLL_OPENED = register(
             "scroll_opened",
-            () -> new Item(new Item.Properties().stacksTo(1))
+            () -> new ScrollViewItem(new Item.Properties().stacksTo(1))
     );
 
     // Sealed scroll: non-stackable (stacksTo(1)).
+    // Now uses ScrollViewItem to open the placeholder GUI on RMB.
     public static final Supplier<Item> SCROLL_SEALED = register(
             "scroll_sealed",
-            () -> new Item(new Item.Properties().stacksTo(1))
+            () -> new ScrollViewItem(new Item.Properties().stacksTo(1))
     );
 
     // Seal stamp: custom item that opens the seal-etching GUI on RMB if not yet etched.

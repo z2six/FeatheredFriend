@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/platform/NeoForgePlatformHelper.java
+// neoforge/src/main/java/net/z2six/featheredfriend/platform/NeoForgePlatformHelper.java
 package net.z2six.featheredfriend.platform;
 
 import com.mojang.logging.LogUtils;
@@ -14,6 +14,7 @@ import net.z2six.featheredfriend.calendar.CalendarDefinition;
 import net.z2six.featheredfriend.config.FFCalendarConfig;
 import net.z2six.featheredfriend.neoforge.menu.ScrollSealingMenu;
 import net.z2six.featheredfriend.neoforge.menu.SealStampMenu;
+import net.z2six.featheredfriend.neoforge.menu.ScrollViewMenu;
 import net.z2six.featheredfriend.platform.services.IPlatformHelper;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -76,6 +77,19 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
             ));
         } catch (Throwable t) {
             LOG.error("[NeoForgePlatformHelper] Failed to open Seal Stamp menu", t);
+        }
+    }
+
+    @Override
+    public void openScrollViewScreen(@NotNull ServerPlayer player) {
+        try {
+            player.openMenu(new SimpleMenuProvider(
+                    (int containerId, Inventory inv, Player p) ->
+                            new ScrollViewMenu(containerId, inv),
+                    Component.translatable("screen.featheredfriend.scroll_view")
+            ));
+        } catch (Throwable t) {
+            LOG.error("[NeoForgePlatformHelper] Failed to open Scroll View menu", t);
         }
     }
 

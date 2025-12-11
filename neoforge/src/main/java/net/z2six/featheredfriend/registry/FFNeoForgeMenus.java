@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/registry/FFNeoForgeMenus.java
+// neoforge/src/main/java/net/z2six/featheredfriend/registry/FFNeoForgeMenus.java
 package net.z2six.featheredfriend.registry;
 
 import com.mojang.logging.LogUtils;
@@ -10,6 +10,7 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.neoforge.menu.ScrollSealingMenu;
 import net.z2six.featheredfriend.neoforge.menu.SealStampMenu;
+import net.z2six.featheredfriend.neoforge.menu.ScrollViewMenu;
 import org.slf4j.Logger;
 
 import java.util.function.Supplier;
@@ -38,6 +39,13 @@ public final class FFNeoForgeMenus {
                     () -> {
                         LOG.debug("[FFNeoForgeMenus] Registering MenuType 'seal_stamp'");
                         return new MenuType<>(SealStampMenu::new, FeatureFlags.DEFAULT_FLAGS);
+                    });
+
+    public static final Supplier<MenuType<ScrollViewMenu>> SCROLL_VIEW_MENU =
+            MENUS.register("scroll_view",
+                    () -> {
+                        LOG.debug("[FFNeoForgeMenus] Registering MenuType 'scroll_view'");
+                        return new MenuType<>(ScrollViewMenu::new, FeatureFlags.DEFAULT_FLAGS);
                     });
 
     private FFNeoForgeMenus() {
