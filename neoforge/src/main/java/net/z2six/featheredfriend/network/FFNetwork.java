@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/network/FFNetwork.java
+// neoforge/src/main/java/net/z2six/featheredfriend/network/FFNetwork.java
 package net.z2six.featheredfriend.network;
 
 import com.mojang.logging.LogUtils;
@@ -7,8 +7,6 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
@@ -24,9 +22,13 @@ import java.util.List;
 /**
  * // neoforge/src/main/java/net/z2six/featheredfriend/network/FFNetwork.java
  *
- * FFNetwork
+ * Payload-based networking registration for NeoForge.
+ *
+ * IMPORTANT:
+ *  - NeoForge 1.21.1: do NOT rely on EventBusSubscriber here.
+ *  - FeatheredFriend (NeoForge entrypoint) must call:
+ *      modEventBus.addListener(FFNetwork::register);
  */
-@EventBusSubscriber(modid = Constants.MOD_ID, bus = EventBusSubscriber.Bus.MOD)
 public final class FFNetwork {
 
     private static final Logger LOG = LogUtils.getLogger();
@@ -46,7 +48,6 @@ public final class FFNetwork {
     // Payload registration
     // ---------------------------------------------------------------------
 
-    @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
         try {
             var registrar = event.registrar("1");
@@ -65,14 +66,21 @@ public final class FFNetwork {
                     FFNetwork::handleSealStampCarveResultOnServer
             );
 
-            // WaxSealPacket registration (C2S)
+            // Existing: WaxSealPacket (C2S)
             registrar.playToServer(
                     WaxSealPacket.TYPE,
                     WaxSealPacket.STREAM_CODEC,
                     FFNetwork::handleWaxSealOnServer
             );
 
-            LOG.info("[FFNetwork] Registered KnownPlayersPayload (S2C), SealStampCarveResultPacket (C2S), WaxSealPacket (C2S)");
+            // NEW: BreakSealPacket (C2S)
+            registrar.playToServer(
+                    BreakSealPacket.TYPE,
+                    BreakSealPacket.STREAM_CODEC,
+                    FFNetwork::handleBreakSealOnServer
+            );
+
+            LOG.info("[FFNetwork] Registered KnownPlayersPayload (S2C), SealStampCarveResultPacket (C2S), WaxSealPacket (C2S), BreakSealPacket (C2S)");
         } catch (Throwable t) {
             LOG.error("[FFNetwork] Failed to register payload handlers", t);
         }
@@ -165,10 +173,6 @@ public final class FFNetwork {
         }
     }
 
-    // ---------------------------------------------------------------------
-    // WaxSealPacket handler
-    // ---------------------------------------------------------------------
-
     private static void handleWaxSealOnServer(@NotNull WaxSealPacket payload,
                                               @NotNull IPayloadContext context) {
         context.enqueueWork(() -> {
@@ -178,10 +182,52 @@ public final class FFNetwork {
                     return;
                 }
 
-                // New WaxSealPacket.handle is void – just invoke it.
                 WaxSealPacket.handle(payload, serverPlayer);
             } catch (Throwable t) {
                 LOG.error("[FFNetwork] Failed to handle WaxSealPacket on server", t);
+            }
+        });
+    }
+
+    // ---------------------------------------------------------------------
+    // BreakSealPacket sender (client → server)
+    // ---------------------------------------------------------------------
+
+    /**
+     * Called by ScrollViewScreen the moment the user breaks the seal (wax click).
+     */
+    public static void sendBreakSealToServer(int slotHint,
+                                             long seed,
+                                             @NotNull String recipientUUID,
+                                             @NotNull String dateText,
+                                             @NotNull String senderName) {
+        try {
+            BreakSealPacket p = new BreakSealPacket(
+                    slotHint,
+                    seed,
+                    recipientUUID != null ? recipientUUID : "",
+                    dateText != null ? dateText : "",
+                    senderName != null ? senderName : ""
+            );
+            PacketDistributor.sendToServer(p);
+            LOG.debug("[FFNetwork] Sent BreakSealPacket to server (slotHint={} seed={})", slotHint, seed);
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendBreakSealToServer failed", t);
+        }
+    }
+
+    private static void handleBreakSealOnServer(@NotNull BreakSealPacket payload,
+                                                @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                if (!(context.player() instanceof ServerPlayer serverPlayer)) {
+                    LOG.error("[FFNetwork] handleBreakSealOnServer: context.player() is not a ServerPlayer");
+                    return;
+                }
+
+                BreakSealPacket.handle(payload, serverPlayer);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] Failed to handle BreakSealPacket on server", t);
             }
         });
     }

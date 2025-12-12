@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/FeatheredFriend.java
+// neoforge/src/main/java/net/z2six/featheredfriend/FeatheredFriend.java
 package net.z2six.featheredfriend;
 
 import com.mojang.logging.LogUtils;
@@ -22,7 +22,7 @@ import org.slf4j.Logger;
  *  - Register NeoForge-specific registries (items, menus, creative tabs).
  *  - Register server-side calendar config.
  *  - Hook client-only registration (menu screens) via the mod event bus.
- *  - Initialize NeoForge networking (FFNetwork).
+ *  - Register payload handlers via mod event bus listener (NeoForge 1.21.1 safe).
  */
 @Mod(Constants.MOD_ID)
 public class FeatheredFriend {
@@ -55,7 +55,15 @@ public class FeatheredFriend {
             LOG.error("[FeatheredFriend] Failed to register NeoForge registries", t);
         }
 
-        // Networking: SimpleChannel (C2S) registration
+        // Networking: payload handler registration (MOD bus event)
+        try {
+            modEventBus.addListener(FFNetwork::register);
+            LOG.info("[FeatheredFriend] Hooked FFNetwork payload registration listener");
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriend] Failed to hook FFNetwork payload registration listener", t);
+        }
+
+        // Legacy no-op call (kept for compatibility with your current structure)
         try {
             FFNetwork.registerSimpleMessages();
         } catch (Throwable t) {

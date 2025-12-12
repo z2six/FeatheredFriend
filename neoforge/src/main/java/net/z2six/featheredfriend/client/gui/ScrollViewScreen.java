@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/client/gui/ScrollViewScreen.java
+// neoforge/src/main/java/net/z2six/featheredfriend/client/gui/ScrollViewScreen.java
 package net.z2six.featheredfriend.client.gui;
 
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -25,6 +25,8 @@ import org.jetbrains.annotations.NotNull;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 
+import java.lang.reflect.Method;
+
 /**
  * // neoforge/src/main/java/net/z2six/featheredfriend/client/gui/ScrollViewScreen.java
  *
@@ -36,6 +38,15 @@ import org.slf4j.Logger;
  *  - Closing via minecraft.setScreen(null) alone can leave the server-side menu open
  *    until the next inventory interaction.
  *  - We MUST close the container properly: minecraft.player.closeContainer().
+ *
+ * Feature addition (batch 1/2):
+ *  - When the user "breaks the seal" (clicks wax area to open), the client will attempt
+ *    to notify the server to convert the exact scroll_sealed stack into scroll_opened
+ *    and mark the session as seal-broken so attachments are only delivered after opening.
+ *
+ * Note:
+ *  - In this first batch, the call is done via reflection to keep the file compiling
+ *    before the new packet + FFNetwork method exist. Next batch will provide the method.
  */
 public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
@@ -160,6 +171,24 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     // Close guard: we only want to attempt container close once.
     private boolean requestedClose = false;
 
+    // ---------------------------------------------------------------------
+    // Seal-break request bookkeeping (client side)
+    // ---------------------------------------------------------------------
+
+    /**
+     * We only request a seal-break once per screen open, on the click that starts OPENING.
+     */
+    private boolean sealBreakRequested = false;
+
+    /**
+     * Fingerprint fields parsed from SealedScroll NBT. These are used to identify the exact stack on the server.
+     * (Server will still be authoritative; this is only to be specific.)
+     */
+    private long sealedSeed = 0L;
+    private String sealedRecipientUUID = "";
+    private String sealedDateText = "";
+    private String sealedSenderName = "";
+
     public ScrollViewScreen(@NotNull ScrollViewMenu menu,
                             @NotNull Inventory playerInventory,
                             @NotNull Component title) {
@@ -204,6 +233,12 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             this.viewPhaseTicks = 0;
             this.zoomActive = false;
             this.requestedClose = false;
+
+            this.sealBreakRequested = false;
+            this.sealedSeed = 0L;
+            this.sealedRecipientUUID = "";
+            this.sealedDateText = "";
+            this.sealedSenderName = "";
 
             this.dateText = "";
             this.recipientText = "";
@@ -257,6 +292,32 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             this.messageText = safeTagString(seal, "MessageText");
             this.signatureText = safeTagString(seal, "SignatureText");
 
+            // Fingerprint fields for server identification
+            try {
+                this.sealedSeed = seal.contains("Seed") ? seal.getLong("Seed") : 0L;
+            } catch (Throwable tSeed) {
+                LOG.error("[ScrollViewScreen] Failed to read SealedScroll.Seed for fingerprint", tSeed);
+                this.sealedSeed = 0L;
+            }
+            try {
+                this.sealedRecipientUUID = safeTagString(seal, "RecipientUUID");
+            } catch (Throwable tRec) {
+                LOG.error("[ScrollViewScreen] Failed to read SealedScroll.RecipientUUID for fingerprint", tRec);
+                this.sealedRecipientUUID = "";
+            }
+            try {
+                this.sealedDateText = this.dateText != null ? this.dateText : "";
+            } catch (Throwable tDt) {
+                LOG.error("[ScrollViewScreen] Failed to set sealedDateText fingerprint", tDt);
+                this.sealedDateText = "";
+            }
+            try {
+                this.sealedSenderName = safeTagString(seal, "SenderName");
+            } catch (Throwable tSn) {
+                LOG.error("[ScrollViewScreen] Failed to read SealedScroll.SenderName for fingerprint", tSn);
+                this.sealedSenderName = "";
+            }
+
             if (seal.contains("Attachments", ListTag.TAG_LIST)) {
                 ListTag attachments = seal.getList("Attachments", CompoundTag.TAG_COMPOUND);
                 this.hasAttachments = attachments != null && !attachments.isEmpty();
@@ -286,12 +347,15 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                 this.zoomSigilPattern = null;
             }
 
-            LOG.debug("[ScrollViewScreen] Loaded text. hasAttachments={} date='{}' recipient='{}' msgLen={} sig='{}'",
+            LOG.debug("[ScrollViewScreen] Loaded text. hasAttachments={} date='{}' recipient='{}' msgLen={} sig='{}' fingerprint(seed={}, recipientUUID='{}', sender='{}')",
                     this.hasAttachments,
                     this.dateText,
                     this.recipientText,
                     this.messageText != null ? this.messageText.length() : 0,
-                    this.signatureText);
+                    this.signatureText,
+                    this.sealedSeed,
+                    this.sealedRecipientUUID,
+                    this.sealedSenderName);
         } catch (Throwable t) {
             LOG.error("[ScrollViewScreen] loadFromHeldSealedScroll failed", t);
         }
@@ -817,6 +881,18 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                 }
 
                 if (shouldOpen) {
+                    // This is the precise "seal break moment".
+                    // Before starting the OPENING animation, notify the server (once) to convert the exact scroll.
+                    if (!sealBreakRequested) {
+                        int slotHint = resolveHeldScrollSlotHint();
+                        LOG.info("[ScrollViewScreen] Seal break click detected -> requesting server seal break (slotHint={} seed={} recipientUUID='{}' date='{}' sender='{}')",
+                                slotHint, sealedSeed, sealedRecipientUUID, sealedDateText, sealedSenderName);
+                        attemptSendBreakSealToServer(slotHint, sealedSeed, sealedRecipientUUID, sealedDateText, sealedSenderName);
+                        sealBreakRequested = true;
+                    } else {
+                        LOG.debug("[ScrollViewScreen] Seal break click detected but request already sent this session; ignoring duplicate click");
+                    }
+
                     LOG.debug("[ScrollViewScreen] Wax area clicked (zoomActive={}) -> starting OPENING animation", zoomActive);
                     this.viewPhase = ViewPhase.OPENING;
                     this.viewPhaseTicks = 0;
@@ -863,6 +939,131 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     protected void slotClicked(Slot slot, int slotId, int mouseButton, net.minecraft.world.inventory.ClickType type) {
         if (slot != null) {
             LOG.debug("[ScrollViewScreen] slotClicked ignored: slotId={} type={} button={}", slotId, type, mouseButton);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Seal-break networking (batch 1 uses reflection for compile safety)
+    // ---------------------------------------------------------------------
+
+    /**
+     * Attempts to determine where the scroll is currently held.
+     *
+     * Slot mapping convention:
+     *  - 36: main hand
+     *  - 37: off hand
+     *  - 0..35: player inventory indices
+     *  - -1: unknown
+     */
+    private int resolveHeldScrollSlotHint() {
+        try {
+            Minecraft mc = this.minecraft;
+            if (mc == null || mc.player == null) {
+                LOG.warn("[ScrollViewScreen] resolveHeldScrollSlotHint: mc/player null");
+                return -1;
+            }
+
+            if (this.sealedScrollStack == null || this.sealedScrollStack.isEmpty()) {
+                LOG.warn("[ScrollViewScreen] resolveHeldScrollSlotHint: sealedScrollStack snapshot empty");
+                return -1;
+            }
+
+            ItemStack main = mc.player.getMainHandItem();
+            if (isLikelySameScroll(main, this.sealedScrollStack)) {
+                return 36;
+            }
+
+            ItemStack off = mc.player.getOffhandItem();
+            if (isLikelySameScroll(off, this.sealedScrollStack)) {
+                return 37;
+            }
+
+            try {
+                for (int i = 0; i < mc.player.getInventory().items.size(); i++) {
+                    ItemStack s = mc.player.getInventory().items.get(i);
+                    if (isLikelySameScroll(s, this.sealedScrollStack)) {
+                        return i;
+                    }
+                }
+            } catch (Throwable tInv) {
+                LOG.error("[ScrollViewScreen] resolveHeldScrollSlotHint: inventory scan failed", tInv);
+            }
+
+            return -1;
+        } catch (Throwable t) {
+            LOG.error("[ScrollViewScreen] resolveHeldScrollSlotHint failed", t);
+            return -1;
+        }
+    }
+
+    private static boolean isLikelySameScroll(ItemStack a, ItemStack b) {
+        try {
+            if (a == null || b == null) {
+                return false;
+            }
+            if (a.isEmpty() || b.isEmpty()) {
+                return false;
+            }
+            if (a.getItem() != b.getItem()) {
+                return false;
+            }
+
+            // Compare CustomData tags to be specific (non-stackable, but still be precise)
+            CustomData acd = a.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
+            CustomData bcd = b.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
+            CompoundTag at = acd.copyTag();
+            CompoundTag bt = bcd.copyTag();
+
+            if (at == null && bt == null) {
+                return true;
+            }
+            if (at == null || bt == null) {
+                return false;
+            }
+            return at.equals(bt);
+        } catch (Throwable t) {
+            LOG.error("[ScrollViewScreen] isLikelySameScroll failed; falling back to false", t);
+            return false;
+        }
+    }
+
+    /**
+     * Batch-1 compile-safe call into FFNetwork. Next batch will provide a direct method call.
+     *
+     * Expected method signature (to be implemented in FFNetwork next batch):
+     *   public static void sendBreakSealToServer(int slotHint, long seed, String recipientUUID, String dateText, String senderName)
+     */
+    private void attemptSendBreakSealToServer(int slotHint,
+                                              long seed,
+                                              @NotNull String recipientUUID,
+                                              @NotNull String dateText,
+                                              @NotNull String senderName) {
+        try {
+            Class<?> clazz = Class.forName("net.z2six.featheredfriend.network.FFNetwork");
+            Method m = clazz.getDeclaredMethod(
+                    "sendBreakSealToServer",
+                    int.class,
+                    long.class,
+                    String.class,
+                    String.class,
+                    String.class
+            );
+
+            try {
+                m.setAccessible(true);
+            } catch (Throwable ignored) {
+            }
+
+            m.invoke(null, slotHint, seed, recipientUUID != null ? recipientUUID : "", dateText != null ? dateText : "", senderName != null ? senderName : "");
+
+            LOG.info("[ScrollViewScreen] Break-seal request sent via FFNetwork.sendBreakSealToServer(slotHint={}, seed={})",
+                    slotHint, seed);
+        } catch (ClassNotFoundException e) {
+            LOG.warn("[ScrollViewScreen] FFNetwork class not found; break-seal request not sent (will be available after next batch)");
+        } catch (NoSuchMethodException e) {
+            LOG.warn("[ScrollViewScreen] FFNetwork.sendBreakSealToServer(...) not found; break-seal request not sent (will be available after next batch)");
+        } catch (Throwable t) {
+            LOG.error("[ScrollViewScreen] attemptSendBreakSealToServer failed", t);
         }
     }
 }

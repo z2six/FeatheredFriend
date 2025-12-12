@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/neoforge/menu/ScrollViewMenu.java
+// neoforge/src/main/java/net/z2six/featheredfriend/neoforge/menu/ScrollViewMenu.java
 package net.z2six.featheredfriend.neoforge.menu;
 
 import com.mojang.logging.LogUtils;
@@ -15,6 +15,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.CustomData;
+import net.z2six.featheredfriend.menu.SealBreakGate;
 import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -27,16 +28,15 @@ import java.util.List;
  *
  * ScrollViewMenu
  *
- * Current step:
- *  - On server-side menu close (removed):
- *      1) Try to give attachment stacks to the player inventory
- *      2) If inventory is full, drop the remainder at the player's feet
+ * Updated behavior:
+ *  - Attachments are ONLY delivered on server-side menu close if the seal was actually broken.
+ *  - "Seal broken" is set by the server when handling BreakSealPacket via SealBreakGate.
  *
  * IMPORTANT:
- *  - We do NOT mutate the scroll NBT yet, so reopening the same sealed scroll
- *    will still re-give attachments until we implement “consume/clear NBT”.
+ *  - We still take a snapshot of attachments from the sealed scroll at menu creation (server side),
+ *    so we can later deliver them even after the held item is converted to scroll_opened.
  */
-public class ScrollViewMenu extends AbstractContainerMenu {
+public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGate {
 
     private static final Logger LOG = LogUtils.getLogger();
 
@@ -51,6 +51,9 @@ public class ScrollViewMenu extends AbstractContainerMenu {
 
     // Debug: what scroll stack we read from.
     private ItemStack sourceScrollStackSnapshot = ItemStack.EMPTY;
+
+    // Only deliver attachments after the seal was broken.
+    private boolean sealBrokenThisSession = false;
 
     public ScrollViewMenu(int containerId, @NotNull Inventory playerInventory) {
         super(FFNeoForgeMenus.SCROLL_VIEW_MENU.get(), containerId);
@@ -88,6 +91,23 @@ public class ScrollViewMenu extends AbstractContainerMenu {
     }
 
     @Override
+    public void markSealBroken(@NotNull String reason) {
+        try {
+            if (sealBrokenThisSession) {
+                LOG.debug("[ScrollViewMenu] markSealBroken: already true; ignoring (reason={}) containerId={}", reason, this.containerId);
+                return;
+            }
+            sealBrokenThisSession = true;
+            LOG.info("[ScrollViewMenu] Seal marked broken (reason={}) containerId={} player={}",
+                    reason,
+                    this.containerId,
+                    playerInventory != null && playerInventory.player != null ? safePlayerName(playerInventory.player) : "null");
+        } catch (Throwable t) {
+            LOG.error("[ScrollViewMenu] markSealBroken failed", t);
+        }
+    }
+
+    @Override
     public boolean stillValid(@NotNull Player player) {
         boolean valid = player != null && !player.isRemoved();
         if (!valid) {
@@ -114,27 +134,36 @@ public class ScrollViewMenu extends AbstractContainerMenu {
             }
 
             boolean clientSide = player.level().isClientSide;
-            LOG.info("[ScrollViewMenu] removed() fired containerId={} player={} side={} deliveredAlready={} snapshotLoaded={} snapshotSize={} carriedEmpty={}",
+            LOG.info("[ScrollViewMenu] removed() fired containerId={} player={} side={} sealBroken={} deliveredAlready={} snapshotLoaded={} snapshotSize={} carriedEmpty={}",
                     this.containerId,
                     safePlayerName(player),
                     clientSide ? "CLIENT" : "SERVER",
+                    sealBrokenThisSession,
                     attachmentsDeliveredThisSession,
                     attachmentSnapshotLoaded,
                     attachmentSnapshot.size(),
                     this.getCarried().isEmpty());
 
             if (clientSide) {
-                // Never deliver items from client.
+                return;
+            }
+
+            // If seal not broken -> do NOT deliver attachments.
+            if (!sealBrokenThisSession) {
+                LOG.info("[ScrollViewMenu] removed: seal not broken -> skipping attachment delivery containerId={} player={}",
+                        this.containerId, safePlayerName(player));
+                attachmentSnapshot.clear();
                 return;
             }
 
             if (attachmentsDeliveredThisSession) {
                 LOG.info("[ScrollViewMenu] removed: already delivered this session -> skip (containerId={})", this.containerId);
+                attachmentSnapshot.clear();
                 return;
             }
             attachmentsDeliveredThisSession = true;
 
-            // Safety: if for some reason we didn’t parse earlier, try now.
+            // Safety: if we didn’t parse earlier, try now.
             if (!attachmentSnapshotLoaded) {
                 LOG.info("[ScrollViewMenu] removed: late snapshot load attempt (containerId={})", this.containerId);
                 loadAttachmentSnapshotFromHeldScroll(player);
@@ -157,7 +186,6 @@ public class ScrollViewMenu extends AbstractContainerMenu {
 
                 attemptedStacks++;
 
-                // Work on a copy so our snapshot remains stable.
                 ItemStack remaining = stack.copy();
 
                 LOG.info("[ScrollViewMenu] Deliver attempt i={} -> {} x{}",
@@ -165,7 +193,6 @@ public class ScrollViewMenu extends AbstractContainerMenu {
                         BuiltInRegistries.ITEM.getKey(remaining.getItem()),
                         remaining.getCount());
 
-                // Try to insert the entire stack into the player inventory.
                 boolean addedAll = tryAddWholeStack(player, remaining);
 
                 if (addedAll) {
@@ -175,8 +202,6 @@ public class ScrollViewMenu extends AbstractContainerMenu {
                             BuiltInRegistries.ITEM.getKey(stack.getItem()),
                             stack.getCount());
                 } else {
-                    // If we couldn't add it all, whatever is left must be dropped.
-                    // Note: tryAddWholeStack will have reduced 'remaining' appropriately if partial insertion happened.
                     if (!remaining.isEmpty()) {
                         boolean dropped = dropOrSpawnAtPlayer(player, remaining);
                         if (dropped) {
@@ -192,7 +217,6 @@ public class ScrollViewMenu extends AbstractContainerMenu {
                                     remaining.getCount());
                         }
                     } else {
-                        // Partial insertion ended up inserting all (should be rare), but handle it.
                         fullyAddedStacks++;
                         LOG.info("[ScrollViewMenu] Deliver partial i={} -> remainder empty; effectively fully added", i);
                     }
@@ -209,31 +233,18 @@ public class ScrollViewMenu extends AbstractContainerMenu {
                             : "none",
                     this.containerId);
 
-            // Clear snapshot to avoid accidental reuse.
             attachmentSnapshot.clear();
         } catch (Throwable t) {
             LOG.error("[ScrollViewMenu] removed failed", t);
         }
     }
 
-    /**
-     * Try to add the entire stack to the player's inventory.
-     *
-     * If only partially inserted, this method should reduce 'stack' to the remainder.
-     *
-     * @return true if the entire stack was inserted; false otherwise.
-     */
     private static boolean tryAddWholeStack(@NotNull Player player, @NotNull ItemStack stack) {
         try {
             if (stack.isEmpty()) {
                 return true;
             }
 
-            // Player#addItem returns true if something was added, not necessarily all.
-            // The safest “whole stack” approach is:
-            //  - try addItem(stack)
-            //  - if it returns false, nothing was added (inventory full)
-            //  - if it returns true, stack MAY have been reduced (remainder stays in 'stack')
             boolean addedSome = player.addItem(stack);
 
             if (!addedSome) {
@@ -244,11 +255,9 @@ public class ScrollViewMenu extends AbstractContainerMenu {
             }
 
             if (stack.isEmpty()) {
-                // Fully inserted (stack consumed)
                 return true;
             }
 
-            // Partial insertion
             LOG.info("[ScrollViewMenu] tryAddWholeStack: partial insert, remainder now {} x{}",
                     BuiltInRegistries.ITEM.getKey(stack.getItem()),
                     stack.getCount());
