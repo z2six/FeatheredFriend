@@ -30,23 +30,12 @@ import org.slf4j.Logger;
  *
  * ScrollViewScreen
  *
- * Read-only view for a sealed scroll:
+ * Read-only view for a sealed scroll.
  *
- *  - Starts on the fully-closed scroll frame (last frame of scroll_closing).
- *  - Lets the player zoom in on the sigil using the same small/zoom wax gizmos
- *    as ScrollSealingScreen.
- *  - A left-click inside the active wax area triggers a reverse animation using
- *    scroll_closing (frames 6..0) to simulate opening.
- *  - After the animation finishes, the scroll is shown fully open and we
- *    display the date, recipient, message and signature using Gothic widgets,
- *    populated from the SealedScroll NBT compound of the held item.
- *
- * NOTE:
- *  - This screen is purely client/UI logic for now. It does NOT yet implement:
- *      * Pearl attachments view/claiming.
- *      * Destroying the sealed scroll and replacing it with scroll_opened.
- *
- * Those will be wired via server-side packets + item logic in a later step.
+ * IMPORTANT (fix):
+ *  - Closing via minecraft.setScreen(null) alone can leave the server-side menu open
+ *    until the next inventory interaction.
+ *  - We MUST close the container properly: minecraft.player.closeContainer().
  */
 public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
@@ -56,19 +45,15 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     // Textures & fonts (shared with ScrollSealingScreen)
     // ---------------------------------------------------------------------
 
-    // Fallback single-frame texture (never normally used here)
     private static final ResourceLocation SCROLL_GUI_TEXTURE =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scroll_sealing.png");
 
-    // Animated scroll textures (sprite sheets: 1680x208, 7 frames horizontally)
     private static final ResourceLocation SCROLL_CLOSING_TEXTURE =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scrollscreen/scroll_closing.png");
 
-    // Zoom variant (same layout, different last frame if you ever change it)
     private static final ResourceLocation SCROLL_CLOSING_TEXTURE_ZOOM =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scrollscreen/scroll_closing.png");
 
-    // Gothic font id (from assets/featheredfriend/font/gothic12.json)
     private static final ResourceLocation GOTHIC_FONT_ID =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12");
 
@@ -76,19 +61,10 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     // Scroll animation configuration
     // ---------------------------------------------------------------------
 
-    /**
-     * Single frame size. The PNGs are 1680x208: 7 * 240 = 1680.
-     */
     private static final int SCROLL_FRAME_WIDTH = 240;
     private static final int SCROLL_FRAME_HEIGHT = 208;
     private static final int SCROLL_TOTAL_FRAMES = 7;
 
-    /**
-     * View phases:
-     *  - CLOSED_IDLE: scroll fully closed, sigil zoom gizmos active.
-     *  - OPENING:    reverse playback of scroll_closing (frame 6..0).
-     *  - OPEN_IDLE:  scroll fully open, text widgets visible; read-only mode.
-     */
     private enum ViewPhase {
         CLOSED_IDLE,
         OPENING,
@@ -98,10 +74,6 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     private ViewPhase viewPhase = ViewPhase.CLOSED_IDLE;
     private int viewPhaseTicks = 0;
 
-    /**
-     * How long the reverse "opening" animation lasts (in ticks).
-     * 20 ticks = 1 second.
-     */
     private static final int OPENING_ANIM_TICKS = 20;
 
     // ---------------------------------------------------------------------
@@ -110,63 +82,53 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
     private static final boolean DEBUG_SHOW_WAX_GIZMO = false;
 
-    // Small gizmo: used when NOT zoomed to trigger zoom.
-    private static final int WAX_BOX_X = 94;      // relative to GUI origin (leftPos)
+    private static final int WAX_BOX_X = 94;
     private static final int WAX_BOX_Y = 74;
     private static final int WAX_BOX_WIDTH = 36;
     private static final int WAX_BOX_HEIGHT = 36;
-    private static final int WAX_BOX_COLOR = 0x80FF0000; // semi-transparent red
+    private static final int WAX_BOX_COLOR = 0x80FF0000;
     private static final float WAX_SIGIL_RADIUS_SCALE = 0.85f;
 
-    // Zoom gizmo: used when zoomed in.
     private static final int ZOOM_WAX_BOX_X = 50;
     private static final int ZOOM_WAX_BOX_Y = 30;
     private static final int ZOOM_WAX_BOX_WIDTH = 125;
     private static final int ZOOM_WAX_BOX_HEIGHT = 125;
 
-    // Center offsets within whichever box is active
     private static final int WAX_SIGIL_CENTER_OFFSET_X = 0;
     private static final int WAX_SIGIL_CENTER_OFFSET_Y = 0;
 
-    // How much to zoom the scroll texture (not the sigil) when hovered
     private static final float HOVER_ZOOM_SCALE = 3.5f;
 
-    // Independent control for sigil size in zoom view
     private static final int ZOOM_SIGIL_RADIUS_PIXELS = 42;
 
-    // Tracks whether the zoomed-in closing view is currently active.
     private boolean zoomActive = false;
 
     // ---------------------------------------------------------------------
-    // GUI dimensions & layout (mirrors ScrollSealingScreen)
+    // GUI dimensions & layout
     // ---------------------------------------------------------------------
 
-    private static final int GUI_WIDTH = SCROLL_FRAME_WIDTH; // 240
+    private static final int GUI_WIDTH = SCROLL_FRAME_WIDTH;
     private static final int GUI_HEIGHT = 200;
 
-    // Date field config
     private static final int DATE_X = 30;
     private static final int DATE_Y = 18;
     private static final int DATE_WIDTH = 150;
     private static final int DATE_HEIGHT = 14;
     private static final int DATE_MAX_CHARS = 64;
 
-    // Recipient field config
     private static final int RECIPIENT_X = 30;
     private static final int RECIPIENT_Y = 36;
     private static final int RECIPIENT_WIDTH = 125;
     private static final int RECIPIENT_HEIGHT = 14;
     private static final int RECIPIENT_MAX_CHARS = 64;
 
-    // Message widget config
     private static final int MESSAGE_X = 30;
     private static final int MESSAGE_Y = 62;
     private static final int MESSAGE_WIDTH = 125;
-    private static final int MESSAGE_HEIGHT = 6 * 9 + 10; // ~6 lines
+    private static final int MESSAGE_HEIGHT = 6 * 9 + 10;
     private static final int MESSAGE_MAX_CHARS = 512;
     private static final int MESSAGE_MAX_LINES = 12;
 
-    // Signature widget config
     private static final int SIGNATURE_X = 85;
     private static final int SIGNATURE_Y = GUI_HEIGHT - 20;
     private static final int SIGNATURE_WIDTH = 208;
@@ -182,29 +144,21 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     private MultiLineScrollTextWidget messageWidget;
     private MultiLineScrollTextWidget signatureWidget;
 
-    // Cached text loaded from the sealed scroll NBT.
     private String dateText = "";
     private String recipientText = "";
     private String messageText = "";
     private String signatureText = "";
     private boolean hasAttachments = false;
 
-    // Sigil visualizer & patterns derived from the sealed scroll.
     private final WaxSealVisualizer waxSealVisualizer = new WaxSealVisualizer();
 
-    /**
-     * Small sigil pattern: used for the small gizmo on the closed scroll.
-     */
     private SigilPattern smallSigilPattern = null;
-
-    /**
-     * Zoom sigil pattern: independently generated at a higher radius
-     * for the zoom gizmo, so we aren't just scaling up the small one.
-     */
     private SigilPattern zoomSigilPattern = null;
 
-    // Snapshot of the sealed scroll stack when we open this screen.
     private ItemStack sealedScrollStack = ItemStack.EMPTY;
+
+    // Close guard: we only want to attempt container close once.
+    private boolean requestedClose = false;
 
     public ScrollViewScreen(@NotNull ScrollViewMenu menu,
                             @NotNull Inventory playerInventory,
@@ -213,12 +167,17 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         this.imageWidth = GUI_WIDTH;
         this.imageHeight = GUI_HEIGHT;
 
-        // We don't render vanilla labels.
         this.titleLabelX = 10000;
         this.titleLabelY = 10000;
+
+        try {
+            LOG.debug("[ScrollViewScreen] Constructed (client). menuClass={} containerId={}",
+                    menu != null ? menu.getClass().getName() : "null",
+                    menu != null ? menu.containerId : -1);
+        } catch (Throwable ignored) {
+        }
     }
 
-    // Convenience: strongly typed menu accessor
     private ScrollViewMenu getViewMenu() {
         AbstractContainerMenu m = this.menu;
         if (m instanceof ScrollViewMenu vm) {
@@ -236,14 +195,16 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         super.init();
 
         try {
-            LOG.debug("[ScrollViewScreen] init at leftPos={}, topPos={}", this.leftPos, this.topPos);
+            LOG.debug("[ScrollViewScreen] init at leftPos={}, topPos={} (client). containerId={}",
+                    this.leftPos, this.topPos, this.menu != null ? this.menu.containerId : -1);
+
             this.clearWidgets();
 
             this.viewPhase = ViewPhase.CLOSED_IDLE;
             this.viewPhaseTicks = 0;
             this.zoomActive = false;
+            this.requestedClose = false;
 
-            // Reset cached contents
             this.dateText = "";
             this.recipientText = "";
             this.messageText = "";
@@ -251,7 +212,6 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             this.hasAttachments = false;
             this.sealedScrollStack = ItemStack.EMPTY;
 
-            // Reset sigil patterns
             this.smallSigilPattern = null;
             this.zoomSigilPattern = null;
 
@@ -262,11 +222,6 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         }
     }
 
-    /**
-     * Attempts to read SealedScroll data from the player's held item.
-     * For now we use the main hand as our source – the item that was
-     * right-clicked to open this view.
-     */
     private void loadFromHeldSealedScroll() {
         try {
             Minecraft mc = Minecraft.getInstance();
@@ -277,12 +232,16 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
             ItemStack hand = mc.player.getMainHandItem();
             if (hand == null || hand.isEmpty()) {
-                LOG.warn("[ScrollViewScreen] loadFromHeldSealedScroll: main-hand stack is empty");
+                hand = mc.player.getOffhandItem();
+            }
+            if (hand == null || hand.isEmpty()) {
+                LOG.warn("[ScrollViewScreen] loadFromHeldSealedScroll: both hands empty");
                 return;
             }
 
             this.sealedScrollStack = hand.copy();
-            LOG.debug("[ScrollViewScreen] Using sealed scroll stack: {}", this.sealedScrollStack.getItem());
+            LOG.debug("[ScrollViewScreen] Using scroll stack from hand: item={} count={}",
+                    sealedScrollStack.getItem(), sealedScrollStack.getCount());
 
             CustomData customData = hand.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
             CompoundTag root = customData.copyTag();
@@ -298,7 +257,6 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             this.messageText = safeTagString(seal, "MessageText");
             this.signatureText = safeTagString(seal, "SignatureText");
 
-            // Check for attachments presence
             if (seal.contains("Attachments", ListTag.TAG_LIST)) {
                 ListTag attachments = seal.getList("Attachments", CompoundTag.TAG_COMPOUND);
                 this.hasAttachments = attachments != null && !attachments.isEmpty();
@@ -306,7 +264,6 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                 this.hasAttachments = false;
             }
 
-            // Build sigil patterns from Seed/Slices/Style (small + zoom)
             try {
                 long seed = seal.getLong("Seed");
                 int slices = seal.getInt("Slices");
@@ -321,23 +278,20 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                 this.smallSigilPattern = SealSigilGenerator.generateFromSeed(seed, smallRadius, slices, style);
                 this.zoomSigilPattern = SealSigilGenerator.generateFromSeed(seed, zoomRadius, slices, style);
 
-                LOG.debug(
-                        "[ScrollViewScreen] Built sigil patterns from NBT (seed={} slices={} style={} smallRadius={} zoomRadius={})",
-                        seed, slices, style, smallRadius, zoomRadius
-                );
+                LOG.debug("[ScrollViewScreen] Sigils built: seed={} slices={} style={} smallR={} zoomR={}",
+                        seed, slices, style, smallRadius, zoomRadius);
             } catch (Throwable tSigil) {
-                LOG.error("[ScrollViewScreen] Failed to build sigil patterns from SealedScroll NBT", tSigil);
+                LOG.error("[ScrollViewScreen] Failed to build sigil patterns", tSigil);
                 this.smallSigilPattern = null;
                 this.zoomSigilPattern = null;
             }
 
-            LOG.debug("[ScrollViewScreen] Loaded SealedScroll text: date='{}', recipient='{}', msgLen={}, sig='{}', hasAttachments={}",
+            LOG.debug("[ScrollViewScreen] Loaded text. hasAttachments={} date='{}' recipient='{}' msgLen={} sig='{}'",
+                    this.hasAttachments,
                     this.dateText,
                     this.recipientText,
                     this.messageText != null ? this.messageText.length() : 0,
-                    this.signatureText,
-                    this.hasAttachments
-            );
+                    this.signatureText);
         } catch (Throwable t) {
             LOG.error("[ScrollViewScreen] loadFromHeldSealedScroll failed", t);
         }
@@ -357,7 +311,6 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
     private void initWidgetsFromCache() {
         try {
-            // Date widget (read-only)
             this.dateWidget = new MultiLineScrollTextWidget(
                     this.font,
                     this.leftPos + DATE_X,
@@ -374,7 +327,6 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             this.dateWidget.setText(this.dateText != null ? this.dateText : "");
             this.addRenderableWidget(this.dateWidget);
 
-            // Recipient widget (read-only)
             this.recipientWidget = new MultiLineScrollTextWidget(
                     this.font,
                     this.leftPos + RECIPIENT_X,
@@ -391,7 +343,6 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             this.recipientWidget.setText(this.recipientText != null ? this.recipientText : "");
             this.addRenderableWidget(this.recipientWidget);
 
-            // Message widget (read-only multiline)
             this.messageWidget = new MultiLineScrollTextWidget(
                     this.font,
                     this.leftPos + MESSAGE_X,
@@ -408,7 +359,6 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             this.messageWidget.setText(this.messageText != null ? this.messageText : "");
             this.addRenderableWidget(this.messageWidget);
 
-            // Signature widget (read-only)
             this.signatureWidget = new MultiLineScrollTextWidget(
                     this.font,
                     this.leftPos + SIGNATURE_X,
@@ -425,7 +375,6 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             this.signatureWidget.setText(this.signatureText != null ? this.signatureText : "");
             this.addRenderableWidget(this.signatureWidget);
 
-            // Text is initially hidden while scroll is closed.
             setWidgetsVisible(false);
         } catch (Throwable t) {
             LOG.error("[ScrollViewScreen] initWidgetsFromCache failed", t);
@@ -482,7 +431,6 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         try {
             switch (viewPhase) {
                 case CLOSED_IDLE -> {
-                    // Nothing to do; waiting for click in wax gizmo.
                 }
                 case OPENING -> {
                     viewPhaseTicks++;
@@ -490,13 +438,11 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                     if (viewPhaseTicks >= OPENING_ANIM_TICKS) {
                         viewPhaseTicks = OPENING_ANIM_TICKS;
                         viewPhase = ViewPhase.OPEN_IDLE;
-                        // Once open, reveal text widgets.
                         setWidgetsVisible(true);
                         LOG.debug("[ScrollViewScreen] Opening animation finished -> OPEN_IDLE");
                     }
                 }
                 case OPEN_IDLE -> {
-                    // Fully open read-only view; no further ticking logic.
                 }
             }
         } catch (Throwable t) {
@@ -514,11 +460,9 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                             int mouseX,
                             int mouseY) {
         try {
-            // Determine hover over gizmos
             boolean inSmallWax = isMouseInWaxAreaSmall(mouseX, mouseY);
             boolean inZoomWax = isMouseInWaxAreaZoom(mouseX, mouseY);
 
-            // Zoom is only active while scroll is closed.
             boolean canZoom = (this.viewPhase == ViewPhase.CLOSED_IDLE);
 
             if (!canZoom) {
@@ -527,15 +471,12 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                 }
                 zoomActive = false;
             } else {
-                // Update zoom state based on gizmos.
                 if (!zoomActive) {
-                    // Enter zoom only via small gizmo.
                     if (inSmallWax) {
                         zoomActive = true;
                         LOG.debug("[ScrollViewScreen] renderBg: Zoom entered via SMALL gizmo");
                     }
                 } else {
-                    // Already zoomed: stay zoomed as long as mouse is in the zoom gizmo.
                     if (!inZoomWax) {
                         zoomActive = false;
                         LOG.debug("[ScrollViewScreen] renderBg: Zoom exited by leaving ZOOM gizmo");
@@ -556,21 +497,17 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                     pose.scale(HOVER_ZOOM_SCALE, HOVER_ZOOM_SCALE, 1.0f);
                     pose.translate(-centerX, -centerY, 0.0f);
 
-                    // Zoomed: use zoom texture variant
                     renderAnimatedScroll(guiGraphics, true);
                 } finally {
                     pose.popPose();
                 }
 
-                // Sigil is drawn outside the scaled pose in the zoom gizmo area.
                 renderWaxSeal(guiGraphics, mouseX, mouseY, partialTick, true);
             } else {
-                // Normal (unscaled) rendering.
                 renderAnimatedScroll(guiGraphics, false);
                 renderWaxSeal(guiGraphics, mouseX, mouseY, partialTick, false);
             }
 
-            // Optional debug gizmo outline.
             if (DEBUG_SHOW_WAX_GIZMO && this.viewPhase == ViewPhase.CLOSED_IDLE) {
                 final int boxX;
                 final int boxY;
@@ -611,12 +548,6 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         }
     }
 
-    /**
-     * Reverse playback of scroll_closing:
-     *  - CLOSED_IDLE: always frame last (closed).
-     *  - OPENING:     frames 6..0 over OPENING_ANIM_TICKS.
-     *  - OPEN_IDLE:   frame 0 (fully open).
-     */
     private void renderAnimatedScroll(@NotNull GuiGraphics guiGraphics, boolean zoomed) {
         ResourceLocation texture;
         int frameIndex;
@@ -624,7 +555,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         switch (viewPhase) {
             case CLOSED_IDLE -> {
                 texture = zoomed ? SCROLL_CLOSING_TEXTURE_ZOOM : SCROLL_CLOSING_TEXTURE;
-                frameIndex = SCROLL_TOTAL_FRAMES - 1; // last frame = fully closed
+                frameIndex = SCROLL_TOTAL_FRAMES - 1;
             }
             case OPENING -> {
                 texture = zoomed ? SCROLL_CLOSING_TEXTURE_ZOOM : SCROLL_CLOSING_TEXTURE;
@@ -640,7 +571,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             }
             case OPEN_IDLE -> {
                 texture = zoomed ? SCROLL_CLOSING_TEXTURE_ZOOM : SCROLL_CLOSING_TEXTURE;
-                frameIndex = 0; // first frame = fully open
+                frameIndex = 0;
             }
             default -> {
                 guiGraphics.blit(
@@ -685,7 +616,6 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                                float partialTick,
                                boolean zoomView) {
         try {
-            // Only show sigil while scroll is still closed (CLOSED_IDLE).
             if (this.viewPhase != ViewPhase.CLOSED_IDLE) {
                 return;
             }
@@ -792,10 +722,8 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
     @Override
     protected void renderLabels(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        // No default labels.
     }
 
-    // We don't want default slot hover logic interfering.
     @Override
     protected boolean isHovering(int x, int y, int width, int height, double mouseX, double mouseY) {
         return false;
@@ -808,14 +736,74 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     }
 
     // ---------------------------------------------------------------------
+    // Proper close handling (THE FIX)
+    // ---------------------------------------------------------------------
+
+    private void requestProperClose(@NotNull String reason) {
+        try {
+            if (requestedClose) {
+                LOG.debug("[ScrollViewScreen] requestProperClose: already requested; ignoring (reason={})", reason);
+                return;
+            }
+            requestedClose = true;
+
+            Minecraft mc = this.minecraft;
+            int containerId = (this.menu != null) ? this.menu.containerId : -1;
+
+            LOG.info("[ScrollViewScreen] requestProperClose(reason='{}') containerId={} player={} (client)",
+                    reason,
+                    containerId,
+                    mc != null && mc.player != null ? mc.player.getGameProfile().getName() : "null");
+
+            if (mc != null && mc.player != null) {
+                try {
+                    // This is the key: sends close-container packet to server.
+                    mc.player.closeContainer();
+                    LOG.info("[ScrollViewScreen] closeContainer() called (client). containerId={}", containerId);
+                } catch (Throwable tClose) {
+                    LOG.error("[ScrollViewScreen] closeContainer() failed; falling back to setScreen(null)", tClose);
+                }
+            } else {
+                LOG.warn("[ScrollViewScreen] requestProperClose: mc/player null; cannot close container properly");
+            }
+
+            // Also close the screen client-side.
+            try {
+                if (mc != null) {
+                    mc.setScreen(null);
+                    LOG.debug("[ScrollViewScreen] setScreen(null) executed (client)");
+                }
+            } catch (Throwable tScreen) {
+                LOG.error("[ScrollViewScreen] setScreen(null) failed", tScreen);
+            }
+        } catch (Throwable t) {
+            LOG.error("[ScrollViewScreen] requestProperClose failed", t);
+        }
+    }
+
+    @Override
+    public void onClose() {
+        // Called by vanilla close paths; ensure it also does proper container close.
+        try {
+            LOG.debug("[ScrollViewScreen] onClose() invoked (client). requestedClose={}", requestedClose);
+        } catch (Throwable ignored) {
+        }
+        requestProperClose("onClose");
+        // Do NOT call super.onClose() after setScreen(null) recursion risk; but it’s safe to call before:
+        try {
+            super.onClose();
+        } catch (Throwable t) {
+            LOG.error("[ScrollViewScreen] super.onClose() failed", t);
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // Input handling
     // ---------------------------------------------------------------------
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         try {
-            // LMB: in CLOSED_IDLE, clicking inside the appropriate gizmo
-            // triggers opening (reverse animation).
             if (button == 0 && this.viewPhase == ViewPhase.CLOSED_IDLE) {
                 boolean inSmallWax = isMouseInWaxAreaSmall(mouseX, mouseY);
                 boolean inZoomWax = isMouseInWaxAreaZoom(mouseX, mouseY);
@@ -832,7 +820,6 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                     LOG.debug("[ScrollViewScreen] Wax area clicked (zoomActive={}) -> starting OPENING animation", zoomActive);
                     this.viewPhase = ViewPhase.OPENING;
                     this.viewPhaseTicks = 0;
-                    // Once we start opening, lock zoom off.
                     this.zoomActive = false;
                     return true;
                 }
@@ -848,17 +835,15 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         try {
-            // For now, treat ESC and the usual inventory keys as "just close screen".
             if (keyCode == GLFW.GLFW_KEY_ESCAPE ||
                     keyCode == GLFW.GLFW_KEY_E ||
                     keyCode == GLFW.GLFW_KEY_R ||
                     keyCode == GLFW.GLFW_KEY_U) {
-                LOG.debug("[ScrollViewScreen] keyPressed {} -> closing ScrollViewScreen (no conversion yet)", keyCode);
-                this.minecraft.setScreen(null);
+                LOG.info("[ScrollViewScreen] keyPressed {} -> requestProperClose()", keyCode);
+                requestProperClose("keyPressed:" + keyCode);
                 return true;
             }
 
-            // Widgets are non-editable, but let super handle navigation keys safely.
             return super.keyPressed(keyCode, scanCode, modifiers);
         } catch (Throwable t) {
             LOG.error("[ScrollViewScreen] keyPressed failed", t);
@@ -867,12 +852,11 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     }
 
     // ---------------------------------------------------------------------
-    // Container slot suppression (we don't want any visible slots here)
+    // Container slot suppression
     // ---------------------------------------------------------------------
 
     @Override
     protected void renderSlot(GuiGraphics guiGraphics, Slot slot) {
-        // Intentionally empty: this view is purely visual; no slots shown.
     }
 
     @Override
