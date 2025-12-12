@@ -178,6 +178,7 @@ public final class FFNetwork {
                     return;
                 }
 
+                // New WaxSealPacket.handle is void – just invoke it.
                 WaxSealPacket.handle(payload, serverPlayer);
             } catch (Throwable t) {
                 LOG.error("[FFNetwork] Failed to handle WaxSealPacket on server", t);

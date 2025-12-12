@@ -2,8 +2,10 @@
 package net.z2six.featheredfriend.network;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -12,9 +14,9 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.component.CustomData;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.menu.ScrollAttachmentProvider;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
@@ -37,8 +39,16 @@ import org.slf4j.Logger;
  *     - Seed
  *     - Slices
  *     - Style
- *     - Attachments (if any)
+ *     - Attachments (if any) taken from the current ScrollAttachmentProvider
+ *       container (ScrollSealingMenu attachment bar).
  *  3) Try to add the sealed scroll to the inventory; if full, drop at player.
+ *
+ * Attachments:
+ *  - If the player's current containerMenu implements ScrollAttachmentProvider,
+ *    all non-empty attachment slots are serialized into a "Attachments" ListTag
+ *    in the SealedScroll compound.
+ *  - The provider's slots are cleared and suppressAttachmentRefundOnClose(true)
+ *    is set so the menu does not refund them again on close.
  */
 public record WaxSealPacket(
         int selectedStampSlot,
@@ -159,8 +169,99 @@ public record WaxSealPacket(
             seal.putInt("Slices", p.slices());
             seal.putInt("Style", p.style());
 
-            // NOTE: Attachments are added elsewhere before this packet is handled,
-            // so we don't touch "Attachments" here – we just preserve whatever is present.
+            // -----------------------------------------------------------------
+            // Attachments: capture from current container if supported
+            // -----------------------------------------------------------------
+            try {
+                if (serverPlayer.containerMenu instanceof ScrollAttachmentProvider provider) {
+                    int slotCount = provider.getAttachmentSlotCount();
+                    ListTag attachmentsList = new ListTag();
+                    int nonEmptyCount = 0;
+
+                    for (int i = 0; i < slotCount; i++) {
+                        ItemStack stack = provider.getAttachmentStack(i);
+                        if (stack == null || stack.isEmpty()) {
+                            continue;
+                        }
+
+                        CompoundTag stackTag = new CompoundTag();
+                        try {
+                            // Explicit minimal encoding instead of ItemStack#save(...),
+                            // because in 1.21+ / NeoForge that was giving us empty compounds.
+                            // We store:
+                            //   - "id": full item ID (e.g. "minecraft:oak_log")
+                            //   - "Count": stack size
+                            //   - "CustomData": copy of minecraft:custom_data (if present)
+                            ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
+                            if (itemId == null) {
+                                LOG.warn("[WaxSealPacket] Attachment slot {} has item with null registry key; skipping", i);
+                                continue;
+                            }
+
+                            stackTag.putString("id", itemId.toString());
+                            stackTag.putInt("Count", stack.getCount());
+
+                            try {
+                                CustomData cd = stack.get(DataComponents.CUSTOM_DATA);
+                                if (cd != null) {
+                                    CompoundTag customDataTag = cd.copyTag();
+                                    if (customDataTag != null && !customDataTag.isEmpty()) {
+                                        stackTag.put("CustomData", customDataTag);
+                                    }
+                                }
+                            } catch (Throwable tCd) {
+                                LOG.error("[WaxSealPacket] Failed to copy CustomData for attachment slot {}", i, tCd);
+                            }
+
+                            if (stackTag.isEmpty()) {
+                                // Shouldn't normally happen, but avoid adding pointless {}
+                                LOG.warn("[WaxSealPacket] Attachment stackTag ended up empty for slot {}; skipping", i);
+                                continue;
+                            }
+
+                            attachmentsList.add(stackTag);
+                            nonEmptyCount++;
+
+                            LOG.debug(
+                                    "[WaxSealPacket] Captured attachment slot {} -> id='{}' Count={} hasCustomData={}",
+                                    i,
+                                    itemId,
+                                    stack.getCount(),
+                                    stackTag.contains("CustomData")
+                            );
+
+                            try {
+                                provider.clearAttachmentSlot(i);
+                            } catch (Throwable tClear) {
+                                LOG.error("[WaxSealPacket] Failed to clear attachment slot {}", i, tClear);
+                            }
+                        } catch (Throwable tSave) {
+                            LOG.error("[WaxSealPacket] Failed to serialize attachment stack at index {}", i, tSave);
+                        }
+                    }
+
+                    if (nonEmptyCount > 0) {
+                        seal.put("Attachments", attachmentsList);
+                        try {
+                            provider.setSuppressAttachmentRefundOnClose(true);
+                        } catch (Throwable tFlag) {
+                            LOG.error("[WaxSealPacket] Failed to set suppressAttachmentRefundOnClose on provider {}", provider.getClass().getName(), tFlag);
+                        }
+                        LOG.info("[WaxSealPacket] Captured {} attachment stack(s) into sealed scroll for player {}",
+                                nonEmptyCount, serverPlayer.getGameProfile().getName());
+                    } else {
+                        LOG.debug("[WaxSealPacket] No attachments found in ScrollAttachmentProvider for player {}",
+                                serverPlayer.getGameProfile().getName());
+                    }
+                } else {
+                    LOG.debug("[WaxSealPacket] Player containerMenu is not a ScrollAttachmentProvider: {}",
+                            serverPlayer.containerMenu != null
+                                    ? serverPlayer.containerMenu.getClass().getName()
+                                    : "null");
+                }
+            } catch (Throwable tAttach) {
+                LOG.error("[WaxSealPacket] Failed while capturing attachments into sealed scroll NBT", tAttach);
+            }
 
             root.put("SealedScroll", seal);
 

@@ -9,7 +9,9 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.z2six.featheredfriend.menu.ScrollAttachmentProvider;
 import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 /**
@@ -28,7 +30,8 @@ import org.slf4j.Logger;
  *  - Items placed into the attachment bar stay in this menu while switching between
  *    ScrollSealingScreen and EnderPearlInventoryScreen.
  *  - When the container is actually closed (e.g. player ESC from ScrollSealingScreen),
- *    all attachment items are refunded to the player (or dropped if inventory is full).
+ *    all attachment items are refunded to the player (or dropped if inventory is full),
+ *    UNLESS suppressAttachmentRefundOnClose is set.
  *
  * It also maintains client-side text state for:
  *  - date text
@@ -39,7 +42,7 @@ import org.slf4j.Logger;
  * Text state is currently client-only and unsynced; it's just to preserve what the
  * player typed while swapping between screens.
  */
-public class ScrollSealingMenu extends AbstractContainerMenu {
+public class ScrollSealingMenu extends AbstractContainerMenu implements ScrollAttachmentProvider {
 
     private static final Logger LOG = LogUtils.getLogger();
 
@@ -62,6 +65,13 @@ public class ScrollSealingMenu extends AbstractContainerMenu {
 
     private final Container attachmentContainer;
     private final Inventory playerInventory;
+
+    /**
+     * When true, removed(Player) will NOT refund attachment items to the player.
+     * This is set by server-side sealing logic (WaxSealPacket) after it has
+     * already captured attachments into the sealed scroll and cleared slots.
+     */
+    private boolean suppressAttachmentRefundOnClose = false;
 
     // ---------------------------------------------------------------------
     // Client-side text state (not synced to server yet)
@@ -225,6 +235,18 @@ public class ScrollSealingMenu extends AbstractContainerMenu {
                 return;
             }
 
+            // If sealing logic has already captured and cleared attachments into
+            // the sealed scroll, we should NOT refund them a second time.
+            if (this.suppressAttachmentRefundOnClose) {
+                LOG.debug("[ScrollSealingMenu] removed: suppressAttachmentRefundOnClose=true, skipping attachment refund");
+
+                // As a safety measure, ensure attachment slots are empty server-side.
+                for (int i = 0; i < ATTACHMENT_SLOT_COUNT; i++) {
+                    this.attachmentContainer.setItem(i, ItemStack.EMPTY);
+                }
+                return;
+            }
+
             LOG.debug("[ScrollSealingMenu] removed: refunding attachment items to player={}",
                     player.getGameProfile().getName());
 
@@ -245,6 +267,57 @@ public class ScrollSealingMenu extends AbstractContainerMenu {
         } catch (Throwable t) {
             LOG.error("[ScrollSealingMenu] removed failed while refunding attachments", t);
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // ScrollAttachmentProvider implementation
+    // ---------------------------------------------------------------------
+
+    @Override
+    public int getAttachmentSlotCount() {
+        return ATTACHMENT_SLOT_COUNT;
+    }
+
+    @Override
+    public @NotNull ItemStack getAttachmentStack(int index) {
+        try {
+            if (index < 0 || index >= ATTACHMENT_SLOT_COUNT) {
+                LOG.warn("[ScrollSealingMenu] getAttachmentStack: index {} out of range 0..{}", index, ATTACHMENT_SLOT_COUNT - 1);
+                return ItemStack.EMPTY;
+            }
+            ItemStack stack = this.attachmentContainer.getItem(index);
+            return (stack != null) ? stack : ItemStack.EMPTY;
+        } catch (Throwable t) {
+            LOG.error("[ScrollSealingMenu] getAttachmentStack failed for index={}", index, t);
+            return ItemStack.EMPTY;
+        }
+    }
+
+    @Override
+    public void clearAttachmentSlot(int index) {
+        try {
+            if (index < 0 || index >= ATTACHMENT_SLOT_COUNT) {
+                LOG.warn("[ScrollSealingMenu] clearAttachmentSlot: index {} out of range 0..{}", index, ATTACHMENT_SLOT_COUNT - 1);
+                return;
+            }
+            this.attachmentContainer.setItem(index, ItemStack.EMPTY);
+        } catch (Throwable t) {
+            LOG.error("[ScrollSealingMenu] clearAttachmentSlot failed for index={}", index, t);
+        }
+    }
+
+    @Override
+    public void setSuppressAttachmentRefundOnClose(boolean suppress) {
+        if (this.suppressAttachmentRefundOnClose != suppress) {
+            LOG.debug("[ScrollSealingMenu] setSuppressAttachmentRefundOnClose: {} -> {}",
+                    this.suppressAttachmentRefundOnClose, suppress);
+        }
+        this.suppressAttachmentRefundOnClose = suppress;
+    }
+
+    @Override
+    public boolean isSuppressAttachmentRefundOnClose() {
+        return this.suppressAttachmentRefundOnClose;
     }
 
     // ---------------------------------------------------------------------
