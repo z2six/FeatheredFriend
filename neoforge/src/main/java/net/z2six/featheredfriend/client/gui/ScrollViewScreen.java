@@ -1,10 +1,11 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/client/gui/ScrollViewScreen.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/client/gui/ScrollViewScreen.java
 package net.z2six.featheredfriend.client.gui;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -14,6 +15,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -28,6 +30,8 @@ import net.z2six.featheredfriend.sigil.SealSigilGenerator.SigilPattern;
 import org.jetbrains.annotations.NotNull;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
+
+import java.lang.reflect.Constructor;
 
 /**
  * // neoforge/src/main/java/net/z2six/featheredfriend/client/gui/ScrollViewScreen.java
@@ -47,6 +51,11 @@ import org.slf4j.Logger;
  *      2) Optimistically convert the held stack client-side immediately (UX) using the exact same rule:
  *         copy SealedScroll tags except Attachments.
  *  - Attachments are still delivered on GUI close, but ONLY if the seal was broken (server-side gating).
+ *
+ * Attachments UI:
+ *  - When the scroll is OPEN_IDLE, and it has attachments, show an Ender Pearl icon.
+ *  - Clicking it opens ScrollViewAttachmentInventoryScreen WITHOUT closing the container.
+ *  - We keep this ScrollViewScreen instance and return back to it (so we don't restart animation).
  */
 public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
@@ -123,7 +132,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
     private static final int DATE_X = 30;
     private static final int DATE_Y = 18;
-    private static final int DATE_WIDTH = 150;
+    private static final int DATE_WIDTH = 200;
     private static final int DATE_HEIGHT = 14;
     private static final int DATE_MAX_CHARS = 64;
 
@@ -145,6 +154,31 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     private static final int SIGNATURE_WIDTH = 208;
     private static final int SIGNATURE_HEIGHT = 14;
     private static final int SIGNATURE_MAX_CHARS = 128;
+
+    // ---------------------------------------------------------------------
+    // Attachments "pearl" icon placement
+    // ---------------------------------------------------------------------
+
+    /**
+     * Pearl icon location (relative to screen left/top).
+     * Keep it simple: top-right-ish, on the scroll paper.
+     */
+    private static final int PEARL_ICON_X = 202;
+    private static final int PEARL_ICON_Y = 18;
+    private static final int PEARL_ICON_SIZE = 16;
+
+    private static final ResourceLocation PEARL_TEXTURE =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scrollscreen/pearl.png");
+
+    private static final int PEARL_FRAME_WIDTH = 32;
+    private static final int PEARL_FRAME_HEIGHT = 32;
+
+    // Same hover frame index as ScrollSealingScreen
+    private static final int PEARL_HOVER_FRAME = 7;
+
+    // Position matches ScrollSealingScreen
+    private static final int PEARL_X = SCROLL_FRAME_WIDTH - PEARL_FRAME_WIDTH - 25;
+    private static final int PEARL_Y = 10;
 
     // ---------------------------------------------------------------------
     // Widgets & scroll contents
@@ -232,17 +266,20 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
             this.clearWidgets();
 
+            // Reset screen-local state
             this.viewPhase = ViewPhase.CLOSED_IDLE;
             this.viewPhaseTicks = 0;
             this.zoomActive = false;
             this.requestedClose = false;
 
+            // Seal-break bookkeeping
             this.sealBreakRequested = false;
             this.sealedSeed = 0L;
             this.sealedRecipientUUID = "";
             this.sealedDateText = "";
             this.sealedSenderName = "";
 
+            // Cached text
             this.dateText = "";
             this.recipientText = "";
             this.messageText = "";
@@ -250,11 +287,49 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             this.hasAttachments = false;
             this.sealedScrollStack = ItemStack.EMPTY;
 
+            // Sigil patterns
             this.smallSigilPattern = null;
             this.zoomSigilPattern = null;
 
+            // Load from held stack (can be sealed OR opened depending on where we came from)
             loadFromHeldSealedScroll();
+
+            // Widgets read from cached text above
             initWidgetsFromCache();
+
+            // ---------------------------
+            // IMPORTANT FIX:
+            // If the held item is already scroll_opened, DO NOT start in CLOSED_IDLE.
+            // We must show the opened view immediately and never draw wax/sigil.
+            // ---------------------------
+            if (this.sealedScrollStack != null && !this.sealedScrollStack.isEmpty() && isOpenedScrollStack(this.sealedScrollStack)) {
+                LOG.debug("[ScrollViewScreen] init: detected scroll_opened -> forcing OPEN_IDLE (skip wax view)");
+
+                this.viewPhase = ViewPhase.OPEN_IDLE;
+                this.viewPhaseTicks = OPENING_ANIM_TICKS;
+                this.zoomActive = false;
+
+                setWidgetsVisible(true);
+            } else {
+                // Default: sealed scroll -> start closed, widgets hidden until opened.
+                this.viewPhase = ViewPhase.CLOSED_IDLE;
+                this.viewPhaseTicks = 0;
+                this.zoomActive = false;
+
+                setWidgetsVisible(false);
+            }
+
+            // Extra log so you can verify quickly
+            try {
+                ResourceLocation key = (this.sealedScrollStack != null && !this.sealedScrollStack.isEmpty())
+                        ? BuiltInRegistries.ITEM.getKey(this.sealedScrollStack.getItem())
+                        : null;
+
+                LOG.info("[ScrollViewScreen] init summary: itemKey={} viewPhase={} hasAttachments={} sealBreakRequested={}",
+                        key, this.viewPhase, this.hasAttachments, this.sealBreakRequested);
+            } catch (Throwable ignored) {
+            }
+
         } catch (Throwable t) {
             LOG.error("[ScrollViewScreen] init failed", t);
         }
@@ -473,6 +548,20 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         int x1 = x0 + ZOOM_WAX_BOX_WIDTH;
         int y1 = y0 + ZOOM_WAX_BOX_HEIGHT;
         return mouseX >= x0 && mouseX < x1 && mouseY >= y0 && mouseY < y1;
+    }
+
+    private boolean isMouseInPearlIcon(double mouseX, double mouseY) {
+        try {
+            // The pearl we render is the 32x32 frame at PEARL_X/PEARL_Y (same as ScrollSealingScreen)
+            int x0 = this.leftPos + PEARL_X;
+            int y0 = this.topPos + PEARL_Y;
+            int x1 = x0 + PEARL_FRAME_WIDTH;
+            int y1 = y0 + PEARL_FRAME_HEIGHT;
+            return mouseX >= x0 && mouseX < x1 && mouseY >= y0 && mouseY < y1;
+        } catch (Throwable t) {
+            LOG.error("[ScrollViewScreen] isMouseInPearlIcon failed", t);
+            return false;
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -781,10 +870,90 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         try {
             this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
             super.render(guiGraphics, mouseX, mouseY, partialTick);
+
+            // Pearl icon (attachments) rendered on top, only when scroll is open.
+            renderAttachmentsPearlIcon(guiGraphics, mouseX, mouseY);
+
             this.renderTooltip(guiGraphics, mouseX, mouseY);
         } catch (Throwable t) {
             LOG.error("[ScrollViewScreen] render failed", t);
         }
+    }
+
+    private void renderAttachmentsPearlIcon(@NotNull GuiGraphics g, int mouseX, int mouseY) {
+        try {
+            // Only show pearl when scroll is open (read view)
+            if (this.viewPhase != ViewPhase.OPEN_IDLE) {
+                return;
+            }
+
+            if (!shouldShowPearlIcon()) {
+                return;
+            }
+
+            // Hover uses frame 7, idle uses frame 6 (same convention as ScrollSealingScreen)
+            boolean hovered = isMouseInPearlIcon(mouseX, mouseY);
+            int frameIndex = hovered ? PEARL_HOVER_FRAME : 6;
+
+            // Validate frameIndex against sheet height (11 frames total in your sealing screen logic)
+            // We don't have PEARL_TOTAL_FRAMES here, so we hard-guard.
+            if (frameIndex < 0) frameIndex = 0;
+            if (frameIndex > 10) frameIndex = 10;
+
+            int x = this.leftPos + PEARL_X;
+            int y = this.topPos + PEARL_Y;
+
+            // Sheet: 32x(32*11) with frames stacked vertically.
+            int u = 0;
+            int v = frameIndex * PEARL_FRAME_HEIGHT;
+
+            // Debug log only when hovered (avoids log spam)
+            if (hovered) {
+                LOG.debug("[ScrollViewScreen] renderAttachmentsPearlIcon: hovered=true frameIndex={} at ({},{})", frameIndex, x, y);
+            }
+
+            g.blit(
+                    PEARL_TEXTURE,
+                    x,
+                    y,
+                    (float) u,
+                    (float) v,
+                    PEARL_FRAME_WIDTH,
+                    PEARL_FRAME_HEIGHT,
+                    PEARL_FRAME_WIDTH,
+                    PEARL_FRAME_HEIGHT * 11
+            );
+
+            // Optional subtle outline for hover clarity (kept minimal)
+            if (hovered) {
+                g.fill(x, y, x + PEARL_FRAME_WIDTH, y + 1, 0x40FFFFFF);
+                g.fill(x, y + PEARL_FRAME_HEIGHT - 1, x + PEARL_FRAME_WIDTH, y + PEARL_FRAME_HEIGHT, 0x40FFFFFF);
+                g.fill(x, y, x + 1, y + PEARL_FRAME_HEIGHT, 0x40FFFFFF);
+                g.fill(x + PEARL_FRAME_WIDTH - 1, y, x + PEARL_FRAME_WIDTH, y + PEARL_FRAME_HEIGHT, 0x40FFFFFF);
+            }
+
+        } catch (Throwable t) {
+            LOG.error("[ScrollViewScreen] renderAttachmentsPearlIcon failed", t);
+        }
+    }
+
+    private boolean shouldShowPearlIcon() {
+        try {
+            // Prefer menu container truth if available (supports cases where NBT parsing differs)
+            ScrollViewMenu vm = getViewMenu();
+            if (vm != null) {
+                try {
+                    if (vm.hasAnyAttachmentsInContainer()) {
+                        return true;
+                    }
+                } catch (Throwable ignored) {
+                    // fall back to cached hasAttachments
+                }
+            }
+        } catch (Throwable t) {
+            LOG.error("[ScrollViewScreen] shouldShowPearlIcon: menu check failed", t);
+        }
+        return this.hasAttachments;
     }
 
     @Override
@@ -800,6 +969,15 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     protected void renderTooltip(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY) {
         this.hoveredSlot = null;
         super.renderTooltip(guiGraphics, mouseX, mouseY);
+
+        // Pearl tooltip (attachments)
+        try {
+            if (this.viewPhase == ViewPhase.OPEN_IDLE && shouldShowPearlIcon() && isMouseInPearlIcon(mouseX, mouseY)) {
+                guiGraphics.renderTooltip(this.font, Component.literal("Attachments"), mouseX, mouseY);
+            }
+        } catch (Throwable t) {
+            LOG.error("[ScrollViewScreen] renderTooltip: pearl tooltip failed", t);
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -861,12 +1039,201 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     }
 
     // ---------------------------------------------------------------------
+    // Attachment inventory open/close helpers
+    // ---------------------------------------------------------------------
+
+    /**
+     * Opens ScrollViewAttachmentInventoryScreen without closing the container.
+     * Returns true if a screen was opened.
+     *
+     * Important: we avoid re-creating this ScrollViewScreen later by passing "this" as parent
+     * if the attachment screen supports it. If it doesn't, we still open it with best-effort.
+     */
+    private boolean openAttachmentInventoryScreen(@NotNull String reason) {
+        try {
+            Minecraft mc = this.minecraft;
+            if (mc == null) {
+                LOG.warn("[ScrollViewScreen] openAttachmentInventoryScreen: mc is null");
+                return false;
+            }
+            if (mc.player == null) {
+                LOG.warn("[ScrollViewScreen] openAttachmentInventoryScreen: player is null");
+                return false;
+            }
+
+            if (this.menu == null) {
+                LOG.warn("[ScrollViewScreen] openAttachmentInventoryScreen: menu is null");
+                return false;
+            }
+
+            if (this.viewPhase != ViewPhase.OPEN_IDLE) {
+                LOG.debug("[ScrollViewScreen] openAttachmentInventoryScreen: ignored (viewPhase={})", this.viewPhase);
+                return false;
+            }
+
+            if (!shouldShowPearlIcon()) {
+                LOG.debug("[ScrollViewScreen] openAttachmentInventoryScreen: ignored (no attachments)");
+                return false;
+            }
+
+            // Create attachment screen reflectively so we compile even if your constructor differs slightly.
+            Inventory inv = null;
+            try {
+                // Prefer menu’s inventory (you added getPlayerInventory()).
+                inv = this.menu != null ? this.menu.getPlayerInventory() : null;
+            } catch (Throwable ignored) {
+                inv = null;
+            }
+            if (inv == null) {
+                try {
+                    inv = (this.minecraft != null && this.minecraft.player != null) ? this.minecraft.player.getInventory() : null;
+                } catch (Throwable ignored) {
+                    inv = null;
+                }
+            }
+            if (inv == null) {
+                LOG.warn("[ScrollViewScreen] openAttachmentInventoryScreen: could not resolve player inventory");
+                return false;
+            }
+
+            Screen attachment = createAttachmentScreenReflective(this.menu, inv, Component.literal("Attachments"), this);
+
+            if (attachment == null) {
+                LOG.error("[ScrollViewScreen] openAttachmentInventoryScreen: failed to construct attachment screen (reason={})", reason);
+                return false;
+            }
+
+            // Do NOT call closeContainer(), do NOT call onClose(). Just setScreen to overlay/alternate screen.
+            LOG.info("[ScrollViewScreen] Opening attachment inventory screen (reason={}) containerId={}", reason, this.menu.containerId);
+            mc.setScreen(attachment);
+            return true;
+        } catch (Throwable t) {
+            LOG.error("[ScrollViewScreen] openAttachmentInventoryScreen failed", t);
+            return false;
+        }
+    }
+
+    // Pearl inv render helpers
+
+    private boolean isOpenedScrollStack(@NotNull ItemStack stack) {
+        try {
+            if (stack.isEmpty()) {
+                return false;
+            }
+            ResourceLocation key = BuiltInRegistries.ITEM.getKey(stack.getItem());
+            if (key == null) {
+                return false;
+            }
+            // We only care about the item path; namespace should be your mod id anyway
+            // but path check is enough for robustness.
+            boolean opened = "scroll_opened".equals(key.getPath());
+            if (opened) {
+                LOG.debug("[ScrollViewScreen] isOpenedScrollStack: true (itemKey={})", key);
+            }
+            return opened;
+        } catch (Throwable t) {
+            LOG.error("[ScrollViewScreen] isOpenedScrollStack failed", t);
+            return false;
+        }
+    }
+
+    private boolean isSealedScrollStack(@NotNull ItemStack stack) {
+        try {
+            if (stack.isEmpty()) {
+                return false;
+            }
+            ResourceLocation key = BuiltInRegistries.ITEM.getKey(stack.getItem());
+            if (key == null) {
+                return false;
+            }
+            boolean sealed = "scroll_sealed".equals(key.getPath());
+            if (sealed) {
+                LOG.debug("[ScrollViewScreen] isSealedScrollStack: true (itemKey={})", key);
+            }
+            return sealed;
+        } catch (Throwable t) {
+            LOG.error("[ScrollViewScreen] isSealedScrollStack failed", t);
+            return false;
+        }
+    }
+
+
+    /**
+     * Attempts to construct ScrollViewAttachmentInventoryScreen using common constructor patterns:
+     *  1) (ScrollViewMenu, Inventory, Component, Screen parent)
+     *  2) (ScrollViewMenu, Inventory, Component, ScrollViewScreen parent)
+     *  3) (ScrollViewMenu, Inventory, Component)
+     *
+     * This avoids you having to match an exact signature here. If none match, we log and return null.
+     */
+    private static Screen createAttachmentScreenReflective(@NotNull ScrollViewMenu menu,
+                                                           @NotNull Inventory inv,
+                                                           @NotNull Component title,
+                                                           @NotNull ScrollViewScreen parent) {
+        try {
+            Class<?> cls = Class.forName("net.z2six.featheredfriend.client.gui.ScrollViewAttachmentInventoryScreen");
+
+            // 1) (ScrollViewMenu, Inventory, Component, Screen)
+            try {
+                Constructor<?> c = cls.getConstructor(ScrollViewMenu.class, Inventory.class, Component.class, Screen.class);
+                Object o = c.newInstance(menu, inv, title, parent);
+                if (o instanceof Screen s) {
+                    LOG.debug("[ScrollViewScreen] Attachment screen constructed via (menu, inv, title, Screen)");
+                    return s;
+                }
+            } catch (Throwable t1) {
+                LOG.debug("[ScrollViewScreen] Attachment screen ctor (menu, inv, title, Screen) not usable: {}", t1.toString());
+            }
+
+            // 2) (ScrollViewMenu, Inventory, Component, ScrollViewScreen)
+            try {
+                Constructor<?> c = cls.getConstructor(ScrollViewMenu.class, Inventory.class, Component.class, ScrollViewScreen.class);
+                Object o = c.newInstance(menu, inv, title, parent);
+                if (o instanceof Screen s) {
+                    LOG.debug("[ScrollViewScreen] Attachment screen constructed via (menu, inv, title, ScrollViewScreen)");
+                    return s;
+                }
+            } catch (Throwable t2) {
+                LOG.debug("[ScrollViewScreen] Attachment screen ctor (menu, inv, title, ScrollViewScreen) not usable: {}", t2.toString());
+            }
+
+            // 3) (ScrollViewMenu, Inventory, Component)
+            try {
+                Constructor<?> c = cls.getConstructor(ScrollViewMenu.class, Inventory.class, Component.class);
+                Object o = c.newInstance(menu, inv, title);
+                if (o instanceof Screen s) {
+                    LOG.debug("[ScrollViewScreen] Attachment screen constructed via (menu, inv, title)");
+                    return s;
+                }
+            } catch (Throwable t3) {
+                LOG.debug("[ScrollViewScreen] Attachment screen ctor (menu, inv, title) not usable: {}", t3.toString());
+            }
+
+            LOG.error("[ScrollViewScreen] No compatible constructor found for ScrollViewAttachmentInventoryScreen");
+            return null;
+        } catch (Throwable t) {
+            LOG.error("[ScrollViewScreen] Failed to reflectively load/construct ScrollViewAttachmentInventoryScreen", t);
+            return null;
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // Input handling
     // ---------------------------------------------------------------------
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         try {
+            // Attachments pearl click (only when open)
+            if (button == 0 && this.viewPhase == ViewPhase.OPEN_IDLE) {
+                if (shouldShowPearlIcon() && isMouseInPearlIcon(mouseX, mouseY)) {
+                    LOG.info("[ScrollViewScreen] Pearl clicked -> open attachment inventory (client)");
+                    if (openAttachmentInventoryScreen("pearlClick")) {
+                        return true;
+                    }
+                }
+            }
+
             if (button == 0 && this.viewPhase == ViewPhase.CLOSED_IDLE) {
                 boolean inSmallWax = isMouseInWaxAreaSmall(mouseX, mouseY);
                 boolean inZoomWax = isMouseInWaxAreaZoom(mouseX, mouseY);
@@ -948,7 +1315,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     }
 
     @Override
-    protected void slotClicked(Slot slot, int slotId, int mouseButton, net.minecraft.world.inventory.ClickType type) {
+    protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType type) {
         if (slot != null) {
             LOG.debug("[ScrollViewScreen] slotClicked ignored: slotId={} type={} button={}", slotId, type, mouseButton);
         }

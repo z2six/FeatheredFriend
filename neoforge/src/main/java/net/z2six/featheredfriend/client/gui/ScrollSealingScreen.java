@@ -174,7 +174,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     // Date field config
     private static final int DATE_X = 30;
     private static final int DATE_Y = 18;
-    private static final int DATE_WIDTH = 150;
+    private static final int DATE_WIDTH = 200;
     private static final int DATE_HEIGHT = 14;
     private static final int DATE_MAX_CHARS = 64;
 
