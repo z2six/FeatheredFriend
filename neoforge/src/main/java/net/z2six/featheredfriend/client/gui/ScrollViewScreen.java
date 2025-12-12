@@ -7,6 +7,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.network.chat.Component;
@@ -14,18 +15,19 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.CustomData;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.widget.MultiLineScrollTextWidget;
 import net.z2six.featheredfriend.neoforge.menu.ScrollViewMenu;
+import net.z2six.featheredfriend.network.FFNetwork;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator.SigilPattern;
 import org.jetbrains.annotations.NotNull;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
-
-import java.lang.reflect.Method;
 
 /**
  * // neoforge/src/main/java/net/z2six/featheredfriend/client/gui/ScrollViewScreen.java
@@ -34,26 +36,24 @@ import java.lang.reflect.Method;
  *
  * Read-only view for a sealed scroll.
  *
- * IMPORTANT (fix):
+ * IMPORTANT:
  *  - Closing via minecraft.setScreen(null) alone can leave the server-side menu open
  *    until the next inventory interaction.
  *  - We MUST close the container properly: minecraft.player.closeContainer().
  *
- * Feature addition (batch 1/2):
- *  - When the user "breaks the seal" (clicks wax area to open), the client will attempt
- *    to notify the server to convert the exact scroll_sealed stack into scroll_opened
- *    and mark the session as seal-broken so attachments are only delivered after opening.
- *
- * Note:
- *  - In this first batch, the call is done via reflection to keep the file compiling
- *    before the new packet + FFNetwork method exist. Next batch will provide the method.
+ * Seal breaking:
+ *  - On the exact click that starts OPENING, we:
+ *      1) Send BreakSealPacket to server (authoritative conversion scroll_sealed -> scroll_opened)
+ *      2) Optimistically convert the held stack client-side immediately (UX) using the exact same rule:
+ *         copy SealedScroll tags except Attachments.
+ *  - Attachments are still delivered on GUI close, but ONLY if the seal was broken (server-side gating).
  */
 public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
     private static final Logger LOG = LogUtils.getLogger();
 
     // ---------------------------------------------------------------------
-    // Textures & fonts (shared with ScrollSealingScreen)
+    // Textures & fonts
     // ---------------------------------------------------------------------
 
     private static final ResourceLocation SCROLL_GUI_TEXTURE =
@@ -88,7 +88,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     private static final int OPENING_ANIM_TICKS = 20;
 
     // ---------------------------------------------------------------------
-    // Wax gizmo / zoom configuration (mirrors ScrollSealingScreen)
+    // Wax gizmo / zoom configuration
     // ---------------------------------------------------------------------
 
     private static final boolean DEBUG_SHOW_WAX_GIZMO = false;
@@ -166,9 +166,13 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     private SigilPattern smallSigilPattern = null;
     private SigilPattern zoomSigilPattern = null;
 
+    /**
+     * Snapshot of the held stack used to open this screen.
+     * This may become stale after the client-side optimistic swap or server sync.
+     */
     private ItemStack sealedScrollStack = ItemStack.EMPTY;
 
-    // Close guard: we only want to attempt container close once.
+    // Close guard
     private boolean requestedClose = false;
 
     // ---------------------------------------------------------------------
@@ -181,8 +185,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     private boolean sealBreakRequested = false;
 
     /**
-     * Fingerprint fields parsed from SealedScroll NBT. These are used to identify the exact stack on the server.
-     * (Server will still be authoritative; this is only to be specific.)
+     * Fingerprint fields parsed from SealedScroll NBT. Used to identify the exact stack on server.
      */
     private long sealedSeed = 0L;
     private String sealedRecipientUUID = "";
@@ -276,7 +279,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
             this.sealedScrollStack = hand.copy();
             LOG.debug("[ScrollViewScreen] Using scroll stack from hand: item={} count={}",
-                    sealedScrollStack.getItem(), sealedScrollStack.getCount());
+                    BuiltInRegistries.ITEM.getKey(sealedScrollStack.getItem()), sealedScrollStack.getCount());
 
             CustomData customData = hand.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
             CompoundTag root = customData.copyTag();
@@ -292,7 +295,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             this.messageText = safeTagString(seal, "MessageText");
             this.signatureText = safeTagString(seal, "SignatureText");
 
-            // Fingerprint fields for server identification
+            // Fingerprint fields
             try {
                 this.sealedSeed = seal.contains("Seed") ? seal.getLong("Seed") : 0L;
             } catch (Throwable tSeed) {
@@ -800,7 +803,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     }
 
     // ---------------------------------------------------------------------
-    // Proper close handling (THE FIX)
+    // Proper close handling
     // ---------------------------------------------------------------------
 
     private void requestProperClose(@NotNull String reason) {
@@ -821,7 +824,6 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
             if (mc != null && mc.player != null) {
                 try {
-                    // This is the key: sends close-container packet to server.
                     mc.player.closeContainer();
                     LOG.info("[ScrollViewScreen] closeContainer() called (client). containerId={}", containerId);
                 } catch (Throwable tClose) {
@@ -831,7 +833,6 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                 LOG.warn("[ScrollViewScreen] requestProperClose: mc/player null; cannot close container properly");
             }
 
-            // Also close the screen client-side.
             try {
                 if (mc != null) {
                     mc.setScreen(null);
@@ -847,13 +848,11 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
     @Override
     public void onClose() {
-        // Called by vanilla close paths; ensure it also does proper container close.
         try {
             LOG.debug("[ScrollViewScreen] onClose() invoked (client). requestedClose={}", requestedClose);
         } catch (Throwable ignored) {
         }
         requestProperClose("onClose");
-        // Do NOT call super.onClose() after setScreen(null) recursion risk; but it’s safe to call before:
         try {
             super.onClose();
         } catch (Throwable t) {
@@ -882,18 +881,31 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
                 if (shouldOpen) {
                     // This is the precise "seal break moment".
-                    // Before starting the OPENING animation, notify the server (once) to convert the exact scroll.
                     if (!sealBreakRequested) {
                         int slotHint = resolveHeldScrollSlotHint();
-                        LOG.info("[ScrollViewScreen] Seal break click detected -> requesting server seal break (slotHint={} seed={} recipientUUID='{}' date='{}' sender='{}')",
+
+                        LOG.info("[ScrollViewScreen] Seal break click -> sending BreakSealPacket (slotHint={} seed={} recipientUUID='{}' date='{}' sender='{}')",
                                 slotHint, sealedSeed, sealedRecipientUUID, sealedDateText, sealedSenderName);
-                        attemptSendBreakSealToServer(slotHint, sealedSeed, sealedRecipientUUID, sealedDateText, sealedSenderName);
+
+                        // 1) Authoritative server conversion
+                        FFNetwork.sendBreakSealToServer(
+                                slotHint,
+                                sealedSeed,
+                                sealedRecipientUUID != null ? sealedRecipientUUID : "",
+                                sealedDateText != null ? sealedDateText : "",
+                                sealedSenderName != null ? sealedSenderName : ""
+                        );
+
+                        // 2) Immediate client-side UX conversion (server will still override if needed)
+                        boolean clientSwapped = optimisticClientSwapToOpened(slotHint);
+                        LOG.info("[ScrollViewScreen] Client-side optimistic swap result={} (slotHint={})", clientSwapped, slotHint);
+
                         sealBreakRequested = true;
                     } else {
-                        LOG.debug("[ScrollViewScreen] Seal break click detected but request already sent this session; ignoring duplicate click");
+                        LOG.debug("[ScrollViewScreen] Seal break click but request already sent; ignoring duplicate");
                     }
 
-                    LOG.debug("[ScrollViewScreen] Wax area clicked (zoomActive={}) -> starting OPENING animation", zoomActive);
+                    LOG.debug("[ScrollViewScreen] Wax clicked (zoomActive={}) -> starting OPENING animation", zoomActive);
                     this.viewPhase = ViewPhase.OPENING;
                     this.viewPhaseTicks = 0;
                     this.zoomActive = false;
@@ -943,12 +955,10 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     }
 
     // ---------------------------------------------------------------------
-    // Seal-break networking (batch 1 uses reflection for compile safety)
+    // Held scroll identification + immediate client-side swap
     // ---------------------------------------------------------------------
 
     /**
-     * Attempts to determine where the scroll is currently held.
-     *
      * Slot mapping convention:
      *  - 36: main hand
      *  - 37: off hand
@@ -998,72 +1008,294 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
     private static boolean isLikelySameScroll(ItemStack a, ItemStack b) {
         try {
-            if (a == null || b == null) {
-                return false;
-            }
-            if (a.isEmpty() || b.isEmpty()) {
-                return false;
-            }
-            if (a.getItem() != b.getItem()) {
-                return false;
-            }
+            if (a == null || b == null) return false;
+            if (a.isEmpty() || b.isEmpty()) return false;
+            if (a.getItem() != b.getItem()) return false;
 
-            // Compare CustomData tags to be specific (non-stackable, but still be precise)
             CustomData acd = a.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
             CustomData bcd = b.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
             CompoundTag at = acd.copyTag();
             CompoundTag bt = bcd.copyTag();
 
-            if (at == null && bt == null) {
-                return true;
-            }
-            if (at == null || bt == null) {
-                return false;
-            }
+            if (at == null && bt == null) return true;
+            if (at == null || bt == null) return false;
             return at.equals(bt);
         } catch (Throwable t) {
-            LOG.error("[ScrollViewScreen] isLikelySameScroll failed; falling back to false", t);
+            LOG.error("[ScrollViewScreen] isLikelySameScroll failed; returning false", t);
             return false;
         }
     }
 
     /**
-     * Batch-1 compile-safe call into FFNetwork. Next batch will provide a direct method call.
+     * Client-only UX: replace the currently held scroll_sealed with scroll_opened immediately,
+     * copying SealedScroll NBT EXCEPT Attachments.
      *
-     * Expected method signature (to be implemented in FFNetwork next batch):
-     *   public static void sendBreakSealToServer(int slotHint, long seed, String recipientUUID, String dateText, String senderName)
+     * Server is still authoritative. This simply removes the "it only changes on close" feel.
      */
-    private void attemptSendBreakSealToServer(int slotHint,
-                                              long seed,
-                                              @NotNull String recipientUUID,
-                                              @NotNull String dateText,
-                                              @NotNull String senderName) {
+    private boolean optimisticClientSwapToOpened(int slotHint) {
         try {
-            Class<?> clazz = Class.forName("net.z2six.featheredfriend.network.FFNetwork");
-            Method m = clazz.getDeclaredMethod(
-                    "sendBreakSealToServer",
-                    int.class,
-                    long.class,
-                    String.class,
-                    String.class,
-                    String.class
-            );
-
-            try {
-                m.setAccessible(true);
-            } catch (Throwable ignored) {
+            Minecraft mc = this.minecraft;
+            if (mc == null || mc.player == null) {
+                LOG.warn("[ScrollViewScreen] optimisticClientSwapToOpened: mc/player null");
+                return false;
             }
 
-            m.invoke(null, slotHint, seed, recipientUUID != null ? recipientUUID : "", dateText != null ? dateText : "", senderName != null ? senderName : "");
+            Item openedItem = resolveItemByPath("scroll_opened");
+            Item sealedItem = resolveItemByPath("scroll_sealed");
 
-            LOG.info("[ScrollViewScreen] Break-seal request sent via FFNetwork.sendBreakSealToServer(slotHint={}, seed={})",
-                    slotHint, seed);
-        } catch (ClassNotFoundException e) {
-            LOG.warn("[ScrollViewScreen] FFNetwork class not found; break-seal request not sent (will be available after next batch)");
-        } catch (NoSuchMethodException e) {
-            LOG.warn("[ScrollViewScreen] FFNetwork.sendBreakSealToServer(...) not found; break-seal request not sent (will be available after next batch)");
+            if (openedItem == null || openedItem == Items.AIR) {
+                LOG.error("[ScrollViewScreen] optimisticClientSwapToOpened: scroll_opened not found");
+                return false;
+            }
+            if (sealedItem == null || sealedItem == Items.AIR) {
+                LOG.error("[ScrollViewScreen] optimisticClientSwapToOpened: scroll_sealed not found");
+                return false;
+            }
+
+            // Find target stack by hint first, fallback scan
+            TargetSlot target = findClientTargetSealedScrollByHintOrScan(mc, sealedItem, slotHint);
+            if (target == null) {
+                LOG.warn("[ScrollViewScreen] optimisticClientSwapToOpened: could not find target sealed scroll (slotHint={})", slotHint);
+                return false;
+            }
+
+            if (target.stack == null || target.stack.isEmpty() || target.stack.getItem() != sealedItem) {
+                LOG.warn("[ScrollViewScreen] optimisticClientSwapToOpened: target not scroll_sealed (found item={})",
+                        target.stack != null ? BuiltInRegistries.ITEM.getKey(target.stack.getItem()) : "null");
+                return false;
+            }
+
+            if (!matchesFingerprintClient(target.stack)) {
+                LOG.warn("[ScrollViewScreen] optimisticClientSwapToOpened: target does not match fingerprint; refusing swap");
+                return false;
+            }
+
+            ItemStack opened = new ItemStack(openedItem, 1);
+
+            boolean copied = copySealedScrollDataWithoutAttachmentsClient(target.stack, opened);
+            if (!copied) {
+                LOG.warn("[ScrollViewScreen] optimisticClientSwapToOpened: failed to copy SealedScroll data; still swapping item type");
+            }
+
+            // Apply replacement
+            switch (target.location) {
+                case MAIN_HAND -> mc.player.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, opened);
+                case OFF_HAND -> mc.player.setItemInHand(net.minecraft.world.InteractionHand.OFF_HAND, opened);
+                case INVENTORY -> {
+                    if (target.invIndex < 0 || target.invIndex >= mc.player.getInventory().items.size()) {
+                        LOG.error("[ScrollViewScreen] optimisticClientSwapToOpened: invalid inventory index {}", target.invIndex);
+                        return false;
+                    }
+                    mc.player.getInventory().items.set(target.invIndex, opened);
+                }
+            }
+
+            LOG.info("[ScrollViewScreen] optimisticClientSwapToOpened: swapped {} -> {} at {}",
+                    BuiltInRegistries.ITEM.getKey(sealedItem),
+                    BuiltInRegistries.ITEM.getKey(openedItem),
+                    target.description);
+
+            return true;
         } catch (Throwable t) {
-            LOG.error("[ScrollViewScreen] attemptSendBreakSealToServer failed", t);
+            LOG.error("[ScrollViewScreen] optimisticClientSwapToOpened failed", t);
+            return false;
         }
+    }
+
+    private enum TargetLocation {
+        MAIN_HAND,
+        OFF_HAND,
+        INVENTORY
+    }
+
+    private static final class TargetSlot {
+        final TargetLocation location;
+        final int invIndex;
+        final ItemStack stack;
+        final String description;
+
+        TargetSlot(TargetLocation location, int invIndex, ItemStack stack, String description) {
+            this.location = location;
+            this.invIndex = invIndex;
+            this.stack = stack;
+            this.description = description;
+        }
+    }
+
+    private TargetSlot findClientTargetSealedScrollByHintOrScan(@NotNull Minecraft mc, @NotNull Item sealedItem, int slotHint) {
+        try {
+            // Hint first
+            TargetSlot hinted = getClientStackByHint(mc, slotHint);
+            if (hinted != null && hinted.stack != null && !hinted.stack.isEmpty() && hinted.stack.getItem() == sealedItem) {
+                return hinted;
+            }
+
+            // Fallback: main/off + inventory scan by fingerprint
+            ItemStack main = mc.player.getMainHandItem();
+            if (main != null && !main.isEmpty() && main.getItem() == sealedItem && matchesFingerprintClient(main)) {
+                return new TargetSlot(TargetLocation.MAIN_HAND, -1, main, "MAIN_HAND(scan)");
+            }
+
+            ItemStack off = mc.player.getOffhandItem();
+            if (off != null && !off.isEmpty() && off.getItem() == sealedItem && matchesFingerprintClient(off)) {
+                return new TargetSlot(TargetLocation.OFF_HAND, -1, off, "OFF_HAND(scan)");
+            }
+
+            for (int i = 0; i < mc.player.getInventory().items.size(); i++) {
+                ItemStack s = mc.player.getInventory().items.get(i);
+                if (s != null && !s.isEmpty() && s.getItem() == sealedItem && matchesFingerprintClient(s)) {
+                    return new TargetSlot(TargetLocation.INVENTORY, i, s, "INVENTORY(scan:" + i + ")");
+                }
+            }
+
+            return null;
+        } catch (Throwable t) {
+            LOG.error("[ScrollViewScreen] findClientTargetSealedScrollByHintOrScan failed", t);
+            return null;
+        }
+    }
+
+    private TargetSlot getClientStackByHint(@NotNull Minecraft mc, int slotHint) {
+        try {
+            if (slotHint == 36) {
+                return new TargetSlot(TargetLocation.MAIN_HAND, -1, mc.player.getMainHandItem(), "MAIN_HAND(36)");
+            }
+            if (slotHint == 37) {
+                return new TargetSlot(TargetLocation.OFF_HAND, -1, mc.player.getOffhandItem(), "OFF_HAND(37)");
+            }
+            if (slotHint >= 0 && slotHint < mc.player.getInventory().items.size()) {
+                return new TargetSlot(TargetLocation.INVENTORY, slotHint, mc.player.getInventory().items.get(slotHint), "INVENTORY(" + slotHint + ")");
+            }
+            return null;
+        } catch (Throwable t) {
+            LOG.error("[ScrollViewScreen] getClientStackByHint failed", t);
+            return null;
+        }
+    }
+
+    private boolean matchesFingerprintClient(@NotNull ItemStack stack) {
+        try {
+            CustomData cd = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
+            CompoundTag root = cd.copyTag();
+            if (root == null || root.isEmpty()) return false;
+            if (!root.contains("SealedScroll", CompoundTag.TAG_COMPOUND)) return false;
+
+            CompoundTag seal = root.getCompound("SealedScroll");
+
+            long seed = 0L;
+            try {
+                if (seal.contains("Seed")) seed = seal.getLong("Seed");
+            } catch (Throwable ignored) {
+                seed = 0L;
+            }
+
+            String recUuid = "";
+            String date = "";
+            String sender = "";
+            try {
+                if (seal.contains("RecipientUUID")) recUuid = seal.getString("RecipientUUID");
+            } catch (Throwable ignored) {
+                recUuid = "";
+            }
+            try {
+                if (seal.contains("DateText")) date = seal.getString("DateText");
+            } catch (Throwable ignored) {
+                date = "";
+            }
+            try {
+                if (seal.contains("SenderName")) sender = seal.getString("SenderName");
+            } catch (Throwable ignored) {
+                sender = "";
+            }
+
+            boolean ok =
+                    seed == this.sealedSeed
+                            && safeEq(recUuid, this.sealedRecipientUUID)
+                            && safeEq(date, this.sealedDateText)
+                            && safeEq(sender, this.sealedSenderName);
+
+            if (!ok) {
+                LOG.debug("[ScrollViewScreen] matchesFingerprintClient mismatch: candidate(seed={} recUuid='{}' date='{}' sender='{}') vs screen(seed={} recUuid='{}' date='{}' sender='{}')",
+                        seed,
+                        safeLog(recUuid),
+                        safeLog(date),
+                        safeLog(sender),
+                        this.sealedSeed,
+                        safeLog(this.sealedRecipientUUID),
+                        safeLog(this.sealedDateText),
+                        safeLog(this.sealedSenderName));
+            }
+
+            return ok;
+        } catch (Throwable t) {
+            LOG.error("[ScrollViewScreen] matchesFingerprintClient failed", t);
+            return false;
+        }
+    }
+
+    private static boolean copySealedScrollDataWithoutAttachmentsClient(@NotNull ItemStack sealed,
+                                                                        @NotNull ItemStack opened) {
+        try {
+            CustomData sealedCd = sealed.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
+            CompoundTag sealedRoot = sealedCd.copyTag();
+            if (sealedRoot == null || sealedRoot.isEmpty()) {
+                return false;
+            }
+            if (!sealedRoot.contains("SealedScroll", CompoundTag.TAG_COMPOUND)) {
+                return false;
+            }
+
+            CompoundTag sealedSeal = sealedRoot.getCompound("SealedScroll");
+            if (sealedSeal == null) {
+                return false;
+            }
+
+            CompoundTag openedRoot = new CompoundTag();
+            CompoundTag openedSeal = sealedSeal.copy();
+
+            if (openedSeal.contains("Attachments")) {
+                try {
+                    openedSeal.remove("Attachments");
+                } catch (Throwable ignored) {
+                }
+            }
+
+            openedRoot.put("SealedScroll", openedSeal);
+            opened.set(DataComponents.CUSTOM_DATA, CustomData.of(openedRoot));
+            return true;
+        } catch (Throwable t) {
+            LOG.error("[ScrollViewScreen] copySealedScrollDataWithoutAttachmentsClient failed", t);
+            return false;
+        }
+    }
+
+    private static Item resolveItemByPath(@NotNull String path) {
+        try {
+            ResourceLocation id = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, path);
+            Item item = BuiltInRegistries.ITEM.get(id);
+            if (item == null) {
+                LOG.error("[ScrollViewScreen] resolveItemByPath: item {} is null", id);
+                return Items.AIR;
+            }
+            if (item == Items.AIR) {
+                LOG.warn("[ScrollViewScreen] resolveItemByPath: item {} returned as AIR", id);
+            }
+            return item;
+        } catch (Throwable t) {
+            LOG.error("[ScrollViewScreen] resolveItemByPath failed for path='{}'", path, t);
+            return Items.AIR;
+        }
+    }
+
+    private static boolean safeEq(String a, String b) {
+        if (a == null) a = "";
+        if (b == null) b = "";
+        return a.equals(b);
+    }
+
+    private static String safeLog(String s) {
+        if (s == null) return "null";
+        if (s.length() <= 120) return s;
+        return s.substring(0, 120) + "...";
     }
 }
