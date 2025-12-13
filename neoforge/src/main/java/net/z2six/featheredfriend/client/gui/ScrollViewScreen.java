@@ -895,8 +895,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             boolean hovered = isMouseInPearlIcon(mouseX, mouseY);
             int frameIndex = hovered ? PEARL_HOVER_FRAME : 6;
 
-            // Validate frameIndex against sheet height (11 frames total in your sealing screen logic)
-            // We don't have PEARL_TOTAL_FRAMES here, so we hard-guard.
+            // Guard against out-of-range frames (sheet is 11 frames: 0..10)
             if (frameIndex < 0) frameIndex = 0;
             if (frameIndex > 10) frameIndex = 10;
 
@@ -907,7 +906,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             int u = 0;
             int v = frameIndex * PEARL_FRAME_HEIGHT;
 
-            // Debug log only when hovered (avoids log spam)
+            // Debug log only when hovered (avoids spam)
             if (hovered) {
                 LOG.debug("[ScrollViewScreen] renderAttachmentsPearlIcon: hovered=true frameIndex={} at ({},{})", frameIndex, x, y);
             }
@@ -924,14 +923,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                     PEARL_FRAME_HEIGHT * 11
             );
 
-            // Optional subtle outline for hover clarity (kept minimal)
-            if (hovered) {
-                g.fill(x, y, x + PEARL_FRAME_WIDTH, y + 1, 0x40FFFFFF);
-                g.fill(x, y + PEARL_FRAME_HEIGHT - 1, x + PEARL_FRAME_WIDTH, y + PEARL_FRAME_HEIGHT, 0x40FFFFFF);
-                g.fill(x, y, x + 1, y + PEARL_FRAME_HEIGHT, 0x40FFFFFF);
-                g.fill(x + PEARL_FRAME_WIDTH - 1, y, x + PEARL_FRAME_WIDTH, y + PEARL_FRAME_HEIGHT, 0x40FFFFFF);
-            }
-
+            // NO EXTRA BORDER/OUTLINE: hover frame already contains the highlight.
         } catch (Throwable t) {
             LOG.error("[ScrollViewScreen] renderAttachmentsPearlIcon failed", t);
         }
