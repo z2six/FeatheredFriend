@@ -1,4 +1,4 @@
-package net.z2six.featheredfriend.content.seal;
+package net.z2six.featheredfriend.item;
 
 import com.mojang.logging.LogUtils;
 import org.slf4j.Logger;

@@ -21,7 +21,7 @@ import net.z2six.featheredfriend.client.gui.widget.MultiLineScrollTextWidget;
 import net.z2six.featheredfriend.client.gui.widget.RecipientOverlay;
 import net.z2six.featheredfriend.client.gui.widget.SealStampSelectionOverlay;
 import net.z2six.featheredfriend.config.FFCalendarConfig;
-import net.z2six.featheredfriend.content.item.SealStampItem;
+import net.z2six.featheredfriend.item.SealStampItem;
 import net.z2six.featheredfriend.neoforge.menu.ScrollSealingMenu;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator.SigilPattern;

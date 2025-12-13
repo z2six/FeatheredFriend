@@ -1,5 +1,5 @@
 // common/src/main/java/net/z2six/featheredfriend/content/item/UnsealedScrollItem.java
-package net.z2six.featheredfriend.content.item;
+package net.z2six.featheredfriend.item;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.server.level.ServerPlayer;
@@ -9,7 +9,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.platform.Services;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;

@@ -4,9 +4,9 @@ package net.z2six.featheredfriend.registry;
 import com.mojang.logging.LogUtils;
 import com.google.common.base.Suppliers;
 import net.minecraft.world.item.Item;
-import net.z2six.featheredfriend.content.item.ScrollViewItem;
-import net.z2six.featheredfriend.content.item.UnsealedScrollItem;
-import net.z2six.featheredfriend.content.item.SealStampItem;
+import net.z2six.featheredfriend.item.ScrollViewItem;
+import net.z2six.featheredfriend.item.UnsealedScrollItem;
+import net.z2six.featheredfriend.item.SealStampItem;
 import org.slf4j.Logger;
 
 import java.util.LinkedHashMap;

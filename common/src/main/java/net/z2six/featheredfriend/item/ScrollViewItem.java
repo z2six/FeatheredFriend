@@ -1,5 +1,5 @@
 // common/src/main/java/net/z2six/featheredfriend/content/item/ScrollViewItem.java
-package net.z2six.featheredfriend.content.item;
+package net.z2six.featheredfriend.item;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.server.level.ServerPlayer;

@@ -1,5 +1,5 @@
 // MainFile: common/src/main/java/net/z2six/featheredfriend/content/item/SealStampItem.java
-package net.z2six.featheredfriend.content.item;
+package net.z2six.featheredfriend.item;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.component.DataComponents;

@@ -11,7 +11,7 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
-import net.z2six.featheredfriend.content.item.SealStampItem;
+import net.z2six.featheredfriend.item.SealStampItem;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
