@@ -4,10 +4,14 @@ package net.z2six.featheredfriend;
 import com.mojang.logging.LogUtils;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.api.distmarker.Dist;
 import net.z2six.featheredfriend.client.FFNeoForgeClient;
+import net.z2six.featheredfriend.client.raven.RavenClientEvents;
 import net.z2six.featheredfriend.config.FFCalendarConfig;
 import net.z2six.featheredfriend.network.FFNetwork;
 import net.z2six.featheredfriend.registry.FFCreativeTabsNeoForge;
+import net.z2six.featheredfriend.registry.FFNeoForgeEntities;
 import net.z2six.featheredfriend.registry.FFNeoForgeItems;
 import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
 import org.slf4j.Logger;
@@ -23,6 +27,8 @@ import org.slf4j.Logger;
  *  - Register server-side calendar config.
  *  - Hook client-only registration (menu screens) via the mod event bus.
  *  - Register payload handlers via mod event bus listener (NeoForge 1.21.1 safe).
+ *  - Register entity types + attributes (Raven).
+ *  - Register client renderers (Raven) on physical client only.
  */
 @Mod(Constants.MOD_ID)
 public class FeatheredFriend {
@@ -55,6 +61,14 @@ public class FeatheredFriend {
             LOG.error("[FeatheredFriend] Failed to register NeoForge registries", t);
         }
 
+        // Entities
+        try {
+            FFNeoForgeEntities.register(modEventBus);
+            LOG.info("[FeatheredFriend] Registered NeoForge entity registries");
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriend] Failed to register NeoForge entities", t);
+        }
+
         // Networking: payload handler registration (MOD bus event)
         try {
             modEventBus.addListener(FFNetwork::register);
@@ -75,6 +89,18 @@ public class FeatheredFriend {
             modEventBus.addListener(FFNeoForgeClient::onRegisterMenuScreens);
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to hook client menu screen registration", t);
+        }
+
+        // Client-only: entity renderers (Raven) - guard to avoid dedicated server classloading issues.
+        try {
+            if (FMLEnvironment.dist == Dist.CLIENT) {
+                modEventBus.addListener(RavenClientEvents::onRegisterRenderers);
+                LOG.info("[FeatheredFriend] Hooked Raven renderer registration listener (client only)");
+            } else {
+                LOG.info("[FeatheredFriend] Skipping Raven renderer listener on non-client dist");
+            }
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriend] Failed to hook Raven renderer registration listener", t);
         }
 
         LOG.info("[FeatheredFriend] NeoForge initialization complete");

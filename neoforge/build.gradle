@@ -1,6 +1,20 @@
+// neoforge/build.gradle
+
 plugins {
     id 'multiloader-loader'
     id 'net.neoforged.moddev'
+}
+
+repositories {
+    // GeckoLib's official Cloudsmith Maven repository (required to resolve GeckoLib artifacts)
+    // Restrict scope to the GeckoLib group to avoid affecting other dependency resolution.
+    maven {
+        name = "GeckoLib"
+        url = "https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/"
+        content {
+            includeGroup("software.bernie.geckolib")
+        }
+    }
 }
 
 neoForge {
@@ -47,5 +61,7 @@ dependencies {
     // JEI API for compile-time, JEI mod for runtime
     compileOnly "mezz.jei:jei-1.21.1-neoforge-api:19.25.1.328"
     runtimeOnly  "mezz.jei:jei-1.21.1-neoforge:19.25.1.328"
-}
 
+    // GeckoLib (NeoForge 1.21.1)
+    implementation "software.bernie.geckolib:geckolib-neoforge-1.21.1:4.8.2"
+}
