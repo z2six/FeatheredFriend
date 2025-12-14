@@ -14,6 +14,7 @@ import net.z2six.featheredfriend.registry.FFCreativeTabsNeoForge;
 import net.z2six.featheredfriend.registry.FFNeoForgeEntities;
 import net.z2six.featheredfriend.registry.FFNeoForgeItems;
 import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
+import net.z2six.featheredfriend.world.RavenSpawnEvents;
 import org.slf4j.Logger;
 
 /**
@@ -29,6 +30,7 @@ import org.slf4j.Logger;
  *  - Register payload handlers via mod event bus listener (NeoForge 1.21.1 safe).
  *  - Register entity types + attributes (Raven).
  *  - Register client renderers (Raven) on physical client only.
+ *  - Register Raven natural spawning logic (server tick on game bus).
  */
 @Mod(Constants.MOD_ID)
 public class FeatheredFriend {
@@ -101,6 +103,14 @@ public class FeatheredFriend {
             }
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to hook Raven renderer registration listener", t);
+        }
+
+        // Server-only-ish: Raven natural spawning (listener is server-only at runtime, safe to register always)
+        try {
+            RavenSpawnEvents.register();
+            LOG.info("[FeatheredFriend] Hooked RavenSpawnEvents (natural spawning)");
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriend] Failed to hook RavenSpawnEvents", t);
         }
 
         LOG.info("[FeatheredFriend] NeoForge initialization complete");
