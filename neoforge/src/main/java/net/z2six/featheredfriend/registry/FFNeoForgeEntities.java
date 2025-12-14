@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/registry/FFNeoForgeEntities.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/registry/FFNeoForgeEntities.java
 package net.z2six.featheredfriend.registry;
 
 import com.mojang.logging.LogUtils;
@@ -24,6 +24,10 @@ import org.slf4j.Logger;
  * Registers:
  *  - Raven EntityType
  *  - Raven attribute supplier (MOD bus event)
+ *
+ * Hitbox sizing:
+ *  - Gameplay hitbox (collision/selection) is controlled by EntityType.Builder.sized(width, height).
+ *  - Blockbench "hitbox" cubes do NOT affect Minecraft's collision box.
  */
 public final class FFNeoForgeEntities {
 
@@ -32,20 +36,49 @@ public final class FFNeoForgeEntities {
     private static final DeferredRegister<EntityType<?>> ENTITY_TYPES =
             DeferredRegister.create(Registries.ENTITY_TYPE, Constants.MOD_ID);
 
+    /**
+     * Raven hitbox tuning (gameplay collision/selection).
+     *
+     * Width is X/Z diameter in blocks, height is Y in blocks.
+     * 1.0F x 1.0F is huge for a bird. Start smaller and tune by feel in-game.
+     */
+    private static final float RAVEN_HITBOX_WIDTH = 0.70F;
+    private static final float RAVEN_HITBOX_HEIGHT = 0.50F;
+
     public static final DeferredHolder<EntityType<?>, EntityType<RavenEntity>> RAVEN =
-            ENTITY_TYPES.register("raven", () -> EntityType.Builder
-                    .of(RavenEntity::new, MobCategory.CREATURE)
-                    // Reasonable small-bird-ish hitbox; tweak later if needed
-                    .sized(0.55F, 0.8F)
-                    .clientTrackingRange(8)
-                    .build(Constants.MOD_ID + ":raven"));
+            ENTITY_TYPES.register("raven", () -> {
+                try {
+                    LOG.info("[FFNeoForgeEntities] Building Raven EntityType with hitbox w={} h={}",
+                            RAVEN_HITBOX_WIDTH, RAVEN_HITBOX_HEIGHT);
+
+                    return EntityType.Builder
+                            .of(RavenEntity::new, MobCategory.CREATURE)
+                            .sized(RAVEN_HITBOX_WIDTH, RAVEN_HITBOX_HEIGHT)
+                            .clientTrackingRange(8)
+                            .build(Constants.MOD_ID + ":raven");
+                } catch (Throwable t) {
+                    LOG.error("[FFNeoForgeEntities] Failed building Raven EntityType", t);
+
+                    // Fail safe: still return *something* to avoid hard-crash during registry bootstrap.
+                    // If this ever triggers, you WANT the log + a broken entity rather than a dead game boot.
+                    return EntityType.Builder
+                            .of(RavenEntity::new, MobCategory.CREATURE)
+                            .sized(RAVEN_HITBOX_WIDTH, RAVEN_HITBOX_HEIGHT)
+                            .clientTrackingRange(8)
+                            .build(Constants.MOD_ID + ":raven");
+                }
+            });
 
     private FFNeoForgeEntities() {
     }
 
     public static void register(IEventBus modEventBus) {
         LOG.info("[FFNeoForgeEntities] Registering entity types");
-        ENTITY_TYPES.register(modEventBus);
+        try {
+            ENTITY_TYPES.register(modEventBus);
+        } catch (Throwable t) {
+            LOG.error("[FFNeoForgeEntities] ENTITY_TYPES.register(modEventBus) failed", t);
+        }
 
         // Attributes are registered via MOD bus event listener (NOT EventBusSubscriber).
         try {
@@ -67,8 +100,14 @@ public final class FFNeoForgeEntities {
     }
 
     private static AttributeSupplier.Builder createRavenAttributes() {
-        return Mob.createMobAttributes()
-                .add(Attributes.MAX_HEALTH, 16.0D)
-                .add(Attributes.MOVEMENT_SPEED, 0.28D);
+        try {
+            return Mob.createMobAttributes()
+                    .add(Attributes.MAX_HEALTH, 16.0D)
+                    .add(Attributes.MOVEMENT_SPEED, 0.28D);
+        } catch (Throwable t) {
+            LOG.error("[FFNeoForgeEntities] createRavenAttributes failed; falling back to minimal attributes", t);
+            return Mob.createMobAttributes()
+                    .add(Attributes.MAX_HEALTH, 16.0D);
+        }
     }
 }
