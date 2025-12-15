@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/client/raven/render/model/RavenGeoModel.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/client/raven/render/model/RavenGeoModel.java
 package net.z2six.featheredfriend.client.raven.render.model;
 
 import com.mojang.logging.LogUtils;
@@ -38,7 +38,7 @@ public class RavenGeoModel extends GeoModel<RavenEntity> {
     public ResourceLocation getModelResource(RavenEntity animatable) {
         try {
             RavenVariant v = animatable != null ? animatable.getRavenVariant() : RavenVariant.NORMAL;
-            return v == RavenVariant.SCROLL ? GEO_RAVEN_SCROLL : GEO_RAVEN;
+            return v == RavenVariant.SCROLL ? DYNCATCH(GEO_RAVEN_SCROLL, GEO_RAVEN_SCROLL) : GEO_RAVEN;
         } catch (Throwable t) {
             LOG.error("[RavenGeoModel] getModelResource failed, defaulting to GEO_RAVEN", t);
             return GEO_RAVEN;
@@ -49,7 +49,7 @@ public class RavenGeoModel extends GeoModel<RavenEntity> {
     public ResourceLocation getTextureResource(RavenEntity animatable) {
         try {
             RavenVariant v = animatable != null ? animatable.getRavenVariant() : RavenVariant.NORMAL;
-            return v == RavenVariant.SCROLL ? TEX_RAVEN_SCROLL : TEX_RAVEN;
+            return v == RavenVariant.SCROLL ? DYNCATCH(TEX_RAVEN_SCROLL, TEX_RAVEN_SCROLL) : TEX_RAVEN;
         } catch (Throwable t) {
             LOG.error("[RavenGeoModel] getTextureResource failed, defaulting to TEX_RAVEN", t);
             return TEX_RAVEN;
@@ -60,10 +60,18 @@ public class RavenGeoModel extends GeoModel<RavenEntity> {
     public ResourceLocation getAnimationResource(RavenEntity animatable) {
         try {
             RavenVariant v = animatable != null ? animatable.getRavenVariant() : RavenVariant.NORMAL;
-            return v == RavenVariant.SCROLL ? ANIM_RAVEN_SCROLL : ANIM_RAVEN;
+            return v == RavenVariant.SCROLL ? DYNCATCH(ANIM_RAVEN_SCROLL, ANIM_RAVEN_SCROLL) : ANIM_RAVEN;
         } catch (Throwable t) {
             LOG.error("[RavenGeoModel] getAnimationResource failed, defaulting to ANIM_RAVEN", t);
             return ANIM_RAVEN;
         }
+    }
+
+    /**
+     * Tiny helper to make it easy to set a breakpoint or future hot-swap logic without touching ternaries.
+     * Kept intentionally no-op.
+     */
+    private static ResourceLocation DYNCATCH(ResourceLocation value, ResourceLocation fallback) {
+        return value != null ? value : fallback;
     }
 }

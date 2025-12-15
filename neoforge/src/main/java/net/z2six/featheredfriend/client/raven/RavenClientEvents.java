@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/client/raven/RavenClientEvents.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/client/raven/RavenClientEvents.java
 package net.z2six.featheredfriend.client.raven;
 
 import com.mojang.logging.LogUtils;

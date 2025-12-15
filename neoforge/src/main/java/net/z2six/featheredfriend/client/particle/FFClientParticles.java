@@ -1,0 +1,34 @@
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/client/particle/FFClientParticles.java
+package net.z2six.featheredfriend.client.particle;
+
+import com.mojang.logging.LogUtils;
+import net.neoforged.neoforge.client.event.RegisterParticleProvidersEvent;
+import net.z2six.featheredfriend.registry.FFNeoForgeParticles;
+import org.slf4j.Logger;
+
+/**
+ * neoforge/src/main/java/net/z2six/featheredfriend/client/particle/FFClientParticles.java
+ *
+ * Client-only particle provider registration (NeoForge 1.21.1 safe).
+ *
+ * IMPORTANT:
+ * - No @EventBusSubscriber. Register this listener from FeatheredFriend.java only on Dist.CLIENT.
+ * - Registers the particle *provider* (factory), not the particle type.
+ */
+public final class FFClientParticles {
+
+    private static final Logger LOG = LogUtils.getLogger();
+
+    private FFClientParticles() {
+    }
+
+    public static void onRegisterParticleProviders(RegisterParticleProvidersEvent event) {
+        LOG.info("[FFClientParticles] Registering particle providers");
+        try {
+            event.registerSpriteSet(FFNeoForgeParticles.ENDERPOP.get(), EnderpopParticle.Factory::new);
+            LOG.info("[FFClientParticles] Registered provider for ENDERPOP");
+        } catch (Throwable t) {
+            LOG.error("[FFClientParticles] Failed registering particle providers", t);
+        }
+    }
+}

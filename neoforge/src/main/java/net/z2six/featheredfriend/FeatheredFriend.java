@@ -1,12 +1,13 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/FeatheredFriend.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/FeatheredFriend.java
 package net.z2six.featheredfriend;
 
 import com.mojang.logging.LogUtils;
+import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLEnvironment;
-import net.neoforged.api.distmarker.Dist;
 import net.z2six.featheredfriend.client.FFNeoForgeClient;
+import net.z2six.featheredfriend.client.particle.FFClientParticles;
 import net.z2six.featheredfriend.client.raven.RavenClientEvents;
 import net.z2six.featheredfriend.config.FFCalendarConfig;
 import net.z2six.featheredfriend.network.FFNetwork;
@@ -14,23 +15,21 @@ import net.z2six.featheredfriend.registry.FFCreativeTabsNeoForge;
 import net.z2six.featheredfriend.registry.FFNeoForgeEntities;
 import net.z2six.featheredfriend.registry.FFNeoForgeItems;
 import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
+import net.z2six.featheredfriend.registry.FFNeoForgeParticles;
 import net.z2six.featheredfriend.world.RavenSpawnEvents;
 import org.slf4j.Logger;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/FeatheredFriend.java
- *
  * NeoForge entrypoint for FeatheredFriend.
  *
  * Responsibilities:
  *  - Invoke common init code.
- *  - Register NeoForge-specific registries (items, menus, creative tabs).
+ *  - Register NeoForge-specific registries (items, menus, creative tabs, particles).
  *  - Register server-side calendar config.
- *  - Hook client-only registration (menu screens) via the mod event bus.
+ *  - Hook client-only registration (menu screens, entity renderers, particle providers) via the mod event bus.
  *  - Register payload handlers via mod event bus listener (NeoForge 1.21.1 safe).
  *  - Register entity types + attributes (Raven).
- *  - Register client renderers (Raven) on physical client only.
- *  - Register Raven natural spawning logic (server tick on game bus).
+ *  - Register Raven natural spawning logic.
  */
 @Mod(Constants.MOD_ID)
 public class FeatheredFriend {
@@ -59,6 +58,11 @@ public class FeatheredFriend {
             FFNeoForgeItems.register(modEventBus);
             FFCreativeTabsNeoForge.register(modEventBus);
             FFNeoForgeMenus.register(modEventBus);
+
+            // Particles (TYPE registry)
+            FFNeoForgeParticles.register(modEventBus);
+
+            LOG.info("[FeatheredFriend] Registered NeoForge registries (items/tabs/menus/particles)");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to register NeoForge registries", t);
         }
@@ -89,20 +93,24 @@ public class FeatheredFriend {
         // Client-only: menu screens (called only on physical client)
         try {
             modEventBus.addListener(FFNeoForgeClient::onRegisterMenuScreens);
+            LOG.info("[FeatheredFriend] Hooked client menu screen registration listener");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to hook client menu screen registration", t);
         }
 
-        // Client-only: entity renderers (Raven) - guard to avoid dedicated server classloading issues.
+        // Client-only: entity renderers + particle providers
         try {
             if (FMLEnvironment.dist == Dist.CLIENT) {
                 modEventBus.addListener(RavenClientEvents::onRegisterRenderers);
                 LOG.info("[FeatheredFriend] Hooked Raven renderer registration listener (client only)");
+
+                modEventBus.addListener(FFClientParticles::onRegisterParticleProviders);
+                LOG.info("[FeatheredFriend] Hooked particle provider registration listener (client only)");
             } else {
-                LOG.info("[FeatheredFriend] Skipping Raven renderer listener on non-client dist");
+                LOG.info("[FeatheredFriend] Skipping client-only listeners on non-client dist");
             }
         } catch (Throwable t) {
-            LOG.error("[FeatheredFriend] Failed to hook Raven renderer registration listener", t);
+            LOG.error("[FeatheredFriend] Failed to hook client-only listeners", t);
         }
 
         // Server-only-ish: Raven natural spawning (listener is server-only at runtime, safe to register always)

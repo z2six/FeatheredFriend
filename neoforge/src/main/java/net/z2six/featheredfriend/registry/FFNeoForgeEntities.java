@@ -43,7 +43,7 @@ public final class FFNeoForgeEntities {
      * 1.0F x 1.0F is huge for a bird. Start smaller and tune by feel in-game.
      */
     private static final float RAVEN_HITBOX_WIDTH = 0.70F;
-    private static final float RAVEN_HITBOX_HEIGHT = 0.50F;
+    private static final float RAVEN_HITBOX_HEIGHT = 0.70F;
 
     public static final DeferredHolder<EntityType<?>, EntityType<RavenEntity>> RAVEN =
             ENTITY_TYPES.register("raven", () -> {
