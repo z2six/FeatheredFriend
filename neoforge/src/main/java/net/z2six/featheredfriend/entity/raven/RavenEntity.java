@@ -95,6 +95,21 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     private static final int HOME_RADIUS_BLOCKS = 30;
     private static final int HOME_Y_DELTA = 15;
 
+    // For damage handler
+    // Post-teleport intent:
+    // Default stays PERCH because your existing teleport recovery behavior wanted perching.
+    // Damage-teleport overrides to ROAM_FLIGHT for "combat blink".
+    private enum PostTeleportIntent {
+        PERCH,
+        ROAM_FLIGHT
+    }
+
+    private PostTeleportIntent postTeleportIntent = PostTeleportIntent.PERCH;
+
+    // Anti-spam: prevent multiple damage blinks in the same instant (fire ticks, thorns spam, etc.)
+    private int lastDamageBlinkTick = -999999;
+    private static final int DAMAGE_BLINK_MIN_INTERVAL_TICKS = 10; // 0.5s @ 20 TPS
+
     // Idle (15-30s) NOTE: 20 ticks = 1 second
     private static final int IDLE_MIN_TICKS = 15 * 20;
     private static final int IDLE_MAX_TICKS = 30 * 20;
@@ -4006,8 +4021,54 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
     private void reissueMovementIntentAfterTeleport(String reason) {
         try {
+            // Capture & reset intent so it does not leak into later teleports.
+            PostTeleportIntent intent = this.postTeleportIntent;
+            this.postTeleportIntent = PostTeleportIntent.PERCH;
+
+            if (intent == PostTeleportIntent.ROAM_FLIGHT) {
+                // --------------------------------------------
+                // DAMAGE BLINK (or anything else that set ROAM)
+                // Requirement:
+                //  - After teleport ends, force it into roaming flight.
+                // --------------------------------------------
+                clearFlyTarget();
+                clearPlannedPath("post-teleport ROAM: " + reason);
+
+                setAIState(RavenAIState.ROAM_FLY);
+
+                // Enable flight
+                this.setNoGravity(true);
+                if (this.getAnimMode() != RavenAnimMode.IN_AIR) {
+                    this.setAnimMode(RavenAnimMode.IN_AIR);
+                }
+
+                // Cancel landing so we don't immediately try to perch again.
+                resetLandingState("post-teleport roam reset landing");
+                landingLeafPos = null;
+
+                // Start a roam window (this already picks a roam target + path/flyTarget).
+                // This is the most stable way to get it moving and avoid instant re-perch loops.
+                roamTicksRemaining = 0;
+                beginRoamFlightWindow("post-teleport roam: " + reason);
+
+                // Also clear “stuck/avoidance” bookkeeping
+                avoidanceCooldownTicks = 0;
+                stuckTicks = 0;
+                lastDistToTarget = Double.NaN;
+
+                if (this.tickCount % 20 == 0) {
+                    LOG.info("[RavenEntity] PostTeleport: intent=ROAM_FLIGHT reason={} pos={} roamTicksRemaining={} flyTarget={} pathGoal={} pathPts={}",
+                            reason, this.position(), roamTicksRemaining, flyTarget, pathGoal, (pathWaypoints == null ? 0 : pathWaypoints.size()));
+                }
+
+                return;
+            }
+
+            // --------------------------------------------
+            // DEFAULT (existing behavior): PERCH MODE
+            // --------------------------------------------
             // After teleport, we do NOT resume roam/follow goals.
-            // Requirement: always go into perching mode: find spot, commit to landing, then idle.
+            // Requirement previously: always go into perching mode: find spot, commit to landing, then idle.
 
             clearFlyTarget();
             clearPlannedPath("post-teleport: " + reason);
@@ -4023,12 +4084,12 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             stuckTicks = 0;
             lastDistToTarget = Double.NaN;
 
-            RandomSource rnd = this.getRandom();
+            net.minecraft.util.RandomSource rnd = this.getRandom();
 
-            BlockPos perchCorner = pickLandingLeafBlock(rnd); // now returns perchCornerTop
+            net.minecraft.core.BlockPos perchCorner = pickLandingLeafBlock(rnd); // returns perchCornerTop
             if (perchCorner == null) {
                 // Fallback: if we can't find a perch spot, do a short roam so we don't freeze.
-                Vec3 roamTarget = pickRoamFallbackTarget(rnd);
+                net.minecraft.world.phys.Vec3 roamTarget = pickRoamFallbackTarget(rnd);
                 if (roamTarget != null) {
                     long seed = this.getUUID().getLeastSignificantBits() ^ (long) this.tickCount ^ 0x51CED00DL;
                     boolean ok = ensurePathTo(roamTarget, 4 * 20, seed, "post-teleport fallback roam");
@@ -4037,7 +4098,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     }
                 } else {
                     clearFlyTarget();
-                    this.setDeltaMovement(Vec3.ZERO);
+                    this.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
                 }
 
                 if (this.tickCount % 20 == 0) {
@@ -4051,7 +4112,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             landingPhase = LandingPhase.FLY_TO_OVERHEAD;
             landingTicks = 0;
 
-            Vec3 overhead = overheadTargetForLeaf(perchCorner);
+            net.minecraft.world.phys.Vec3 overhead = overheadTargetForLeaf(perchCorner);
 
             this.setNoGravity(true);
             if (this.getAnimMode() != RavenAnimMode.IN_AIR) {
@@ -4075,10 +4136,171 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         }
     }
 
-
     // -----------------
     // More helpers..
     // -----------------
+
+    public boolean requestDamageBlinkTeleport(@org.jetbrains.annotations.Nullable net.minecraft.world.damagesource.DamageSource source, float amount, String reasonTag) {
+        try {
+            if (this.level().isClientSide) return false;
+            if (!this.isAlive()) return false;
+
+            // If a teleport sequence is already active, we do NOT start another one.
+            // But we still force the "after teleport -> roam flight" behavior.
+            this.postTeleportIntent = PostTeleportIntent.ROAM_FLIGHT;
+
+            if (teleportSeqPhase != TeleportSeqPhase.NONE) {
+                if (this.tickCount % 20 == 0) {
+                    LOG.debug("[RavenEntity] requestDamageBlinkTeleport: sequence already active; set postTeleportIntent=ROAM_FLIGHT reasonTag={} phase={} pos={}",
+                            reasonTag, teleportSeqPhase, this.position());
+                }
+                return true; // handled/queued
+            }
+
+            // Anti-spam interval so repeated hits (fire tick, thorns, cactus) don't cause constant blinking.
+            int dt = this.tickCount - lastDamageBlinkTick;
+            if (dt < DAMAGE_BLINK_MIN_INTERVAL_TICKS) {
+                if (this.tickCount % 20 == 0) {
+                    LOG.debug("[RavenEntity] requestDamageBlinkTeleport: suppressed by interval dt={} < {} reasonTag={} pos={}",
+                            dt, DAMAGE_BLINK_MIN_INTERVAL_TICKS, reasonTag, this.position());
+                }
+                return false;
+            }
+            lastDamageBlinkTick = this.tickCount;
+
+            // We always want to "feel" like it dodged even when it still takes damage (25% case),
+            // so we blink either way.
+
+            // Prefer a 3x3x3 empty pocket for blink (clean visuals + no clipping),
+            // fallback to your existing 1x1 findNearbyEmptyTeleportBlock().
+            net.minecraft.core.BlockPos targetBlock = null;
+
+            try {
+                targetBlock = findNearbyEmptyTeleportBlock3x3x3(10, 80);
+            } catch (Throwable ignored) {
+                targetBlock = null;
+            }
+
+            if (targetBlock == null) {
+                try {
+                    targetBlock = findNearbyEmptyTeleportBlock();
+                } catch (Throwable ignored) {
+                    targetBlock = null;
+                }
+            }
+
+            if (targetBlock == null) {
+                if (this.tickCount % 20 == 0) {
+                    LOG.warn("[RavenEntity] requestDamageBlinkTeleport: no valid teleport target found. reasonTag={} src={} amt={} pos={}",
+                            reasonTag,
+                            (source == null ? "null" : source.toString()),
+                            amount,
+                            this.position());
+                }
+                return false;
+            }
+
+            net.minecraft.world.phys.Vec3 end = new net.minecraft.world.phys.Vec3(
+                    targetBlock.getX() + 0.5D,
+                    targetBlock.getY(),
+                    targetBlock.getZ() + 0.5D
+            );
+
+            // FX seed: stable-ish but varied.
+            final long DAMAGE_BLINK_SALT = 0xD0D6E5EEDL; // valid hex
+            long fxSeed =
+                    this.getUUID().getLeastSignificantBits()
+                            ^ (long) this.tickCount
+                            ^ targetBlock.asLong()
+                            ^ DAMAGE_BLINK_SALT
+                            ^ (long) (Float.floatToIntBits(amount));
+
+            // Start your existing fade/FX teleport sequence.
+            startTeleportSequence(end, fxSeed, "damage blink: " + reasonTag);
+
+            if (this.tickCount % 20 == 0) {
+                LOG.info("[RavenEntity] requestDamageBlinkTeleport: STARTED reasonTag={} src={} amt={} fromPos={} toBlock={} end={} fxSeed={}",
+                        reasonTag,
+                        (source == null ? "null" : source.toString()),
+                        amount,
+                        this.position(),
+                        targetBlock,
+                        end,
+                        fxSeed);
+            }
+
+            return true;
+
+        } catch (Throwable t) {
+            LOG.error("[RavenEntity] requestDamageBlinkTeleport failed reasonTag={}", reasonTag, t);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean hurt(net.minecraft.world.damagesource.DamageSource source, float amount) {
+        try {
+            // Let vanilla short-circuits happen first if we are truly invulnerable to this.
+            // (Note: even if invulnerable, we still might want to teleport; requirement says ALWAYS teleport on hit,
+            // but if hurt() is never called, we can't. Here, hurt() *is* called, so we can do it.)
+            if (this.isInvulnerableTo(source)) {
+                // Still attempt the damage blink (server-side).
+                try {
+                    if (!this.level().isClientSide) {
+                        // force post-teleport roam even if we don't take damage
+                        requestDamageBlinkTeleport(source, amount, "invulnerable-hurt");
+                    }
+                } catch (Throwable ignored) {
+                }
+                return false;
+            }
+
+            // Our combat blink logic (server authoritative).
+            boolean dodge = false;
+            try {
+                dodge = RavenDamageDodgeHandler.handleHurt(this, source, amount);
+            } catch (Throwable t) {
+                if (this.tickCount % 80 == 0) {
+                    LOG.warn("[RavenEntity] hurt: RavenDamageDodgeHandler failed safely: {}", t.toString());
+                }
+                dodge = false;
+            }
+
+            if (dodge) {
+                // Dodged: no damage applied.
+                if (this.tickCount % 20 == 0) {
+                    LOG.info("[RavenEntity] hurt: DODGED damage. amount={} src={} pos={}", amount, (source == null ? "null" : source.toString()), this.position());
+                }
+                return false;
+            }
+
+            // Not dodged: apply damage as normal.
+            boolean result = super.hurt(source, amount);
+
+            if (this.tickCount % 20 == 0) {
+                LOG.info("[RavenEntity] hurt: took damage. applied={} amount={} src={} hpNow={} pos={}",
+                        result, amount, (source == null ? "null" : source.toString()), this.getHealth(), this.position());
+            }
+
+            return result;
+
+        } catch (Throwable t) {
+            // Fail-safe: never crash in hurt. Apply vanilla behavior if we can.
+            if (this.tickCount % 40 == 0) {
+                LOG.error("[RavenEntity] hurt failed; falling back to super.hurt. src={} amt={}",
+                        (source == null ? "null" : source.toString()), amount, t);
+            }
+            try {
+                return super.hurt(source, amount);
+            } catch (Throwable t2) {
+                // Absolute fail-safe: do not crash server.
+                if (this.tickCount % 40 == 0) {
+                    LOG.error("[RavenEntity] super.hurt also failed; suppressing to prevent crash. {}", t2.toString());
+                }
+                return false;
+            }
+        }
+    }
 
     private @Nullable BlockPos findBestPerchCornerForLanding(@Nullable BlockPos landingLeaf, BlockPos feetBlock) {
         try {
@@ -4382,7 +4604,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
 
             // Probability per check (per ~1–2 seconds). Tune this.
-            double p = 0.12D;
+            double p = 0.26D;
             if (this.getRandom().nextDouble() > p) {
                 return;
             }
