@@ -18,26 +18,18 @@ public final class RavenPlayerAvoidanceHelper {
     public static final double AVOID_PLAYER_RADIUS = 25.0D;
     private static final double AVOID_PLAYER_RADIUS_SQR = AVOID_PLAYER_RADIUS * AVOID_PLAYER_RADIUS;
 
-    // How often we scan for players. This is NOT the pathing replan rate.
-    // Keep this reasonably frequent so it feels responsive; the RavenEntity will internally rate-limit replans.
-    private static final int RECHECK_COOLDOWN_TICKS = 2;
+    // Panic teleport radius (3D)
+    private static final double PANIC_TELEPORT_RADIUS = 5.0D;
+    private static final double PANIC_TELEPORT_RADIUS_SQR = PANIC_TELEPORT_RADIUS * PANIC_TELEPORT_RADIUS;
 
-    // Debug throttle
-    private static final int DEBUG_LOG_INTERVAL_TICKS = 20;
+    // IMPORTANT: check every tick so panic teleport triggers immediately when you rush into it.
+    // (We keep a cheap nearest-player scan; RavenEntity itself has its own anti-spam for panic teleports.)
+    private static final int RECHECK_COOLDOWN_TICKS = 1;
 
     private RavenPlayerAvoidanceHelper() {}
 
     /**
      * Call this from tickRoamFly() and tickIdleGround().
-     *
-     * Important refactor:
-     * - Helper no longer computes flee targets or TTL/seed/reason formatting for the entity.
-     * - Helper ONLY detects the nearest relevant player and reports (player, distance) to RavenEntity.
-     * - RavenEntity owns:
-     *    - re-arm cooldowns
-     *    - override tick budgeting
-     *    - flee target computation (including your "drop altitude" rules)
-     *    - pathing calls & reasons/logging
      */
     public static void tryTriggerPlayerAvoidance(RavenEntity raven) {
         try {
@@ -46,8 +38,6 @@ public final class RavenPlayerAvoidanceHelper {
             if (raven.level().isClientSide) return;
             if (!raven.isAlive()) return;
 
-            // Soft throttle so we don't spam scanning.
-            // NOTE: This does NOT control replanning. RavenEntity does.
             if (RECHECK_COOLDOWN_TICKS > 1 && (raven.tickCount % RECHECK_COOLDOWN_TICKS) != 0) {
                 return;
             }
@@ -61,18 +51,27 @@ public final class RavenPlayerAvoidanceHelper {
             double d2 = ravenPos.distanceToSqr(playerPos);
             if (d2 > AVOID_PLAYER_RADIUS_SQR) return;
 
-            double dist = Math.sqrt(Math.max(0.0D, d2));
+            // Panic teleport if extremely close.
+            if (d2 <= PANIC_TELEPORT_RADIUS_SQR) {
+                raven.requestPanicTeleportAwayFromPlayer(nearest, Math.sqrt(Math.max(0.0D, d2)));
 
-            // ✅ Single, correct call signature (matches your new RavenEntity API):
-            // requestPlayerAvoidanceFleeTarget(@Nullable Player player, double distToPlayer)
-            raven.requestPlayerAvoidanceFleeTarget(nearest, dist);
+                if (raven.tickCount % 20 == 0) {
+                    LOG.info("[RavenPlayerAvoidanceHelper] PANIC teleport requested: player={} dist={} ravenPos={}",
+                            safeName(nearest),
+                            String.format("%.2f", Math.sqrt(Math.max(0.0D, d2))),
+                            ravenPos);
+                }
+                return;
+            }
 
-            if (raven.tickCount % DEBUG_LOG_INTERVAL_TICKS == 0) {
-                LOG.info("[RavenPlayerAvoidanceHelper] trigger-check: player={} dist={} ravenPos={} playerPos={}",
+            // Otherwise normal fly-away avoidance.
+            raven.requestPlayerAvoidanceFleeTarget(nearest, Math.sqrt(Math.max(0.0D, d2)));
+
+            if (raven.tickCount % 20 == 0) {
+                LOG.info("[RavenPlayerAvoidanceHelper] avoidance requested: player={} dist={} ravenPos={}",
                         safeName(nearest),
-                        String.format("%.2f", dist),
-                        ravenPos,
-                        playerPos);
+                        String.format("%.2f", Math.sqrt(Math.max(0.0D, d2))),
+                        ravenPos);
             }
 
         } catch (Throwable t) {
@@ -104,7 +103,6 @@ public final class RavenPlayerAvoidanceHelper {
 
             for (Player p : players) {
                 if (p == null) continue;
-
                 double d2 = p.position().distanceToSqr(pos);
                 if (d2 <= (r * r) && d2 < bestD2) {
                     bestD2 = d2;
@@ -114,7 +112,7 @@ public final class RavenPlayerAvoidanceHelper {
 
             return best;
         } catch (Throwable t) {
-            if (raven != null && raven.tickCount % 80 == 0) {
+            if (raven.tickCount % 80 == 0) {
                 LOG.warn("[RavenPlayerAvoidanceHelper] findNearestPlayerWithin failed safely: {}", t.toString());
             }
             return null;

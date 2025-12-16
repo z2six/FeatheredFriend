@@ -104,6 +104,8 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         ROAM_FLIGHT
     }
 
+    private int lastPanicTeleportTick = Integer.MIN_VALUE;
+
     // Player-avoidance override: while > 0, avoidance has priority and we MUST NOT start landing / normal roam planning.
     private int playerAvoidanceOverrideTicks = 0;
     // Cooldown so the helper doesn't re-arm every single tick and spam A*.
@@ -4707,6 +4709,281 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         } catch (Throwable t) {
             if (this.tickCount % 40 == 0) {
                 LOG.warn("[RavenEntity] computePlayerAvoidanceFleeTarget failed safely: {}", t.toString());
+            }
+            return null;
+        }
+    }
+
+    public void requestPanicTeleportAwayFromPlayer(@org.jetbrains.annotations.Nullable Player player, double distToPlayer) {
+        try {
+            if (this.level().isClientSide) return;
+            if (!this.isAlive()) return;
+
+            if (player == null) {
+                if (this.tickCount % 40 == 0) {
+                    LOG.debug("[RavenEntity] requestPanicTeleportAwayFromPlayer: player=null (skip)");
+                }
+                return;
+            }
+            if (!player.isAlive() || player.isSpectator()) {
+                if (this.tickCount % 40 == 0) {
+                    LOG.debug("[RavenEntity] requestPanicTeleportAwayFromPlayer: invalid player (alive={} spectator={}) name={}",
+                            player.isAlive(), player.isSpectator(), player.getName().getString());
+                }
+                return;
+            }
+
+            // Never stack with an active teleport sequence.
+            if (teleportSeqPhase != TeleportSeqPhase.NONE) {
+                if (this.tickCount % 40 == 0) {
+                    LOG.debug("[RavenEntity] requestPanicTeleportAwayFromPlayer: teleportSeqPhase={} (skip)", teleportSeqPhase);
+                }
+                return;
+            }
+
+            // IMPORTANT FIX #1: do NOT use teleportCooldownTicks here.
+            // teleportCooldownTicks is shared with stuck/blink logic, and it frequently blocks panic teleport,
+            // causing the "I stand inside it for 1-2s before it finally teleports" delay.
+            // Instead, use a dedicated interval based on lastPanicTeleportTick.
+            final int PANIC_MIN_INTERVAL_TICKS = 30; // 1.5s; tune 10..40. This prevents spam but keeps it snappy.
+            int dt = this.tickCount - this.lastPanicTeleportTick;
+            if (dt >= 0 && dt < PANIC_MIN_INTERVAL_TICKS) {
+                if (this.tickCount % 40 == 0) {
+                    LOG.debug("[RavenEntity] PanicTeleport suppressed by interval: dt={} < {} dist={} player={} pos={}",
+                            dt, PANIC_MIN_INTERVAL_TICKS, String.format("%.2f", distToPlayer), player.getName().getString(), this.position());
+                }
+                return;
+            }
+
+            final Vec3 ravenPos = this.position();
+            final Vec3 playerPos = player.position();
+
+            // IMPORTANT FIX #2: teleport BEHIND the player (rear 180° cone), not simply away from player.
+            // "Behind" is relative to player's look direction (front 180° vs back 180°).
+            Vec3 look = player.getLookAngle();
+            double lx = look.x;
+            double lz = look.z;
+            double lLen = Math.sqrt(lx * lx + lz * lz);
+
+            // If look vector is degenerate (rare), pick something stable-ish.
+            if (lLen < 1.0E-4D) {
+                RandomSource rnd = this.getRandom();
+                double ang = rnd.nextDouble() * (Math.PI * 2.0D);
+                lx = Math.cos(ang);
+                lz = Math.sin(ang);
+                lLen = 1.0D;
+            }
+
+            // Base "behind" direction = -look (XZ only)
+            double bx = -lx / lLen;
+            double bz = -lz / lLen;
+
+            // Random angle within the 180° behind cone: rotate behind vector by [-90°, +90°]
+            // This keeps it in the rear hemisphere.
+            RandomSource rnd = this.getRandom();
+            double yawOffset = (rnd.nextDouble() * Math.PI) - (Math.PI * 0.5D); // [-pi/2 .. +pi/2]
+
+            double cos = Math.cos(yawOffset);
+            double sin = Math.sin(yawOffset);
+
+            // Rotate (bx,bz) around Y by yawOffset:
+            // x' = x*cos - z*sin
+            // z' = x*sin + z*cos
+            double rx = bx * cos - bz * sin;
+            double rz = bx * sin + bz * cos;
+
+            double rLen = Math.sqrt(rx * rx + rz * rz);
+            if (rLen < 1.0E-4D) {
+                rx = bx;
+                rz = bz;
+                rLen = 1.0D;
+            }
+            rx /= rLen;
+            rz /= rLen;
+
+            final double TELEPORT_DIST = 30.0D;
+
+            // Destination is computed relative to PLAYER (so it tends to "appear behind you"),
+            // not relative to raven.
+            double tx = playerPos.x + rx * TELEPORT_DIST;
+            double tz = playerPos.z + rz * TELEPORT_DIST;
+
+            // Y policy: keep it near raven's current Y band (stable, avoids bobbing),
+            // then clamp into home bounds via existing helpers.
+            int tyInt = clampYToHomeBounds(Mth.floor(ravenPos.y));
+            double ty = tyInt + 0.75D;
+
+            Vec3 raw = new Vec3(tx, ty, tz);
+            Vec3 clamped = clampTargetToHomeBounds(raw);
+
+            BlockPos center = BlockPos.containing(clamped.x, clamped.y, clamped.z);
+
+            long seed =
+                    this.getUUID().getLeastSignificantBits()
+                            ^ (long) this.tickCount
+                            ^ player.getUUID().getMostSignificantBits()
+                            ^ center.asLong()
+                            ^ 0x5AC1F1EDBEEFL;
+
+            // Prefer a 3x3x3 pocket near the behind-player destination.
+            BlockPos targetBlock = findEmptyTeleportBlock3x3x3Near(center, 10, 260, seed);
+
+            // Fallback 1: any 3x3x3 pocket near current position.
+            if (targetBlock == null) {
+                try {
+                    targetBlock = findNearbyEmptyTeleportBlock3x3x3(10, 90);
+                } catch (Throwable ignored) {
+                    targetBlock = null;
+                }
+            }
+
+            // Fallback 2: last resort 1x1x1.
+            if (targetBlock == null) {
+                try {
+                    targetBlock = findNearbyEmptyTeleportBlock();
+                } catch (Throwable ignored) {
+                    targetBlock = null;
+                }
+            }
+
+            if (targetBlock == null) {
+                if (this.tickCount % 20 == 0) {
+                    LOG.warn("[RavenEntity] PanicTeleport: no valid teleport target found. player={} dist={} ravenPos={} raw={} clamped={}",
+                            player.getName().getString(),
+                            String.format("%.2f", distToPlayer),
+                            ravenPos,
+                            raw,
+                            clamped);
+                }
+                // Still update last tick to prevent hammering heavy scans every single tick while you stand inside it.
+                this.lastPanicTeleportTick = this.tickCount;
+                return;
+            }
+
+            Vec3 end = new Vec3(targetBlock.getX() + 0.5D, targetBlock.getY(), targetBlock.getZ() + 0.5D);
+
+            // Home bounds guard (should already be enforced in findEmptyTeleportBlock3x3x3Near).
+            if (isOutOfHomeBounds(end)) {
+                if (this.tickCount % 20 == 0) {
+                    LOG.warn("[RavenEntity] PanicTeleport: selected end out of home bounds. end={} home={} radius={}",
+                            end, getHomePosPublic(), getHomeRadiusBlocksPublic());
+                }
+                this.lastPanicTeleportTick = this.tickCount;
+                return;
+            }
+
+            // IMPORTANT FIX #3: after panic teleport, force ROAM_FLIGHT (test to eliminate the post-teleport "perching bopping").
+            // This makes it immediately resume stable flight behavior, and then your normal avoidance logic works cleanly.
+            this.postTeleportIntent = PostTeleportIntent.ROAM_FLIGHT;
+
+            // Cancel current movement intent so teleport doesn't fight A* / flyTarget.
+            clearFlyTarget();
+            clearPlannedPath("panic teleport");
+
+            // Also clear avoidance override state so we don't get weird half-armed logic after teleport.
+            try {
+                playerAvoidanceOverrideTicks = 0;
+                playerAvoidanceRearmCooldownTicks = 20; // small buffer
+            } catch (Throwable ignored) {}
+
+            long fxSeed =
+                    this.getUUID().getLeastSignificantBits()
+                            ^ (long) this.tickCount
+                            ^ targetBlock.asLong()
+                            ^ player.getUUID().getMostSignificantBits()
+                            ^ 0xD15C0FFEE0DDF00DL;
+
+            String reason = "panic teleport behind: player=" + player.getName().getString()
+                    + " dist=" + String.format("%.2f", distToPlayer)
+                    + " yawOffsetDeg=" + String.format("%.1f", (yawOffset * (180.0D / Math.PI)));
+
+            // Mark interval now so we don't double-fire in the same close-contact moment.
+            this.lastPanicTeleportTick = this.tickCount;
+
+            startTeleportSequence(end, fxSeed, reason);
+
+            if (this.tickCount % 20 == 0) {
+                LOG.info("[RavenEntity] PanicTeleport STARTED: reason={} ravenPos={} playerPos={} behindDir=({}, {}) dist={} raw={} clamped={} targetBlock={} end={} fxSeed={}",
+                        reason,
+                        ravenPos,
+                        playerPos,
+                        String.format("%.3f", rx),
+                        String.format("%.3f", rz),
+                        String.format("%.1f", TELEPORT_DIST),
+                        raw,
+                        clamped,
+                        targetBlock,
+                        end,
+                        fxSeed);
+            }
+
+        } catch (Throwable t) {
+            LOG.error("[RavenEntity] requestPanicTeleportAwayFromPlayer failed safely", t);
+            // Fail-safe: avoid hammering if something is broken.
+            try {
+                this.lastPanicTeleportTick = this.tickCount;
+            } catch (Throwable ignored) {}
+        }
+    }
+
+    @org.jetbrains.annotations.Nullable
+    private BlockPos findEmptyTeleportBlock3x3x3Near(BlockPos center, int radiusBlocks, int maxCandidates, long seed) {
+        try {
+            if (center == null) return null;
+
+            int r = Math.max(1, radiusBlocks);
+            int candidates = Math.max(1, maxCandidates);
+
+            RandomSource rnd = RandomSource.create(seed ^ 0xA11CE5ED1234L);
+
+            int yBand = 4;
+
+            for (int i = 0; i < candidates; i++) {
+                int rx = rnd.nextInt(r * 2 + 1) - r;
+                int rz = rnd.nextInt(r * 2 + 1) - r;
+                int ry = rnd.nextInt(yBand * 2 + 1) - yBand;
+
+                BlockPos p = center.offset(rx, ry, rz);
+
+                if (!this.level().isEmptyBlock(p)) continue;
+                if (!this.level().isEmptyBlock(p.above())) continue;
+                if (!this.level().getFluidState(p).isEmpty()) continue;
+
+                Vec3 pv = new Vec3(p.getX() + 0.5D, p.getY(), p.getZ() + 0.5D);
+                if (isOutOfHomeBounds(pv)) continue;
+
+                boolean ok = true;
+                for (int dx = -1; dx <= 1 && ok; dx++) {
+                    for (int dz = -1; dz <= 1 && ok; dz++) {
+                        for (int dy = 0; dy <= 2 && ok; dy++) {
+                            BlockPos q = p.offset(dx, dy, dz);
+                            if (!this.level().isEmptyBlock(q)) {
+                                ok = false;
+                                break;
+                            }
+                            if (!this.level().getFluidState(q).isEmpty()) {
+                                ok = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!ok) continue;
+
+                return p;
+            }
+
+            if (this.tickCount % 60 == 0) {
+                LOG.debug("[RavenEntity] findEmptyTeleportBlock3x3x3Near: no pocket found center={} r={} candidates={} seed={}",
+                        center, r, candidates, seed);
+            }
+
+            return null;
+
+        } catch (Throwable t) {
+            if (this.tickCount % 60 == 0) {
+                LOG.warn("[RavenEntity] findEmptyTeleportBlock3x3x3Near failed safely: {}", t.toString());
             }
             return null;
         }
