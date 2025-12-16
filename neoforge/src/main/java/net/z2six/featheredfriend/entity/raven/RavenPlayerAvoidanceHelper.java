@@ -3,6 +3,8 @@ package net.z2six.featheredfriend.entity.raven;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
@@ -51,31 +53,91 @@ public final class RavenPlayerAvoidanceHelper {
             double d2 = ravenPos.distanceToSqr(playerPos);
             if (d2 > AVOID_PLAYER_RADIUS_SQR) return;
 
+            double dist = Math.sqrt(Math.max(0.0D, d2));
+
+            // ------------------------------------------------------------
+            // NEW: LURE FOLLOW OVERRIDE (gold nugget)
+            // ------------------------------------------------------------
+            boolean holdingNugget = isHoldingGoldenNugget(nearest);
+
+            if (holdingNugget) {
+                // Ask the raven to arm / maintain lure-follow.
+                boolean armed = false;
+                try {
+                    raven.requestLureFollowPlayer(nearest, dist);
+                    armed = raven.isLureFollowActive();
+                } catch (Throwable t) {
+                    armed = false;
+                    if (raven.tickCount % 40 == 0) {
+                        LOG.warn("[RavenPlayerAvoidanceHelper] LURE follow request failed safely: {}", t.toString());
+                    }
+                }
+
+                if (raven.tickCount % 20 == 0) {
+                    LOG.info("[RavenPlayerAvoidanceHelper] LURE follow requested: player={} dist={} ravenPos={} playerPos={} mainHand={} offHand={} armedNow={}",
+                            safeName(nearest),
+                            String.format("%.2f", dist),
+                            ravenPos,
+                            playerPos,
+                            safeItem(nearest.getMainHandItem()),
+                            safeItem(nearest.getOffhandItem()),
+                            armed);
+                }
+
+                // If lure-follow is active, we MUST NOT run avoidance/panic logic.
+                if (armed) {
+                    return;
+                }
+                // If not armed for some reason, we fall through to normal avoidance logic.
+            }
+
             // Panic teleport if extremely close.
             if (d2 <= PANIC_TELEPORT_RADIUS_SQR) {
-                raven.requestPanicTeleportAwayFromPlayer(nearest, Math.sqrt(Math.max(0.0D, d2)));
+                raven.requestPanicTeleportAwayFromPlayer(nearest, dist);
 
                 if (raven.tickCount % 20 == 0) {
                     LOG.info("[RavenPlayerAvoidanceHelper] PANIC teleport requested: player={} dist={} ravenPos={}",
                             safeName(nearest),
-                            String.format("%.2f", Math.sqrt(Math.max(0.0D, d2))),
+                            String.format("%.2f", dist),
                             ravenPos);
                 }
                 return;
             }
 
             // Otherwise normal fly-away avoidance.
-            raven.requestPlayerAvoidanceFleeTarget(nearest, Math.sqrt(Math.max(0.0D, d2)));
+            raven.requestPlayerAvoidanceFleeTarget(nearest, dist);
 
             if (raven.tickCount % 20 == 0) {
                 LOG.info("[RavenPlayerAvoidanceHelper] avoidance requested: player={} dist={} ravenPos={}",
                         safeName(nearest),
-                        String.format("%.2f", Math.sqrt(Math.max(0.0D, d2))),
+                        String.format("%.2f", dist),
                         ravenPos);
             }
 
         } catch (Throwable t) {
             LOG.error("[RavenPlayerAvoidanceHelper] tryTriggerPlayerAvoidance failed", t);
+        }
+    }
+
+    private static boolean isHoldingGoldenNugget(Player p) {
+        try {
+            if (p == null) return false;
+            ItemStack a = p.getMainHandItem();
+            if (a != null && !a.isEmpty() && a.is(Items.GOLD_NUGGET)) return true;
+            ItemStack b = p.getOffhandItem();
+            return b != null && !b.isEmpty() && b.is(Items.GOLD_NUGGET);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private static String safeItem(ItemStack st) {
+        try {
+            if (st == null) return "null";
+            if (st.isEmpty()) return "empty";
+            return String.valueOf(st.getItem());
+        } catch (Throwable t) {
+            return "unknown";
         }
     }
 
