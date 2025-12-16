@@ -112,6 +112,13 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     private static final int LURE_FOLLOW_GRACE_TICKS = 10; // 0.5s
     private static final int LURE_FOLLOW_REFRESH_TICKS = 3 * 20; // keep active for 3s per refresh
 
+    // Follow goal stability (prevents constant re-path + vertical "hops")
+    private @org.jetbrains.annotations.Nullable Vec3 followCachedGoal = null;
+    private @org.jetbrains.annotations.Nullable Vec3 followCachedOwnerPos = null;
+    private @org.jetbrains.annotations.Nullable Vec3 followCachedOwnerLook = null;
+    private int followGoalTtlTicks = 0;
+    private int followRepathCooldownTicks = 0;
+
     // For damage handler
     // Post-teleport intent:
     // Default stays PERCH because your existing teleport recovery behavior wanted perching.
@@ -2680,7 +2687,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         }
     }
 
-    public void requestLureFollowPlayer(@org.jetbrains.annotations.Nullable Player player, double distToPlayer) {
+    public void requestLureFollowPlayer(@org.jetbrains.annotations.Nullable net.minecraft.world.entity.player.Player player, double distToPlayer) {
         try {
             if (this.level().isClientSide) return;
             if (!this.isAlive()) return;
@@ -2710,19 +2717,8 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
             followOverrideActive = true;
 
-            // Choose/refresh follow pocket near player (3x3x3 air, pref above player)
-            BlockPos pocket = findFollowPocketNearPlayer(player);
-            if (pocket == null) {
-                // Fallback: hover above player, still clamped to home Y
-                int py = Mth.floor(player.getY());
-                int y = clampYToHomeBounds(py + 3);
-                pocket = new BlockPos(Mth.floor(player.getX()), y, Mth.floor(player.getZ()));
-            }
-
-            followPocketAnchor = pocket;
-            followPocketRecalcCooldownTicks = 10; // small pause before re-scanning
-
-            // Kill avoidance overrides so FOLLOW_OWNER truly wins (stuck teleport is separate elsewhere)
+            // Kill avoidance overrides so FOLLOW_OWNER truly wins
+            // (stuck teleport is gated separately by isTeleportRecoveryEligible).
             try {
                 playerAvoidanceOverrideTicks = 0;
                 playerAvoidanceRearmCooldownTicks = 0;
@@ -2741,21 +2737,39 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 this.setAnimMode(RavenAnimMode.IN_AIR);
             }
 
-            // Pocket center as goal
-            Vec3 goal = new Vec3(
-                    pocket.getX() + 0.5D,
-                    pocket.getY() + 0.5D,
-                    pocket.getZ() + 0.5D
-            );
+            // --------------------------------------------------
+            // OLD behavior: find 3x3x3 pocket near player, hover.
+            // NEW behavior: we still optionally find a pocket (for logging / future use),
+            // but the actual GOAL is "in front of player at eye-level".
+            // --------------------------------------------------
+            BlockPos pocket = null;
+            try {
+                pocket = findFollowPocketNearPlayer(player);
+            } catch (Throwable ignored) {
+                pocket = null;
+            }
 
-            // Use the same “safe goal” logic you already have for A*
+            if (pocket == null) {
+                // Fallback: hover above player, still clamped to home Y
+                int py = Mth.floor(player.getY());
+                int y = clampYToHomeBounds(py + 3);
+                pocket = new BlockPos(Mth.floor(player.getX()), y, Mth.floor(player.getZ()));
+            }
+
+            followPocketAnchor = pocket;
+            followPocketRecalcCooldownTicks = 10; // small pause before re-scanning
+
+            // Desired final follow position: in front of player's face.
+            Vec3 desiredFront = computeFollowFrontPosition(player);
+
+            // Use the same “safe goal” logic you already have for A*.
             RavenAStarPathing.Config cfg = new RavenAStarPathing.Config();
             cfg.allowLeaves = false;
             cfg.allowReplaceables = false;
             cfg.clearanceHeight = 2;
             cfg.cellSize = 1;
 
-            Vec3 safeGoal = computeSafePathingGoal(goal, cfg);
+            Vec3 safeGoal = computeSafePathingGoal(desiredFront, cfg);
 
             long seed =
                     player.getUUID().getLeastSignificantBits()
@@ -2770,7 +2784,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         true,
                         8 * 20,
                         seed,
-                        "lure follow: player=" + player.getName().getString()
+                        "lure follow (front-of-player): player=" + player.getName().getString()
                                 + " dist=" + String.format("%.2f", distToPlayer)
                 );
             } catch (Throwable t) {
@@ -2787,10 +2801,11 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
 
             if (this.tickCount % 20 == 0) {
-                LOG.info("[RavenEntity] LURE FOLLOW armed: player={} dist={} pocket={} safeGoal={} pathOk={} lureTicks={} aiState={} pos={}",
+                LOG.info("[RavenEntity] LURE FOLLOW armed: player={} dist={} pocket={} desiredFront={} safeGoal={} pathOk={} lureTicks={} aiState={} pos={}",
                         player.getName().getString(),
                         String.format("%.2f", distToPlayer),
                         pocket,
+                        desiredFront,
                         safeGoal,
                         pathOk,
                         this.lureFollowTicks,
@@ -2812,150 +2827,266 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     }
 
     private void tickFollowOwner() {
-        this.setNoGravity(true);
-        if (this.getAnimMode() != RavenAnimMode.IN_AIR) {
-            this.setAnimMode(RavenAnimMode.IN_AIR);
-        }
-
-        resetLandingState("follow");
-        this.idleLockTicks = 0;
-        this.idleLeafLossTicks = 0;
-
-        // Tick lure timer down (server-side only)
         try {
-            if (!this.level().isClientSide) {
-                if (lureFollowTicks > 0) {
-                    lureFollowTicks--;
-                }
-                if (lureFollowTicks <= 0 && lureFollowPlayerUuid != null) {
-                    // Grace: allow a tiny buffer so it doesn't flap if helper misses 1 tick
-                    lureFollowTicks = 0;
-                }
+            // Flight posture
+            this.setNoGravity(true);
+            if (this.getAnimMode() != RavenAnimMode.IN_AIR) {
+                this.setAnimMode(RavenAnimMode.IN_AIR);
             }
-        } catch (Throwable ignored) {}
 
-        // Decide follow target:
-        //  - If tamed: owner
-        //  - Else (or if owner missing): lure player (gold nugget)
-        Player target = null;
-        boolean usingLure = false;
+            resetLandingState("follow");
+            this.idleLockTicks = 0;
+            this.idleLeafLossTicks = 0;
 
-        // Owner path
-        try {
-            target = getOwnerPlayerServerSafe();
-        } catch (Throwable ignored) {
-            target = null;
-        }
-
-        // Lure path if not tamed/owner missing
-        if (target == null) {
+            // Tick lure timer down (server-side only)
             try {
-                Player lure = getLureFollowPlayerServerSafe();
-                if (lure != null) {
-                    target = lure;
-                    usingLure = true;
+                if (!this.level().isClientSide) {
+                    if (lureFollowTicks > 0) {
+                        lureFollowTicks--;
+                    }
+                    if (lureFollowTicks <= 0 && lureFollowPlayerUuid != null) {
+                        lureFollowTicks = 0;
+                    }
                 }
+            } catch (Throwable ignored) {}
+
+            // Decide follow target:
+            //  - If tamed: owner
+            //  - Else (or if owner missing): lure player (gold nugget)
+            Player target = null;
+            boolean usingLure = false;
+
+            try {
+                target = getOwnerPlayerServerSafe();
             } catch (Throwable ignored) {
                 target = null;
             }
-        }
 
-        // If no target, bail out
-        if (target == null) {
-            if (isLureFollowActive()) {
-                clearLureFollowState("follow: target missing");
-            }
-            setAIState(RavenAIState.IDLE_GROUND);
-            idleTicksRemaining = 0;
-            clearPlannedPath("follow lost target");
-            clearFlyTarget();
-            roamTicksRemaining = 0;
-            return;
-        }
-
-        // While lure-following: suppress player avoidance behavior by keeping override alive.
-        // (Avoidance helper already returns early, but this is an extra guard)
-        if (usingLure) {
-            // small keepalive; if lure is active, don’t let avoidance logic win
-            try {
-                if (lureFollowTicks < LURE_FOLLOW_GRACE_TICKS && lureFollowPlayerUuid != null) {
-                    // If it’s about to expire, leave it; helper will refresh if still holding nugget.
-                    // This just prevents immediate drop if there’s a 1-tick gap.
-                    lureFollowTicks = LURE_FOLLOW_GRACE_TICKS;
+            if (target == null) {
+                try {
+                    Player lure = getLureFollowPlayerServerSafe();
+                    if (lure != null) {
+                        target = lure;
+                        usingLure = true;
+                    }
+                } catch (Throwable ignored) {
+                    target = null;
                 }
-            } catch (Throwable ignored) {}
-        }
-
-        if (isOutOfHomeBounds(target.position())) {
-            triggerFollowCooldownAndReturn();
-            return;
-        }
-
-        Vec3 targetPos = target.position();
-        Vec3 myPos = this.position();
-        double dist = myPos.distanceTo(targetPos);
-        Vec3 desiredGoal = null;
-
-        if (dist > FOLLOW_MAX_DIST) {
-            desiredGoal = targetPos.add(0.0D, 2.0D, 0.0D);
-        } else if (dist < FOLLOW_MIN_DIST) {
-            Vec3 away = myPos.subtract(targetPos).normalize();
-            if (away.lengthSqr() < 0.0001D) {
-                away = new Vec3(1, 0, 0);
             }
-            desiredGoal = targetPos.add(away.scale(FOLLOW_MIN_DIST)).add(0.0D, 2.0D, 0.0D);
-        } else {
-            if (this.tickCount % 20 == 0) {
-                clearPlannedPath("follow in-band hover");
+
+            // If no target, bail out
+            if (target == null) {
+                if (isLureFollowActive()) {
+                    clearLureFollowState("follow: target missing");
+                }
+                setAIState(RavenAIState.IDLE_GROUND);
+                idleTicksRemaining = 0;
+                clearPlannedPath("follow lost target");
                 clearFlyTarget();
-                this.setDeltaMovement(Vec3.ZERO);
+                roamTicksRemaining = 0;
+                return;
             }
-            return;
-        }
 
-        desiredGoal = clampTargetToHomeBounds(desiredGoal);
+            // While lure-following: suppress player avoidance behavior by keeping override alive.
+            if (usingLure) {
+                try {
+                    if (lureFollowTicks < LURE_FOLLOW_GRACE_TICKS && lureFollowPlayerUuid != null) {
+                        lureFollowTicks = LURE_FOLLOW_GRACE_TICKS;
+                    }
+                } catch (Throwable ignored) {}
+            }
 
-        // Path to the desired goal.
-        long seed = target.getUUID().getLeastSignificantBits()
-                ^ this.getUUID().getMostSignificantBits()
-                ^ (long) this.tickCount
-                ^ 0xF0110BEEFL;
+            // Home bounds guard (your existing behavior)
+            if (isOutOfHomeBounds(target.position())) {
+                triggerFollowCooldownAndReturn();
+                return;
+            }
 
-        boolean ok = ensurePathTo(desiredGoal, 5 * 20, seed, usingLure ? "follow lure player" : "follow owner");
-        if (!ok && (flyTarget == null || flyTargetTimeoutTicks <= 0)) {
-            setFlyTarget(desiredGoal, 5 * 20);
-        }
+            // --------------------------------------------
+            // AGGRESSIVE FOLLOW: stable front-of-player goal
+            // --------------------------------------------
+            if (followGoalTtlTicks > 0) followGoalTtlTicks--;
+            if (followRepathCooldownTicks > 0) followRepathCooldownTicks--;
 
-        if (isOutOfHomeBounds(this.position())) {
-            triggerFollowCooldownAndReturn();
-            return;
-        }
+            // ARRIVAL CHECK: when already at the follow spot, stop fighting movement.
+            // This also enables "disable stuck teleport when at player" to be true in practice.
+            boolean atGoal = false;
+            Vec3 computedFront = null;
 
-        if (flyTargetTimeoutTicks > 0) {
-            flyTargetTimeoutTicks--;
-        }
+            try {
+                computedFront = computeFollowFrontPosition(target);
+                atGoal = isCloseEnoughToFollowPlayer(target);
+            } catch (Throwable ignored) {
+                atGoal = false;
+            }
 
-        // Keep using your normal flight avoidance *mechanics* (not player avoidance).
-        // PlayerAvoidanceHelper is suppressed separately while lure-follow active.
-        maybeAvoidOrRetargetDuringFlight(this.getRandom());
+            if (atGoal) {
+                clearPlannedPath("follow: arrived");
+                clearFlyTarget();
 
-        if (flyTarget != null) {
-            flyTowardTarget(FLY_SPEED_BASE);
-        }
+                // gentle hover damping to avoid jitter when player rotates
+                this.setDeltaMovement(this.getDeltaMovement().scale(0.6D));
 
-        if (pathWaypoints != null && !pathWaypoints.isEmpty()) {
-            advanceWaypointIfNeeded(5 * 20, usingLure ? "follow lure player" : "follow owner");
-        }
+                // Reset cached goal so next meaningful player move triggers a clean refresh
+                followCachedGoal = null;
+                followCachedOwnerPos = null;
+                followCachedOwnerLook = null;
+                followGoalTtlTicks = 0;
 
-        if (this.tickCount % 40 == 0) {
-            LOG.debug("[RavenEntity] tickFollowOwner: target={} usingLure={} dist={} goal={} pathOk={} lureTicksLeft={} pos={}",
-                    target.getName().getString(),
-                    usingLure,
-                    String.format("%.2f", dist),
-                    desiredGoal,
-                    ok,
-                    lureFollowTicks,
-                    this.position());
+                // Still tick common mechanics
+                if (flyTargetTimeoutTicks > 0) flyTargetTimeoutTicks--;
+                maybeAvoidOrRetargetDuringFlight(this.getRandom());
+
+                if (this.tickCount % 40 == 0) {
+                    LOG.debug("[RavenEntity] tickFollowOwner: ARRIVED target={} usingLure={} pos={} frontGoal={}",
+                            target.getName().getString(),
+                            usingLure,
+                            this.position(),
+                            computedFront);
+                }
+                return;
+            }
+
+            // Decide whether to refresh goal (hysteresis: don’t replan constantly)
+            Vec3 ownerPosNow = target.position();
+            Vec3 ownerLookNow = target.getLookAngle();
+
+            boolean needNewGoal = (followCachedGoal == null) || (followGoalTtlTicks <= 0);
+
+            if (!needNewGoal) {
+                // moved enough?
+                double moved2 = (followCachedOwnerPos == null) ? Double.MAX_VALUE : ownerPosNow.distanceToSqr(followCachedOwnerPos);
+
+                // turned enough? (XZ dot)
+                boolean turned = false;
+                if (followCachedOwnerLook != null) {
+                    double ax = followCachedOwnerLook.x;
+                    double az = followCachedOwnerLook.z;
+                    double bx = ownerLookNow.x;
+                    double bz = ownerLookNow.z;
+
+                    double al = Math.sqrt(ax * ax + az * az);
+                    double bl = Math.sqrt(bx * bx + bz * bz);
+
+                    if (al > 1.0E-4D && bl > 1.0E-4D) {
+                        ax /= al; az /= al;
+                        bx /= bl; bz /= bl;
+                        double dot = ax * bx + az * bz;
+                        turned = dot < 0.92D; // ~>23 degrees
+                    }
+                }
+
+                boolean hasFlyIntent = (flyTarget != null && flyTargetTimeoutTicks > 0);
+                boolean hasPathIntent = (pathWaypoints != null && !pathWaypoints.isEmpty() && pathWaypointIndex < pathWaypoints.size());
+                boolean hasAnyIntent = hasFlyIntent || hasPathIntent;
+
+                boolean stuckOrColliding = (this.horizontalCollision || this.verticalCollision || stuckTicks >= STUCK_TICKS_THRESHOLD);
+
+                if (moved2 >= (0.75D * 0.75D)) needNewGoal = true;
+                if (turned) needNewGoal = true;
+                if (!hasAnyIntent || stuckOrColliding) needNewGoal = true;
+            }
+
+            // Hard repath cooldown (prevents the “fly up a bit when I approach” jitter)
+            if (needNewGoal && followRepathCooldownTicks > 0) {
+                needNewGoal = false;
+            }
+
+            Vec3 desiredGoal = followCachedGoal;
+            boolean pathOk = false;
+
+            if (needNewGoal) {
+                // 1) compute strict “front of player at eye height”
+                Vec3 rawFront = computeFollowFrontPosition(target);
+
+                // 2) apply XZ-only safety adjuster that LOCKS Y (no vertical hop)
+                Vec3 lockedSafe = computeSafeFollowGoalXZLockedY(rawFront);
+
+                lockedSafe = clampTargetToHomeBounds(lockedSafe);
+
+                followCachedGoal = lockedSafe;
+                desiredGoal = lockedSafe;
+
+                followCachedOwnerPos = ownerPosNow;
+                followCachedOwnerLook = ownerLookNow;
+
+                // short TTL so it tracks smoothly but doesn’t spam replans
+                followGoalTtlTicks = 12;         // ~0.6s
+                followRepathCooldownTicks = 10;  // ~0.5s min between replans
+
+                // Clear intent before replanning so path-vs-fly doesn’t fight
+                clearPlannedPath("follow: new goal");
+                clearFlyTarget();
+
+                long seed = target.getUUID().getLeastSignificantBits()
+                        ^ this.getUUID().getMostSignificantBits()
+                        ^ (long) this.tickCount
+                        ^ 0xF0110BEEFL;
+
+                String reason = usingLure ? "follow lure player (aggressive)" : "follow owner (aggressive)";
+
+                try {
+                    pathOk = ensurePathTo(desiredGoal, 5 * 20, seed, reason);
+                } catch (Throwable t) {
+                    pathOk = false;
+                    if (this.tickCount % 40 == 0) {
+                        LOG.warn("[RavenEntity] tickFollowOwner ensurePathTo failed safely: {}", t.toString());
+                    }
+                }
+
+                if (!pathOk) {
+                    setFlyTarget(desiredGoal, 4 * 20);
+                } else {
+                    // Optional: keep your bookkeeping consistent
+                    pathPendingGoal = desiredGoal;
+                }
+            } else {
+                // no replan: if intent disappeared, re-assert a short fly target so it keeps moving
+                boolean hasFlyIntent = (flyTarget != null && flyTargetTimeoutTicks > 0);
+                boolean hasPathIntent = (pathWaypoints != null && !pathWaypoints.isEmpty() && pathWaypointIndex < pathWaypoints.size());
+
+                if (!hasFlyIntent && !hasPathIntent && desiredGoal != null) {
+                    setFlyTarget(desiredGoal, 2 * 20);
+                }
+            }
+
+            // Original safety guard
+            if (isOutOfHomeBounds(this.position())) {
+                triggerFollowCooldownAndReturn();
+                return;
+            }
+
+            if (flyTargetTimeoutTicks > 0) {
+                flyTargetTimeoutTicks--;
+            }
+
+            // Keep your normal flight mechanics (not player avoidance)
+            maybeAvoidOrRetargetDuringFlight(this.getRandom());
+
+            if (flyTarget != null) {
+                flyTowardTarget(FLY_SPEED_BASE);
+            }
+
+            if (pathWaypoints != null && !pathWaypoints.isEmpty()) {
+                advanceWaypointIfNeeded(5 * 20, usingLure ? "follow lure player" : "follow owner");
+            }
+
+            if (this.tickCount % 40 == 0) {
+                LOG.debug("[RavenEntity] tickFollowOwner: target={} usingLure={} goal={} ttl={} repathCd={} flyTarget={} pathPts={} pathIdx={} pos={} vel={}",
+                        target.getName().getString(),
+                        usingLure,
+                        desiredGoal,
+                        followGoalTtlTicks,
+                        followRepathCooldownTicks,
+                        flyTarget,
+                        (pathWaypoints == null ? 0 : pathWaypoints.size()),
+                        pathWaypointIndex,
+                        this.position(),
+                        this.getDeltaMovement());
+            }
+
+        } catch (Throwable t) {
+            LOG.error("[RavenEntity] tickFollowOwner failed safely", t);
         }
     }
 
@@ -4429,29 +4560,70 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     @org.jetbrains.annotations.Nullable
     private BlockPos findFollowPocketNearPlayer(Player player) {
         try {
-            if (player == null) return null;
+            if (player == null || !player.isAlive() || player.isSpectator()) {
+                return null;
+            }
 
-            // Prefer above player, not below:
-            // We try Y levels in this priority order (all >= playerY), then only as a last resort we try slightly below.
-            // “Anchor” is the center block of the 3x3 footprint; 3-high volume is y..y+2.
-            int py = Mth.floor(player.getY());
+            // -----------------------------
+            // Base point: IN FRONT of player
+            // -----------------------------
+            Vec3 look = player.getLookAngle();
+            double lx = look.x;
+            double lz = look.z;
+            double lenXZ = Math.sqrt(lx * lx + lz * lz);
 
-            // Candidate Y offsets relative to player feet Y (bias above)
-            int[] yOffsetsPreferred = new int[] { 3, 4, 5, 2, 6, 1, 7, 0 };
-            int[] yOffsetsFallbackBelow = new int[] { -1, -2 }; // last resort only
+            if (lenXZ < 1.0E-4D) {
+                // Degenerate look (e.g. straight up/down) -> pick a stable fallback.
+                lx = 0.0D;
+                lz = 1.0D;
+                lenXZ = 1.0D;
+            }
+            lx /= lenXZ;
+            lz /= lenXZ;
 
-            // Search radius around player in XZ; “closest” means we scan rings outward.
-            final int maxR = 12; // tune; 8..16 typical
+            // Distance from player center to the "front" pocket center.
+            final double FRONT_DISTANCE = 2.0D;
 
-            BlockPos playerCenter = BlockPos.containing(player.getX(), player.getY(), player.getZ());
+            double baseX = player.getX() + lx * FRONT_DISTANCE;
+            double baseZ = player.getZ() + lz * FRONT_DISTANCE;
 
-            // First pass: only at/above player
-            BlockPos best = findFollowPocketNearPlayerInternal(playerCenter, py, yOffsetsPreferred, maxR);
-            if (best != null) return best;
+            // Place the bottom of the 3x3x3 pocket slightly below eye level.
+            double baseYRaw = player.getY() + player.getEyeHeight() - 1.0D;
+            int baseYInt = clampYToHomeBounds(Mth.floor(baseYRaw));
+            double baseY = baseYInt + 0.5D;
 
-            // Fallback: allow slightly below player (rare)
-            best = findFollowPocketNearPlayerInternal(playerCenter, py, yOffsetsFallbackBelow, maxR);
-            return best;
+            Vec3 centerVec = new Vec3(baseX, baseY, baseZ);
+
+            // Respect home radius bounds.
+            centerVec = clampTargetToHomeBounds(centerVec);
+
+            BlockPos center = BlockPos.containing(centerVec);
+
+            long seed =
+                    this.getUUID().getLeastSignificantBits()
+                            ^ player.getUUID().getMostSignificantBits()
+                            ^ (long) this.tickCount
+                            ^ 0xF0110FACE5L; // valid hex salt
+
+            // -----------------------------
+            // Reuse your 3x3x3 empty-pocket scan
+            // -----------------------------
+            // Small radius so we stay around "front of face".
+            BlockPos pocket = findEmptyTeleportBlock3x3x3Near(center, 4, 80, seed);
+
+            if (pocket == null) {
+                if (this.tickCount % 40 == 0) {
+                    LOG.debug("[RavenEntity] findFollowPocketNearPlayer: no 3x3x3 pocket near front center={} player={} pos={}",
+                            center, player.getName().getString(), this.position());
+                }
+            } else {
+                if (this.tickCount % 40 == 0) {
+                    LOG.debug("[RavenEntity] findFollowPocketNearPlayer: pocket={} for player={} frontCenter={} pos={}",
+                            pocket, player.getName().getString(), center, this.position());
+                }
+            }
+
+            return pocket;
 
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
@@ -6321,12 +6493,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             if (this.isNoAi()) return false;
 
             // IMPORTANT:
-            // You said: "landing etc phases can still use the stuck teleport logic"
-            // That implies we still want to require some "intent" so it doesn't randomly teleport while it is
-            // just hovering (or micro-adjusting) doing nothing.
-            //
-            // Keep the intent requirement as-is. If you *want* teleporting even with no target/path,
-            // we can relax this later.
+            // We still require some “intent” so we don't randomly teleport while just hovering.
             boolean hasIntent =
                     (flyTarget != null && flyTargetTimeoutTicks > 0)
                             || (pathWaypoints != null && !pathWaypoints.isEmpty() && pathWaypointIndex < pathWaypoints.size())
@@ -6336,12 +6503,222 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             if (!hasIntent) return false;
 
+            // -------------------------------------------------
+            // When FOLLOW_OWNER + lure-follow is active AND
+            // we are already "at the player", suppress stuck teleport.
+            // This stops constant blinking while you stand still with a nugget.
+            // -------------------------------------------------
+            if (st == RavenAIState.FOLLOW_OWNER && isLureFollowActive()) {
+                try {
+                    Player lurePlayer = getLureFollowPlayerServerSafe();
+                    if (lurePlayer != null) {
+                        boolean closeEnough;
+                        try {
+                            // This method is already used in your follow code.
+                            closeEnough = isCloseEnoughToFollowPlayer(lurePlayer);
+                        } catch (Throwable t) {
+                            // If anything goes wrong, err on the side of allowing recovery.
+                            closeEnough = false;
+                            if (this.tickCount % 80 == 0) {
+                                LOG.warn("[RavenEntity] isTeleportRecoveryEligible: isCloseEnoughToFollowPlayer failed safely: {}", t.toString());
+                            }
+                        }
+
+                        if (closeEnough) {
+                            if (this.tickCount % 40 == 0) {
+                                LOG.debug("[RavenEntity] isTeleportRecoveryEligible: suppressed (close to lure-follow player) pos={} aiState={} flyIntent={} pathIntent={} lurePlayer={}",
+                                        this.position(),
+                                        st,
+                                        (flyTarget != null && flyTargetTimeoutTicks > 0),
+                                        (pathWaypoints != null && !pathWaypoints.isEmpty() && pathWaypointIndex < pathWaypoints.size()),
+                                        lurePlayer.getName().getString());
+                            }
+                            return false;
+                        }
+                    }
+                } catch (Throwable t) {
+                    if (this.tickCount % 80 == 0) {
+                        LOG.warn("[RavenEntity] isTeleportRecoveryEligible: lure-follow close check failed safely: {}", t.toString());
+                    }
+                }
+            }
+
             return true;
 
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
                 LOG.warn("[RavenEntity] isTeleportRecoveryEligible failed: {}", t.toString());
             }
+            return false;
+        }
+    }
+
+    private Vec3 computeSafeFollowGoalXZLockedY(Vec3 rawGoal) {
+        try {
+            if (rawGoal == null) return null;
+
+            // Lock Y exactly to the follow goal Y.
+            final int y = Mth.floor(rawGoal.y + 1.0E-4D);
+
+            // Snap XZ to block centers to stabilize.
+            final double baseX = Math.floor(rawGoal.x) + 0.5D;
+            final double baseZ = Math.floor(rawGoal.z) + 0.5D;
+
+            BlockPos base = BlockPos.containing(baseX, y, baseZ);
+
+            // If base is already empty enough, take it.
+            if (this.level().isEmptyBlock(base) && this.level().getFluidState(base).isEmpty()
+                    && this.level().isEmptyBlock(base.above())) {
+                return new Vec3(baseX, rawGoal.y, baseZ);
+            }
+
+            // Otherwise: search a small horizontal ring at SAME Y.
+            final int R = 3;
+            BlockPos chosen = null;
+
+            for (int r = 1; r <= R && chosen == null; r++) {
+                for (int dx = -r; dx <= r && chosen == null; dx++) {
+                    int dzA = -r;
+                    int dzB = r;
+
+                    BlockPos p1 = base.offset(dx, 0, dzA);
+                    if (this.level().isEmptyBlock(p1) && this.level().getFluidState(p1).isEmpty() && this.level().isEmptyBlock(p1.above())) {
+                        chosen = p1;
+                        break;
+                    }
+
+                    if (dzB != dzA) {
+                        BlockPos p2 = base.offset(dx, 0, dzB);
+                        if (this.level().isEmptyBlock(p2) && this.level().getFluidState(p2).isEmpty() && this.level().isEmptyBlock(p2.above())) {
+                            chosen = p2;
+                            break;
+                        }
+                    }
+                }
+
+                for (int dz = -r + 1; dz <= r - 1 && chosen == null; dz++) {
+                    int dxA = -r;
+                    int dxB = r;
+
+                    BlockPos p1 = base.offset(dxA, 0, dz);
+                    if (this.level().isEmptyBlock(p1) && this.level().getFluidState(p1).isEmpty() && this.level().isEmptyBlock(p1.above())) {
+                        chosen = p1;
+                        break;
+                    }
+
+                    if (dxB != dxA) {
+                        BlockPos p2 = base.offset(dxB, 0, dz);
+                        if (this.level().isEmptyBlock(p2) && this.level().getFluidState(p2).isEmpty() && this.level().isEmptyBlock(p2.above())) {
+                            chosen = p2;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (chosen != null) {
+                Vec3 out = new Vec3(chosen.getX() + 0.5D, rawGoal.y, chosen.getZ() + 0.5D);
+                out = clampTargetToHomeBounds(out);
+                return out;
+            }
+
+            // Fallback: return raw goal (A* may still route around).
+            return clampTargetToHomeBounds(new Vec3(baseX, rawGoal.y, baseZ));
+
+        } catch (Throwable t) {
+            return rawGoal;
+        }
+    }
+
+    private Vec3 computeFollowFrontPosition(net.minecraft.world.entity.player.Player player) {
+        try {
+            Vec3 playerPos = player.position();
+
+            // Look direction, XZ only (stable)
+            Vec3 look = player.getLookAngle();
+            double lx = look.x;
+            double lz = look.z;
+
+            double len = Math.sqrt(lx * lx + lz * lz);
+            if (len < 1.0E-4D) {
+                // Fallback: use player->raven direction as "front" so we don't get a junk look vector.
+                double dx = this.getX() - playerPos.x;
+                double dz = this.getZ() - playerPos.z;
+                double len2 = Math.sqrt(dx * dx + dz * dz);
+                if (len2 < 1.0E-4D) {
+                    lx = 1.0D;
+                    lz = 0.0D;
+                    len = 1.0D;
+                } else {
+                    lx = dx / len2;
+                    lz = dz / len2;
+                    len = 1.0D;
+                }
+            } else {
+                lx /= len;
+                lz /= len;
+            }
+
+            // You asked: "right in front of it (about a block between raven and player)"
+            // Tune range: 1.0..1.35 tends to look right for a bird-sized mob.
+            final double FOLLOW_FRONT_DISTANCE = 1.15D;
+
+            double tx = playerPos.x + lx * FOLLOW_FRONT_DISTANCE;
+            double tz = playerPos.z + lz * FOLLOW_FRONT_DISTANCE;
+
+            // Eye height policy: keep it near the player's eye Y, but clamp to home bounds.
+            double eyeY = player.getEyeY();
+
+            int tyInt = clampYToHomeBounds(Mth.floor(eyeY));
+            double ty = tyInt + 0.05D;
+
+            Vec3 raw = new Vec3(tx, ty, tz);
+            Vec3 clamped = clampTargetToHomeBounds(raw);
+
+            if (this.tickCount % 40 == 0) {
+                LOG.debug("[RavenEntity] computeFollowFrontPosition: playerPos={} eyeY={} out={} raw={} dist={}",
+                        playerPos,
+                        String.format("%.2f", eyeY),
+                        clamped,
+                        raw,
+                        String.format("%.2f", FOLLOW_FRONT_DISTANCE));
+            }
+
+            return clamped;
+
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] computeFollowFrontPosition failed safely: {}", t.toString());
+            }
+            return this.position().add(0.0D, 1.5D, 0.0D);
+        }
+    }
+
+    private boolean isCloseEnoughToFollowPlayer(net.minecraft.world.entity.player.Player player) {
+        try {
+            if (player == null) return false;
+
+            Vec3 goal = computeFollowFrontPosition(player);
+            if (goal == null) return false;
+
+            Vec3 pos = this.position();
+
+            // Very tight: you want "at eye height and right in front".
+            // Use tighter XZ + modest Y tolerance.
+            double dx = pos.x - goal.x;
+            double dz = pos.z - goal.z;
+            double dXZ2 = dx * dx + dz * dz;
+
+            double dy = Math.abs(pos.y - goal.y);
+
+            // ~0.85 blocks in XZ is tight for path-following without jitter.
+            // Y tolerance a bit larger because flight smoothing may not land exactly on goal.y.
+            boolean closeXZ = dXZ2 <= (0.85D * 0.85D);
+            boolean closeY  = dy <= 1.15D;
+
+            return closeXZ && closeY;
+
+        } catch (Throwable t) {
             return false;
         }
     }
