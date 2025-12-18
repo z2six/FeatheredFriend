@@ -99,6 +99,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     // Sound handling
     // --------------------
     private final RavenSoundEngine soundEngine = new RavenSoundEngine(this);
+    private final LureFollowTame lureFollowTame = new LureFollowTame(this); // Not part of sound but hey why not put it here
 
     // Lazy-resolved sound IDs for raven SFX
     private static final ResourceLocation SOUND_RAVEN_CAWING_NORMAL_ID =
@@ -465,7 +466,10 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         builder.define(DATA_VARIANT, RavenVariant.NORMAL.id());
         builder.define(DATA_ANIM_MODE, RavenAnimMode.AUTO.id());
         builder.define(DATA_AI_STATE, RavenAIState.IDLE_GROUND.id());
-        builder.define(DATA_FOLLOW_COOLDOWN_TICKS, 0);
+
+        // NOTE: use the DATA_FOLLOW_COOLDOWN_TICKS that lives in LureFollowTame so
+        // both classes share the same EntityDataAccessor instance.
+        builder.define(LureFollowTame.DATA_FOLLOW_COOLDOWN_TICKS, 0);
 
         // Teleport FX sync (client renders short burst)
         builder.define(DATA_TELEPORT_FX_TICKS, 0);
@@ -640,7 +644,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // We block ONLY the downgrade FOLLOW_OWNER -> IDLE_GROUND here,
             // so teleports / ROAM_FLY etc. still work.
             // ----------------------------------------
-            if (followOverrideActive
+            boolean followOverride = (this.lureFollowTame != null && this.lureFollowTame.isFollowOverrideActive());
+
+            if (followOverride
                     && prev == RavenAIState.FOLLOW_OWNER
                     && state == RavenAIState.IDLE_GROUND) {
 
@@ -1529,14 +1535,14 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
         try {
             // ------------------------------------------------------------
-            // NEW: Roll per-spawn tame-cost (3..6 golden nuggets)
+            // Roll per-spawn tame-cost (3..6 golden nuggets)
             // Only roll if not already set (e.g., NBT-loaded or manually assigned).
             // ------------------------------------------------------------
             initGoldenNuggetsRequiredToTameIfNeeded("finalizeSpawn:" + spawnType);
 
             if (this.tickCount % 20 == 0) {
                 LOG.debug("[RavenEntity] finalizeSpawn: nuggetsRequiredToTame={} spawnType={} pos={}",
-                        this.goldenNuggetsRequiredToTame,
+                        this.getGoldenNuggetsRequiredToTame(),
                         spawnType,
                         this.position());
             }
@@ -1554,7 +1560,8 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             tag.putInt(NBT_VARIANT, this.entityData.get(DATA_VARIANT));
             tag.putInt(NBT_ANIM_MODE, this.entityData.get(DATA_ANIM_MODE));
             tag.putInt(NBT_AI_STATE, this.entityData.get(DATA_AI_STATE));
-            tag.putInt(NBT_FOLLOW_CD, this.entityData.get(DATA_FOLLOW_COOLDOWN_TICKS));
+            // Use the shared key & data accessor from LureFollowTame
+            tag.putInt(LureFollowTame.NBT_FOLLOW_CD, this.entityData.get(LureFollowTame.DATA_FOLLOW_COOLDOWN_TICKS));
 
             tag.putBoolean(NBT_HOME_INIT, homeInitialized);
             tag.putInt(NBT_HOME_X, homePos.getX());
@@ -1562,22 +1569,23 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             tag.putInt(NBT_HOME_Z, homePos.getZ());
 
             // ------------------------------------------------------------
-            // NEW: Persist per-spawn tame-cost (3..6 golden nuggets)
+            // Persist per-spawn tame-cost (3..6 golden nuggets)
             // ------------------------------------------------------------
             try {
                 // Ensure it's initialized before saving (server side typically).
-                if (this.goldenNuggetsRequiredToTame <= 0 && this.level() != null && !this.level().isClientSide) {
+                if (this.getGoldenNuggetsRequiredToTame() <= 0 && this.level() != null && !this.level().isClientSide) {
                     initGoldenNuggetsRequiredToTameIfNeeded("save");
                 }
 
-                int v = this.goldenNuggetsRequiredToTame;
+                int v = this.getGoldenNuggetsRequiredToTame();
                 if (v < 3) v = 3;
                 if (v > 6) v = 6;
 
-                tag.putInt(NBT_TAME_NUGGETS_REQUIRED, v);
+                tag.putInt(LureFollowTame.NBT_TAME_NUGGETS_REQUIRED, v);
 
                 if (this.tickCount % 200 == 0) {
-                    LOG.debug("[RavenEntity] Saved tame-cost: {}={}", NBT_TAME_NUGGETS_REQUIRED, v);
+                    LOG.debug("[RavenEntity] Saved tame-cost: {}={}",
+                            LureFollowTame.NBT_TAME_NUGGETS_REQUIRED, v);
                 }
             } catch (Throwable t2) {
                 if (this.tickCount % 200 == 0) {
@@ -1596,13 +1604,13 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         try {
             if (tag.contains(NBT_VARIANT)) {
                 int id = tag.getInt(NBT_VARIANT);
-                RavenVariant v = RavenVariant.fromId(id); // assuming you have fromId; if not, keep reading below
+                RavenVariant v = RavenVariant.fromId(id);
                 this.setRavenVariant(v);
             }
 
             if (tag.contains(NBT_ANIM_MODE)) {
                 int id = tag.getInt(NBT_ANIM_MODE);
-                RavenAnimMode m = RavenAnimMode.fromId(id); // assuming you have fromId; if not, keep reading below
+                RavenAnimMode m = RavenAnimMode.fromId(id);
                 this.setAnimMode(m);
             }
 
@@ -1612,8 +1620,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 this.setAIState(s);
             }
 
-            if (tag.contains(NBT_FOLLOW_CD)) {
-                int cd = tag.getInt(NBT_FOLLOW_CD);
+            // Follow cooldown
+            if (tag.contains(LureFollowTame.NBT_FOLLOW_CD)) {
+                int cd = tag.getInt(LureFollowTame.NBT_FOLLOW_CD);
                 this.setFollowCooldownTicks(cd);
             }
 
@@ -1625,18 +1634,19 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
 
             // ------------------------------------------------------------
-            // NEW: Load per-spawn tame-cost (3..6 golden nuggets)
+            // Load per-spawn tame-cost (3..6 golden nuggets)
             // ------------------------------------------------------------
             try {
-                if (tag.contains(NBT_TAME_NUGGETS_REQUIRED, net.minecraft.nbt.Tag.TAG_INT)) {
-                    int v = tag.getInt(NBT_TAME_NUGGETS_REQUIRED);
+                if (tag.contains(LureFollowTame.NBT_TAME_NUGGETS_REQUIRED, net.minecraft.nbt.Tag.TAG_INT)) {
+                    int v = tag.getInt(LureFollowTame.NBT_TAME_NUGGETS_REQUIRED);
                     if (v < 3) v = 3;
                     if (v > 6) v = 6;
 
-                    this.goldenNuggetsRequiredToTame = v;
+                    this.setGoldenNuggetsRequiredToTame(v);
 
                     if (this.tickCount % 200 == 0) {
-                        LOG.debug("[RavenEntity] Loaded tame-cost: {}={}", NBT_TAME_NUGGETS_REQUIRED, v);
+                        LOG.debug("[RavenEntity] Loaded tame-cost: {}={}",
+                                LureFollowTame.NBT_TAME_NUGGETS_REQUIRED, v);
                     }
                 } else {
                     // Older saves: initialize safely (server side).
@@ -1646,7 +1656,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 if (this.tickCount % 200 == 0) {
                     LOG.warn("[RavenEntity] Failed reading tame-cost NBT safely: {}", t2.toString());
                 }
-                this.goldenNuggetsRequiredToTame = 4;
+                this.setGoldenNuggetsRequiredToTame(4);
             }
 
         } catch (Throwable t) {
@@ -1683,9 +1693,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // ------------------------------------------------------------------
             // GLOBAL COOLDOWNS (always tick, even during avoidance)
             // ------------------------------------------------------------------
-            int cd = LureFollowTame.getFollowCooldownTicks();
+            int cd = getFollowCooldownTicks();
             if (cd > 0) {
-                LureFollowTame.setFollowCooldownTicks(cd - 1);
+                setFollowCooldownTicks(cd - 1);
             }
 
             if (avoidanceCooldownTicks > 0) {
@@ -1807,16 +1817,18 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // ------------------------------------------------------------------
             // FOLLOW LOGIC — DISABLED DURING PLAYER AVOIDANCE
             // ------------------------------------------------------------------
-            Player owner = LureFollowTame.getOwnerPlayerServerSafe();
+            Player owner = (lureFollowTame != null) ? lureFollowTame.getOwnerPlayerServerSafe() : null;
             boolean canFollow =
                     owner != null &&
                             this.isTame() &&
-                            LureFollowTame.getFollowCooldownTicks() <= 0;
+                            getFollowCooldownTicks() <= 0;
 
             if (playerAvoidanceOverrideTicks <= 0) {
                 if (canFollow) {
                     if (isOutOfHomeBounds(owner.position())) {
-                        LureFollowTame.triggerFollowCooldownAndReturn();
+                        if (lureFollowTame != null) {
+                            lureFollowTame.triggerFollowCooldownAndReturn();
+                        }
                     } else {
                         setAIState(RavenAIState.FOLLOW_OWNER);
                     }
@@ -1835,7 +1847,11 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             switch (getAIState()) {
                 case IDLE_GROUND -> tickIdleGround();
                 case ROAM_FLY -> tickRoamFly();
-                case FOLLOW_OWNER -> LureFollowTame.tickFollowOwner();
+                case FOLLOW_OWNER -> {
+                    if (lureFollowTame != null) {
+                        lureFollowTame.tickFollowOwner();
+                    }
+                }
                 default -> tickIdleGround();
             }
 
@@ -2674,7 +2690,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         }
     }
 
-    private void beginRoamFlightWindow(String reason) {
+    public void beginRoamFlightWindow(String reason) {
         try {
             RandomSource rnd = this.getRandom();
 
@@ -4495,7 +4511,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // FOLLOW OVERRIDE: do not allow avoidance to hijack follow behavior
             // (stuck teleport remains allowed separately by your sampler)
             // -----------------------------
-            if (followOverrideActive && getAIState() == RavenAIState.FOLLOW_OWNER) {
+            if (isFollowOverrideActive() && getAIState() == RavenAIState.FOLLOW_OWNER) {
                 if (this.tickCount % 40 == 0) {
                     LOG.debug("[RavenEntity] PlayerAvoidance ignored due to FOLLOW_OWNER override. player={} dist={} pos={}",
                             (player == null ? "null" : player.getName().getString()),
@@ -4889,15 +4905,18 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // FOLLOW/LURE OVERRIDE: do not allow panic teleport to hijack follow behavior
             // (stuck teleport remains allowed separately by your sampler)
             // -----------------------------
-            if ((LureFollowTame.followOverrideActive && getAIState() == RavenAIState.FOLLOW_OWNER) || LureFollowTame.isLureFollowActive()) {
+            boolean followOverride = isFollowOverrideActive();
+            boolean lureActive = isLureFollowActive();
+
+            if ((followOverride && getAIState() == RavenAIState.FOLLOW_OWNER) || lureActive) {
                 if (this.tickCount % 40 == 0) {
                     LOG.debug("[RavenEntity] requestPanicTeleportAwayFromPlayer suppressed (follow/lure active). player={} dist={} pos={} ai={} followOverride={} lureActive={}",
                             (player == null ? "null" : player.getName().getString()),
                             String.format("%.2f", distToPlayer),
                             this.position(),
                             getAIState(),
-                            LureFollowTame.followOverrideActive,
-                            LureFollowTame.isLureFollowActive());
+                            followOverride,
+                            lureActive);
                 }
                 return;
             }
@@ -5110,7 +5129,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     }
 
     @org.jetbrains.annotations.Nullable
-    private BlockPos findEmptyTeleportBlock3x3x3Near(BlockPos center, int radiusBlocks, int maxCandidates, long seed) {
+    public BlockPos findEmptyTeleportBlock3x3x3Near(BlockPos center, int radiusBlocks, int maxCandidates, long seed) {
         try {
             if (center == null) return null;
 
@@ -5977,14 +5996,17 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // we are already "at the player", suppress stuck teleport.
             // This stops constant blinking while you stand still with a nugget.
             // -------------------------------------------------
-            if (st == RavenAIState.FOLLOW_OWNER && LureFollowTame.isLureFollowActive()) {
+            if (st == RavenAIState.FOLLOW_OWNER && isLureFollowActive()) {
                 try {
-                    Player lurePlayer = LureFollowTame.getLureFollowPlayerServerSafe();
+                    Player lurePlayer = (lureFollowTame != null)
+                            ? lureFollowTame.getLureFollowPlayerServerSafe()
+                            : null;
+
                     if (lurePlayer != null) {
                         boolean closeEnough;
                         try {
-                            // This method is already used in your follow code.
-                            closeEnough = LureFollowTame.isCloseEnoughToFollowPlayer(lurePlayer);
+                            closeEnough = (lureFollowTame != null)
+                                    && lureFollowTame.isCloseEnoughToFollowPlayer(lurePlayer);
                         } catch (Throwable t) {
                             // If anything goes wrong, err on the side of allowing recovery.
                             closeEnough = false;
@@ -6225,4 +6247,101 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             return PlayState.CONTINUE;
         }
     }
+
+    // ---------------------------------------------------------------------
+// Lure-follow / tame module accessors
+// ---------------------------------------------------------------------
+
+    public void requestLureFollowPlayer(@org.jetbrains.annotations.Nullable Player player, double distToPlayer) {
+        try {
+            if (lureFollowTame != null) {
+                lureFollowTame.requestLureFollowPlayer(player, distToPlayer);
+            }
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] requestLureFollowPlayer wrapper failed safely: {}", t.toString());
+            }
+        }
+    }
+
+    public boolean isLureFollowActive() {
+        try {
+            return lureFollowTame != null && lureFollowTame.isLureFollowActive();
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] isLureFollowActive wrapper failed safely: {}", t.toString());
+            }
+            return false;
+        }
+    }
+
+    private int getFollowCooldownTicks() {
+        try {
+            return (lureFollowTame != null) ? lureFollowTame.getFollowCooldownTicks() : 0;
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] getFollowCooldownTicks wrapper failed safely: {}", t.toString());
+            }
+            return 0;
+        }
+    }
+
+    private void setFollowCooldownTicks(int ticks) {
+        try {
+            if (lureFollowTame != null) {
+                lureFollowTame.setFollowCooldownTicks(ticks);
+            }
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] setFollowCooldownTicks wrapper failed safely: {}", t.toString());
+            }
+        }
+    }
+
+    public boolean isFollowOverrideActive() {
+        try {
+            return lureFollowTame != null && lureFollowTame.isFollowOverrideActive();
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] isFollowOverrideActive wrapper failed safely: {}", t.toString());
+            }
+            return false;
+        }
+    }
+
+    public int getGoldenNuggetsRequiredToTame() {
+        try {
+            return (lureFollowTame != null) ? lureFollowTame.getGoldenNuggetsRequiredToTame() : 0;
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] getGoldenNuggetsRequiredToTame wrapper failed safely: {}", t.toString());
+            }
+            return 0;
+        }
+    }
+
+    public void setGoldenNuggetsRequiredToTame(int value) {
+        try {
+            if (lureFollowTame != null) {
+                lureFollowTame.setGoldenNuggetsRequiredToTame(value);
+            }
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] setGoldenNuggetsRequiredToTame wrapper failed safely: {}", t.toString());
+            }
+        }
+    }
+
+    public void initGoldenNuggetsRequiredToTameIfNeeded(String context) {
+        try {
+            if (lureFollowTame != null) {
+                lureFollowTame.initGoldenNuggetsRequiredToTameIfNeeded(context);
+            }
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] initGoldenNuggetsRequiredToTameIfNeeded wrapper failed safely: {}", t.toString());
+            }
+        }
+    }
+
 }
