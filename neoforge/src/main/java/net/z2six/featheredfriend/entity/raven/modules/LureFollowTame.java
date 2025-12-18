@@ -182,14 +182,25 @@ public class LureFollowTame {
 
     public boolean isLureFollowActive() {
         try {
-            if (raven.level().isClientSide) return false;
-            if (!raven.isAlive()) return false;
+            if (raven.level().isClientSide) {
+                return false;
+            }
+            if (!raven.isAlive()) {
+                // If the raven died while we still had lure state, clear it.
+                if (lureFollowPlayerUuid != null || lureFollowTicks > 0 || followOverrideActive) {
+                    clearLureFollowState("isLureFollowActive: raven not alive");
+                }
+                return false;
+            }
 
             // No remembered lure => not active
             if (this.lureFollowPlayerUuid == null) {
-                this.lureFollowTicks = 0;
-                followOverrideActive = false;
-                followPocketAnchor = null;
+                // Make sure all related fields are reset if they somehow weren't.
+                if (lureFollowTicks != 0 || followOverrideActive || followPocketAnchor != null) {
+                    clearLureFollowState("isLureFollowActive: missing UUID");
+                } else {
+                    this.lureFollowTicks = 0;
+                }
                 return false;
             }
 
@@ -198,52 +209,36 @@ public class LureFollowTame {
                 this.lureFollowTicks--;
             }
 
+            // Timer expired -> full state clear
             if (this.lureFollowTicks <= 0) {
-                // Expired
-                this.lureFollowPlayerUuid = null;
-                this.lureFollowTicks = 0;
-                followOverrideActive = false;
-                followPocketAnchor = null;
+                clearLureFollowState("isLureFollowActive: timer expired");
                 return false;
             }
 
+            // Resolve the player by stored UUID
             Player p = raven.level().getPlayerByUUID(this.lureFollowPlayerUuid);
             if (p == null || !p.isAlive() || p.isSpectator()) {
-                this.lureFollowPlayerUuid = null;
-                this.lureFollowTicks = 0;
-                followOverrideActive = false;
-                followPocketAnchor = null;
+                clearLureFollowState("isLureFollowActive: lure player invalid");
                 return false;
             }
 
+            // 🔴 NEW: Lure player must STILL be holding a lure item (gold nugget)
+            // in either hand, otherwise we drop lure-follow immediately.
+            if (!isLureItemInHand(p)) {
+                clearLureFollowState("isLureFollowActive: lure player no longer holding lure item");
+                return false;
+            }
+
+            // All checks passed: lure-follow is considered active.
             return true;
 
         } catch (Throwable t) {
             if (raven.tickCount % 80 == 0) {
                 LOG.warn("[RavenEntity] isLureFollowActive failed safely: {}", t.toString());
             }
-            this.lureFollowPlayerUuid = null;
-            this.lureFollowTicks = 0;
-            followOverrideActive = false;
-            followPocketAnchor = null;
+            // On any failure, drop lure state so we don't get stuck.
+            clearLureFollowState("isLureFollowActive: exception");
             return false;
-        }
-    }
-
-    public void clearLureFollowState(String reason) {
-        try {
-            if (raven.tickCount % 40 == 0) {
-                LOG.debug("[RavenEntity] clearLureFollowState: reason={} hadUuid={} ticksLeft={} pos={}",
-                        reason,
-                        (lureFollowPlayerUuid != null),
-                        lureFollowTicks,
-                        raven.position());
-            }
-            lureFollowPlayerUuid = null;
-            lureFollowTicks = 0;
-        } catch (Throwable ignored) {
-            lureFollowPlayerUuid = null;
-            lureFollowTicks = 0;
         }
     }
 
@@ -276,12 +271,18 @@ public class LureFollowTame {
 
             // Basic sanity on player
             if (player == null || !player.isAlive() || player.isSpectator()) {
-                // If we only had a tiny bit of memory left, just drop it.
-                if (this.lureFollowTicks <= LURE_FOLLOW_GRACE_TICKS) {
-                    this.lureFollowPlayerUuid = null;
-                    this.lureFollowTicks = 0;
-                    followOverrideActive = false;
-                    followPocketAnchor = null;
+                // Player is not a valid lure source -> drop lure if we had one.
+                if (lureFollowPlayerUuid != null || lureFollowTicks > 0 || followOverrideActive) {
+                    clearLureFollowState("requestLureFollowPlayer: player invalid");
+                }
+                return;
+            }
+
+            // If the player is NOT currently holding a lure item (gold nugget),
+            // treat this as "lure dropped" and clear state.
+            if (!isLureItemInHand(player)) {
+                if (lureFollowPlayerUuid != null || lureFollowTicks > 0 || followOverrideActive) {
+                    clearLureFollowState("requestLureFollowPlayer: player no longer holding lure item");
                 }
                 return;
             }
@@ -430,8 +431,9 @@ public class LureFollowTame {
                     if (lureFollowTicks > 0) {
                         lureFollowTicks--;
                     }
+                    // If timer fully expires while we still remember a lure player, clear the state.
                     if (lureFollowTicks <= 0 && lureFollowPlayerUuid != null) {
-                        lureFollowTicks = 0;
+                        clearLureFollowState("follow: lure timer expired");
                     }
                 }
             } catch (Throwable ignored) {}
@@ -471,6 +473,17 @@ public class LureFollowTame {
                 invokeClearFlyTarget();
                 setPrivateInt("roamTicksRemaining", 0);
                 return;
+            }
+
+            // If we're following the owner (not lure), drop the follow override.
+            // This allows normal AI to change FOLLOW_OWNER -> IDLE_GROUND again
+            // when your other logic wants to.
+            if (!usingLure && followOverrideActive) {
+                if (raven.tickCount % 40 == 0) {
+                    LOG.debug("[RavenEntity] tickFollowOwner: clearing followOverrideActive (not using lure). pos={} ai={}",
+                            raven.position(), raven.getAIState());
+                }
+                followOverrideActive = false;
             }
 
             // While lure-following: suppress player avoidance behavior by keeping override alive.
@@ -755,27 +768,47 @@ public class LureFollowTame {
     public void clearLureFollowState(String reason) {
         try {
             if (raven.tickCount % 40 == 0) {
-                LOG.debug("[RavenEntity] clearLureFollowState: reason={} hadUuid={} ticksLeft={} pos={}",
+                LOG.debug("[RavenEntity] clearLureFollowState: reason={} hadUuid={} ticksLeft={} overrideActive={} pocket={} pos={}",
                         reason,
                         (lureFollowPlayerUuid != null),
                         lureFollowTicks,
+                        followOverrideActive,
+                        followPocketAnchor,
                         raven.position());
             }
-
-            // Clear lure memory
-            lureFollowPlayerUuid = null;
-            lureFollowTicks = 0;
-
-            // Drop follow override so setAIState can leave FOLLOW_OWNER again
-            followOverrideActive = false;
-            followPocketAnchor = null;
-
         } catch (Throwable ignored) {
-            lureFollowPlayerUuid = null;
-            lureFollowTicks = 0;
-            followOverrideActive = false;
-            followPocketAnchor = null;
+            // Logging is best-effort only.
         }
+
+        // Hard reset of all lure-follow specific state.
+        lureFollowPlayerUuid = null;
+        lureFollowTicks = 0;
+
+        followOverrideActive = false;
+        followPocketAnchor = null;
+        followPocketRecalcCooldownTicks = 0;
+    }
+
+    // Returns true if the player is *currently* holding a lure item (gold nugget) in either hand.
+    private boolean isLureItemInHand(Player player) {
+        try {
+            if (player == null) return false;
+
+            ItemStack main = player.getMainHandItem();
+            ItemStack off  = player.getOffhandItem();
+
+            return isLureItem(main) || isLureItem(off);
+        } catch (Throwable t) {
+            if (raven.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] isLureItemInHand failed safely: {}", t.toString());
+            }
+            return false;
+        }
+    }
+
+    private boolean isLureItem(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return false;
+        return stack.is(Items.GOLD_NUGGET);
     }
 
     // ------------------------

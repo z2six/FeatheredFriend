@@ -2105,78 +2105,120 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             //  - keep landing cancelled
             //  - fly toward current target/path
             //  - allow teleport blink checks (stuck logic)
+            //
+            // NEW: when we are "close enough" to the avoidance flyTarget, we treat that as
+            //      ARRIVED -> clear override + start a rearm cooldown, so we don't bounce forever.
             // --------------------------------------------------------------------
             if (playerAvoidanceOverrideTicks > 0) {
-                // Absolutely cancel landing every tick to stop "re-perch" fights.
+                boolean stillOverriding = true;
+
+                // Arrival check: if we're basically at the avoidance target, stop overriding.
                 try {
-                    resetLandingState("player avoidance override tick");
-                } catch (Throwable ignored) {}
+                    if (flyTarget != null) {
+                        Vec3 pos = this.position();
+                        double d2 = pos.distanceToSqr(flyTarget);
+                        final double ARRIVE_EPS = 0.60D; // ~0.6 blocks radius
 
-                landingPhase = LandingPhase.NONE;
-                landingLeafPos = null;
-                landingTicks = 0;
+                        if (d2 <= ARRIVE_EPS * ARRIVE_EPS) {
+                            // We consider this "successfully avoided" the player.
+                            clearFlyTarget();
+                            flyTargetTimeoutTicks = 0;
 
-                // Force flight posture
-                this.setNoGravity(true);
-                if (this.getAnimMode() != RavenAnimMode.IN_AIR) {
-                    this.setAnimMode(RavenAnimMode.IN_AIR);
-                }
+                            // Drop override and arm a small rearm cooldown so we don't instantly re-trigger.
+                            if (playerAvoidanceOverrideTicks > 0) {
+                                playerAvoidanceOverrideTicks = 0;
+                            }
+                            if (playerAvoidanceRearmCooldownTicks < 40) { // ~2 seconds @ 20 TPS
+                                playerAvoidanceRearmCooldownTicks = 40;
+                            }
 
-                // Make sure we don't gate flight
-                roamTicksRemaining = 0;
-                idleLockTicks = 0;
+                            stillOverriding = false;
 
-                // If we have a flyTarget, pursue it; otherwise follow waypoints; otherwise just hover (but do NOT plan roam/landing)
-                boolean didMove = false;
-
-                try {
-                    if (flyTarget != null && flyTargetTimeoutTicks > 0) {
-                        flyTargetTimeoutTicks--;
-                        // IMPORTANT: do NOT call maybeAvoidOrRetargetDuringFlight() here.
-                        // That method is allowed to pick landing/perch targets and will fight avoidance.
-                        flyTowardTarget(FLY_SPEED_BASE);
-                        didMove = true;
+                            if (this.tickCount % 40 == 0) {
+                                LOG.info("[RavenEntity] PlayerAvoidance: arrived near flee target -> clearing override. pos={} targetDist={}",
+                                        pos, String.format("%.3f", Math.sqrt(d2)));
+                            }
+                        }
                     }
                 } catch (Throwable t) {
                     if (this.tickCount % 40 == 0) {
-                        LOG.warn("[RavenEntity] playerAvoidance override: flyTowardTarget failed safely: {}", t.toString());
+                        LOG.warn("[RavenEntity] PlayerAvoidance arrival check failed safely: {}", t.toString());
                     }
                 }
 
-                try {
-                    if (!didMove && pathWaypoints != null && !pathWaypoints.isEmpty() && pathWaypointIndex < pathWaypoints.size()) {
-                        // Keep advancing waypoints while avoiding any "normal roam" replanning.
-                        advanceWaypointIfNeeded(4 * 20, "player avoidance override");
-                        didMove = true;
+                // If arrival logic cleared the override, fall through into normal ROAM_FLY logic.
+                if (stillOverriding && playerAvoidanceOverrideTicks > 0) {
+                    // Absolutely cancel landing every tick to stop "re-perch" fights.
+                    try {
+                        resetLandingState("player avoidance override tick");
+                    } catch (Throwable ignored) {}
+
+                    landingPhase = LandingPhase.NONE;
+                    landingLeafPos = null;
+                    landingTicks = 0;
+
+                    // Force flight posture
+                    this.setNoGravity(true);
+                    if (this.getAnimMode() != RavenAnimMode.IN_AIR) {
+                        this.setAnimMode(RavenAnimMode.IN_AIR);
                     }
-                } catch (Throwable t) {
+
+                    // Make sure we don't gate flight
+                    roamTicksRemaining = 0;
+                    idleLockTicks = 0;
+
+                    // If we have a flyTarget, pursue it; otherwise follow waypoints; otherwise just hover (but do NOT plan roam/landing)
+                    boolean didMove = false;
+
+                    try {
+                        if (flyTarget != null && flyTargetTimeoutTicks > 0) {
+                            flyTargetTimeoutTicks--;
+                            // IMPORTANT: do NOT call maybeAvoidOrRetargetDuringFlight() here.
+                            // That method is allowed to pick landing/perch targets and will fight avoidance.
+                            flyTowardTarget(FLY_SPEED_BASE);
+                            didMove = true;
+                        }
+                    } catch (Throwable t) {
+                        if (this.tickCount % 40 == 0) {
+                            LOG.warn("[RavenEntity] playerAvoidance override: flyTowardTarget failed safely: {}", t.toString());
+                        }
+                    }
+
+                    try {
+                        if (!didMove && pathWaypoints != null && !pathWaypoints.isEmpty() && pathWaypointIndex < pathWaypoints.size()) {
+                            // Keep advancing waypoints while avoiding any "normal roam" replanning.
+                            advanceWaypointIfNeeded(4 * 20, "player avoidance override");
+                            didMove = true;
+                        }
+                    } catch (Throwable t) {
+                        if (this.tickCount % 40 == 0) {
+                            LOG.warn("[RavenEntity] playerAvoidance override: advanceWaypointIfNeeded failed safely: {}", t.toString());
+                        }
+                    }
+
+                    // Allow your random blink/stuck teleport logic while overriding.
+                    try {
+                        tickRandomFlightTeleportBlink();
+                    } catch (Throwable t) {
+                        if (this.tickCount % 40 == 0) {
+                            LOG.warn("[RavenEntity] tickRandomFlightTeleportBlink failed safely (avoidanceOverride): {}", t.toString());
+                        }
+                    }
+
                     if (this.tickCount % 40 == 0) {
-                        LOG.warn("[RavenEntity] playerAvoidance override: advanceWaypointIfNeeded failed safely: {}", t.toString());
+                        LOG.info("[RavenEntity] PlayerAvoidance override active: ticksLeft={} pos={} vel={} flyTarget={} flyTtl={} pathGoal={} pts={} idx={}",
+                                playerAvoidanceOverrideTicks,
+                                this.position(),
+                                this.getDeltaMovement(),
+                                flyTarget,
+                                flyTargetTimeoutTicks,
+                                pathGoal,
+                                (pathWaypoints == null ? 0 : pathWaypoints.size()),
+                                pathWaypointIndex);
                     }
-                }
 
-                // Allow your random blink/stuck teleport logic while overriding.
-                try {
-                    tickRandomFlightTeleportBlink();
-                } catch (Throwable t) {
-                    if (this.tickCount % 40 == 0) {
-                        LOG.warn("[RavenEntity] tickRandomFlightTeleportBlink failed safely (avoidanceOverride): {}", t.toString());
-                    }
+                    return;
                 }
-
-                if (this.tickCount % 40 == 0) {
-                    LOG.info("[RavenEntity] PlayerAvoidance override active: ticksLeft={} pos={} vel={} flyTarget={} flyTtl={} pathGoal={} pts={} idx={}",
-                            playerAvoidanceOverrideTicks,
-                            this.position(),
-                            this.getDeltaMovement(),
-                            flyTarget,
-                            flyTargetTimeoutTicks,
-                            pathGoal,
-                            (pathWaypoints == null ? 0 : pathWaypoints.size()),
-                            pathWaypointIndex);
-                }
-
-                return;
             }
 
             // NOTE:
