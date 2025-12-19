@@ -65,3 +65,11 @@ dependencies {
     // GeckoLib (NeoForge 1.21.1)
     implementation "software.bernie.geckolib:geckolib-neoforge-1.21.1:4.8.2"
 }
+
+// Groovy Gradle syntax
+tasks.withType(JavaCompile).configureEach {
+    // Show where all the "unchecked" warnings come from
+    options.compilerArgs += ["-Xlint:unchecked"]
+    // (Optional, often handy too)
+    // options.compilerArgs += ["-Xlint:deprecation"]
+}

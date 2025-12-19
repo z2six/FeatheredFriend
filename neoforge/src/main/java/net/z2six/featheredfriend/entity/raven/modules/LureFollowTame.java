@@ -72,7 +72,7 @@ public class LureFollowTame {
 
     // Synced follow cooldown
     public static final EntityDataAccessor<Integer> DATA_FOLLOW_COOLDOWN_TICKS =
-            SynchedEntityData.defineId(RavenEntity.class, EntityDataSerializers.INT);
+            RavenEntity.DATA_FOLLOW_COOLDOWN_TICKS;
 
     // NBT Key
     public static final String NBT_FOLLOW_CD = "RavenFollowCooldown";
@@ -301,7 +301,6 @@ public class LureFollowTame {
             followOverrideActive = true;
 
             // Kill avoidance overrides so FOLLOW_OWNER truly wins
-            // (stuck teleport is gated separately by isTeleportRecoveryEligible).
             try {
                 setPrivateInt("playerAvoidanceOverrideTicks", 0);
                 setPrivateInt("playerAvoidanceRearmCooldownTicks", 0);
@@ -321,9 +320,7 @@ public class LureFollowTame {
             }
 
             // --------------------------------------------------
-            // OLD behavior: find 3x3x3 pocket near player, hover.
-            // NEW behavior: we still optionally find a pocket (for logging / future use),
-            // but the actual GOAL is "in front of player at eye-level".
+            // Pocket near player (optional, mostly for logging / sanity)
             // --------------------------------------------------
             BlockPos pocket = null;
             try {
@@ -377,10 +374,14 @@ public class LureFollowTame {
                 pathOk = false;
             }
 
-            if (!pathOk) {
-                invokeSetFlyTarget(safeGoal, 8 * 20);
-            } else {
+            if (pathOk) {
+                // A* path is in charge; do NOT "fly straight at the player".
                 setPrivateObject("pathPendingGoal", safeGoal);
+                invokeClearFlyTarget(); // ensure we're driven by waypoints, not a direct line
+            } else {
+                // If we cannot path at all, hovering is safer than ramming into walls.
+                invokeClearPlannedPath("lure follow: path failed");
+                invokeClearFlyTarget();
             }
 
             if (raven.tickCount % 20 == 0) {
@@ -476,8 +477,6 @@ public class LureFollowTame {
             }
 
             // If we're following the owner (not lure), drop the follow override.
-            // This allows normal AI to change FOLLOW_OWNER -> IDLE_GROUND again
-            // when your other logic wants to.
             if (!usingLure && followOverrideActive) {
                 if (raven.tickCount % 40 == 0) {
                     LOG.debug("[RavenEntity] tickFollowOwner: clearing followOverrideActive (not using lure). pos={} ai={}",
@@ -486,7 +485,7 @@ public class LureFollowTame {
                 followOverrideActive = false;
             }
 
-            // While lure-following: suppress player avoidance behavior by keeping override alive.
+            // While lure-following: make sure lure timer never drops below the small grace window
             if (usingLure) {
                 try {
                     if (lureFollowTicks < LURE_FOLLOW_GRACE_TICKS && lureFollowPlayerUuid != null) {
@@ -495,20 +494,19 @@ public class LureFollowTame {
                 } catch (Throwable ignored) {}
             }
 
-            // Home bounds guard (your existing behavior)
+            // Home bounds guard
             if (invokeIsOutOfHomeBounds(target.position())) {
                 triggerFollowCooldownAndReturn();
                 return;
             }
 
             // --------------------------------------------
-            // AGGRESSIVE FOLLOW: stable front-of-player goal
+            // AGGRESSIVE FOLLOW: stable front-of-player goal (A* ONLY)
             // --------------------------------------------
             if (followGoalTtlTicks > 0) followGoalTtlTicks--;
             if (followRepathCooldownTicks > 0) followRepathCooldownTicks--;
 
             // ARRIVAL CHECK: when already at the follow spot, stop fighting movement.
-            // This also enables "disable stuck teleport when at player" to be true in practice.
             boolean atGoal = false;
             Vec3 computedFront = null;
 
@@ -520,6 +518,7 @@ public class LureFollowTame {
             }
 
             if (atGoal) {
+                // We consider ourselves "parked" in front of the player.
                 invokeClearPlannedPath("follow: arrived");
                 invokeClearFlyTarget();
 
@@ -537,6 +536,9 @@ public class LureFollowTame {
                 if (flyTtl > 0) {
                     setPrivateInt("flyTargetTimeoutTicks", flyTtl - 1);
                 }
+
+                // We still let the generic avoidance fix any minor path issues,
+                // but it's mostly a no-op once we're hovering.
                 invokeMaybeAvoidOrRetargetDuringFlight(raven.getRandom());
 
                 if (raven.tickCount % 40 == 0) {
@@ -549,7 +551,6 @@ public class LureFollowTame {
                 return;
             }
 
-            // Decide whether to refresh goal (hysteresis: don’t replan constantly)
             Vec3 ownerPosNow = target.position();
             Vec3 ownerLookNow = target.getLookAngle();
 
@@ -557,7 +558,9 @@ public class LureFollowTame {
 
             if (!needNewGoal) {
                 // moved enough?
-                double moved2 = (followCachedOwnerPos == null) ? Double.MAX_VALUE : ownerPosNow.distanceToSqr(followCachedOwnerPos);
+                double moved2 = (followCachedOwnerPos == null)
+                        ? Double.MAX_VALUE
+                        : ownerPosNow.distanceToSqr(followCachedOwnerPos);
 
                 // turned enough? (XZ dot)
                 boolean turned = false;
@@ -591,14 +594,15 @@ public class LureFollowTame {
                 boolean hasPathIntent = (waypoints != null && !waypoints.isEmpty() && wpIndex < waypoints.size());
                 boolean hasAnyIntent = hasFlyIntent || hasPathIntent;
 
-                boolean stuckOrColliding = (raven.horizontalCollision || raven.verticalCollision || stuckTicks >= stuckThreshold);
+                boolean stuckOrColliding =
+                        (raven.horizontalCollision || raven.verticalCollision || stuckTicks >= stuckThreshold);
 
                 if (moved2 >= (0.75D * 0.75D)) needNewGoal = true;
                 if (turned) needNewGoal = true;
                 if (!hasAnyIntent || stuckOrColliding) needNewGoal = true;
             }
 
-            // Hard repath cooldown (prevents the “fly up a bit when I approach” jitter)
+            // Hard repath cooldown (prevents "micro replan" jitter)
             if (needNewGoal && followRepathCooldownTicks > 0) {
                 needNewGoal = false;
             }
@@ -612,7 +616,6 @@ public class LureFollowTame {
 
                 // 2) apply XZ-only safety adjuster that LOCKS Y (no vertical hop)
                 Vec3 lockedSafe = computeSafeFollowGoalXZLockedY(rawFront);
-
                 lockedSafe = invokeClampTargetToHomeBounds(lockedSafe);
 
                 followCachedGoal = lockedSafe;
@@ -625,7 +628,7 @@ public class LureFollowTame {
                 followGoalTtlTicks = 12;         // ~0.6s
                 followRepathCooldownTicks = 10;  // ~0.5s min between replans
 
-                // Clear intent before replanning so path-vs-fly doesn’t fight
+                // Clear A* intent before replanning so path-vs-fly doesn't fight
                 invokeClearPlannedPath("follow: new goal");
                 invokeClearFlyTarget();
 
@@ -645,13 +648,18 @@ public class LureFollowTame {
                     }
                 }
 
-                if (!pathOk) {
-                    invokeSetFlyTarget(desiredGoal, 4 * 20);
-                } else {
+                if (pathOk) {
                     setPrivateObject("pathPendingGoal", desiredGoal);
+                    invokeClearFlyTarget(); // force navigation via waypoints, not straight-line
+                } else {
+                    // Path failed: better to hover than to try a ballistic line that ignores maze walls
+                    invokeClearPlannedPath("follow: path failed");
+                    invokeClearFlyTarget();
                 }
+
             } else {
-                // no replan: if intent disappeared, re-assert a short fly target so it keeps moving
+                // no replan requested: if ALL path/fly intent disappeared while the cached goal is still valid,
+                // we very gently try to re-assert the PATH (not a straight-line target).
                 Vec3 currentFlyTarget = getFlyTargetField();
                 int flyTtl = getPrivateInt("flyTargetTimeoutTicks", 0);
                 List<Vec3> waypoints = getPathWaypoints();
@@ -661,7 +669,32 @@ public class LureFollowTame {
                 boolean hasPathIntent = (waypoints != null && !waypoints.isEmpty() && wpIndex < waypoints.size());
 
                 if (!hasFlyIntent && !hasPathIntent && desiredGoal != null) {
-                    invokeSetFlyTarget(desiredGoal, 2 * 20);
+                    long seed2 = target.getUUID().getLeastSignificantBits()
+                            ^ raven.getUUID().getMostSignificantBits()
+                            ^ (long) raven.tickCount
+                            ^ 0xF0110C0DEL;
+
+                    String reason2 = usingLure ? "follow lure player (reassert path)"
+                            : "follow owner (reassert path)";
+
+                    boolean ok2 = false;
+                    try {
+                        ok2 = invokeEnsurePathTo(desiredGoal, 5 * 20, seed2, reason2);
+                    } catch (Throwable t) {
+                        if (raven.tickCount % 40 == 0) {
+                            LOG.warn("[RavenEntity] tickFollowOwner reassert ensurePathTo failed safely: {}", t.toString());
+                        }
+                        ok2 = false;
+                    }
+
+                    if (ok2) {
+                        setPrivateObject("pathPendingGoal", desiredGoal);
+                        invokeClearFlyTarget();
+                    } else {
+                        // Still no path – safest behavior is to just hover.
+                        invokeClearPlannedPath("follow: reassert path failed");
+                        invokeClearFlyTarget();
+                    }
                 }
             }
 

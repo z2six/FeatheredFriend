@@ -23,7 +23,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -47,6 +46,7 @@ import net.minecraft.sounds.SoundSource;
 // Modules
 import net.z2six.featheredfriend.entity.raven.modules.LureFollowTame;
 import net.z2six.featheredfriend.entity.raven.modules.Teleportation;
+import net.z2six.featheredfriend.entity.raven.modules.Landing;
 
 import java.util.Collections;
 import java.util.List;
@@ -72,6 +72,15 @@ import java.util.List;
  */
 public class RavenEntity extends TamableAnimal implements GeoEntity {
 
+    // Constructor
+    public RavenEntity(EntityType<? extends TamableAnimal> type, Level level) {
+        super(type, level);
+    }
+
+    // -------------
+    // BEGIN VARS
+    // -------------
+
     private static final Logger LOG = LogUtils.getLogger();
 
     // Variant
@@ -84,6 +93,16 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
     // AI state + follow cooldown
     private static final EntityDataAccessor<Integer> DATA_AI_STATE =
+            SynchedEntityData.defineId(RavenEntity.class, EntityDataSerializers.INT);
+
+    // --- Lure/follow data accessors (MUST live here, not in LureFollowTame) ---
+    public static final EntityDataAccessor<Boolean> DATA_LURE_FOLLOW_ARMED =
+            SynchedEntityData.defineId(RavenEntity.class, EntityDataSerializers.BOOLEAN);
+    public static final EntityDataAccessor<Boolean> DATA_LURE_FOLLOW_ACTIVE =
+            SynchedEntityData.defineId(RavenEntity.class, EntityDataSerializers.BOOLEAN);
+
+    // Follow cooldown (for lure/owner follow logic).
+    public static final EntityDataAccessor<Integer> DATA_FOLLOW_COOLDOWN_TICKS =
             SynchedEntityData.defineId(RavenEntity.class, EntityDataSerializers.INT);
 
     private static final String NBT_VARIANT = "RavenVariant";
@@ -99,12 +118,17 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     private static final int HOME_RADIUS_BLOCKS = 50;
     private static final int HOME_Y_DELTA = 15;
 
+    static {
+        Teleportation.initEntityData();
+    }
+
     // --------------------
     // Modules
     // --------------------
     private final RavenSoundEngine soundEngine = new RavenSoundEngine(this);
     private final LureFollowTame lureFollowTame = new LureFollowTame(this); // Not part of sound but hey why not put it here
     private final Teleportation teleportation = new Teleportation(this);
+    private final Landing landing = new Landing(this);
 
     // --------------------
     // Sound handling
@@ -160,17 +184,6 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     private static final int ROAM_MIN_TICKS = 4 * 20;
     private static final int ROAM_MAX_TICKS = 10 * 20;
 
-    // Target selection search
-    private static final int LAND_SEARCH_RADIUS = 18;
-    private static final int LAND_SEARCH_ATTEMPTS = 60;
-    private static final int LAND_SCAN_DOWN = 32;
-
-    // REQUIRED: always require 10 blocks of air above the leaves block.
-    private static final int LAND_REQUIRED_AIR_ABOVE = 10;
-
-    // Canopy edge avoidance: require thick canopy neighbors around the leaf block.
-    private static final int CANOPY_NEIGHBOR_LEAVES_REQUIRED = 5;
-
     // Stuck / avoidance (used in free-flight and overhead approach)
     private static final int STUCK_TICKS_THRESHOLD = 30;
     private static final double STUCK_PROGRESS_EPS = 0.06D;
@@ -180,32 +193,6 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     private static final double FLY_SPEED_BASE = 0.25D;
     private static final double FLY_SPEED_RETURN = 0.32D;
     private static final double ARRIVE_DIST = 1.2D;
-
-    // Landing phases tuning
-    private static final int LANDING_MAX_TOTAL_TICKS = 8 * 20;
-
-    // Overhead target: centered 2 blocks above leaf, slightly padded upward for smoother approach
-    private static final double OVERHEAD_Y_OFFSET_FROM_LEAF = 2.25D;
-
-    // Slow descent
-    private static final double DESCEND_SPEED_Y = -0.06D;
-    private static final double DESCEND_SPEED_Y_MIN = -0.12D;
-    private static final double DESCEND_SPEED_Y_MAX_UP = 0.04D;
-
-    // Horizontal centering during descent
-    private static final double DESCEND_CENTER_SPEED = 0.10D;
-    private static final double DESCEND_CENTER_MAX = 0.12D;
-
-    // Phase thresholds
-    private static final double OVERHEAD_HORIZONTAL_EPS = 0.55D;
-    private static final double OVERHEAD_VERTICAL_EPS = 0.75D;
-
-    // Drop trigger: centered + about 1 block above leaf top surface
-    private static final double DROP_START_ABOVE_LEAF_TOP_Y = 1.15D;
-    private static final double DROP_CENTER_EPS = 0.32D;
-
-    // Drop physics
-    private static final double DROP_NUDGE_Y = -0.18D;
 
     // IDLE stability lock + leaf-loss grace counter
     private static final int IDLE_LOCK_TICKS = 50; // ~2.5s
@@ -302,44 +289,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     private float idleTargetYaw = 0.0F;
     private int idleNextTurnTicks = 0;
 
-    @Nullable
-    private BlockPos idlePerchCorner = null; // NW corner of the 2x2 perch footprint we are committed to during IDLE_GROUND
-
     private int idleCommitTicks = 0;
-
-
-
-    private static final class PerchValidity {
-        final boolean ok;
-        final String reason;
-        final String details;
-
-        private PerchValidity(boolean ok, String reason, String details) {
-            this.ok = ok;
-            this.reason = reason;
-            this.details = details;
-        }
-
-        static PerchValidity ok() {
-            return new PerchValidity(true, "OK", "");
-        }
-
-        static PerchValidity fail(String reason, String details) {
-            return new PerchValidity(false, reason == null ? "FAIL" : reason, details == null ? "" : details);
-        }
-    }
-
-    // Perch footprint rules (2x2, step allowed)
-    private static final int PERCH_FOOTPRINT_SIZE = 2; // 2x2
-    private static final int PERCH_STEP_DOWN_MAX = 1;  // allow topY and topY-1 within the 2x2
-
-    // How close we must be to the true center of the 2x2 to consider "perched"
-    private static final double PERCH_CENTER_EPS = 0.55D;
-
-    // Store landing target as the NW corner of the 2x2 footprint at the chosen topY
-    // landingLeafPos used to be a single leaf; now it represents the perch-corner "anchor".
-    @Nullable
-    private BlockPos landingLeafPos = null;
 
     /**
      * Roam flight window remaining ticks:
@@ -355,14 +305,6 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     // Avoidance throttle
     private int avoidanceCooldownTicks = 0;
 
-    // Landing state machine (ROAM_FLY only)
-    private enum LandingPhase {
-        NONE,
-        FLY_TO_OVERHEAD,
-        DESCEND_SLOW,
-        DROP
-    }
-
     // IDLE stability lock + leaf-loss grace counter
     private int idleLockTicks = 0;
     private int idleLeafLossTicks = 0;
@@ -371,28 +313,34 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     private boolean idleSettleArmed = false;
     private boolean idleSettlingActive = false;
 
+    // Landing phase + ticks remain here ONLY if you are not yet delegating the state machine fields to Landing.
+    // (If you are delegating: remove these two fields + the enum from RavenEntity and put them into Landing.)
     private LandingPhase landingPhase = LandingPhase.NONE;
     private int landingTicks = 0;
 
-    public RavenEntity(EntityType<? extends TamableAnimal> type, Level level) {
-        super(type, level);
+    // Landing state machine (ROAM_FLY only)
+    private enum LandingPhase {
+        NONE,
+        FLY_TO_OVERHEAD,
+        DESCEND_SLOW,
+        DROP
     }
 
-    public RavenControl getControl() {
-        return control;
-    }
+    // -------------
+    // END VARS
+    // -------------
 
     @Override
     protected void defineSynchedData(SynchedEntityData.Builder builder) {
         super.defineSynchedData(builder);
 
+        // Core raven state
         builder.define(DATA_VARIANT, RavenVariant.NORMAL.id());
         builder.define(DATA_ANIM_MODE, RavenAnimMode.AUTO.id());
         builder.define(DATA_AI_STATE, RavenAIState.IDLE_GROUND.id());
 
-        // NOTE: use the DATA_FOLLOW_COOLDOWN_TICKS that lives in LureFollowTame so
-        // both classes share the same EntityDataAccessor instance.
-        builder.define(LureFollowTame.DATA_FOLLOW_COOLDOWN_TICKS, 0);
+        // Follow cooldown shared with LureFollowTame via DATA_FOLLOW_COOLDOWN_TICKS
+        builder.define(DATA_FOLLOW_COOLDOWN_TICKS, 0);
 
         // Teleport FX sync (client renders short burst)
         builder.define(Teleportation.DATA_TELEPORT_FX_TICKS, 0);
@@ -400,6 +348,10 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
         // Transparency
         builder.define(Teleportation.DATA_TELEPORT_FADE_ALPHA, 255);
+
+        // Lure/follow flags
+        builder.define(DATA_LURE_FOLLOW_ARMED, Boolean.FALSE);
+        builder.define(DATA_LURE_FOLLOW_ACTIVE, Boolean.FALSE);
     }
 
     // -----------------
@@ -511,7 +463,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                             state,
                             this.position(),
                             landingPhase,
-                            landingLeafPos,
+                            landing.landingLeafPos,
                             idleTicksRemaining,
                             idleCommitTicks,
                             roamTicksRemaining,
@@ -537,9 +489,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         this.isNoGravity(),
                         this.onGround(),
                         landingPhase,
-                        landingLeafPos,
+                        landing.landingLeafPos,
                         landingTicks,
-                        idlePerchCorner,
+                        landing.idlePerchCorner,
                         idleTicksRemaining,
                         idleCommitTicks,
                         idleLeafLossTicks,
@@ -581,9 +533,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     this.horizontalCollision,
                     this.verticalCollision,
                     landingPhase,
-                    landingLeafPos,
+                    landing.landingLeafPos,
                     landingTicks,
-                    idlePerchCorner,
+                    landing.idlePerchCorner,
                     idleTicksRemaining,
                     idleCommitTicks,
                     idleLeafLossTicks,
@@ -1602,7 +1554,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 }
 
                 setAIState(RavenAIState.ROAM_FLY);
-                resetLandingState("out-of-bounds");
+                landing.resetLandingState("out-of-bounds", this);
                 idleLockTicks = 0;
                 idleLeafLossTicks = 0;
 
@@ -1747,16 +1699,16 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // We use your 2x2 validity check, anchored by the current idlePerchCorner if possible.
             boolean perchValidNow = false;
 
-            BlockPos corner = idlePerchCorner;
+            BlockPos corner = landing.idlePerchCorner;
             if (corner != null) {
-                perchValidNow = isValidPerchCornerAtTopY(corner);
+                perchValidNow = landing.isValidPerchCornerAtTopY(corner, this);
             } else {
                 // Fallback: probe under feet and locate a valid corner nearby.
                 BlockPos feetBlock = BlockPos.containing(this.getX(), this.getBoundingBox().minY - 0.001D, this.getZ());
-                BlockPos found = findValidPerchCornerNearXZ(feetBlock.getX(), feetBlock.getZ());
+                BlockPos found = landing.findValidPerchCornerNearXZ(feetBlock.getX(), feetBlock.getZ(), this);
                 if (found != null) {
-                    idlePerchCorner = found;
-                    perchValidNow = isValidPerchCornerAtTopY(found);
+                    landing.idlePerchCorner = found;
+                    perchValidNow = landing.isValidPerchCornerAtTopY(found, this);
                 } else {
                     perchValidNow = false;
                 }
@@ -1770,7 +1722,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                             idleLeafLossTicks,
                             IDLE_LEAF_LOSS_GRACE_TICKS,
                             this.position(),
-                            idlePerchCorner,
+                            landing.idlePerchCorner,
                             String.format("%.3f", this.getBoundingBox().minY),
                             this.onGround(),
                             this.verticalCollision,
@@ -1785,14 +1737,14 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     String leaveReason = "idle perch invalid for " + idleLeafLossTicks + " ticks";
                     if (this.tickCount % 20 == 0) {
                         LOG.info("[RavenEntity] IDLE -> ROAM_FLY (reason={}) pos={} idlePerchCorner={}",
-                                leaveReason, this.position(), idlePerchCorner);
+                                leaveReason, this.position(), landing.idlePerchCorner);
                     }
 
                     // Start a roam flight window (or your preferred takeoff logic)
                     setAIState(RavenAIState.ROAM_FLY);
                     idleLockTicks = 12;          // takeoff grace
                     roamTicksRemaining = 0;      // allow landing selection soon if desired
-                    resetLandingState("idle left: " + leaveReason);
+                    landing.resetLandingState("idle left: " + leaveReason, this);
                     clearPlannedPath("idle left: " + leaveReason);
                     clearFlyTarget();
 
@@ -1803,7 +1755,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 // Reset loss counter if we are valid again.
                 if (idleLeafLossTicks > 0 && this.tickCount % 40 == 0) {
                     LOG.debug("[RavenEntity] IDLE: perch validity restored. pos={} idlePerchCorner={} lossTicksResetFrom={}",
-                            this.position(), idlePerchCorner, idleLeafLossTicks);
+                            this.position(), landing.idlePerchCorner, idleLeafLossTicks);
                 }
                 idleLeafLossTicks = 0;
             }
@@ -1842,13 +1794,13 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     String leaveReason = "idle timer expired";
                     if (this.tickCount % 20 == 0) {
                         LOG.info("[RavenEntity] IDLE -> ROAM_FLY (reason={}) pos={} idlePerchCorner={}",
-                                leaveReason, this.position(), idlePerchCorner);
+                                leaveReason, this.position(), landing.idlePerchCorner);
                     }
 
                     setAIState(RavenAIState.ROAM_FLY);
                     idleLockTicks = 12;
                     roamTicksRemaining = 0;
-                    resetLandingState("idle left: " + leaveReason);
+                    landing.resetLandingState("idle left: " + leaveReason, this);
                     clearPlannedPath("idle left: " + leaveReason);
                     clearFlyTarget();
 
@@ -1863,7 +1815,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // Optional: super-light periodic idle heartbeat log (rare).
             if (this.tickCount % 200 == 0) {
                 LOG.debug("[RavenEntity] IDLE tick: pos={} idlePerchCorner={} idleTicksRemaining={} commitTicks={} leafLossTicks={}",
-                        this.position(), idlePerchCorner, idleTicksRemaining, idleCommitTicks, idleLeafLossTicks);
+                        this.position(), landing.idlePerchCorner, idleTicksRemaining, idleCommitTicks, idleLeafLossTicks);
             }
 
         } catch (Throwable t) {
@@ -1966,11 +1918,11 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 if (stillOverriding && playerAvoidanceOverrideTicks > 0) {
                     // Absolutely cancel landing every tick to stop "re-perch" fights.
                     try {
-                        resetLandingState("player avoidance override tick");
+                        landing.resetLandingState("player avoidance override tick", this);
                     } catch (Throwable ignored) {}
 
                     landingPhase = LandingPhase.NONE;
-                    landingLeafPos = null;
+                    landing.landingLeafPos = null;
                     landingTicks = 0;
 
                     // Force flight posture
@@ -2112,34 +2064,34 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // Do NOT instantly re-enter idle just because we are hovering above a perch center.
             // Only allow this shortcut when we are in "non-flying" physics (noGravity=false),
             // which is true during DROP / actual landing / resting.
-            if (!this.isNoGravity() && isOnValidPerchNow()) {
+            if (!this.isNoGravity() && landing.isOnValidPerchNow(this)) {
                 if (this.tickCount % 40 == 0) {
                     LOG.debug("[RavenEntity] ROAM_FLY -> IDLE shortcut (not flying): pos={} vel={} landingPhase={} leafPos={}",
-                            this.position(), this.getDeltaMovement(), landingPhase, landingLeafPos);
+                            this.position(), this.getDeltaMovement(), landingPhase, landing.landingLeafPos);
                 }
-                enterIdleFromLanding("ROAM_FLY: centered on valid 2x2 perch (not flying)");
+                landing.enterIdleFromLanding("ROAM_FLY: centered on valid 2x2 perch (not flying)", this);
                 return;
             }
 
             if (landingPhase != LandingPhase.NONE) {
                 landingTicks++;
-                if (landingTicks > LANDING_MAX_TOTAL_TICKS) {
+                if (landingTicks > landing.LANDING_MAX_TOTAL_TICKS) {
                     if (this.tickCount % 80 == 0) {
                         LOG.debug("[RavenEntity] Landing timed out (phase={}, ticks={}) -> resetting landing and restarting landing (no roam interrupt)",
                                 landingPhase, landingTicks);
                     }
-                    resetLandingState("landing timeout");
+                    landing.resetLandingState("landing timeout", this);
                     clearPlannedPath("landing timeout");
                 }
             } else {
                 landingTicks = 0;
             }
 
-            if (landingLeafPos != null && !isStillValidLandingLeaf(landingLeafPos)) {
+            if (landing.landingLeafPos != null && !landing.isStillValidLandingLeaf(landing.landingLeafPos, this)) {
                 if (this.tickCount % 80 == 0) {
-                    LOG.debug("[RavenEntity] Landing leaf became invalid -> resetting landing leaf at {}", landingLeafPos);
+                    LOG.debug("[RavenEntity] Landing leaf became invalid -> resetting landing leaf at {}", landing.landingLeafPos);
                 }
-                resetLandingState("invalid leaf");
+                landing.resetLandingState("invalid leaf", this);
                 clearPlannedPath("invalid landing leaf");
             }
 
@@ -2193,11 +2145,11 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             if (landingPhase != LandingPhase.NONE) {
                 // ❌ No random blink here: landing state machine owns movement & phases.
-                tickLandingStateMachine(rnd);
+                landing.tickLandingStateMachine(rnd, this);
                 return;
             }
 
-            BlockPos leaf = pickLandingLeafBlock(rnd);
+            BlockPos leaf = landing.pickLandingLeafBlock(rnd, this);
             if (leaf == null) {
                 int extra = 20 + rnd.nextInt(60);
                 roamTicksRemaining = extra;
@@ -2240,11 +2192,11 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             // From HERE on, we are committing to a landing sequence.
             // ❌ Do NOT random blink after this point.
-            landingLeafPos = leaf;
+            landing.landingLeafPos = leaf;
             landingPhase = LandingPhase.FLY_TO_OVERHEAD;
             landingTicks = 0;
 
-            Vec3 overhead = overheadTargetForLeaf(leaf);
+            Vec3 overhead = landing.overheadTargetForLeaf(leaf, this);
 
             this.setNoGravity(true);
             if (this.getAnimMode() != RavenAnimMode.IN_AIR) {
@@ -2260,291 +2212,11 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             if (this.tickCount % DEBUG_LOG_INTERVAL_TICKS == 0) {
                 LOG.debug("[RavenEntity] Landing start (post-roam): leaf={} overhead={} (airAbove={}, canopyNeighbors>={}) pathOk={}",
-                        leaf, overhead, LAND_REQUIRED_AIR_ABOVE, CANOPY_NEIGHBOR_LEAVES_REQUIRED, ok);
+                        leaf, overhead, landing.LAND_REQUIRED_AIR_ABOVE, landing.CANOPY_NEIGHBOR_LEAVES_REQUIRED, ok);
             }
 
         } catch (Throwable t) {
             LOG.error("[RavenEntity] tickRoamFly failed", t);
-        }
-    }
-
-    /**
-     * Landing state machine (refactored):
-     *  - FLY_TO_OVERHEAD uses coarse A* waypoint pathing to reach the overhead point without punching through canopy/structures.
-     *  - DESCEND_SLOW and DROP remain local/physics-driven (no A*), unchanged in behavior.
-     */
-    private void tickLandingStateMachine(RandomSource rnd) {
-        // FIX: Do NOT allow "I’m on a perch" shortcut while we’re still in flight pathing.
-        // Otherwise, passing near the 2x2 center during FLY_TO_OVERHEAD can trigger enterIdleFromLanding(),
-        // which can then snap (setPos) and look like a silent teleport.
-        try {
-            boolean allowPerchShortcutNow = false;
-
-            // Only allow the shortcut when we are actually in DROP (noGravity=false) OR explicitly not flying.
-            // This keeps behavior stable and prevents mid-air "instant idle" transitions.
-            if (landingPhase == LandingPhase.DROP) {
-                allowPerchShortcutNow = true;
-            } else {
-                // fallback safety: if not flying physics (noGravity=false) allow it
-                // (covers weird edge cases where phase might be desynced)
-                try {
-                    allowPerchShortcutNow = !this.isNoGravity();
-                } catch (Throwable t) {
-                    allowPerchShortcutNow = false;
-                }
-            }
-
-            if (allowPerchShortcutNow && isOnValidPerchNow()) {
-                if (this.tickCount % 20 == 0) {
-                    LOG.debug("[RavenEntity] Landing shortcut -> IDLE allowed (phase={} noGravity={} pos={} vel={} leafPos={})",
-                            landingPhase, this.isNoGravity(), this.position(), this.getDeltaMovement(), landingLeafPos);
-                }
-                enterIdleFromLanding("Landing: perched (phase=" + landingPhase + ")");
-                return;
-            }
-        } catch (Throwable t) {
-            if (this.tickCount % 40 == 0) {
-                LOG.warn("[RavenEntity] tickLandingStateMachine perch-shortcut gate failed safely: {}", t.toString());
-            }
-        }
-
-        switch (landingPhase) {
-            case NONE -> {
-                resetLandingState("tickLandingStateMachine called with NONE");
-                clearPlannedPath("landing NONE");
-            }
-
-            case FLY_TO_OVERHEAD -> {
-                this.setNoGravity(true);
-                if (this.getAnimMode() != RavenAnimMode.IN_AIR) {
-                    this.setAnimMode(RavenAnimMode.IN_AIR);
-                }
-
-                if (landingLeafPos == null) {
-                    resetLandingState("FLY_TO_OVERHEAD missing leaf");
-                    clearPlannedPath("FLY_TO_OVERHEAD missing leaf");
-                    return;
-                }
-
-                Vec3 overhead = overheadTargetForLeaf(landingLeafPos);
-
-                // Only plan if we currently have no movement target.
-                boolean hasFlyIntent = (flyTarget != null && flyTargetTimeoutTicks > 0);
-                boolean hasPathIntent = (pathWaypoints != null && !pathWaypoints.isEmpty() && pathWaypointIndex < pathWaypoints.size());
-
-                // Also, if we are very close, don't replan; we should just transition.
-                Vec3 pos = this.position();
-                double horizNow = horizontalDistanceTo(pos, overhead);
-                double vertNow = Math.abs(pos.y - overhead.y);
-
-                if (horizNow <= OVERHEAD_HORIZONTAL_EPS && vertNow <= OVERHEAD_VERTICAL_EPS) {
-                    landingPhase = LandingPhase.DESCEND_SLOW;
-                    clearFlyTarget();
-                    clearPlannedPath("overhead reached -> descent");
-                    if (this.tickCount % 20 == 0) {
-                        LOG.info("[RavenEntity] Overhead reached -> DESCEND_SLOW (leaf={} pos={} horiz={} vert={})",
-                                landingLeafPos, pos, String.format("%.3f", horizNow), String.format("%.3f", vertNow));
-                    }
-                    return;
-                }
-
-                // Only compute a new path if we don't already have one.
-                if (!hasFlyIntent && !hasPathIntent) {
-                    long seed = this.getUUID().getLeastSignificantBits() ^ (long) this.tickCount ^ landingLeafPos.asLong();
-                    boolean ok = ensurePathTo(overhead, 6 * 20, seed, "FLY_TO_OVERHEAD");
-
-                    if (!ok) {
-                        setFlyTarget(overhead, 6 * 20);
-                    }
-
-                    if (this.tickCount % 20 == 0) {
-                        LOG.info("[RavenEntity] FLY_TO_OVERHEAD acquire intent: pathOk={} overhead={} pos={} vel={}",
-                                ok, overhead, pos, this.getDeltaMovement());
-                    }
-                }
-
-                maybeAvoidOrRetargetDuringFlightApproachOnly(rnd);
-
-                if (flyTarget != null) {
-                    if (flyTargetTimeoutTicks > 0) {
-                        flyTargetTimeoutTicks--;
-                    }
-                    flyTowardTarget(FLY_SPEED_BASE);
-                }
-
-                if (pathWaypoints != null && !pathWaypoints.isEmpty()) {
-                    advanceWaypointIfNeeded(6 * 20, "FLY_TO_OVERHEAD");
-                }
-            }
-
-            case DESCEND_SLOW -> {
-                if (landingLeafPos == null) {
-                    resetLandingState("DESCEND_SLOW missing leaf");
-                    clearPlannedPath("DESCEND_SLOW missing leaf");
-                    return;
-                }
-
-                this.setNoGravity(true);
-                if (this.getAnimMode() != RavenAnimMode.IN_AIR) {
-                    this.setAnimMode(RavenAnimMode.IN_AIR);
-                }
-
-                Vec3 pos = this.position();
-                Vec3 leafCenter = leafCenterTop(landingLeafPos);
-
-                Vec3 toCenter = new Vec3(leafCenter.x - pos.x, 0.0D, leafCenter.z - pos.z);
-                double d2 = toCenter.length();
-                Vec3 horizVel = Vec3.ZERO;
-                if (d2 > 0.0001D) {
-                    Vec3 dir = toCenter.scale(1.0D / d2);
-                    double sp = Mth.clamp(DESCEND_CENTER_SPEED, 0.0D, DESCEND_CENTER_MAX);
-                    horizVel = new Vec3(dir.x * sp, 0.0D, dir.z * sp);
-                }
-
-                double vy = this.getDeltaMovement().y;
-                if (vy > DESCEND_SPEED_Y_MAX_UP) {
-                    vy = DESCEND_SPEED_Y_MAX_UP;
-                }
-                if (vy > DESCEND_SPEED_Y) {
-                    vy = DESCEND_SPEED_Y;
-                }
-                if (vy < DESCEND_SPEED_Y_MIN) {
-                    vy = DESCEND_SPEED_Y_MIN;
-                }
-
-                this.setDeltaMovement(horizVel.x, vy, horizVel.z);
-
-                if (horizVel.lengthSqr() > 0.0001D) {
-                    float yaw = (float) (Mth.atan2(horizVel.z, horizVel.x) * (180.0D / Math.PI)) - 90.0F;
-                    this.setYRot(yaw);
-                    this.setYHeadRot(yaw);
-                    this.yBodyRot = yaw;
-                }
-
-                double centerDist = horizontalDistanceTo(pos, leafCenter);
-                double leafTopY = landingLeafPos.getY() + 1.0D;
-                double aboveTop = pos.y - leafTopY;
-
-                if (centerDist <= DROP_CENTER_EPS && aboveTop <= (DROP_START_ABOVE_LEAF_TOP_Y + 0.25D)) {
-                    landingPhase = LandingPhase.DROP;
-                    if (this.tickCount % DEBUG_LOG_INTERVAL_TICKS == 0) {
-                        LOG.debug("[RavenEntity] DESCEND_SLOW -> DROP (leaf={}, pos={}, centerDist={}, aboveTop={})",
-                                landingLeafPos, pos, centerDist, aboveTop);
-                    }
-                }
-            }
-
-            case DROP -> {
-                if (landingLeafPos == null) {
-                    resetLandingState("DROP missing leaf");
-                    clearPlannedPath("DROP missing leaf");
-                    return;
-                }
-
-                this.setNoGravity(false);
-                if (this.getAnimMode() != RavenAnimMode.NO_AIR) {
-                    this.setAnimMode(RavenAnimMode.NO_AIR);
-                }
-
-                Vec3 vel = this.getDeltaMovement();
-                double vy = vel.y;
-                if (vy > IDLE_SETTLE_MAX_UP) {
-                    vy = IDLE_SETTLE_MAX_UP;
-                }
-                if (vy > DROP_NUDGE_Y) {
-                    vy = DROP_NUDGE_Y;
-                }
-                if (vy < IDLE_SETTLE_MIN_FALL) {
-                    vy = IDLE_SETTLE_MIN_FALL;
-                }
-
-                this.setDeltaMovement(0.0D, vy, 0.0D);
-
-                // --- FIX: accept slightly-off landings and COMMIT the correct 2x2 corner ---
-                // The logs you showed were repeating DROP forever because "relaxedPerch=false" and dXZ ~ 1.2–1.27,
-                // so isOnValidPerchNowRelaxedForLanding() never returned true.
-                //
-                // During DROP, if we're grounded/stable we should:
-                //  1) pick the BEST valid 2x2 corner (prefer landingLeafPos vicinity)
-                //  2) accept up to ~1.6 blocks off-center (then enterIdleFromLanding will snap)
-                try {
-                    boolean groundedStable = this.onGround() || this.verticalCollision;
-
-                    if (groundedStable) {
-                        BlockPos feetBlock = BlockPos.containing(this.getX(), this.getBoundingBox().minY - 0.001D, this.getZ());
-
-                        BlockPos bestCorner = null;
-                        try {
-                            bestCorner = findBestPerchCornerForLanding(landingLeafPos, feetBlock);
-                        } catch (Throwable t) {
-                            bestCorner = null;
-                            if (this.tickCount % 40 == 0) {
-                                LOG.warn("[RavenEntity] DROP: findBestPerchCornerForLanding failed safely: {}", t.toString());
-                            }
-                        }
-
-                        if (bestCorner != null && isValidPerchCornerAtTopY(bestCorner)) {
-                            Vec3 center = perchCenterTop(bestCorner);
-                            Vec3 pos = this.position();
-
-                            double dx = pos.x - center.x;
-                            double dz = pos.z - center.z;
-                            double dXZ = Math.sqrt(dx * dx + dz * dz);
-
-                            // Key constant: your failing samples are ~1.20–1.27; accept them and snap in enterIdleFromLanding.
-                            final double DROP_SNAP_EPS = 1.60D;
-
-                            if (this.tickCount % 20 == 0) {
-                                LOG.info("[RavenEntity] DROP: groundedStable={} bestCorner={} center={} pos={} dXZ={} eps={} landingLeafPos={} onGround={} vColl={} vel={}",
-                                        groundedStable,
-                                        bestCorner,
-                                        center,
-                                        pos,
-                                        String.format("%.3f", dXZ),
-                                        String.format("%.2f", DROP_SNAP_EPS),
-                                        landingLeafPos,
-                                        this.onGround(),
-                                        this.verticalCollision,
-                                        this.getDeltaMovement()
-                                );
-                            }
-
-                            if (dXZ <= DROP_SNAP_EPS) {
-                                // Commit the anchor so IDLE validity checks don't “pick a different corner” and instantly fail.
-                                idlePerchCorner = bestCorner;
-
-                                // Also align landingLeafPos to the chosen corner so enterIdleFromLanding uses the correct anchor.
-                                // (This is safe because landingLeafPos is "perch-corner anchor" in your code.)
-                                landingLeafPos = bestCorner;
-
-                                enterIdleFromLanding("DROP: grounded stable + bestCorner within snap eps (dXZ=" + String.format("%.3f", dXZ) + ")");
-                                return;
-                            }
-                        }
-                    }
-                } catch (Throwable t) {
-                    if (this.tickCount % 40 == 0) {
-                        LOG.warn("[RavenEntity] DROP: snap-accept logic failed safely: {}", t.toString());
-                    }
-                }
-
-                // Fallback: keep your existing relaxed check (still useful when we are actually close / centered).
-                if (isOnValidPerchNowRelaxedForLanding("DROP")) {
-                    enterIdleFromLanding("DROP: on valid 2x2 perch (relaxed threshold, will snap)");
-                    return;
-                }
-
-                Vec3 pos = this.position();
-                double leafTopY = landingLeafPos.getY() + 1.0D;
-                if (pos.y < leafTopY - 1.25D) {
-                    if (this.tickCount % 80 == 0) {
-                        LOG.debug("[RavenEntity] DROP missed leaf (posY={}, leafTopY={}) -> resetting landing and reattempting",
-                                pos.y, leafTopY);
-                    }
-                    resetLandingState("drop missed");
-                    clearPlannedPath("drop missed");
-                }
-            }
         }
     }
 
@@ -2556,7 +2228,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             int ticks = ROAM_MIN_TICKS + rnd.nextInt(span);
             roamTicksRemaining = Math.max(1, ticks);
 
-            resetLandingState("beginRoamFlightWindow: " + reason);
+            landing.resetLandingState("beginRoamFlightWindow: " + reason, this);
 
             this.setNoGravity(true);
             if (this.getAnimMode() != RavenAnimMode.IN_AIR) {
@@ -2593,160 +2265,6 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 idleLockTicks = 12;
             }
         }
-    }
-
-    private void resetLandingState(String reason) {
-        if (landingPhase != LandingPhase.NONE || landingLeafPos != null || landingTicks != 0) {
-            if (this.tickCount % DEBUG_LOG_INTERVAL_TICKS == 0) {
-                LOG.debug("[RavenEntity] resetLandingState(reason={}) phase={} leaf={} ticks={}",
-                        reason, landingPhase, landingLeafPos, landingTicks);
-            }
-        }
-        landingPhase = LandingPhase.NONE;
-        landingTicks = 0;
-        landingLeafPos = null;
-    }
-
-    private void enterIdleFromLanding(String reason) {
-        try {
-            clearPlannedPath("enter idle: " + reason);
-            clearFlyTarget();
-            flyTargetTimeoutTicks = 0;
-            avoidanceCooldownTicks = 0;
-            stuckTicks = 0;
-            lastDistToTarget = Double.NaN;
-
-            // ---- NEW: hard-kill any leftover "intent" that can cause ensurePathTo while perched.
-            // If these remain non-null, other code can interpret "intent exists" and re-path.
-            boolean hadAnyIntent =
-                    (pathGoal != null)
-                            || (pathPendingGoal != null)
-                            || (pathWaypoints != null && !pathWaypoints.isEmpty());
-
-            pathGoal = null;
-            pathPendingGoal = null;
-            pathWaypoints = null;
-            pathWaypointIndex = 0;
-            pathRetryCooldownTicks = 0;
-
-            if (hadAnyIntent && this.tickCount % 20 == 0) {
-                LOG.info("[RavenEntity] enterIdleFromLanding: cleared leftover path/goal intent. reason={} pos={}",
-                        reason, this.position());
-            }
-
-            BlockPos committedCorner = landingLeafPos;
-            if (committedCorner == null) {
-                BlockPos feetBlock = BlockPos.containing(this.getX(), this.getBoundingBox().minY - 0.001D, this.getZ());
-                committedCorner = findValidPerchCornerNearXZ(feetBlock.getX(), feetBlock.getZ());
-            }
-
-            resetLandingState("enter idle: " + reason);
-
-            idlePerchCorner = committedCorner;
-
-            setAIState(RavenAIState.IDLE_GROUND);
-
-            // ---- NEW: "commit" window so we don't immediately bail out of idle due to jitter / soft checks.
-            // This solves the "lands, idles 1s, takes off" behavior when a soft rule fires right after landing.
-            idleCommitTicks = 60; // 3 seconds @ 20 TPS (tune: 40=2s, 80=4s)
-
-            idleLockTicks = IDLE_LOCK_TICKS;
-            idleLeafLossTicks = 0;
-
-            if (idleTicksRemaining <= 0) {
-                RandomSource rnd = this.getRandom();
-                idleTicksRemaining = IDLE_MIN_TICKS + rnd.nextInt(Math.max(1, IDLE_MAX_TICKS - IDLE_MIN_TICKS + 1));
-                idleTargetYaw = this.getYRot();
-                idleNextTurnTicks = 10 + rnd.nextInt(50);
-            }
-
-            roamTicksRemaining = 0;
-
-            this.setNoGravity(false);
-            this.setAnimMode(RavenAnimMode.NO_AIR);
-
-            Vec3 vel = this.getDeltaMovement();
-            double vy = vel.y;
-
-            if (vy > IDLE_SETTLE_MAX_UP) {
-                vy = IDLE_SETTLE_MAX_UP;
-            }
-            if (vy > IDLE_SETTLE_NUDGE_DOWN) {
-                vy = IDLE_SETTLE_NUDGE_DOWN;
-            }
-            if (vy < IDLE_SETTLE_MIN_FALL) {
-                vy = IDLE_SETTLE_MIN_FALL;
-            }
-
-            this.setDeltaMovement(0.0D, vy, 0.0D);
-
-            // Prevent "silent snap" while airborne:
-            // Only snap to perch center if we are effectively settled (not flying) and not moving vertically much.
-            boolean canSnapNow = true;
-            try {
-                boolean notFlying = !this.isNoGravity();
-                boolean lowVertical = Math.abs(this.getDeltaMovement().y) <= 0.10D;
-                boolean touchingSomething = this.onGround() || this.verticalCollision;
-                canSnapNow = notFlying && (lowVertical || touchingSomething);
-            } catch (Throwable t) {
-                canSnapNow = false;
-            }
-
-            if (canSnapNow && idlePerchCorner != null && isValidPerchCornerAtTopY(idlePerchCorner)) {
-                Vec3 centerTop = perchCenterTop(idlePerchCorner);
-
-                double snapX = centerTop.x;
-                double snapZ = centerTop.z;
-                double keepY = this.getY();
-
-                this.setPos(snapX, keepY, snapZ);
-                this.hurtMarked = true;
-
-                if (this.tickCount % 40 == 0) {
-                    LOG.debug("[RavenEntity] enterIdleFromLanding: snapped to perch center. reason={} idlePerchCorner={} newPos={} vel={}",
-                            reason, idlePerchCorner, this.position(), this.getDeltaMovement());
-                }
-            } else {
-                if (this.tickCount % 80 == 0) {
-                    LOG.debug("[RavenEntity] enterIdleFromLanding: snap skipped (canSnapNow={}). reason={} idlePerchCorner={} pos={} vel={} noGravity={} onGround={} vColl={}",
-                            canSnapNow, reason, idlePerchCorner, this.position(), this.getDeltaMovement(), this.isNoGravity(), this.onGround(), this.verticalCollision);
-                }
-            }
-
-            if (this.tickCount % 20 == 0) {
-                LOG.info("[RavenEntity] ENTER IDLE: reason={} pos={} idlePerchCorner={} idleTicksRemaining={} commitTicks={}",
-                        reason, this.position(), idlePerchCorner, idleTicksRemaining, idleCommitTicks);
-            }
-
-        } catch (Throwable t) {
-            LOG.error("[RavenEntity] enterIdleFromLanding failed (reason={})", reason, t);
-        }
-    }
-
-    private boolean isStillValidLandingLeaf(BlockPos leaf) {
-        try {
-            // leaf is now "perchCornerTop"
-            if (leaf == null) return false;
-
-            // Re-validate the full footprint (includes air column + canopy/edge protection)
-            return isValidPerchCornerAtTopY(leaf);
-        } catch (Throwable t) {
-            if (this.tickCount % 200 == 0) {
-                LOG.warn("[RavenEntity] isStillValidLandingLeaf failed: {}", t.toString());
-            }
-            return false;
-        }
-    }
-
-    private Vec3 overheadTargetForLeaf(BlockPos leaf) {
-        // leaf is now perchCornerTop
-        Vec3 centerTop = perchCenterTop(leaf);
-        return new Vec3(centerTop.x, leaf.getY() + OVERHEAD_Y_OFFSET_FROM_LEAF, centerTop.z);
-    }
-
-    private Vec3 leafCenterTop(BlockPos leaf) {
-        // leaf is now perchCornerTop
-        return perchCenterTop(leaf);
     }
 
     private double horizontalDistanceTo(Vec3 a, Vec3 b) {
@@ -3015,382 +2533,6 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         }
     }
 
-    @Nullable
-    private BlockPos pickLandingLeafBlock(RandomSource rnd) {
-        try {
-            double hx = homePos.getX() + 0.5D;
-            double hz = homePos.getZ() + 0.5D;
-
-            double angle = rnd.nextDouble() * (Math.PI * 2.0D);
-            double radius = 4.0D + rnd.nextDouble() * (HOME_RADIUS_BLOCKS - 4.0D);
-
-            int cx = Mth.floor(hx + Math.cos(angle) * radius);
-            int cz = Mth.floor(hz + Math.sin(angle) * radius);
-
-            // We now pick a 2x2 perch corner (cornerTop = (cornerX, topY, cornerZ))
-            BlockPos center = new BlockPos(cx, clampYToHomeBounds(homePos.getY()), cz);
-            return pickLandingLeafBlockNear(center, rnd);
-        } catch (Throwable t) {
-            LOG.error("[RavenEntity] pickLandingLeafBlock failed", t);
-            return null;
-        }
-    }
-
-    @Nullable
-    private BlockPos pickLandingLeafBlockNear(BlockPos center, RandomSource rnd) {
-        try {
-            for (int i = 0; i < LAND_SEARCH_ATTEMPTS; i++) {
-                int dx = rnd.nextInt(LAND_SEARCH_RADIUS * 2 + 1) - LAND_SEARCH_RADIUS;
-                int dz = rnd.nextInt(LAND_SEARCH_RADIUS * 2 + 1) - LAND_SEARCH_RADIUS;
-
-                int x = center.getX() + dx;
-                int z = center.getZ() + dz;
-
-                int topY;
-                try {
-                    topY = this.level().getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
-                } catch (Throwable t) {
-                    continue;
-                }
-
-                int scanMinY = Math.max(this.level().getMinBuildHeight(), topY - LAND_SCAN_DOWN);
-                for (int y = topY; y >= scanMinY; y--) {
-                    BlockPos probe = new BlockPos(x, y, z);
-                    BlockState state = this.level().getBlockState(probe);
-                    if (state == null || !state.is(BlockTags.LEAVES)) {
-                        continue;
-                    }
-
-                    // Convert this probe leaf into a candidate 2x2 perch corner (stepped allowed)
-                    BlockPos perchCorner = findValidPerchCornerNearXZ(probe.getX(), probe.getZ());
-                    if (perchCorner == null) {
-                        continue;
-                    }
-
-                    // Must be within home bounds (use perch center as the test)
-                    Vec3 perchCenter = perchCenterTop(perchCorner);
-                    if (isOutOfHomeBounds(perchCenter)) {
-                        continue;
-                    }
-
-                    // If valid corner check already enforced air column, this is redundant,
-                    // but leaving it as an extra guard is fine.
-                    if (!isValidPerchCornerAtTopY(perchCorner)) {
-                        continue;
-                    }
-
-                    return perchCorner;
-                }
-            }
-            return null;
-        } catch (Throwable t) {
-            LOG.error("[RavenEntity] pickLandingLeafBlockNear failed", t);
-            return null;
-        }
-    }
-
-    private boolean isThickCanopyLeaf(BlockPos leaf) {
-        try {
-            int leavesNeighbors = 0;
-
-            for (int ox = -1; ox <= 1; ox++) {
-                for (int oz = -1; oz <= 1; oz++) {
-                    if (ox == 0 && oz == 0) {
-                        continue;
-                    }
-                    BlockPos p = leaf.offset(ox, 0, oz);
-                    BlockState st = this.level().getBlockState(p);
-                    if (st != null && st.is(BlockTags.LEAVES)) {
-                        leavesNeighbors++;
-                    }
-                }
-            }
-
-            BlockState below = this.level().getBlockState(leaf.below());
-            boolean hasSupport = below != null && below.is(BlockTags.LEAVES);
-
-            return leavesNeighbors >= CANOPY_NEIGHBOR_LEAVES_REQUIRED && hasSupport;
-        } catch (Throwable t) {
-            if (this.tickCount % 200 == 0) {
-                LOG.warn("[RavenEntity] isThickCanopyLeaf failed: {}", t.toString());
-            }
-            return false;
-        }
-    }
-
-    private boolean hasAirColumn(BlockPos start, int count) {
-        try {
-            BlockPos p = start;
-            for (int i = 0; i < count; i++) {
-                if (!this.level().isEmptyBlock(p)) {
-                    return false;
-                }
-                p = p.above();
-            }
-            return true;
-        } catch (Throwable t) {
-            if (this.tickCount % 200 == 0) {
-                LOG.warn("[RavenEntity] hasAirColumn failed: {}", t.toString());
-            }
-            return false;
-        }
-    }
-
-    private boolean isLeafUnderFeet() {
-        try {
-            // We do NOT just sample a single block below a single point anymore.
-            // Instead, we sample the four corners of the entity's AABB footprint.
-            // Requirement:
-            //  - Each corner must have leaves support either directly below OR one block further down.
-            // This allows "stepped 2x2" where one quadrant is 1 block lower.
-            //
-            // This dramatically reduces false negatives at edges / while settling.
-
-            var bb = this.getBoundingBox();
-            if (bb == null) {
-                return false;
-            }
-
-            // Probe just below feet.
-            final double yProbe = bb.minY - 0.02D;
-
-            // Small inset so we don't hit neighbor blocks from precision jitter.
-            final double inset = 0.05D;
-
-            final double x0 = bb.minX + inset;
-            final double x1 = bb.maxX - inset;
-            final double z0 = bb.minZ + inset;
-            final double z1 = bb.maxZ - inset;
-
-            // If the entity is extremely tiny (or AABB is degenerate), fall back to center sample.
-            if (x1 <= x0 || z1 <= z0) {
-                BlockPos feetBlock = BlockPos.containing(this.getX(), yProbe, this.getZ());
-                return isLeavesSupportAtOrOneBelow(feetBlock);
-            }
-
-            // Four corners.
-            BlockPos p00 = BlockPos.containing(x0, yProbe, z0);
-            BlockPos p01 = BlockPos.containing(x0, yProbe, z1);
-            BlockPos p10 = BlockPos.containing(x1, yProbe, z0);
-            BlockPos p11 = BlockPos.containing(x1, yProbe, z1);
-
-            // All corners must be supported.
-            boolean ok =
-                    isLeavesSupportAtOrOneBelow(p00) &&
-                            isLeavesSupportAtOrOneBelow(p01) &&
-                            isLeavesSupportAtOrOneBelow(p10) &&
-                            isLeavesSupportAtOrOneBelow(p11);
-
-            // Debug occasionally so we can see if this is doing work.
-            if (!ok && (this.tickCount % 40 == 0)) {
-                LOG.debug("[RavenEntity] isLeafUnderFeet=false (footprint corners). pos={} bbMinY={} p00={} p01={} p10={} p11={}",
-                        this.position(),
-                        String.format("%.3f", bb.minY),
-                        p00, p01, p10, p11
-                );
-            }
-
-            return ok;
-
-        } catch (Throwable t) {
-            if (this.tickCount % 200 == 0) {
-                LOG.warn("[RavenEntity] isLeafUnderFeet failed: {}", t.toString());
-            }
-            return false;
-        }
-    }
-
-    private boolean isLeavesSupportAtOrOneBelow(BlockPos probeAt) {
-        try {
-            if (probeAt == null) return false;
-
-            // We check the block BELOW the probe, and also one further below.
-            // This supports stepped 2x2 (one block lower).
-            BlockPos b1 = probeAt.below();
-            BlockState s1 = this.level().getBlockState(b1);
-            if (s1 != null && s1.is(BlockTags.LEAVES)) return true;
-
-            BlockPos b2 = b1.below();
-            BlockState s2 = this.level().getBlockState(b2);
-            return s2 != null && s2.is(BlockTags.LEAVES);
-
-        } catch (Throwable t) {
-            return false;
-        }
-    }
-
-    /**
-     * Returns the BlockPos of the NW corner of a valid 2x2 perch footprint at a specific topY
-     * (corner.y = topY). The 2x2 may be "stepped": each of the 4 blocks must be LEAVES at either
-     * topY or topY-1.
-     *
-     * We test corners around the given probe (x/z) because when you're standing on an edge,
-     * the "below feet" block may be one of the four.
-     */
-    @Nullable
-    private BlockPos findValidPerchCornerNearXZ(int x, int z) {
-        try {
-            // We check the four possible 2x2 corners that could include (x,z):
-            // corners: (x,z), (x-1,z), (x,z-1), (x-1,z-1)
-            int[][] corners = new int[][]{
-                    {x, z},
-                    {x - 1, z},
-                    {x, z - 1},
-                    {x - 1, z - 1}
-            };
-
-            for (int[] c : corners) {
-                int cx = c[0];
-                int cz = c[1];
-
-                // Determine topY as the max leaf Y among the 4 positions (within a small vertical probe)
-                Integer topY = computePerchTopY(cx, cz);
-                if (topY == null) continue;
-
-                BlockPos cornerTop = new BlockPos(cx, topY, cz);
-
-                if (isValidPerchCornerAtTopY(cornerTop)) {
-                    return cornerTop;
-                }
-            }
-
-            return null;
-        } catch (Throwable t) {
-            if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] findValidPerchCornerNearXZ failed safely: {}", t.toString());
-            }
-            return null;
-        }
-    }
-
-    /**
-     * Computes a candidate topY for a 2x2 corner (cx, cz) by checking the 4 footprint blocks
-     * at several Y samples near the local surface.
-     *
-     * We deliberately keep this cheap:
-     *  - We use WORLD_SURFACE as a starting hint.
-     *  - Then we scan downward a few blocks to find the highest leaves among the 4 columns.
-     */
-    @Nullable
-    private Integer computePerchTopY(int cx, int cz) {
-        try {
-            // Use heightmap as a hint (fast)
-            int hintY;
-            try {
-                hintY = this.level().getHeight(Heightmap.Types.WORLD_SURFACE, cx, cz);
-            } catch (Throwable t) {
-                hintY = this.blockPosition().getY();
-            }
-
-            int maxY = Integer.MIN_VALUE;
-
-            // Probe range: from hintY down a bit (trees / canopies)
-            int scanTop = Mth.clamp(hintY + 2, this.level().getMinBuildHeight(), this.level().getMaxBuildHeight() - 1);
-            int scanBottom = Mth.clamp(hintY - 8, this.level().getMinBuildHeight(), this.level().getMaxBuildHeight() - 1);
-
-            for (int y = scanTop; y >= scanBottom; y--) {
-                // Check if ANY of the 4 footprint positions has leaves at this y.
-                // We want the highest y where at least one is leaves, as the candidate topY.
-                if (isLeavesAt(cx, y, cz)
-                        || isLeavesAt(cx + 1, y, cz)
-                        || isLeavesAt(cx, y, cz + 1)
-                        || isLeavesAt(cx + 1, y, cz + 1)) {
-                    maxY = y;
-                    break;
-                }
-            }
-
-            if (maxY == Integer.MIN_VALUE) {
-                return null;
-            }
-            return maxY;
-        } catch (Throwable t) {
-            if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] computePerchTopY failed safely: {}", t.toString());
-            }
-            return null;
-        }
-    }
-
-    private boolean isLeavesAt(int x, int y, int z) {
-        try {
-            BlockState st = this.level().getBlockState(new BlockPos(x, y, z));
-            return st != null && st.is(BlockTags.LEAVES);
-        } catch (Throwable t) {
-            return false;
-        }
-    }
-
-    /**
-     * Validates the 2x2 perch footprint at cornerTop=(cx, topY, cz).
-     *
-     * Rules:
-     *  - For each of the 4 positions, there must be LEAVES at either topY or topY-1.
-     *  - There must be at least one leaf at topY (so we don't "pick" a fully-downshifted shelf).
-     *  - Air column above the *top layer* should be clear (we check all 4 top-layer positions),
-     *    using your LAND_REQUIRED_AIR_ABOVE.
-     *  - Canopy thickness: we require the footprint to be on/within canopy, using your existing
-     *    neighbor-leaves concept but applied to the footprint (cheap aggregate).
-     */
-    private boolean isValidPerchCornerAtTopY(BlockPos cornerTop) {
-        try {
-            return validatePerchCornerAtTopY(cornerTop).ok;
-        } catch (Throwable t) {
-            if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] isValidPerchCornerAtTopY wrapper failed safely: {}", t.toString());
-            }
-            return false;
-        }
-    }
-
-    /**
-     * Returns the true center-top point of the 2x2 footprint for a cornerTop (cx, topY, cz).
-     * 2x2 spans [cx..cx+2) and [cz..cz+2), so center is (cx+1.0, cz+1.0).
-     * Top surface is (topY + 1.0).
-     */
-    private Vec3 perchCenterTop(BlockPos cornerTop) {
-        try {
-            if (cornerTop == null) return this.position();
-            double x = cornerTop.getX() + 1.0D;
-            double z = cornerTop.getZ() + 1.0D;
-            double y = cornerTop.getY() + 1.0D;
-            return new Vec3(x, y, z);
-        } catch (Throwable t) {
-            return this.position();
-        }
-    }
-
-    /**
-     * Checks if our current position is close enough to the true 2x2 center of a valid perch footprint
-     * under/near our feet. This replaces "leafUnderFeet" for entering/staying idle.
-     */
-    private boolean isOnValidPerchNow() {
-        try {
-            // Probe block under feet (use bb minY)
-            BlockPos feetBlock = BlockPos.containing(this.getX(), this.getBoundingBox().minY - 0.001D, this.getZ());
-
-            BlockPos corner = findValidPerchCornerNearXZ(feetBlock.getX(), feetBlock.getZ());
-            if (corner == null) {
-                return false;
-            }
-
-            Vec3 center = perchCenterTop(corner);
-            Vec3 pos = this.position();
-
-            double dx = pos.x - center.x;
-            double dz = pos.z - center.z;
-            double dXZ = Math.sqrt(dx * dx + dz * dz);
-
-            // Must be near the center to count as "perched"
-            return dXZ <= PERCH_CENTER_EPS;
-        } catch (Throwable t) {
-            if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] isOnValidPerchNow failed safely: {}", t.toString());
-            }
-            return false;
-        }
-    }
-
     private void flyTowardTarget(double speed) {
         try {
             if (flyTarget == null) {
@@ -3602,266 +2744,146 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     }
 
     /**
-     * Public entrypoint for "player avoidance".
-     * This is the ONLY method the helper needs.
+     * Called by RavenPlayerAvoidanceHelper when a player is close enough that we should
+     * "fly away" instead of idling / roaming normally.
      *
      * Requirements:
-     *  - If any player is within range, force ROAM_FLY
-     *  - Cancel landing/perch intent
-     *  - Always try to fly away from the player, but keep within home bounds
-     *  - Uses your internal pathing/flyTarget logic (private methods stay private)
+     *  - Must work even if we are currently IDLE_GROUND (perched).
+     *  - Must flip us into ROAM_FLY and into true flight posture (noGravity=true).
+     *  - Must set a concrete flee target and arm playerAvoidanceOverrideTicks so that
+     *    tickRoamFly() enters its "avoidance override" branch.
+     *  - Must NOT crash on any error; log and bail instead.
      */
-    public void requestPlayerAvoidanceFleeTarget(@org.jetbrains.annotations.Nullable Player player, double distToPlayer) {
+    public void requestPlayerAvoidanceFleeTarget(Player player, double distance) {
         try {
-            if (this.level().isClientSide) {
-                return;
-            }
-
-            // -----------------------------
-            // FOLLOW OVERRIDE: do not allow avoidance to hijack follow behavior
-            // (stuck teleport remains allowed separately by your sampler)
-            // -----------------------------
-            if (isFollowOverrideActive() && getAIState() == RavenAIState.FOLLOW_OWNER) {
-                if (this.tickCount % 40 == 0) {
-                    LOG.debug("[RavenEntity] PlayerAvoidance ignored due to FOLLOW_OWNER override. player={} dist={} pos={}",
-                            (player == null ? "null" : player.getName().getString()),
-                            String.format("%.2f", distToPlayer),
-                            this.position());
-                }
-                return;
-            }
-
-            // -----------------------------
-            // LURE-FOLLOW OVERRIDE: do not allow avoidance while lured
-            // (stuck teleport remains allowed separately by your sampler)
-            // -----------------------------
-            if (isLureFollowActive()) {
-                if (this.tickCount % 40 == 0) {
-                    LOG.debug("[RavenEntity] requestPlayerAvoidanceFleeTarget suppressed (lure-follow active). player={} dist={} pos={}",
-                            (player == null ? "null" : player.getName().getString()),
-                            String.format("%.2f", distToPlayer),
-                            this.position());
-                }
-                return;
-            }
-
             if (player == null) {
-                if (this.tickCount % 40 == 0) {
-                    LOG.debug("[RavenEntity] requestPlayerAvoidanceFleeTarget: player=null (skip)");
-                }
                 return;
             }
-            if (!player.isAlive() || player.isSpectator()) {
-                if (this.tickCount % 40 == 0) {
-                    LOG.debug("[RavenEntity] requestPlayerAvoidanceFleeTarget: player not valid (alive={} spectator={}) name={}",
-                            player.isAlive(), player.isSpectator(), player.getName().getString());
-                }
+            if (this.level() == null || this.level().isClientSide) {
+                return;
+            }
+            if (!this.isAlive()) {
                 return;
             }
 
-            // If teleport sequence is active, do NOT try to arm avoidance.
-            if (teleportation.teleportSeqPhase != Teleportation.TeleportSeqPhase.NONE) {
-                if (this.tickCount % 40 == 0) {
-                    LOG.debug("[RavenEntity] requestPlayerAvoidanceFleeTarget: teleportSeqPhase={} (skip)", teleportation.teleportSeqPhase);
-                }
+            // If we're already teleporting (panic or otherwise), don't fight that.
+            // Note: aiStep() already short-circuits when teleportSeqPhase != NONE, but
+            // this guard is cheap and defensive.
+            if (teleportation != null && teleportation.teleportSeqPhase != Teleportation.TeleportSeqPhase.NONE) {
                 return;
             }
 
-            // -----------------------------
-            // HARD RATE LIMIT
-            // -----------------------------
-            final int REPLAN_MIN_INTERVAL_TICKS = 20; // 1s
+            // Do not re-arm avoidance too aggressively if a rearm cooldown is active.
+            // This prevents constant re-arming if the player is hovering at similar distance.
             if (playerAvoidanceRearmCooldownTicks > 0) {
-                // Within cooldown: do not replan. Let existing intent run.
-                if (this.tickCount % 40 == 0) {
-                    LOG.debug("[RavenEntity] PlayerAvoidance: rearm cooldown {}t left (skip replan) dist={}",
-                            playerAvoidanceRearmCooldownTicks, String.format("%.2f", distToPlayer));
-                }
                 return;
             }
 
-            // Are we already fleeing?
-            boolean alreadyOverriding = playerAvoidanceOverrideTicks > 0;
+            final Vec3 ravenPos = this.position();
+            final Vec3 playerPos = player.position();
 
-            boolean hasFlyIntent = (flyTarget != null && flyTargetTimeoutTicks > 0);
-            boolean hasPathIntent = (pathWaypoints != null && !pathWaypoints.isEmpty() && pathWaypointIndex < pathWaypoints.size());
-            boolean hasAnyIntent = hasFlyIntent || hasPathIntent;
-
-            boolean collisionsNow = this.horizontalCollision || this.verticalCollision;
-            boolean panicRefresh = (distToPlayer >= 0.0D && distToPlayer < 6.0D);
-
-            boolean shouldReplanWhileOverriding =
-                    !hasAnyIntent
-                            || collisionsNow
-                            || panicRefresh
-                            || (stuckTicks >= STUCK_TICKS_THRESHOLD);
-
-            // If already overriding and stable, do NOT replan.
-            if (alreadyOverriding && !shouldReplanWhileOverriding) {
-                int minKeep = 40; // keep 2s buffer so it doesn't drop mid-flee
-                if (playerAvoidanceOverrideTicks < minKeep) {
-                    playerAvoidanceOverrideTicks = minKeep;
-                }
-
-                playerAvoidanceRearmCooldownTicks = REPLAN_MIN_INTERVAL_TICKS;
-
-                if (this.tickCount % 40 == 0) {
-                    LOG.debug("[RavenEntity] PlayerAvoidance: stable override -> no replan. dist={} overrideTicks={} flyIntent={} pathIntent={} pos={} flyTarget={}",
-                            String.format("%.2f", distToPlayer),
-                            playerAvoidanceOverrideTicks,
-                            hasFlyIntent,
-                            hasPathIntent,
-                            this.position(),
-                            flyTarget
-                    );
-                }
-                return;
+            // Base direction = "away from player".
+            Vec3 away = ravenPos.subtract(playerPos);
+            double len = away.length();
+            if (len < 0.0001D) {
+                // Degenerate case: player basically on top of us.
+                // Pick a random horizontal direction instead.
+                RandomSource rnd = this.getRandom();
+                double angle = rnd.nextDouble() * (Math.PI * 2.0D);
+                away = new Vec3(Math.cos(angle), 0.0D, Math.sin(angle));
+                len = away.length();
             }
 
-            // -----------------------------
-            // Compute a stable flee target
-            // -----------------------------
-            Vec3 fleeTarget = computePlayerAvoidanceFleeTarget(player);
-            if (fleeTarget == null) {
-                if (this.tickCount % 40 == 0) {
-                    LOG.warn("[RavenEntity] PlayerAvoidance: fleeTarget=null (skip) player={} dist={}",
-                            player.getName().getString(), String.format("%.2f", distToPlayer));
-                }
-                playerAvoidanceRearmCooldownTicks = REPLAN_MIN_INTERVAL_TICKS;
-                return;
+            Vec3 dir = away.scale(1.0D / Math.max(0.0001D, len));
+
+            RandomSource rnd = this.getRandom();
+
+            // How far and how high to flee.
+            // Keep it "natural" but clearly outside the immediate threat range.
+            double horiz = 10.0D + rnd.nextDouble() * 10.0D;   // 10–20 blocks out
+            double upMag = 6.0D + rnd.nextDouble() * 4.0D;     // 6–10 blocks upward
+            double sideMag = 2.0D + rnd.nextDouble() * 4.0D;   // small lateral bias
+
+            Vec3 side = new Vec3(-dir.z, 0.0D, dir.x);
+            if (side.lengthSqr() < 1.0E-4D) {
+                side = new Vec3(1.0D, 0.0D, 0.0D);
             }
+            side = side.normalize();
+            double sideSign = rnd.nextBoolean() ? 1.0D : -1.0D;
 
-            // Clamp to home bounds (existing helper)
-            fleeTarget = clampTargetToHomeBounds(fleeTarget);
+            Vec3 target = ravenPos
+                    .add(dir.x * horiz, 0.0D, dir.z * horiz)
+                    .add(side.scale(sideMag * sideSign))
+                    .add(0.0D, upMag, 0.0D);
 
-            // -----------------------------
-            // Arm override (only when actually rearming)
-            // -----------------------------
-            final int OVERRIDE_TICKS = 8 * 20;
-            playerAvoidanceOverrideTicks = OVERRIDE_TICKS;
-            playerAvoidanceRearmCooldownTicks = REPLAN_MIN_INTERVAL_TICKS;
+            // Clamp into our home bounds so we don't flee completely out of range.
+            target = clampTargetToHomeBounds(target);
 
-            // Cancel landing/perch intent; force flight
-            resetLandingState("player avoidance arm");
-            landingPhase = LandingPhase.NONE;
-            landingLeafPos = null;
-            landingTicks = 0;
+            // Clear any old planned path; avoidance gets its own target/override.
+            clearPlannedPath("player avoidance flee");
+            clearFlyTarget();
 
+            // Set the immediate flee target with a reasonable TTL.
+            int fleeTtl = 5 * 20; // ~5 seconds
+            setFlyTarget(target, fleeTtl);
+            flyTargetTimeoutTicks = fleeTtl;
+
+            // Hard override: tickRoamFly() will see this and enter the avoidance branch.
+            // Use max() so repeated calls only extend, not shrink, the window.
+            int minOverride = 80; // ~4 seconds
+            playerAvoidanceOverrideTicks = Math.max(playerAvoidanceOverrideTicks, minOverride);
+
+            // While in avoidance we don't want the normal local avoidance cooldown to block us.
+            avoidanceCooldownTicks = 0;
+            stuckTicks = 0;
+
+            // Flight posture: we MUST be flying, not grounded.
             this.setNoGravity(true);
             if (this.getAnimMode() != RavenAnimMode.IN_AIR) {
                 this.setAnimMode(RavenAnimMode.IN_AIR);
             }
 
-            // -----------------------------
-            // CRITICAL FIX #A:
-            // DO NOT force roamTicksRemaining to 0 here.
-            //
-            // When roamTicksRemaining==0, tickRoamFly is free to pick a brand new
-            // roam path (A*), which overwrites our avoidance path and causes the
-            // "turn around for a second then flee again" behavior.
-            //
-            // Instead, while avoidance override is active, we *freeze* the roam window
-            // by extending roamTicksRemaining so roam logic treats it as "still in a
-            // roaming flight window" and does not replan its own goals.
-            // -----------------------------
-            roamTicksRemaining = Math.max(roamTicksRemaining, playerAvoidanceOverrideTicks);
-
-            // Clear idle locks so we don't fight ourselves
-            idleLockTicks = 0;
-            idleLeafLossTicks = 0;
-
-            // -----------------------------
-            // CRITICAL FIX FOR "UP/DOWN BUZZING":
-            // Close-range avoidance uses DIRECT fly target (no A* safe-goal probing).
-            // -----------------------------
-            final double CLOSE_RANGE_DIRECT_FLEE_DIST = 10.0D; // tune 8..14
-            boolean closeRange = (distToPlayer >= 0.0D && distToPlayer <= CLOSE_RANGE_DIRECT_FLEE_DIST);
-
-            // Always clear planned path when arming avoidance to avoid path-vs-fly fighting.
-            clearPlannedPath("player avoidance arm");
-            pathGoal = null;
-            pathPendingGoal = null;
-            pathWaypoints = null;
-            pathWaypointIndex = 0;
-            pathRetryCooldownTicks = 0;
-
-            boolean pathOk = false;
-
-            if (closeRange) {
-                setFlyTarget(fleeTarget, 8 * 20);
-                pathOk = false;
-
-                if (this.tickCount % 20 == 0) {
-                    LOG.info("[RavenEntity] PlayerAvoidance armed (CLOSE-RANGE DIRECT): player={} dist={} target={} overrideTicks={} rearmCd={} pos={} playerPos={}",
-                            player.getName().getString(),
-                            String.format("%.2f", distToPlayer),
-                            fleeTarget,
-                            playerAvoidanceOverrideTicks,
-                            playerAvoidanceRearmCooldownTicks,
-                            this.position(),
-                            player.position());
-                }
-                return;
+            // Give a little upward kick so we actually take off from idle/perch.
+            Vec3 vel = this.getDeltaMovement();
+            double vy = vel.y;
+            if (vy < 0.25D) {
+                vy = 0.25D;
             }
+            this.setDeltaMovement(vel.x, vy, vel.z);
 
-            // -----------------------------
-            // Non-close range: use A* (preferred) with SAME semantics as roam
-            // -----------------------------
-            long seed =
-                    this.getUUID().getLeastSignificantBits()
-                            ^ (long) this.tickCount
-                            ^ player.getUUID().getMostSignificantBits()
-                            ^ 0xC0FFEE1234ABL;
+            // Flip AI state away from IDLE_GROUND so tickIdleGround() yields after
+            // RavenPlayerAvoidanceHelper.tryTriggerPlayerAvoidance().
+            setAIState(RavenAIState.ROAM_FLY);
 
-            String reason = "player avoidance: player=" + player.getName().getString()
-                    + " dist=" + String.format("%.2f", distToPlayer);
-
-            // CRITICAL FIX #B:
-            // Use the same strict passability as normal roam (no leaves / replaceables),
-            // and wrap the raw flee target in computeSafePathingGoal so we avoid picking
-            // "barely colliding" goals that cause it to buzz on glass/stone obstacles.
-            RavenAStarPathing.Config cfg = new RavenAStarPathing.Config();
-            cfg.allowLeaves = false;
-            cfg.allowReplaceables = false;
-            cfg.cellSize = 1;
-            cfg.clearanceHeight = 2;
-
-            Vec3 safeGoal = computeSafePathingGoal(fleeTarget, cfg);
-
-            try {
-                pathOk = ensurePathTo(safeGoal, false, 8 * 20, seed, reason);
-            } catch (Throwable t) {
-                pathOk = false;
-                if (this.tickCount % 20 == 0) {
-                    LOG.warn("[RavenEntity] PlayerAvoidance ensurePathTo failed safely: {}", t.toString());
-                }
-            }
-
-            if (!pathOk) {
-                setFlyTarget(safeGoal, 8 * 20);
-            } else {
-                pathPendingGoal = safeGoal;
+            // Make sure ROAM_FLY takeoff lock engages; this keeps us in air briefly
+            // even if something else would like to land immediately.
+            roamTicksRemaining = 0;
+            if (idleLockTicks <= 0) {
+                idleLockTicks = 12;
             }
 
             if (this.tickCount % 20 == 0) {
-                LOG.info("[RavenEntity] PlayerAvoidance armed: reason={} target={} safeGoal={} pathOk={} overrideTicks={} rearmCd={} pos={} vel={} playerPos={}",
-                        reason,
-                        fleeTarget,
-                        safeGoal,
-                        pathOk,
-                        playerAvoidanceOverrideTicks,
-                        playerAvoidanceRearmCooldownTicks,
-                        this.position(),
-                        this.getDeltaMovement(),
-                        player.position());
+                String name;
+                try {
+                    name = player.getGameProfile() != null
+                            ? player.getGameProfile().getName()
+                            : player.getName().getString();
+                } catch (Throwable t) {
+                    name = "unknown";
+                }
+
+                LOG.info(
+                        "[RavenEntity] Player avoidance flee: player={} dist={} fromPos={} fleeTarget={} overrideTicks={}",
+                        name,
+                        String.format("%.2f", distance),
+                        ravenPos,
+                        target,
+                        playerAvoidanceOverrideTicks
+                );
             }
 
         } catch (Throwable t) {
-            LOG.error("[RavenEntity] requestPlayerAvoidanceFleeTarget failed safely", t);
-            try {
-                playerAvoidanceRearmCooldownTicks = Math.max(playerAvoidanceRearmCooldownTicks, 10);
-            } catch (Throwable ignored) {
-            }
+            LOG.error("[RavenEntity] requestPlayerAvoidanceFleeTarget failed", t);
         }
     }
 
@@ -4035,10 +3057,6 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         }
     }
 
-    // -----------------
-    // More helpers..
-    // -----------------
-
     public Vec3 getHomeCenterVec() {
         return new Vec3(
                 homePos.getX() + 0.5D,
@@ -4057,7 +3075,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             setAIState(RavenAIState.ROAM_FLY);
             roamTicksRemaining = 0;
 
-            resetLandingState("player avoidance");
+            landing.resetLandingState("player avoidance", this);
             idleCommitTicks = 0;
             idleLockTicks = 0;
 
@@ -4147,363 +3165,6 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 }
                 return false;
             }
-        }
-    }
-
-    private @Nullable BlockPos findBestPerchCornerForLanding(@Nullable BlockPos landingLeaf, BlockPos feetBlock) {
-        try {
-            BlockPos best = null;
-            double bestD2 = Double.MAX_VALUE;
-
-            // Candidate corners to try.
-            // Priority:
-            //  1) corners around the committed landingLeafPos (prevents “random other 2x2” selection)
-            //  2) corners around feetBlock (fallback when landingLeaf is null or stale)
-            BlockPos[] seeds;
-            if (landingLeaf != null) {
-                seeds = new BlockPos[] { landingLeaf, feetBlock };
-            } else {
-                seeds = new BlockPos[] { feetBlock };
-            }
-
-            for (BlockPos seed : seeds) {
-                // A 2x2 perch corner could be at seed, seed-1x, seed-1z, seed-1x-1z depending on where we hit.
-                // Try the 4 possible “NW corner” candidates around this seed.
-                BlockPos[] corners = new BlockPos[] {
-                        seed,
-                        seed.west(),
-                        seed.north(),
-                        seed.west().north()
-                };
-
-                for (BlockPos c : corners) {
-                    if (!isValidPerchCornerAtTopY(c)) {
-                        continue;
-                    }
-
-                    Vec3 center = perchCenterTop(c);
-                    double dx = this.getX() - center.x;
-                    double dz = this.getZ() - center.z;
-                    double d2 = dx * dx + dz * dz;
-
-                    if (d2 < bestD2) {
-                        bestD2 = d2;
-                        best = c;
-                    }
-                }
-            }
-
-            return best;
-
-        } catch (Throwable t) {
-            if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] findBestPerchCornerForLanding failed safely: {}", t.toString());
-            }
-            return null;
-        }
-    }
-
-    // neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenEntity.java
-    private boolean isOnValidPerchNowRelaxedForLanding(String debugTag) {
-        try {
-            // Only makes sense when we are in "landing/resting physics".
-            // If we are still flying (noGravity=true), do NOT use relaxed logic.
-            if (this.isNoGravity()) {
-                return false;
-            }
-
-            if (this.getBoundingBox() == null) {
-                return false;
-            }
-
-            // We only want to do the "force commit" behavior during DROP.
-            // Otherwise, preserve your stricter semantics.
-            final boolean inDrop = (landingPhase == LandingPhase.DROP);
-
-            // Probe block under feet (use bb minY)
-            BlockPos feetBlock = BlockPos.containing(this.getX(), this.getBoundingBox().minY - 0.001D, this.getZ());
-
-            // Step 1: pick the best perch corner.
-            // Prefer corners around the committed landingLeafPos (prevents selecting a "different" nearby 2x2).
-            BlockPos bestCorner = null;
-            try {
-                bestCorner = findBestPerchCornerForLanding(landingLeafPos, feetBlock);
-            } catch (Throwable t) {
-                // fail safe: fallback below
-                bestCorner = null;
-            }
-
-            if (bestCorner == null) {
-                bestCorner = findValidPerchCornerNearXZ(feetBlock.getX(), feetBlock.getZ());
-            }
-
-            if (bestCorner == null) {
-                if (this.tickCount % 40 == 0) {
-                    LOG.info("[RavenEntity] {}: relaxedPerch=false (no corner) pos={} feetBlock={} onGround={} vColl={} phase={} landingTicks={}",
-                            debugTag, this.position(), feetBlock, this.onGround(), this.verticalCollision, landingPhase, landingTicks);
-                }
-                return false;
-            }
-
-            // Basic validity guard (cheap).
-            if (!isValidPerchCornerAtTopY(bestCorner)) {
-                if (this.tickCount % 40 == 0) {
-                    LOG.info("[RavenEntity] {}: relaxedPerch=false (corner invalid) pos={} corner={} phase={} landingTicks={}",
-                            debugTag, this.position(), bestCorner, landingPhase, landingTicks);
-                }
-                return false;
-            }
-
-            Vec3 center = perchCenterTop(bestCorner);
-            Vec3 pos = this.position();
-
-            double dx = pos.x - center.x;
-            double dz = pos.z - center.z;
-            double dXZ = Math.sqrt(dx * dx + dz * dz);
-
-            // Normal relaxed threshold: only slightly relaxed vs strict perched checks.
-            final double relaxedEps = Math.max(PERCH_CENTER_EPS, 0.35D);
-
-            boolean withinRelaxed = dXZ <= relaxedEps;
-
-            // ---------------------------------------------------------
-            // NEW: "DROP COMMIT" SNAP
-            // ---------------------------------------------------------
-            // Problem shown in your logs:
-            // - Raven is clearly perched physically (onGround + vColl, noGravity=false)
-            // - But it is >1 block off from computed center, so it never commits to idle
-            //
-            // Solution:
-            // - During DROP, after a short settle window, if we are on ground/colliding vertically,
-            //   we snap to the nearest valid perch center and treat that as success.
-            //
-            // This avoids the endless "DROP -> fail -> takeoff -> new path" loop.
-            boolean canForceCommit =
-                    inDrop
-                            && (this.onGround() || this.verticalCollision)
-                            && landingTicks >= 20; // 1s settle time; tune 10..40 if needed
-
-            if (!withinRelaxed && canForceCommit) {
-                // Allow a fairly generous radius; if we're farther than this, we're probably not actually on that 2x2.
-                // Your failures are ~1.2–1.27, so 1.8 gives headroom but stays sane.
-                final double maxSnapRadius = 1.80D;
-
-                // Also ensure we're not still moving fast; prevents snapping mid-flight edge cases.
-                Vec3 vel = this.getDeltaMovement();
-                double speedSqr = vel.lengthSqr();
-                boolean movingSlowEnough = speedSqr <= 0.08D; // generous; mostly filters true flight
-
-                if (dXZ <= maxSnapRadius && movingSlowEnough) {
-                    // Snap X/Z only; keep Y (you already have settling logic in enterIdleFromLanding too).
-                    double snapX = center.x;
-                    double snapZ = center.z;
-                    double keepY = this.getY();
-
-                    this.setPos(snapX, keepY, snapZ);
-                    this.hurtMarked = true;
-
-                    // IMPORTANT:
-                    // We do NOT set idle state here; caller does that when we return true.
-                    // But we *do* want future checks to see a stable "committed" corner.
-                    // Keep landingLeafPos consistent with what we're snapping to.
-                    landingLeafPos = bestCorner;
-
-                    if (this.tickCount % 20 == 0) {
-                        LOG.info("[RavenEntity] {}: DROP-COMMIT SNAP applied dXZ={} -> 0.0 corner={} center={} posNow={} vel={} landingTicks={}",
-                                debugTag,
-                                String.format("%.3f", dXZ),
-                                bestCorner,
-                                center,
-                                this.position(),
-                                vel,
-                                landingTicks);
-                    }
-
-                    return true;
-                } else {
-                    if (this.tickCount % 20 == 0) {
-                        LOG.info("[RavenEntity] {}: DROP force-commit skipped dXZ={} maxSnap={} movingSlow={} vel={} corner={} center={} landingTicks={}",
-                                debugTag,
-                                String.format("%.3f", dXZ),
-                                String.format("%.3f", maxSnapRadius),
-                                movingSlowEnough,
-                                vel,
-                                bestCorner,
-                                center,
-                                landingTicks);
-                    }
-                }
-            }
-
-            // Original behavior + improved diagnostics
-            boolean ok = withinRelaxed;
-
-            if (!ok && (this.tickCount % 20 == 0)) {
-                LOG.info("[RavenEntity] {}: relaxedPerch=false dXZ={} eps={} pos={} center={} corner={} onGround={} vColl={} vel={} phase={} landingTicks={}",
-                        debugTag,
-                        String.format("%.3f", dXZ),
-                        String.format("%.3f", relaxedEps),
-                        pos,
-                        center,
-                        bestCorner,
-                        this.onGround(),
-                        this.verticalCollision,
-                        this.getDeltaMovement(),
-                        landingPhase,
-                        landingTicks
-                );
-            } else if (ok && (this.tickCount % 20 == 0)) {
-                LOG.info("[RavenEntity] {}: relaxedPerch=true dXZ={} eps={} pos={} center={} corner={} (will enter idle + snap)",
-                        debugTag,
-                        String.format("%.3f", dXZ),
-                        String.format("%.3f", relaxedEps),
-                        pos,
-                        center,
-                        bestCorner
-                );
-            }
-
-            return ok;
-
-        } catch (Throwable t) {
-            if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] isOnValidPerchNowRelaxedForLanding failed safely: {}", t.toString());
-            }
-            return false;
-        }
-    }
-
-    private boolean isPerchFootprintStillSupported(BlockPos cornerTop) {
-        try {
-            if (cornerTop == null) return false;
-
-            int cx = cornerTop.getX();
-            int cz = cornerTop.getZ();
-            int topY = cornerTop.getY();
-
-            boolean anyAtTop = false;
-
-            for (int ox = 0; ox < PERCH_FOOTPRINT_SIZE; ox++) {
-                for (int oz = 0; oz < PERCH_FOOTPRINT_SIZE; oz++) {
-                    int x = cx + ox;
-                    int z = cz + oz;
-
-                    boolean atTop = isLeavesAt(x, topY, z);
-                    boolean atStep = isLeavesAt(x, topY - 1, z);
-
-                    if (!atTop && !atStep) {
-                        return false;
-                    }
-                    if (atTop) anyAtTop = true;
-                }
-            }
-
-            return anyAtTop;
-        } catch (Throwable t) {
-            if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] isPerchFootprintStillSupported failed safely: {}", t.toString());
-            }
-            return false;
-        }
-    }
-
-    private PerchValidity validatePerchCornerAtTopY(BlockPos cornerTop) {
-        try {
-            if (cornerTop == null) {
-                return PerchValidity.fail("cornerTop=null", "");
-            }
-
-            int cx = cornerTop.getX();
-            int cz = cornerTop.getZ();
-            int topY = cornerTop.getY();
-
-            boolean anyAtTop = false;
-
-            // Footprint check: each cell must have leaves at topY or topY-1, and at least one must be at topY.
-            for (int ox = 0; ox < PERCH_FOOTPRINT_SIZE; ox++) {
-                for (int oz = 0; oz < PERCH_FOOTPRINT_SIZE; oz++) {
-                    int x = cx + ox;
-                    int z = cz + oz;
-
-                    boolean atTop = isLeavesAt(x, topY, z);
-                    boolean atStep = isLeavesAt(x, topY - 1, z);
-
-                    if (!atTop && !atStep) {
-                        return PerchValidity.fail(
-                                "footprint_missing_leaves",
-                                "cell=(" + x + "," + topY + "," + z + ") top=" + atTop + " step=" + atStep
-                        );
-                    }
-                    if (atTop) anyAtTop = true;
-                }
-            }
-
-            if (!anyAtTop) {
-                return PerchValidity.fail(
-                        "footprint_no_top_layer",
-                        "topY=" + topY + " (all 4 cells only at topY-1)"
-                );
-            }
-
-            // Air column check: 10 blocks above each of 4 top-layer columns.
-            for (int ox = 0; ox < PERCH_FOOTPRINT_SIZE; ox++) {
-                for (int oz = 0; oz < PERCH_FOOTPRINT_SIZE; oz++) {
-                    BlockPos start = new BlockPos(cx + ox, topY + 1, cz + oz);
-                    if (!hasAirColumn(start, LAND_REQUIRED_AIR_ABOVE)) {
-                        // Find the first blocked Y for clearer diagnostics
-                        int blockedAtY = Integer.MIN_VALUE;
-                        BlockPos blockedPos = null;
-                        for (int i = 0; i < LAND_REQUIRED_AIR_ABOVE; i++) {
-                            BlockPos p = start.above(i);
-                            if (!this.level().isEmptyBlock(p)) {
-                                blockedAtY = p.getY();
-                                blockedPos = p;
-                                break;
-                            }
-                        }
-
-                        String extra = "";
-                        if (blockedPos != null) {
-                            BlockState st = this.level().getBlockState(blockedPos);
-                            extra = " blockedPos=" + blockedPos + " block=" + (st == null ? "null" : st.getBlock().toString());
-                        }
-
-                        return PerchValidity.fail(
-                                "air_column_blocked",
-                                "col=(" + (cx + ox) + "," + (cz + oz) + ") startY=" + (topY + 1)
-                                        + " need=" + LAND_REQUIRED_AIR_ABOVE
-                                        + " firstBlockedY=" + (blockedAtY == Integer.MIN_VALUE ? "?" : blockedAtY)
-                                        + extra
-                        );
-                    }
-                }
-            }
-
-            // Neighbor canopy check around topY plane
-            int neighbors = 0;
-            for (int ox = -1; ox <= 2; ox++) {
-                for (int oz = -1; oz <= 2; oz++) {
-                    if (ox >= 0 && ox <= 1 && oz >= 0 && oz <= 1) continue;
-
-                    BlockState st = this.level().getBlockState(new BlockPos(cx + ox, topY, cz + oz));
-                    if (st != null && st.is(BlockTags.LEAVES)) {
-                        neighbors++;
-                    }
-                }
-            }
-
-            int requiredNeighbors = Math.max(2, CANOPY_NEIGHBOR_LEAVES_REQUIRED - 2);
-            if (neighbors < requiredNeighbors) {
-                return PerchValidity.fail(
-                        "canopy_neighbors_low",
-                        "neighbors=" + neighbors + " required=" + requiredNeighbors + " topY=" + topY + " corner=(" + cx + "," + cz + ")"
-                );
-            }
-
-            return PerchValidity.ok();
-
-        } catch (Throwable t) {
-            return PerchValidity.fail("exception", t.toString());
         }
     }
 
@@ -4730,6 +3391,91 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     }
 
     // ---------------------------------------------------------------------
+    // Landing module accessors
+    // ---------------------------------------------------------------------
+    // These wrappers exist so Landing.java can reuse the existing private flight/pathing logic
+    // without changing behavior or moving more code across files.
+
+    public Landing getLanding() {
+        return this.landing;
+    }
+
+    public boolean landingEnsurePathTo(@org.jetbrains.annotations.Nullable Vec3 goal, int ttlTicks, long seed, @org.jetbrains.annotations.Nullable String caller) {
+        try {
+            return this.ensurePathTo(goal, ttlTicks, seed, caller);
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] landingEnsurePathTo failed safely: {}", t.toString());
+            }
+            return false;
+        }
+    }
+
+    public void landingSetFlyTarget(@org.jetbrains.annotations.Nullable Vec3 goal, int ttlTicks) {
+        try {
+            this.setFlyTarget(goal, ttlTicks);
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] landingSetFlyTarget failed safely: {}", t.toString());
+            }
+        }
+    }
+
+    public void landingMaybeAvoidOrRetargetDuringFlightApproachOnly(@org.jetbrains.annotations.Nullable RandomSource rnd) {
+        try {
+            this.maybeAvoidOrRetargetDuringFlightApproachOnly(rnd);
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] landingMaybeAvoidOrRetargetDuringFlightApproachOnly failed safely: {}", t.toString());
+            }
+        }
+    }
+
+    public void landingFlyTowardTarget(double speed) {
+        try {
+            this.flyTowardTarget(speed);
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] landingFlyTowardTarget failed safely: {}", t.toString());
+            }
+        }
+    }
+
+    public void landingAdvanceWaypointIfNeeded(int ttlTicks, @org.jetbrains.annotations.Nullable String caller) {
+        try {
+            this.advanceWaypointIfNeeded(ttlTicks, caller);
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] landingAdvanceWaypointIfNeeded failed safely: {}", t.toString());
+            }
+        }
+    }
+
+    public void landingTickFlyTargetTimeout(@org.jetbrains.annotations.Nullable String why) {
+        try {
+            // If you have a target, tick down TTL.
+            if (this.flyTarget != null) {
+                if (this.flyTargetTimeoutTicks > 0) {
+                    this.flyTargetTimeoutTicks--;
+                }
+
+                // If expired, clear (match your usual semantics).
+                if (this.flyTargetTimeoutTicks <= 0) {
+                    if (this.tickCount % 40 == 0) {
+                        LOG.debug("[RavenEntity] landingTickFlyTargetTimeout: expired -> clearFlyTarget (why={}) target={}", why, this.flyTarget);
+                    }
+                    this.clearFlyTarget();
+                    this.flyTargetTimeoutTicks = 0;
+                }
+            }
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] landingTickFlyTargetTimeout failed safely: {}", t.toString());
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // Teleportation module accessors
     // ---------------------------------------------------------------------
 
@@ -4749,6 +3495,19 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     // ---------------------------------------------------------------------
     // Lure-follow / tame module accessors
     // ---------------------------------------------------------------------
+
+    @SuppressWarnings("unused") // invoked reflectively
+    private void resetLandingState(String reason) {
+        try {
+            if (landing != null) {
+                landing.resetLandingState(reason, this);
+            }
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] resetLandingState(reason={}) failed safely: {}", reason, t.toString());
+            }
+        }
+    }
 
     public void requestLureFollowPlayer(@org.jetbrains.annotations.Nullable Player player, double distToPlayer) {
         try {

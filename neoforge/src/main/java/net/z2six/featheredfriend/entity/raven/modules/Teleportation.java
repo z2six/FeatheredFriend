@@ -49,6 +49,10 @@ public final class Teleportation {
     // Synched data (registered against RavenEntity class)
     // -------------------------------------------------------------------------------------------------
 
+    // Teleport fade alpha (0..255), renderer reads this to fade.
+    public static final EntityDataAccessor<Integer> DATA_TELEPORT_FADE_ALPHA =
+            SynchedEntityData.defineId(RavenEntity.class, EntityDataSerializers.INT);
+
     // Teleport FX: server tells client to play bursts + seed.
     public static final EntityDataAccessor<Integer> DATA_TELEPORT_FX_TICKS =
             SynchedEntityData.defineId(RavenEntity.class, EntityDataSerializers.INT);
@@ -56,9 +60,10 @@ public final class Teleportation {
     public static final EntityDataAccessor<Long> DATA_TELEPORT_FX_SEED =
             SynchedEntityData.defineId(RavenEntity.class, EntityDataSerializers.LONG);
 
-    // Teleport fade alpha (0..255), renderer reads this to fade.
-    public static final EntityDataAccessor<Integer> DATA_TELEPORT_FADE_ALPHA =
-            SynchedEntityData.defineId(RavenEntity.class, EntityDataSerializers.INT);
+    public static void initEntityData() {
+        // no-op: class initialization (and therefore the static DATA_* field registration)
+        // happens before this method body executes.
+    }
 
     // -------------------------------------------------------------------------------------------------
     // Teleport sequence state (fade-out -> invisible hold -> teleport -> invisible hold -> fade-in)
