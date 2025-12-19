@@ -42,7 +42,10 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
+
+// Modules
 import net.z2six.featheredfriend.entity.raven.modules.LureFollowTame;
+import net.z2six.featheredfriend.entity.raven.modules.Teleportation;
 
 import java.util.Collections;
 import java.util.List;
@@ -96,10 +99,15 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     private static final int HOME_Y_DELTA = 15;
 
     // --------------------
-    // Sound handling
+    // Modules
     // --------------------
     private final RavenSoundEngine soundEngine = new RavenSoundEngine(this);
     private final LureFollowTame lureFollowTame = new LureFollowTame(this); // Not part of sound but hey why not put it here
+    private final Teleportation teleportation = new Teleportation(this);
+
+    // --------------------
+    // Sound handling
+    // --------------------
 
     // Lazy-resolved sound IDs for raven SFX
     private static final ResourceLocation SOUND_RAVEN_CAWING_NORMAL_ID =
