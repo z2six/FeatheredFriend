@@ -6086,7 +6086,6 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         }
     }
 
-
     private Vec3 computeSafePathingGoal(Vec3 rawGoal, RavenAStarPathing.Config cfg) {
         try {
             if (rawGoal == null) {
@@ -6250,8 +6249,6 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         }
     }
 
-
-
     // -----------------
     // GeckoLib
     // -----------------
@@ -6291,8 +6288,8 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     }
 
     // ---------------------------------------------------------------------
-// Lure-follow / tame module accessors
-// ---------------------------------------------------------------------
+    // Lure-follow / tame module accessors
+    // ---------------------------------------------------------------------
 
     public void requestLureFollowPlayer(@org.jetbrains.annotations.Nullable Player player, double distToPlayer) {
         try {
