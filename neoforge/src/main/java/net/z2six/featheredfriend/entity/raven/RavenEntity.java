@@ -4142,9 +4142,6 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         }
     }
 
-
-
-
     /**
      * Checks a 3x3x3 volume centered on anchor.xz, spanning:
      *   x: [anchorX-1 .. anchorX+1]
@@ -4684,8 +4681,21 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 this.setAnimMode(RavenAnimMode.IN_AIR);
             }
 
+            // -----------------------------
+            // CRITICAL FIX #A:
+            // DO NOT force roamTicksRemaining to 0 here.
+            //
+            // When roamTicksRemaining==0, tickRoamFly is free to pick a brand new
+            // roam path (A*), which overwrites our avoidance path and causes the
+            // "turn around for a second then flee again" behavior.
+            //
+            // Instead, while avoidance override is active, we *freeze* the roam window
+            // by extending roamTicksRemaining so roam logic treats it as "still in a
+            // roaming flight window" and does not replan its own goals.
+            // -----------------------------
+            roamTicksRemaining = Math.max(roamTicksRemaining, playerAvoidanceOverrideTicks);
+
             // Clear idle locks so we don't fight ourselves
-            roamTicksRemaining = 0;
             idleLockTicks = 0;
             idleLeafLossTicks = 0;
 
@@ -4723,17 +4733,32 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 return;
             }
 
-            // Non-close range: use A* (preferred)
+            // -----------------------------
+            // Non-close range: use A* (preferred) with SAME semantics as roam
+            // -----------------------------
             long seed =
                     this.getUUID().getLeastSignificantBits()
                             ^ (long) this.tickCount
                             ^ player.getUUID().getMostSignificantBits()
                             ^ 0xC0FFEE1234ABL;
 
-            String reason = "player avoidance: player=" + player.getName().getString() + " dist=" + String.format("%.2f", distToPlayer);
+            String reason = "player avoidance: player=" + player.getName().getString()
+                    + " dist=" + String.format("%.2f", distToPlayer);
+
+            // CRITICAL FIX #B:
+            // Use the same strict passability as normal roam (no leaves / replaceables),
+            // and wrap the raw flee target in computeSafePathingGoal so we avoid picking
+            // "barely colliding" goals that cause it to buzz on glass/stone obstacles.
+            RavenAStarPathing.Config cfg = new RavenAStarPathing.Config();
+            cfg.allowLeaves = false;
+            cfg.allowReplaceables = false;
+            cfg.cellSize = 1;
+            cfg.clearanceHeight = 2;
+
+            Vec3 safeGoal = computeSafePathingGoal(fleeTarget, cfg);
 
             try {
-                pathOk = ensurePathTo(fleeTarget, true, 8 * 20, seed, reason);
+                pathOk = ensurePathTo(safeGoal, false, 8 * 20, seed, reason);
             } catch (Throwable t) {
                 pathOk = false;
                 if (this.tickCount % 20 == 0) {
@@ -4742,15 +4767,16 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
 
             if (!pathOk) {
-                setFlyTarget(fleeTarget, 8 * 20);
+                setFlyTarget(safeGoal, 8 * 20);
             } else {
-                pathPendingGoal = fleeTarget;
+                pathPendingGoal = safeGoal;
             }
 
             if (this.tickCount % 20 == 0) {
-                LOG.info("[RavenEntity] PlayerAvoidance armed: reason={} target={} pathOk={} overrideTicks={} rearmCd={} pos={} vel={} playerPos={}",
+                LOG.info("[RavenEntity] PlayerAvoidance armed: reason={} target={} safeGoal={} pathOk={} overrideTicks={} rearmCd={} pos={} vel={} playerPos={}",
                         reason,
                         fleeTarget,
+                        safeGoal,
                         pathOk,
                         playerAvoidanceOverrideTicks,
                         playerAvoidanceRearmCooldownTicks,
@@ -5676,12 +5702,14 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // Never stack with your existing teleport sequence.
             if (teleportSeqPhase != TeleportSeqPhase.NONE) return;
 
-            RavenAIState st = getAIState();
+            // Use effective AI state so avoidance shows up as a proper flight mode.
+            RavenAIState st = getAIStateForDebug();
 
             // Only in flight-ish modes. Tighten if you want ONLY ROAM_FLY.
             boolean inFlight =
                     (st == RavenAIState.ROAM_FLY)
-                            || (st == RavenAIState.FOLLOW_OWNER);
+                            || (st == RavenAIState.FOLLOW_OWNER)
+                            || (st == RavenAIState.AVOID_PLAYER);
 
             if (!inFlight) {
                 // Leaving flight resets "session" state so next flight can roll a new budget.
@@ -5739,7 +5767,6 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // Throttle check frequency (so we don’t spam scanning).
             // We only check ~every 1–2 seconds.
             flightTeleportCheckCooldownTicks = 20 + this.getRandom().nextInt(25);
-
             // Also require we actually have some motion; avoids blinking while hovering nearly still.
             Vec3 vel = this.getDeltaMovement();
             if (vel.lengthSqr() < 0.004D) { // ~0.063 blocks/tick
@@ -6083,6 +6110,27 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 LOG.warn("[RavenEntity] isTeleportRecoveryEligible failed: {}", t.toString());
             }
             return false;
+        }
+    }
+
+    /**
+     * Returns the "effective" AI state for debug/logging purposes.
+     * While player avoidance override is active, we expose AVOID_PLAYER
+     * so heartbeat/debug logs clearly show that mode without changing
+     * the underlying FSM wiring.
+     */
+    private RavenAIState getAIStateForDebug() {
+        try {
+            if (playerAvoidanceOverrideTicks > 0) {
+                return RavenAIState.AVOID_PLAYER;
+            }
+            return getAIState();
+        } catch (Throwable t) {
+            if (this.tickCount % 200 == 0) {
+                LOG.warn("[RavenEntity] getAIStateForDebug failed safely: {}", t.toString());
+            }
+            // Fall back to the raw state to avoid NPEs in logs.
+            return getAIState();
         }
     }
 

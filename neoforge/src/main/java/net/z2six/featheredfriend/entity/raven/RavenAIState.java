@@ -17,11 +17,17 @@ package net.z2six.featheredfriend.entity.raven;
  * FOLLOW_OWNER:
  *  - Raven flies near owner (only active if raven is tamed and has owner UUID).
  *  - Still respects home bounds; out-of-bounds triggers cooldown + return.
+ *
+ * AVOID_PLAYER:
+ *  - Raven is actively fleeing from a nearby player (avoidance override).
+ *  - Log/debug-only state in current implementation; movement logic is driven
+ *    by the player-avoidance override in RavenEntity.
  */
 public enum RavenAIState {
     IDLE_GROUND(0),
     ROAM_FLY(1),
-    FOLLOW_OWNER(2);
+    FOLLOW_OWNER(2),
+    AVOID_PLAYER(3);
 
     private final int id;
 
