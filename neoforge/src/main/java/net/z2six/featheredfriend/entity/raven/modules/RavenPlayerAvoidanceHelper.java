@@ -1,5 +1,5 @@
 // neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenPlayerAvoidanceHelper.java
-package net.z2six.featheredfriend.entity.raven;
+package net.z2six.featheredfriend.entity.raven.modules;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.world.entity.player.Player;
@@ -7,6 +7,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -93,14 +94,37 @@ public final class RavenPlayerAvoidanceHelper {
 
             // Panic teleport if extremely close.
             if (d2 <= PANIC_TELEPORT_RADIUS_SQR) {
-                raven.requestPanicTeleportAwayFromPlayer(nearest, dist);
+                try {
+                    net.z2six.featheredfriend.entity.raven.modules.Teleportation tp = null;
+                    try {
+                        tp = raven.getTeleportation();
+                    } catch (Throwable ignored) {
+                        tp = null;
+                    }
 
-                if (raven.tickCount % 20 == 0) {
-                    LOG.info("[RavenPlayerAvoidanceHelper] PANIC teleport requested: player={} dist={} ravenPos={}",
-                            safeName(nearest),
-                            String.format("%.2f", dist),
-                            ravenPos);
+                    if (tp != null) {
+                        tp.requestPanicTeleportAwayFromPlayer(nearest, dist, raven);
+
+                        if (raven.tickCount % 20 == 0) {
+                            LOG.info("[RavenPlayerAvoidanceHelper] PANIC teleport requested: player={} dist={} ravenPos={}",
+                                    safeName(nearest),
+                                    String.format("%.2f", dist),
+                                    ravenPos);
+                        }
+                    } else {
+                        if (raven.tickCount % 40 == 0) {
+                            LOG.warn("[RavenPlayerAvoidanceHelper] PANIC teleport skipped: teleportation module null. player={} dist={} ravenPos={}",
+                                    safeName(nearest),
+                                    String.format("%.2f", dist),
+                                    ravenPos);
+                        }
+                    }
+                } catch (Throwable t) {
+                    if (raven.tickCount % 40 == 0) {
+                        LOG.warn("[RavenPlayerAvoidanceHelper] PANIC teleport failed safely: {}", t.toString());
+                    }
                 }
+
                 return;
             }
 

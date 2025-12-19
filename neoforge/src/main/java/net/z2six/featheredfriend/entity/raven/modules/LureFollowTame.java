@@ -867,7 +867,8 @@ public class LureFollowTame {
             // Reuse your 3x3x3 empty-pocket scan
             // -----------------------------
             // Small radius so we stay around "front of face".
-            BlockPos pocket = raven.findEmptyTeleportBlock3x3x3Near(center, 4, 80, seed);
+            net.z2six.featheredfriend.entity.raven.modules.Teleportation tp = raven.getTeleportation();
+            BlockPos pocket = (tp == null) ? null : tp.findEmptyTeleportBlock3x3x3Near(center, 4, 80, seed, raven);
 
             if (pocket == null) {
                 if (raven.tickCount % 40 == 0) {

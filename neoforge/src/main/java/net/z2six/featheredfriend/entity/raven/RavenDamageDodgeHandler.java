@@ -45,7 +45,35 @@ public final class RavenDamageDodgeHandler {
             // Avoid recursion / spam: if we've already started a teleport sequence, we still want
             // the "post-teleport roam" intent, but we won't start a second sequence.
             // We'll ask RavenEntity to "ensure post teleport -> roam flight".
-            boolean teleportStartedOrQueued = raven.requestDamageBlinkTeleport(source, amount, "hurt");
+            boolean teleportStartedOrQueued = false;
+
+            try {
+                net.z2six.featheredfriend.entity.raven.modules.Teleportation tp = null;
+                try {
+                    tp = raven.getTeleportation();
+                } catch (Throwable ignored) {
+                    tp = null;
+                }
+
+                if (tp != null) {
+                    teleportStartedOrQueued = tp.requestDamageBlinkTeleport(source, amount, "hurt", raven);
+                } else {
+                    if (raven.tickCount % 40 == 0) {
+                        // FIX: RavenEntity.LOG is private; use this class' logger.
+                        LOG.warn("[RavenDamageDodgeHandler] DamageBlink skipped: teleportation module null. pos={} src={} amt={}",
+                                raven.position(),
+                                (source == null ? "null" : source.toString()),
+                                amount);
+                    }
+                    teleportStartedOrQueued = false;
+                }
+            } catch (Throwable t) {
+                if (raven.tickCount % 40 == 0) {
+                    // FIX: RavenEntity.LOG is private; use this class' logger.
+                    LOG.warn("[RavenDamageDodgeHandler] DamageBlink failed safely: {}", t.toString());
+                }
+                teleportStartedOrQueued = false;
+            }
 
             // 75% dodge roll
             RandomSource rnd = raven.getRandom();

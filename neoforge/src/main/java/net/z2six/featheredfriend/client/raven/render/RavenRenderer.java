@@ -69,6 +69,8 @@ public class RavenRenderer extends GeoEntityRenderer<RavenEntity> {
         }
     }
 
+    // neoforge/src/main/java/net/z2six/featheredfriend/client/raven/render/RavenRenderer.java
+
     /**
      * Apply synced teleport fade alpha (0..255) to the render color.
      */
@@ -79,7 +81,33 @@ public class RavenRenderer extends GeoEntityRenderer<RavenEntity> {
                 return Color.WHITE;
             }
 
-            int a = animatable.getTeleportFadeAlphaPublic();
+            // Access module via accessor (teleportation field is private in RavenEntity).
+            net.z2six.featheredfriend.entity.raven.modules.Teleportation tp = null;
+            try {
+                tp = animatable.getTeleportation();
+            } catch (Throwable ignored) {
+                tp = null;
+            }
+
+            int a = 255;
+            if (tp != null) {
+                try {
+                    a = tp.getTeleportFadeAlphaPublic(animatable);
+                } catch (Throwable t) {
+                    // Fail safe: default fully visible
+                    a = 255;
+                    if (animatable.tickCount % 80 == 0) {
+                        LOG.warn("[RavenRenderer] getRenderColor: getTeleportFadeAlphaPublic failed safely: {}", t.toString());
+                    }
+                }
+            } else {
+                // If teleportation module is unexpectedly null, keep it visible.
+                if (animatable.tickCount % 200 == 0) {
+                    LOG.warn("[RavenRenderer] getRenderColor: teleportation module is null for id={} pos={}",
+                            animatable.getId(), animatable.position());
+                }
+            }
+
             if (a < 0) a = 0;
             if (a > 255) a = 255;
 
@@ -103,4 +131,5 @@ public class RavenRenderer extends GeoEntityRenderer<RavenEntity> {
             return Color.WHITE;
         }
     }
+
 }
