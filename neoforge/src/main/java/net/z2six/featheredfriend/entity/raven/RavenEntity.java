@@ -26,8 +26,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import net.z2six.featheredfriend.entity.raven.modules.PlayerAvoidance;
-import net.z2six.featheredfriend.entity.raven.pathing.RavenAStarPathing;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import software.bernie.geckolib.animatable.GeoEntity;
@@ -54,6 +52,8 @@ import net.minecraft.world.phys.AABB;
 import net.z2six.featheredfriend.entity.raven.modules.LureFollowTame;
 import net.z2six.featheredfriend.entity.raven.modules.Teleportation;
 import net.z2six.featheredfriend.entity.raven.modules.Landing;
+import net.z2six.featheredfriend.entity.raven.modules.PlayerAvoidance;
+import net.z2six.featheredfriend.entity.raven.pathing.RavenAStarPathing;
 
 import java.util.Collections;
 import java.util.List;
@@ -136,6 +136,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     private final LureFollowTame lureFollowTame = new LureFollowTame(this); // Not part of sound but hey why not put it here
     private final Teleportation teleportation = new Teleportation(this);
     private final Landing landing = new Landing(this);
+    private final PlayerAvoidance playeravoidance = new PlayerAvoidance(this);
 
     // --------------------
     // Sound handling

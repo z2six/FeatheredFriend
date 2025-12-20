@@ -17,6 +17,37 @@ public final class PlayerAvoidance {
 
     private static final Logger LOG = LogUtils.getLogger();
 
+    // ---------------------------------------------------------------------
+    // Instance state
+    // ---------------------------------------------------------------------
+    private final RavenEntity raven;
+
+    public PlayerAvoidance(RavenEntity raven) {
+        this.raven = raven;
+    }
+
+    /**
+     * Instance entrypoint you can call from RavenEntity:
+     *
+     *     this.playeravoidance.tick();
+     *
+     * This simply forwards to the existing static implementation so that
+     * behavior stays identical.
+     */
+    public void tick() {
+        try {
+            tryTriggerPlayerAvoidance(this.raven);
+        } catch (Throwable t) {
+            try {
+                if (this.raven != null && this.raven.tickCount % 40 == 0) {
+                    LOG.warn("[PlayerAvoidance] tick() failed safely: {}", t.toString());
+                }
+            } catch (Throwable ignored) {
+                // Completely swallow any logging failures
+            }
+        }
+    }
+
     // Player presence radius in blocks (3D)
     public static final double AVOID_PLAYER_RADIUS = 25.0D;
     private static final double AVOID_PLAYER_RADIUS_SQR = AVOID_PLAYER_RADIUS * AVOID_PLAYER_RADIUS;
@@ -29,10 +60,13 @@ public final class PlayerAvoidance {
     // (We keep a cheap nearest-player scan; RavenEntity itself has its own anti-spam for panic teleports.)
     private static final int RECHECK_COOLDOWN_TICKS = 1;
 
-    private PlayerAvoidance() {}
-
     /**
      * Call this from tickRoamFly() and tickIdleGround().
+     *
+     * Static variant (legacy-style) so existing callers can keep working:
+     *     PlayerAvoidance.tryTriggerPlayerAvoidance(this);
+     *
+     * The instance wrapper (tick()) just calls this with its bound RavenEntity.
      */
     public static void tryTriggerPlayerAvoidance(RavenEntity raven) {
         try {
@@ -75,14 +109,16 @@ public final class PlayerAvoidance {
                 }
 
                 if (raven.tickCount % 20 == 0) {
-                    LOG.info("[PlayerAvoidance] LURE follow requested: player={} dist={} ravenPos={} playerPos={} mainHand={} offHand={} armedNow={}",
+                    LOG.info(
+                            "[PlayerAvoidance] LURE follow requested: player={} dist={} ravenPos={} playerPos={} mainHand={} offHand={} armedNow={}",
                             safeName(nearest),
                             String.format("%.2f", dist),
                             ravenPos,
                             playerPos,
                             safeItem(nearest.getMainHandItem()),
                             safeItem(nearest.getOffhandItem()),
-                            armed);
+                            armed
+                    );
                 }
 
                 // If lure-follow is active, we MUST NOT run avoidance/panic logic.
@@ -106,17 +142,21 @@ public final class PlayerAvoidance {
                         tp.requestPanicTeleportAwayFromPlayer(nearest, dist, raven);
 
                         if (raven.tickCount % 20 == 0) {
-                            LOG.info("[PlayerAvoidance] PANIC teleport requested: player={} dist={} ravenPos={}",
+                            LOG.info(
+                                    "[PlayerAvoidance] PANIC teleport requested: player={} dist={} ravenPos={}",
                                     safeName(nearest),
                                     String.format("%.2f", dist),
-                                    ravenPos);
+                                    ravenPos
+                            );
                         }
                     } else {
                         if (raven.tickCount % 40 == 0) {
-                            LOG.warn("[PlayerAvoidance] PANIC teleport skipped: teleportation module null. player={} dist={} ravenPos={}",
+                            LOG.warn(
+                                    "[PlayerAvoidance] PANIC teleport skipped: teleportation module null. player={} dist={} ravenPos={}",
                                     safeName(nearest),
                                     String.format("%.2f", dist),
-                                    ravenPos);
+                                    ravenPos
+                            );
                         }
                     }
                 } catch (Throwable t) {
@@ -132,10 +172,12 @@ public final class PlayerAvoidance {
             raven.requestPlayerAvoidanceFleeTarget(nearest, dist);
 
             if (raven.tickCount % 20 == 0) {
-                LOG.info("[PlayerAvoidance] avoidance requested: player={} dist={} ravenPos={}",
+                LOG.info(
+                        "[PlayerAvoidance] avoidance requested: player={} dist={} ravenPos={}",
                         safeName(nearest),
                         String.format("%.2f", dist),
-                        ravenPos);
+                        ravenPos
+                );
             }
 
         } catch (Throwable t) {
@@ -300,7 +342,9 @@ public final class PlayerAvoidance {
     private static String safeName(Player p) {
         try {
             if (p == null) return "null";
-            return p.getGameProfile() != null ? p.getGameProfile().getName() : p.getName().getString();
+            return p.getGameProfile() != null
+                    ? p.getGameProfile().getName()
+                    : p.getName().getString();
         } catch (Throwable t) {
             return "unknown";
         }
