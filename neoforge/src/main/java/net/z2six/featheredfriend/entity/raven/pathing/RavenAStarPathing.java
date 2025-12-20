@@ -109,6 +109,36 @@ public final class RavenAStarPathing {
     private RavenAStarPathing() {}
 
     public static final class Config {
+        // ---------------------------------------------------------------------
+        // NEW: obstacle proximity penalty
+        //
+        // Nodes that are very close to solid blocks get a small extra cost.
+        // This makes A* prefer paths that run through the "middle" of corridors
+        // and under ceilings, instead of scraping along edges.
+        //
+        // IMPORTANT:
+        //  - This does NOT block nodes; isNodePassable() still decides passability.
+        //  - 1x1 corridors remain usable; they just have no cheaper alternative.
+        // ---------------------------------------------------------------------
+
+        /** Enable / disable obstacle proximity penalty. */
+        public boolean useProximityPenalty = true;
+
+        /** Horizontal radius (in blocks) around node center to sample for solids (1 => 3x3 XZ). */
+        public int proximityRadiusXZ = 1;
+
+        /** Vertical radius (in blocks) around node center to sample for solids (1 => y-1..y+1). */
+        public int proximityRadiusY = 1;
+
+        /**
+         * Weight per "nearby solid sample".
+         * Effective cost added per node ~= proximityWeight * solidSamples, clamped by proximityMaxPenalty.
+         */
+        public double proximityWeight = 0.08D;
+
+        /** Hard clamp on maximum penalty per node so cost doesn't explode. */
+        public double proximityMaxPenalty = 0.9D;
+
         // Existing fields (kept)
         public int cellSize = DEFAULT_CLEARANCE_XZ;
         public int gridStep = DEFAULT_GRID_STEP;
@@ -189,6 +219,22 @@ public final class RavenAStarPathing {
         private int normalizedSafetyBufferYDown() {
             return Math.max(0, safetyBufferYDown);
         }
+
+        private int normalizedProximityRadiusXZ() {
+            return Math.max(0, proximityRadiusXZ);
+        }
+
+        private int normalizedProximityRadiusY() {
+            return Math.max(0, proximityRadiusY);
+        }
+
+        private double normalizedProximityWeight() {
+            return Math.max(0.0D, proximityWeight);
+        }
+
+        private double normalizedProximityMaxPenalty() {
+            return Math.max(0.0D, proximityMaxPenalty);
+        }
     }
 
     public static final class CellBounds {
@@ -220,7 +266,6 @@ public final class RavenAStarPathing {
         }
     }
 
-    // neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/pathing/RavenAStarPathing.java
     public static List<Vec3> findPath(Level level, Vec3 startWorld, Vec3 goalWorld, CellBounds bounds, Config cfg) {
         final long callId = CALL_SEQ.incrementAndGet();
 
@@ -278,6 +323,10 @@ public final class RavenAStarPathing {
 
             final Long2ByteOpenHashMap passableCache = new Long2ByteOpenHashMap();
             passableCache.defaultReturnValue((byte) -1);
+
+            // NEW: cache for per-node “safety penalty” so we don’t rescan the same node 100x.
+            final Long2DoubleOpenHashMap nodePenaltyCache = new Long2DoubleOpenHashMap();
+            nodePenaltyCache.defaultReturnValue(Double.NaN);
 
             // Validate start/goal nodes.
             if (!isNodePassable(level, start.cx, start.cy, start.cz, cfg, passableCache)) {
@@ -414,6 +463,9 @@ public final class RavenAStarPathing {
                         stepCost += (tieRnd.nextDouble() - 0.5D) * 0.002D;
                     }
 
+                    // NEW: add a tiny penalty for “risky” nodes (near ceilings / walls).
+                    stepCost += extraCostForNode(level, ncx, ncy, ncz, cfg, nodePenaltyCache);
+
                     double tentativeG = curG + stepCost;
 
                     double prevBest = gScore.get(nKey);
@@ -476,6 +528,153 @@ public final class RavenAStarPathing {
 
     public static CellBounds boundsFrom(BlockPos center, int radiusBlocks, int minY, int maxY) {
         return boundsFrom(center, radiusBlocks, minY, maxY, DEFAULT_GRID_STEP);
+    }
+
+    // -------------------------------------------------------------------------
+    // safety-penalty helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Extra movement cost for nodes that are "risky" for a flying raven:
+     *  - very low headroom (close to a ceiling),
+     *  - hugging walls / obstacles on the sides.
+     *
+     * This does NOT make nodes impassable; it just nudges A* to prefer
+     * nodes with more open space whenever an alternative path exists.
+     *
+     * Effect:
+     *  - In a 3x3 corridor, the raven will favor the more central /
+     *    lower-altitude nodes instead of scraping the ceiling.
+     *  - Under a 1-block-thick roof, as long as there is enough height,
+     *    it prefers flying a bit lower instead of skimming the roof edge.
+     *  - In a tight 1x1 corridor, there is no alternative, so A* still
+     *    uses these nodes and the path remains valid.
+     */
+    private static double extraCostForNode(
+            Level level,
+            int cx,
+            int cy,
+            int cz,
+            Config cfg,
+            Long2DoubleOpenHashMap nodePenaltyCache
+    ) {
+        try {
+            if (level == null) return 0.0D;
+
+            // Reuse the same packed key as the A* maps.
+            long key = pack(cx, cy, cz);
+
+            // Cached?
+            double cached = nodePenaltyCache.get(key);
+            if (!Double.isNaN(cached)) {
+                return cached;
+            }
+
+            // For proximity checks we work in world block coordinates around the node's anchor block.
+            int gridStep = cfg.normalizedGridStep();
+            int clearanceXZ = cfg.normalizedClearanceXZ();
+            int clearanceH = cfg.normalizedClearanceHeight();
+
+            BlockPos anchor = nodeAnchorBlock(cx, cy, cz, gridStep);
+
+            // How far out we scan for “nearby solid stuff”.
+            // Small radius keeps it cheap but enough to steer away from tight corridors.
+            final int MAX_SCAN_RADIUS = 2;
+
+            int bestDistSq = Integer.MAX_VALUE;
+
+            // Scan a cube around the anchor and treat any non-air / non-fluid block as an "obstacle".
+            for (int dx = -MAX_SCAN_RADIUS; dx <= MAX_SCAN_RADIUS; dx++) {
+                for (int dy = -MAX_SCAN_RADIUS; dy <= MAX_SCAN_RADIUS; dy++) {
+                    for (int dz = -MAX_SCAN_RADIUS; dz <= MAX_SCAN_RADIUS; dz++) {
+                        BlockPos bp = anchor.offset(dx, dy, dz);
+
+                        // Only pay attention to blocks within the node's vertical clearance band.
+                        if (dy < 0 || dy >= clearanceH) {
+                            continue;
+                        }
+
+                        // Basic obstruction test: anything that is not empty air & not empty fluid counts.
+                        if (level.isEmptyBlock(bp) && level.getFluidState(bp).isEmpty()) {
+                            continue;
+                        }
+
+                        int dSq = dx * dx + dy * dy + dz * dz;
+                        if (dSq < bestDistSq) {
+                            bestDistSq = dSq;
+                        }
+                    }
+                }
+            }
+
+            // If we found no nearby obstacles at all, no extra cost.
+            if (bestDistSq == Integer.MAX_VALUE) {
+                nodePenaltyCache.put(key, 0.0D);
+                return 0.0D;
+            }
+
+            double bestDist = Math.sqrt(bestDistSq);
+
+            // Within this radius we start to "dislike" nodes.
+            final double SAFE_RADIUS = 2.5D;
+
+            double penalty;
+            if (bestDist >= SAFE_RADIUS) {
+                penalty = 0.0D;
+            } else {
+                // Linear ramp: closer to solids => stronger penalty.
+                double t = (SAFE_RADIUS - bestDist) / SAFE_RADIUS; // 0..1
+                // Scale into a modest cost so A* prefers safer cells, but still
+                // can go near walls if that's the *only* way.
+                penalty = 0.25D + 0.55D * t; // ~0.25..0.80 extra cost
+            }
+
+            // Clamp just in case.
+            if (penalty < 0.0D) penalty = 0.0D;
+            if (penalty > 0.80D) penalty = 0.80D;
+
+            nodePenaltyCache.put(key, penalty);
+            return penalty;
+
+        } catch (Throwable t) {
+            // Fail safe: if anything goes wrong, we don't add extra cost.
+            return 0.0D;
+        }
+    }
+
+    /**
+     * "Solid" from the perspective of safety:
+     * - Anything non-air is treated as solid, UNLESS:
+     *   - allowLeaves is true and it's leaves, or
+     *   - allowReplaceables is true and it's replaceable.
+     *
+     * This matches the semantics of computeNodePassable, so we don't
+     * call leaves/flowers a "ceiling" unless the config says so.
+     */
+    private static boolean isSolidForSafety(Level level, BlockPos pos, Config cfg) {
+        try {
+            if (level.isEmptyBlock(pos)) {
+                return false;
+            }
+
+            BlockState st = level.getBlockState(pos);
+            if (st == null) {
+                return true;
+            }
+
+            if (cfg.allowLeaves && st.is(BlockTags.LEAVES)) {
+                return false;
+            }
+            if (cfg.allowReplaceables && st.canBeReplaced()) {
+                return false;
+            }
+
+            // Here "solid" includes anything that would reasonably be a collision hazard.
+            return !st.getCollisionShape(level, pos).isEmpty();
+        } catch (Throwable t) {
+            // On error, assume solid to be conservative.
+            return true;
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -844,6 +1043,120 @@ public final class RavenAStarPathing {
 
         cache.put(key, ok ? (byte) 1 : (byte) 0);
         return ok;
+    }
+
+    /**
+     * Compute a small cost penalty for nodes that are very close to solid blocks.
+     *
+     * - Node must already be passable (computeNodePassable succeeded).
+     * - We just scan a small neighborhood around the node's "center-ish" point
+     *   and count how many samples are "solid".
+     * - More nearby solids => slightly higher cost.
+     *
+     * This steers paths away from scraping ceilings/walls when there is a slightly
+     * more open alternative, but still allows genuinely tight corridors.
+     */
+    private static double computeProximityPenalty(Level level, int cx, int cy, int cz, Config cfg) {
+        if (level == null) return 0.0D;
+        if (!cfg.useProximityPenalty) return 0.0D;
+
+        try {
+            final int rXZ = cfg.normalizedProximityRadiusXZ();
+            final int rY  = cfg.normalizedProximityRadiusY();
+            if (rXZ <= 0 && rY <= 0) {
+                return 0.0D;
+            }
+
+            final int gs = Math.max(1, cfg.gridStep);
+            final int clearanceXZ = Math.max(1, cfg.cellSize);
+            final int clearanceH  = Math.max(1, cfg.clearanceHeight);
+
+            final int baseX = cx * gs;
+            final int baseY = cy * gs;
+            final int baseZ = cz * gs;
+
+            // Approximate "center" of the footprint.
+            final int centerX = baseX + (clearanceXZ / 2);
+            final int centerY = baseY + (clearanceH / 2);
+            final int centerZ = baseZ + (clearanceXZ / 2);
+
+            int solidSamples = 0;
+            int totalSamples = 0;
+
+            for (int dx = -rXZ; dx <= rXZ; dx++) {
+                for (int dz = -rXZ; dz <= rXZ; dz++) {
+                    for (int dy = -rY; dy <= rY; dy++) {
+                        if (dx == 0 && dy == 0 && dz == 0) {
+                            // Skip the exact center; passability check already handled that footprint.
+                            continue;
+                        }
+
+                        BlockPos p = new BlockPos(centerX + dx, centerY + dy, centerZ + dz);
+                        totalSamples++;
+
+                        boolean empty;
+                        try {
+                            empty = level.isEmptyBlock(p);
+                        } catch (Throwable t) {
+                            // If we cannot query this sample reliably, treat as "solid-ish"
+                            // so the path avoids sketchy regions.
+                            solidSamples++;
+                            continue;
+                        }
+
+                        if (empty) {
+                            continue;
+                        }
+
+                        BlockState st;
+                        try {
+                            st = level.getBlockState(p);
+                        } catch (Throwable t) {
+                            solidSamples++;
+                            continue;
+                        }
+
+                        if (st == null) {
+                            solidSamples++;
+                            continue;
+                        }
+
+                        // Anything with a collision shape counts as "solid"; we don't care about leaves here,
+                        // because passability already handled allowLeaves/allowReplaceables.
+                        if (!st.getCollisionShape(level, p).isEmpty()) {
+                            solidSamples++;
+                        }
+                    }
+                }
+            }
+
+            if (totalSamples <= 0 || solidSamples <= 0) {
+                return 0.0D;
+            }
+
+            // Fraction of nearby samples that are solid.
+            double density = (double) solidSamples / (double) totalSamples;
+
+            double weight = cfg.normalizedProximityWeight();
+            double maxPen = cfg.normalizedProximityMaxPenalty();
+
+            // Simple linear mapping: more solids -> higher penalty, clamped.
+            double rawPenalty = density * weight * totalSamples;
+            if (rawPenalty > maxPen) {
+                rawPenalty = maxPen;
+            }
+
+            return rawPenalty;
+
+        } catch (Throwable t) {
+            // Never break A* from here; just fall back to zero penalty.
+            if (DEBUG_LOGS) {
+                // Super rare, so log occasionally.
+                // No tickCount here, so no modulo; A* calls are relatively sparse.
+                LOG.warn("[RavenAStarPathing] computeProximityPenalty failed safely: {}", t.toString());
+            }
+            return 0.0D;
+        }
     }
 
     private static boolean computeNodePassable(Level level, int cx, int cy, int cz, Config cfg) {

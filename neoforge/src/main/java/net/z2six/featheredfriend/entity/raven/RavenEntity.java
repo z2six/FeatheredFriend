@@ -43,6 +43,19 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 
+// Debug particles
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.decoration.ArmorStand;
+import net.minecraft.core.particles.DustParticleOptions;
+import org.joml.Vector3f;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.network.chat.TextColor;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.item.Items;
+
 // Modules
 import net.z2six.featheredfriend.entity.raven.modules.LureFollowTame;
 import net.z2six.featheredfriend.entity.raven.modules.Teleportation;
@@ -213,7 +226,22 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     // Debug throttle
     private static final int DEBUG_LOG_INTERVAL_TICKS = 120;
 
-    // ---- Pathing (coarse A*) ----
+    // -------------------- Debug, gizmos, etc --------------------
+    // Debug: visualize A* path / waypoints in-world with labeled markers.
+    private static final boolean DEBUG_DRAW_PATH_GIZMOS = true; // set to true when testing
+
+    // How many waypoints around the current index to visualize (current + next N-1).
+    private static final int DEBUG_PATH_GIZMO_MAX_WAYPOINTS = 20;
+
+    // Only draw gizmos every N ticks to avoid excessive particles/entities.
+    private static final int DEBUG_PATH_GIZMO_TICK_INTERVAL = 2;
+
+    /**
+     * Entity IDs of the active debug path markers so we can clean them up.
+     */
+    private final java.util.List<Integer> debugPathMarkerIds = new java.util.ArrayList<>();
+
+    // -------------------- Pathing (coarse A*) --------------------
     // Replan throttle and safety:
     private static final int PATH_REPLAN_MIN_INTERVAL_TICKS = 8; // don't spam A*
     private static final double PATH_GOAL_REPLAN_DIST_SQR = 4.0D * 4.0D; // if goal moved > 4 blocks, replan
@@ -1624,6 +1652,11 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
 
             // ------------------------------------------------------------------
+            // DEBUG: Path gizmos / waypoint visualization (server-only)
+            // ------------------------------------------------------------------
+            debugDrawPathGizmos("aiStep");
+
+            // ------------------------------------------------------------------
             // TELEPORT RECOVERY + FX (ALWAYS ALLOWED)
             // ------------------------------------------------------------------
             teleportation.tickTeleportRecoverySampler(this);
@@ -2535,12 +2568,25 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
     private void flyTowardTarget(double speed) {
         try {
-            if (flyTarget == null) {
+            // Prefer following the current A* waypoint if we have a path.
+            // This is critical in corridors / under ceilings so we actually
+            // follow the bend of the path instead of aiming at the final goal.
+            Vec3 actualTarget = null;
+
+            if (pathWaypoints != null && !pathWaypoints.isEmpty()
+                    && pathWaypointIndex >= 0
+                    && pathWaypointIndex < pathWaypoints.size()) {
+                actualTarget = pathWaypoints.get(pathWaypointIndex);
+            } else {
+                actualTarget = flyTarget;
+            }
+
+            if (actualTarget == null) {
                 return;
             }
 
             Vec3 pos = this.position();
-            Vec3 to = flyTarget.subtract(pos);
+            Vec3 to = actualTarget.subtract(pos);
             double dist = to.length();
 
             if (dist < ARRIVE_DIST) {
@@ -2560,11 +2606,11 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             boolean collH = this.horizontalCollision;
             boolean collV = this.verticalCollision;
 
-            // DO NOT hard-stop on collision; slide/dampen instead.
             double vx = desiredVel.x;
             double vy = desiredVel.y;
             double vz = desiredVel.z;
 
+            // On collision, damp components instead of hard-stopping.
             if (collH) {
                 vx *= 0.35D;
                 vz *= 0.35D;
@@ -2586,7 +2632,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
                 if (this.tickCount % 40 == 0) {
                     LOG.debug("[RavenEntity] flyTowardTarget: collision-nudge applied (collH={}, collV={}) pos={} target={} vel={}",
-                            collH, collV, pos, flyTarget, newVel);
+                            collH, collV, pos, actualTarget, newVel);
                 }
             }
 
@@ -2597,13 +2643,22 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             this.setYHeadRot(yaw);
             this.yBodyRot = yaw;
 
+            if (this.tickCount % 40 == 0) {
+                LOG.debug(
+                        "[RavenEntity] flyTowardTarget: heading toward waypointIdx={} of {} target={} dist={}",
+                        (pathWaypoints == null ? -1 : pathWaypointIndex),
+                        (pathWaypoints == null ? 0 : pathWaypoints.size()),
+                        actualTarget,
+                        String.format("%.3f", dist)
+                );
+            }
+
         } catch (Throwable t) {
             if (this.tickCount % 40 == 0) {
                 LOG.warn("[RavenEntity] flyTowardTarget failed: {}", t.toString());
             }
         }
     }
-
 
     private boolean isPathExhausted() {
         try {
@@ -3349,6 +3404,218 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             return true;
         } catch (Throwable t) {
             return false;
+        }
+    }
+
+    // -----------------
+// Debug
+// -----------------
+
+    /**
+     * Simple RGB lerp between two 0xRRGGBB colors.
+     */
+    private static int lerpRgb(int c1, int c2, float t) {
+        t = Mth.clamp(t, 0.0F, 1.0F);
+
+        int r1 = (c1 >> 16) & 0xFF;
+        int g1 = (c1 >> 8) & 0xFF;
+        int b1 = c1 & 0xFF;
+
+        int r2 = (c2 >> 16) & 0xFF;
+        int g2 = (c2 >> 8) & 0xFF;
+        int b2 = c2 & 0xFF;
+
+        int r = (int) (r1 + (r2 - r1) * t);
+        int g = (int) (g1 + (g2 - g1) * t);
+        int b = (int) (b1 + (b2 - b1) * t);
+
+        return (r << 16) | (g << 8) | b;
+    }
+
+    /**
+     * Debug helper: clear any previously spawned ArmorStand markers used for path visualization.
+     */
+    private void debugClearOldPathMarkers(ServerLevel serverLevel) {
+        try {
+            if (debugPathMarkerIds == null || debugPathMarkerIds.isEmpty()) {
+                return;
+            }
+
+            for (Integer id : debugPathMarkerIds) {
+                if (id == null) {
+                    continue;
+                }
+                try {
+                    Entity e = serverLevel.getEntity(id);
+                    if (e instanceof ArmorStand stand) {
+                        stand.discard();
+                    }
+                } catch (Throwable ignored) {
+                    // Best-effort cleanup only.
+                }
+            }
+
+            debugPathMarkerIds.clear();
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] debugClearOldPathMarkers failed safely: {}", t.toString());
+            }
+        }
+    }
+
+    /**
+     * Debug helper: spawn a small gizmo ArmorStand with a colored text label at the given position.
+     *
+     * - Uses a tinted leather helmet to show the color.
+     * - Label text is colored to match.
+     * - No particles, no big SFX — just a tiny visual marker.
+     */
+    private void debugSpawnWaypointMarker(ServerLevel level, Vec3 pos, String label, int rgb) {
+        try {
+            if (level == null || pos == null) {
+                return;
+            }
+
+            ArmorStand stand = EntityType.ARMOR_STAND.create(level);
+            if (stand == null) {
+                return;
+            }
+
+            // Tiny floating label just above the block center.
+            stand.setInvisible(true);
+            stand.setNoGravity(true);
+            stand.setInvulnerable(true);
+            stand.setCustomNameVisible(true);
+
+            stand.moveTo(pos.x, pos.y + 0.20D, pos.z, 0.0F, 0.0F);
+
+            stand.setCustomName(
+                    Component.literal(label)
+                            .withStyle(style -> style.withColor(TextColor.fromRgb(rgb)))
+            );
+
+            level.addFreshEntity(stand);
+            debugPathMarkerIds.add(stand.getId());
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] debugSpawnWaypointMarker failed safely: {}", t.toString());
+            }
+        }
+    }
+
+    /**
+     * Debug helper: visualize the current path with simple gizmos:
+     *
+     * - Blue numbered markers "1", "2", "3", ... on current and next waypoints
+     *   using a dark-blue -> light-blue gradient.
+     * - Green "Goal" marker on the final pathGoal.
+     *
+     * SERVER-SIDE ONLY, fully gated by DEBUG_DRAW_PATH_GIZMOS.
+     */
+    private void debugDrawPathGizmos(String callerTag) {
+        try {
+            if (!DEBUG_DRAW_PATH_GIZMOS) {
+                return;
+            }
+            if (!(this.level() instanceof ServerLevel serverLevel)) {
+                return;
+            }
+
+            // Throttle to reduce spam.
+            if ((this.tickCount % DEBUG_PATH_GIZMO_TICK_INTERVAL) != 0) {
+                return;
+            }
+
+            // Clear previous batch of markers so we don't leak entities.
+            debugClearOldPathMarkers(serverLevel);
+
+            Vec3 pos = this.position();
+            Vec3 localFlyTarget = this.flyTarget;
+            Vec3 localPathGoal = this.pathGoal;
+            Vec3 localPendingGoal = this.pathPendingGoal;
+            int idx = this.pathWaypointIndex;
+            int total = (this.pathWaypoints == null ? 0 : this.pathWaypoints.size());
+
+            // -------------------------------------
+            // Visualize current + nearby waypoints
+            // -------------------------------------
+            if (this.pathWaypoints != null && !this.pathWaypoints.isEmpty() && idx >= 0 && idx < total) {
+                int first = idx;
+                int last = Math.min(total - 1, idx + (DEBUG_PATH_GIZMO_MAX_WAYPOINTS - 1));
+
+                // Gradient: dark blue -> light blue across the visible slice.
+                final int START_BLUE = 0x003366;
+                final int END_BLUE   = 0x66CCFF;
+
+                int labelNumber = 1;
+                int visibleCount = (last - first + 1);
+
+                for (int i = first; i <= last; i++) {
+                    Vec3 wp = this.pathWaypoints.get(i);
+                    if (wp == null) continue;
+
+                    Vec3 center = new Vec3(
+                            Math.floor(wp.x) + 0.5D,
+                            wp.y,
+                            Math.floor(wp.z) + 0.5D
+                    );
+
+                    // 0..1 across the *visible* waypoints.
+                    float t;
+                    if (visibleCount <= 1) {
+                        t = 0.0F;
+                    } else {
+                        t = (float) (i - first) / (float) (visibleCount - 1);
+                    }
+                    int rgb = lerpRgb(START_BLUE, END_BLUE, t);
+
+                    String label = Integer.toString(labelNumber++);
+                    debugSpawnWaypointMarker(serverLevel, center, label, rgb);
+                }
+            }
+
+            // -------------------------------------
+            // Visualize pathGoal (final target) in GREEN
+            // -------------------------------------
+            if (localPathGoal != null) {
+                Vec3 g = new Vec3(
+                        Math.floor(localPathGoal.x) + 0.5D,
+                        localPathGoal.y,
+                        Math.floor(localPathGoal.z) + 0.5D
+                );
+
+                int greenRgb = 0x00FF3C;
+                debugSpawnWaypointMarker(serverLevel, g, "Goal", greenRgb);
+            }
+
+            // -------------------------------------
+            // Optional periodic log sample of the path
+            // -------------------------------------
+            if (this.tickCount % 40 == 0 && this.pathWaypoints != null && !this.pathWaypoints.isEmpty()) {
+                Vec3 curWp = (idx >= 0 && idx < total) ? this.pathWaypoints.get(idx) : null;
+                Vec3 nextWp = (idx + 1 >= 0 && idx + 1 < total) ? this.pathWaypoints.get(idx + 1) : null;
+                Vec3 lastWp = this.pathWaypoints.get(total - 1);
+
+                LOG.info(
+                        "[RavenEntity] DEBUG path gizmos ({}): pos={} flyTarget={} pathGoal={} pendingGoal={} wpIdx={}/{} curWp={} nextWp={} lastWp={}",
+                        callerTag,
+                        pos,
+                        localFlyTarget,
+                        localPathGoal,
+                        localPendingGoal,
+                        idx,
+                        total,
+                        curWp,
+                        nextWp,
+                        lastWp
+                );
+            }
+
+        } catch (Throwable t) {
+            // Debug should NEVER crash the raven; just log + continue.
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] debugDrawPathGizmos failed safely: {}", t.toString());
+            }
         }
     }
 

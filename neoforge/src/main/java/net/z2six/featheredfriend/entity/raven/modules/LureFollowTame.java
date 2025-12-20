@@ -85,6 +85,73 @@ public class LureFollowTame {
     // ACCESSORS / BASIC HELPERS -------------------------------------------------------------------
     // ---------------------------------------------------------------------------------------------
 
+    /**
+     * Try to keep the hover height under low ceilings from causing "bounce"
+     * by nudging the target Y slightly downward until we get a 2-block tall
+     * air column, without going below the player's feet.
+     *
+     * This is ONLY used for follow / lure goals and does not change the core
+     * A* algorithm. It just gives A* a more realistic altitude to aim for.
+     */
+    private double computeSafeHoverYUnderCeiling(double x, double preferredY, double z, Player player) {
+        try {
+            if (player == null) return preferredY;
+            if (raven.level() == null) return preferredY;
+
+            int baseX = Mth.floor(x);
+            int baseZ = Mth.floor(z);
+
+            // Do not let the raven hover below the player's feet.
+            int playerFeetY = Mth.floor(player.getY());
+
+            // How far down from preferredY we are willing to search.
+            final int MAX_DOWN = 2;
+
+            int preferredBlockY = Mth.floor(preferredY);
+
+            double chosenCenterY = preferredY;
+            boolean found = false;
+
+            for (int down = 0; down <= MAX_DOWN; down++) {
+                int colY = preferredBlockY - down;
+                if (colY < playerFeetY) {
+                    break;
+                }
+
+                BlockPos p0 = new BlockPos(baseX, colY, baseZ);
+                BlockPos p1 = p0.above();
+
+                boolean ok;
+                try {
+                    boolean empty0 = raven.level().isEmptyBlock(p0) && raven.level().getFluidState(p0).isEmpty();
+                    boolean empty1 = raven.level().isEmptyBlock(p1) && raven.level().getFluidState(p1).isEmpty();
+                    ok = empty0 && empty1;
+                } catch (Throwable t) {
+                    ok = false;
+                }
+
+                if (ok) {
+                    chosenCenterY = colY + 0.5D;
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                // Nothing obviously better; fall back to the original height.
+                chosenCenterY = preferredY;
+            }
+
+            return chosenCenterY;
+
+        } catch (Throwable t) {
+            if (raven.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] computeSafeHoverYUnderCeiling failed safely: {}", t.toString());
+            }
+            return preferredY;
+        }
+    }
+
     public int getFollowCooldownTicks() {
         try {
             return raven.getEntityData().get(DATA_FOLLOW_COOLDOWN_TICKS);
@@ -709,8 +776,22 @@ public class LureFollowTame {
                 setPrivateInt("flyTargetTimeoutTicks", flyTimeout - 1);
             }
 
-            // Keep your normal flight mechanics (not player avoidance)
-            invokeMaybeAvoidOrRetargetDuringFlight(raven.getRandom());
+            // Let A* drive movement while lure-following so we don't fight the planned route
+            // under ceilings and narrow roofs. For owner-follow we retain the generic avoidance.
+            if (!usingLure) {
+                invokeMaybeAvoidOrRetargetDuringFlight(raven.getRandom());
+            } else {
+                // Lure-follow: only run avoidance when we have *no* path and *no* fly target
+                // (pure hover), to avoid constant up/down retargeting near roof edges.
+                Vec3 currentFly = getFlyTargetField();
+                List<Vec3> currentPath = getPathWaypoints();
+                boolean hasPathIntent = currentPath != null && !currentPath.isEmpty();
+                boolean hasFlyIntent = currentFly != null && getPrivateInt("flyTargetTimeoutTicks", 0) > 0;
+
+                if (!hasPathIntent && !hasFlyIntent) {
+                    invokeMaybeAvoidOrRetargetDuringFlight(raven.getRandom());
+                }
+            }
 
             Vec3 flyTargetNow = getFlyTargetField();
             if (flyTargetNow != null) {
@@ -1150,19 +1231,27 @@ public class LureFollowTame {
             double tx = playerPos.x + lx * FOLLOW_FRONT_DISTANCE;
             double tz = playerPos.z + lz * FOLLOW_FRONT_DISTANCE;
 
-            // Eye height policy: keep it near the player's eye Y, but clamp to home bounds.
+            // Base policy: near the player's eyes.
             double eyeY = player.getEyeY();
+            double preferredY = eyeY;
 
-            int tyInt = invokeClampYToHomeBounds(Mth.floor(eyeY));
+            // NEW: Nudge the hover height down slightly if there is a low ceiling
+            // above the desired front position so the raven doesn't scrape it.
+            double safeY = computeSafeHoverYUnderCeiling(tx, preferredY, tz, player);
+
+            // Clamp to home bounds *after* we've picked a safe local hover height.
+            int tyInt = invokeClampYToHomeBounds(Mth.floor(safeY));
             double ty = tyInt + 0.05D;
 
             Vec3 raw = new Vec3(tx, ty, tz);
             Vec3 clamped = invokeClampTargetToHomeBounds(raw);
 
             if (raven.tickCount % 40 == 0) {
-                LOG.debug("[RavenEntity] computeFollowFrontPosition: playerPos={} eyeY={} out={} raw={} dist={}",
+                LOG.debug("[RavenEntity] computeFollowFrontPosition: playerPos={} eyeY={} preferredY={} safeY={} out={} raw={} dist={}",
                         playerPos,
                         String.format("%.2f", eyeY),
+                        String.format("%.2f", preferredY),
+                        String.format("%.2f", safeY),
                         clamped,
                         raw,
                         String.format("%.2f", FOLLOW_FRONT_DISTANCE));
@@ -1174,6 +1263,7 @@ public class LureFollowTame {
             if (raven.tickCount % 80 == 0) {
                 LOG.warn("[RavenEntity] computeFollowFrontPosition failed safely: {}", t.toString());
             }
+            // Fallback: hover slightly above the raven itself.
             return raven.position().add(0.0D, 1.5D, 0.0D);
         }
     }
@@ -1187,18 +1277,17 @@ public class LureFollowTame {
 
             Vec3 pos = raven.position();
 
-            // Very tight: you want "at eye height and right in front".
-            // Use tighter XZ + modest Y tolerance.
             double dx = pos.x - goal.x;
             double dz = pos.z - goal.z;
             double dXZ2 = dx * dx + dz * dz;
 
             double dy = Math.abs(pos.y - goal.y);
 
-            // ~0.85 blocks in XZ is tight for path-following without jitter.
-            // Y tolerance a bit larger because flight smoothing may not land exactly on goal.y.
-            boolean closeXZ = dXZ2 <= (0.85D * 0.85D);
-            boolean closeY  = dy <= 1.15D;
+            // Loosened tolerances a bit so we don't micro-chase directly into ceilings.
+            // XZ: ~1.05 blocks radius
+            // Y : ~1.25 blocks vertical tolerance
+            boolean closeXZ = dXZ2 <= (1.05D * 1.05D);
+            boolean closeY  = dy <= 1.25D;
 
             return closeXZ && closeY;
 
