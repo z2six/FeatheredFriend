@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenPlayerAvoidanceHelper.java
+// neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/PlayerAvoidance.java
 package net.z2six.featheredfriend.entity.raven.modules;
 
 import com.mojang.logging.LogUtils;
@@ -13,7 +13,7 @@ import org.slf4j.Logger;
 
 import java.util.List;
 
-public final class RavenPlayerAvoidanceHelper {
+public final class PlayerAvoidance {
 
     private static final Logger LOG = LogUtils.getLogger();
 
@@ -29,7 +29,7 @@ public final class RavenPlayerAvoidanceHelper {
     // (We keep a cheap nearest-player scan; RavenEntity itself has its own anti-spam for panic teleports.)
     private static final int RECHECK_COOLDOWN_TICKS = 1;
 
-    private RavenPlayerAvoidanceHelper() {}
+    private PlayerAvoidance() {}
 
     /**
      * Call this from tickRoamFly() and tickIdleGround().
@@ -70,12 +70,12 @@ public final class RavenPlayerAvoidanceHelper {
                 } catch (Throwable t) {
                     armed = false;
                     if (raven.tickCount % 40 == 0) {
-                        LOG.warn("[RavenPlayerAvoidanceHelper] LURE follow request failed safely: {}", t.toString());
+                        LOG.warn("[PlayerAvoidance] LURE follow request failed safely: {}", t.toString());
                     }
                 }
 
                 if (raven.tickCount % 20 == 0) {
-                    LOG.info("[RavenPlayerAvoidanceHelper] LURE follow requested: player={} dist={} ravenPos={} playerPos={} mainHand={} offHand={} armedNow={}",
+                    LOG.info("[PlayerAvoidance] LURE follow requested: player={} dist={} ravenPos={} playerPos={} mainHand={} offHand={} armedNow={}",
                             safeName(nearest),
                             String.format("%.2f", dist),
                             ravenPos,
@@ -106,14 +106,14 @@ public final class RavenPlayerAvoidanceHelper {
                         tp.requestPanicTeleportAwayFromPlayer(nearest, dist, raven);
 
                         if (raven.tickCount % 20 == 0) {
-                            LOG.info("[RavenPlayerAvoidanceHelper] PANIC teleport requested: player={} dist={} ravenPos={}",
+                            LOG.info("[PlayerAvoidance] PANIC teleport requested: player={} dist={} ravenPos={}",
                                     safeName(nearest),
                                     String.format("%.2f", dist),
                                     ravenPos);
                         }
                     } else {
                         if (raven.tickCount % 40 == 0) {
-                            LOG.warn("[RavenPlayerAvoidanceHelper] PANIC teleport skipped: teleportation module null. player={} dist={} ravenPos={}",
+                            LOG.warn("[PlayerAvoidance] PANIC teleport skipped: teleportation module null. player={} dist={} ravenPos={}",
                                     safeName(nearest),
                                     String.format("%.2f", dist),
                                     ravenPos);
@@ -121,7 +121,7 @@ public final class RavenPlayerAvoidanceHelper {
                     }
                 } catch (Throwable t) {
                     if (raven.tickCount % 40 == 0) {
-                        LOG.warn("[RavenPlayerAvoidanceHelper] PANIC teleport failed safely: {}", t.toString());
+                        LOG.warn("[PlayerAvoidance] PANIC teleport failed safely: {}", t.toString());
                     }
                 }
 
@@ -132,14 +132,14 @@ public final class RavenPlayerAvoidanceHelper {
             raven.requestPlayerAvoidanceFleeTarget(nearest, dist);
 
             if (raven.tickCount % 20 == 0) {
-                LOG.info("[RavenPlayerAvoidanceHelper] avoidance requested: player={} dist={} ravenPos={}",
+                LOG.info("[PlayerAvoidance] avoidance requested: player={} dist={} ravenPos={}",
                         safeName(nearest),
                         String.format("%.2f", dist),
                         ravenPos);
             }
 
         } catch (Throwable t) {
-            LOG.error("[RavenPlayerAvoidanceHelper] tryTriggerPlayerAvoidance failed", t);
+            LOG.error("[PlayerAvoidance] tryTriggerPlayerAvoidance failed", t);
         }
     }
 
@@ -177,7 +177,7 @@ public final class RavenPlayerAvoidanceHelper {
                 if (raven.isPlayerAvoidanceOverrideActive()) {
                     if (raven.tickCount % 40 == 0) {
                         LOG.debug(
-                                "[RavenPlayerAvoidanceHelper] shouldBlockLanding: true (override active). pos={} aiState={}",
+                                "[PlayerAvoidance] shouldBlockLanding: true (override active). pos={} aiState={}",
                                 raven.position(),
                                 raven.getAIState()
                         );
@@ -187,7 +187,7 @@ public final class RavenPlayerAvoidanceHelper {
             } catch (Throwable t) {
                 if (raven.tickCount % 80 == 0) {
                     LOG.warn(
-                            "[RavenPlayerAvoidanceHelper] shouldBlockLanding: override check failed safely: {}",
+                            "[PlayerAvoidance] shouldBlockLanding: override check failed safely: {}",
                             t.toString()
                     );
                 }
@@ -203,7 +203,7 @@ public final class RavenPlayerAvoidanceHelper {
             } catch (Throwable t) {
                 if (raven.tickCount % 80 == 0) {
                     LOG.warn(
-                            "[RavenPlayerAvoidanceHelper] shouldBlockLanding: player search failed safely: {}",
+                            "[PlayerAvoidance] shouldBlockLanding: player search failed safely: {}",
                             t.toString()
                     );
                 }
@@ -213,7 +213,7 @@ public final class RavenPlayerAvoidanceHelper {
                 if (raven.tickCount % 40 == 0) {
                     double dist = nearest.distanceTo(raven);
                     LOG.info(
-                            "[RavenPlayerAvoidanceHelper] shouldBlockLanding: true (nearest player={} dist={}). pos={} aiState={}",
+                            "[PlayerAvoidance] shouldBlockLanding: true (nearest player={} dist={}). pos={} aiState={}",
                             nearest.getName().getString(),
                             String.format("%.3f", dist),
                             raven.position(),
@@ -227,7 +227,7 @@ public final class RavenPlayerAvoidanceHelper {
             // Completely swallow failures with a debug log; landing must not crash the game.
             if (raven != null && raven.tickCount % 80 == 0) {
                 LOG.warn(
-                        "[RavenPlayerAvoidanceHelper] shouldBlockLanding: failed safely with exception: {}",
+                        "[PlayerAvoidance] shouldBlockLanding: failed safely with exception: {}",
                         t.toString()
                 );
             }
@@ -291,7 +291,7 @@ public final class RavenPlayerAvoidanceHelper {
             return best;
         } catch (Throwable t) {
             if (raven.tickCount % 80 == 0) {
-                LOG.warn("[RavenPlayerAvoidanceHelper] findNearestPlayerWithin failed safely: {}", t.toString());
+                LOG.warn("[PlayerAvoidance] findNearestPlayerWithin failed safely: {}", t.toString());
             }
             return null;
         }

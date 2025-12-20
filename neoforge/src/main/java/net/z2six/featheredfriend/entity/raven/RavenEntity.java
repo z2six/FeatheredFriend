@@ -26,7 +26,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import net.z2six.featheredfriend.entity.raven.modules.RavenPlayerAvoidanceHelper;
+import net.z2six.featheredfriend.entity.raven.modules.PlayerAvoidance;
 import net.z2six.featheredfriend.entity.raven.pathing.RavenAStarPathing;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -1768,7 +1768,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // IMPORTANT: if this triggers, it flips state to ROAM_FLY and sets noGravity=true etc.
             // We MUST return immediately or the rest of idle tick will overwrite those changes.
             try {
-                RavenPlayerAvoidanceHelper.tryTriggerPlayerAvoidance(this);
+                PlayerAvoidance.tryTriggerPlayerAvoidance(this);
 
                 if (getAIState() != RavenAIState.IDLE_GROUND) {
                     if (this.tickCount % 20 == 0) {
@@ -1778,7 +1778,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 }
             } catch (Throwable t) {
                 if (this.tickCount % 40 == 0) {
-                    LOG.warn("[RavenEntity] RavenPlayerAvoidanceHelper failed safely (idle): {}", t.toString());
+                    LOG.warn("[RavenEntity] PlayerAvoidance failed safely (idle): {}", t.toString());
                 }
             }
 
@@ -1984,10 +1984,10 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // ✅ Player avoidance tries to arm/refresh frequently.
             // This is safe even during override because requestPlayerAvoidanceFleeTarget internally throttles replans.
             try {
-                RavenPlayerAvoidanceHelper.tryTriggerPlayerAvoidance(this);
+                PlayerAvoidance.tryTriggerPlayerAvoidance(this);
             } catch (Throwable t) {
                 if (this.tickCount % 40 == 0) {
-                    LOG.warn("[RavenEntity] RavenPlayerAvoidanceHelper failed safely: {}", t.toString());
+                    LOG.warn("[RavenEntity] PlayerAvoidance failed safely: {}", t.toString());
                 }
             }
 
@@ -2891,7 +2891,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     }
 
     /**
-     * Called by RavenPlayerAvoidanceHelper when a player is close enough that we should
+     * Called by PlayerAvoidance when a player is close enough that we should
      * "fly away" instead of idling / roaming normally.
      *
      * Requirements:

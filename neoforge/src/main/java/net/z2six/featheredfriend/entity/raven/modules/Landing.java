@@ -14,7 +14,6 @@ import net.z2six.featheredfriend.entity.raven.RavenAnimMode;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
-import net.z2six.featheredfriend.entity.raven.modules.RavenPlayerAvoidanceHelper;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -707,7 +706,7 @@ public final class Landing {
         //   "Avoidance. Should. Not. Ever. Be. Interrupted. By. Landing."
         // ---------------------------------------------------------------------
         try {
-            if (RavenPlayerAvoidanceHelper.shouldBlockLanding(ravenEntity)) {
+            if (PlayerAvoidance.shouldBlockLanding(ravenEntity)) {
                 Phase phaseNow = getPhaseFromRaven(ravenEntity);
                 int landingTicksNow = getLandingTicksFromRaven(ravenEntity);
 
@@ -1401,7 +1400,7 @@ public final class Landing {
         // has fully cleared.
         // ---------------------------------------------------------------------
         try {
-            if (RavenPlayerAvoidanceHelper.shouldBlockLanding(ravenEntity)) {
+            if (PlayerAvoidance.shouldBlockLanding(ravenEntity)) {
                 if (ravenEntity.tickCount % 40 == 0) {
                     LOG.debug(
                             "[Landing] pickLandingLeafBlock: aborted because player avoidance is blocking landing. pos={} aiState={}",
