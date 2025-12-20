@@ -1718,9 +1718,40 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             debugDrawPathGizmos("aiStep");
 
             // ------------------------------------------------------------------
-            // TELEPORT RECOVERY + FX (ALWAYS ALLOWED)
+            // TELEPORT RECOVERY + FX
+            //  - Skip the "stuck" teleport sampler while we are successfully
+            //    parked near our follow/lure target, so deliberate hovering
+            //    in front of the player does NOT count as "stuck".
             // ------------------------------------------------------------------
-            teleportation.tickTeleportRecoverySampler(this);
+            boolean skipStuckTeleport = false;
+            if (getAIState() == RavenAIState.FOLLOW_OWNER && lureFollowTame != null) {
+                try {
+                    // Prefer the real owner when tamed, otherwise the lure player.
+                    Player p = lureFollowTame.getOwnerPlayerServerSafe();
+                    if (p == null) {
+                        p = lureFollowTame.getLureFollowPlayerServerSafe();
+                    }
+
+                    if (p != null && lureFollowTame.isCloseEnoughToFollowPlayer(p)) {
+                        skipStuckTeleport = true;
+                    }
+                } catch (Throwable t) {
+                    if (this.tickCount % 80 == 0) {
+                        LOG.warn("[RavenEntity] aiStep: stuck-teleport guard failed safely: {}", t.toString());
+                    }
+                }
+            }
+
+            if (!skipStuckTeleport) {
+                teleportation.tickTeleportRecoverySampler(this);
+            } else if (this.tickCount % 40 == 0) {
+                LOG.debug(
+                        "[RavenEntity] Skipping teleportRecoverySampler while parked near follow target. pos={} aiState={}",
+                        this.position(),
+                        getAIState()
+                );
+            }
+
             teleportation.tickTeleportFxServer(this);
 
         } catch (Throwable t) {
