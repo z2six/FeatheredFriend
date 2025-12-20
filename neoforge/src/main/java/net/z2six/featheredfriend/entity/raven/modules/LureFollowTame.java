@@ -74,6 +74,10 @@ public class LureFollowTame {
     public static final EntityDataAccessor<Integer> DATA_FOLLOW_COOLDOWN_TICKS =
             RavenEntity.DATA_FOLLOW_COOLDOWN_TICKS;
 
+    // Lure-follow path failure tracking (to trigger ballistic fallback)
+    private int consecutiveLurePathFails = 0;
+    private int lastLurePathFailTick = 0;
+
     // NBT Key
     public static final String NBT_FOLLOW_CD = "RavenFollowCooldown";
 
@@ -84,6 +88,41 @@ public class LureFollowTame {
     // ---------------------------------------------------------------------------------------------
     // ACCESSORS / BASIC HELPERS -------------------------------------------------------------------
     // ---------------------------------------------------------------------------------------------
+
+    /**
+     * If A* repeatedly fails during lure-follow, fall back to a direct fly target
+     * in front of the player so the generic avoidance / collision logic can
+     * try to maneuver through tight spaces (like a 3x3 corridor).
+     */
+    private void fallbackBallisticLure(@Nullable Vec3 desiredGoal, Player target) {
+        try {
+            if (target == null || !target.isAlive() || target.isSpectator()) {
+                return;
+            }
+
+            Vec3 goal = desiredGoal;
+            if (goal == null) {
+                goal = computeFollowFrontPosition(target);
+            }
+            if (goal == null) {
+                return;
+            }
+
+            // Clear any broken A* plan and explicitly set a fly target.
+            invokeClearPlannedPath("lure follow: A* failed, ballistic fallback");
+            invokeSetFlyTarget(goal, 6 * 20); // ~6 seconds
+
+            if (raven.tickCount % 40 == 0) {
+                LOG.info("[RavenEntity] LURE FALLBACK: using direct fly target={} pos={} lureFails={}",
+                        goal, raven.position(), consecutiveLurePathFails);
+            }
+
+        } catch (Throwable t) {
+            if (raven.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] fallbackBallisticLure failed safely: {}", t.toString());
+            }
+        }
+    }
 
     /**
      * Try to keep the hover height under low ceilings from causing "bounce"
@@ -504,7 +543,8 @@ public class LureFollowTame {
                         clearLureFollowState("follow: lure timer expired");
                     }
                 }
-            } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {
+            }
 
             // Decide follow target:
             //  - If tamed: owner
@@ -558,7 +598,8 @@ public class LureFollowTame {
                     if (lureFollowTicks < LURE_FOLLOW_GRACE_TICKS && lureFollowPlayerUuid != null) {
                         lureFollowTicks = LURE_FOLLOW_GRACE_TICKS;
                     }
-                } catch (Throwable ignored) {}
+                } catch (Throwable ignored) {
+                }
             }
 
             // Home bounds guard
@@ -597,6 +638,10 @@ public class LureFollowTame {
                 followCachedOwnerPos = null;
                 followCachedOwnerLook = null;
                 followGoalTtlTicks = 0;
+
+                // Reset lure path failure tracking on success
+                consecutiveLurePathFails = 0;
+                lastLurePathFailTick = 0;
 
                 // Still tick common mechanics
                 int flyTtl = getPrivateInt("flyTargetTimeoutTicks", 0);
@@ -675,6 +720,7 @@ public class LureFollowTame {
             }
 
             Vec3 desiredGoal = followCachedGoal;
+            Vec3 effectivePathGoal = null;
             boolean pathOk = false;
 
             if (needNewGoal) {
@@ -706,8 +752,32 @@ public class LureFollowTame {
 
                 String reason = usingLure ? "follow lure player (aggressive)" : "follow owner (aggressive)";
 
+                // For lure-follow we reuse the corridor-friendly config you use in requestLureFollowPlayer.
+                if (usingLure) {
+                    RavenAStarPathing.Config cfg = new RavenAStarPathing.Config();
+                    cfg.allowLeaves = false;
+                    cfg.allowReplaceables = false;
+                    cfg.clearanceHeight = 2;
+                    cfg.cellSize = 1;
+
+                    effectivePathGoal = invokeComputeSafePathingGoal(desiredGoal, cfg);
+                } else {
+                    effectivePathGoal = desiredGoal;
+                }
+
                 try {
-                    pathOk = invokeEnsurePathTo(desiredGoal, 5 * 20, seed, reason);
+                    if (usingLure) {
+                        // Use the flags-aware variant so we stay consistent with lure-arm behavior.
+                        pathOk = invokeEnsurePathToWithFlags(
+                                effectivePathGoal,
+                                false,          // allowLeaves = false
+                                5 * 20,
+                                seed,
+                                reason
+                        );
+                    } else {
+                        pathOk = invokeEnsurePathTo(effectivePathGoal, 5 * 20, seed, reason);
+                    }
                 } catch (Throwable t) {
                     pathOk = false;
                     if (raven.tickCount % 40 == 0) {
@@ -716,12 +786,30 @@ public class LureFollowTame {
                 }
 
                 if (pathOk) {
-                    setPrivateObject("pathPendingGoal", desiredGoal);
+                    setPrivateObject("pathPendingGoal", effectivePathGoal);
                     invokeClearFlyTarget(); // force navigation via waypoints, not straight-line
+
+                    // reset failure tracking on success
+                    if (usingLure) {
+                        consecutiveLurePathFails = 0;
+                        lastLurePathFailTick = 0;
+                    }
                 } else {
                     // Path failed: better to hover than to try a ballistic line that ignores maze walls
                     invokeClearPlannedPath("follow: path failed");
                     invokeClearFlyTarget();
+
+                    // Track consecutive failures for lure-follow and maybe trigger fallback
+                    if (usingLure) {
+                        if (raven.tickCount != lastLurePathFailTick) {
+                            lastLurePathFailTick = raven.tickCount;
+                            consecutiveLurePathFails++;
+                        }
+
+                        if (consecutiveLurePathFails >= 3) {
+                            fallbackBallisticLure(desiredGoal, target);
+                        }
+                    }
                 }
 
             } else {
@@ -744,9 +832,30 @@ public class LureFollowTame {
                     String reason2 = usingLure ? "follow lure player (reassert path)"
                             : "follow owner (reassert path)";
 
+                    Vec3 reassertGoal = desiredGoal;
+                    if (usingLure) {
+                        RavenAStarPathing.Config cfg2 = new RavenAStarPathing.Config();
+                        cfg2.allowLeaves = false;
+                        cfg2.allowReplaceables = false;
+                        cfg2.clearanceHeight = 2;
+                        cfg2.cellSize = 1;
+
+                        reassertGoal = invokeComputeSafePathingGoal(desiredGoal, cfg2);
+                    }
+
                     boolean ok2 = false;
                     try {
-                        ok2 = invokeEnsurePathTo(desiredGoal, 5 * 20, seed2, reason2);
+                        if (usingLure) {
+                            ok2 = invokeEnsurePathToWithFlags(
+                                    reassertGoal,
+                                    false,
+                                    5 * 20,
+                                    seed2,
+                                    reason2
+                            );
+                        } else {
+                            ok2 = invokeEnsurePathTo(reassertGoal, 5 * 20, seed2, reason2);
+                        }
                     } catch (Throwable t) {
                         if (raven.tickCount % 40 == 0) {
                             LOG.warn("[RavenEntity] tickFollowOwner reassert ensurePathTo failed safely: {}", t.toString());
@@ -755,12 +864,28 @@ public class LureFollowTame {
                     }
 
                     if (ok2) {
-                        setPrivateObject("pathPendingGoal", desiredGoal);
+                        setPrivateObject("pathPendingGoal", reassertGoal);
                         invokeClearFlyTarget();
+
+                        if (usingLure) {
+                            consecutiveLurePathFails = 0;
+                            lastLurePathFailTick = 0;
+                        }
                     } else {
                         // Still no path – safest behavior is to just hover.
                         invokeClearPlannedPath("follow: reassert path failed");
                         invokeClearFlyTarget();
+
+                        if (usingLure) {
+                            if (raven.tickCount != lastLurePathFailTick) {
+                                lastLurePathFailTick = raven.tickCount;
+                                consecutiveLurePathFails++;
+                            }
+
+                            if (consecutiveLurePathFails >= 3) {
+                                fallbackBallisticLure(desiredGoal, target);
+                            }
+                        }
                     }
                 }
             }
@@ -776,19 +901,25 @@ public class LureFollowTame {
                 setPrivateInt("flyTargetTimeoutTicks", flyTimeout - 1);
             }
 
-            // Let A* drive movement while lure-following so we don't fight the planned route
-            // under ceilings and narrow roofs. For owner-follow we retain the generic avoidance.
+            // Let A* drive movement while lure-following so we don't fight the planned route.
+            // But if we are clearly colliding / stuck, allow avoidance to help even in lure mode.
             if (!usingLure) {
                 invokeMaybeAvoidOrRetargetDuringFlight(raven.getRandom());
             } else {
-                // Lure-follow: only run avoidance when we have *no* path and *no* fly target
-                // (pure hover), to avoid constant up/down retargeting near roof edges.
                 Vec3 currentFly = getFlyTargetField();
                 List<Vec3> currentPath = getPathWaypoints();
                 boolean hasPathIntent = currentPath != null && !currentPath.isEmpty();
                 boolean hasFlyIntent = currentFly != null && getPrivateInt("flyTargetTimeoutTicks", 0) > 0;
 
+                int stuckTicks = getPrivateInt("stuckTicks", 0);
+                int stuckThreshold = getStuckTicksThreshold();
+                boolean collidingOrStuck =
+                        raven.horizontalCollision || raven.verticalCollision || stuckTicks >= stuckThreshold;
+
+                // If we have no path/fly intent at all OR we're colliding/stuck, let avoidance try to fix it.
                 if (!hasPathIntent && !hasFlyIntent) {
+                    invokeMaybeAvoidOrRetargetDuringFlight(raven.getRandom());
+                } else if (collidingOrStuck) {
                     invokeMaybeAvoidOrRetargetDuringFlight(raven.getRandom());
                 }
             }
@@ -810,7 +941,7 @@ public class LureFollowTame {
                 int logIdx = getPrivateInt("pathWaypointIndex", 0);
                 int logPts = (logWaypoints == null ? 0 : logWaypoints.size());
 
-                LOG.debug("[RavenEntity] tickFollowOwner: target={} usingLure={} goal={} ttl={} repathCd={} flyTarget={} pathPts={} pathIdx={} pos={} vel={}",
+                LOG.debug("[RavenEntity] tickFollowOwner: target={} usingLure={} goal={} ttl={} repathCd={} flyTarget={} pathPts={} pathIdx={} pos={} vel={} lureFails={}",
                         target.getName().getString(),
                         usingLure,
                         desiredGoal,
@@ -820,7 +951,8 @@ public class LureFollowTame {
                         logPts,
                         logIdx,
                         raven.position(),
-                        raven.getDeltaMovement());
+                        raven.getDeltaMovement(),
+                        consecutiveLurePathFails);
             }
 
         } catch (Throwable t) {

@@ -44,17 +44,11 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 
 // Debug particles
-import net.minecraft.core.particles.ParticleTypes;
-import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.decoration.ArmorStand;
-import net.minecraft.core.particles.DustParticleOptions;
-import org.joml.Vector3f;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.network.chat.TextColor;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.item.Items;
+import net.minecraft.world.phys.AABB;
 
 // Modules
 import net.z2six.featheredfriend.entity.raven.modules.LureFollowTame;
@@ -240,6 +234,10 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
      * Entity IDs of the active debug path markers so we can clean them up.
      */
     private final java.util.List<Integer> debugPathMarkerIds = new java.util.ArrayList<>();
+
+    // Debug gizmo helpers
+    private static final String DEBUG_PATH_GIZMO_TAG = "raven_path_gizmo";
+    private static final double DEBUG_PATH_GIZMO_CLEAN_RADIUS = 96.0D; // blocks around raven
 
     // -------------------- Pathing (coarse A*) --------------------
     // Replan throttle and safety:
@@ -583,10 +581,6 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         }
     }
 
-
-
-
-
     // -----------------
     // Home initialization + bounds helpers
     // -----------------
@@ -833,55 +827,100 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         }
     }
 
-
     /**
-     * Extremely cheap local passability probe:
-     * checks a 2x2xH volume (in blocks) around the candidate anchor implied by:
-     *  - anchorX = floor(x)
-     *  - anchorZ = floor(z)
-     *  - anchorY = floor(y)
+     * Extremely cheap local passability probe for path start/goal sampling.
      *
-     * This matches the "coarse clearance" semantics you actually want for the Raven.
+     * NEW SEMANTICS (matching the "3x3 corridor only" rule):
+     *  - Treat the candidate as valid ONLY if:
+     *      * The center block (candidate) is empty/passable, AND
+     *      * The full 3x3 area at the candidate Y is empty/passable, AND
+     *      * The full 3x3 area at Y+1 is empty/passable.
+     *
+     *  This guarantees that we never pick a start anchor that is in an air block
+     *  with a solid neighbor horizontally or directly overhead. The floor BELOW
+     *  the candidate is allowed to be solid (we still want to be able to fly
+     *  one block above the ground).
+     *
+     *  NOTE:
+     *   - "Passable" respects allowLeaves / allowReplaceables flags, but for
+     *     your Raven A* config we explicitly set those to false, so in practice
+     *     ANY non-air block counts as solid here.
      */
-    private boolean looksLocallyPassableForClearance(Vec3 start, int clearanceXZ, int clearanceH, boolean allowLeaves, boolean allowReplaceables) {
+    private boolean looksLocallyPassableForClearance(Vec3 start,
+                                                     int clearanceXZ,
+                                                     int clearanceH,
+                                                     boolean allowLeaves,
+                                                     boolean allowReplaceables) {
         try {
             if (start == null) return false;
 
-            int ax = Mth.floor(start.x + 1.0E-4D);
-            int ay = Mth.floor(start.y + 1.0E-4D);
-            int az = Mth.floor(start.z + 1.0E-4D);
+            // Treat this Y as the "flight layer" (feet/base).
+            int cx = Mth.floor(start.x + 1.0E-4D);
+            int cy = Mth.floor(start.y + 1.0E-4D);
+            int cz = Mth.floor(start.z + 1.0E-4D);
 
-            // Quick scan the clearance volume.
-            for (int ox = 0; ox < clearanceXZ; ox++) {
-                for (int oy = 0; oy < clearanceH; oy++) {
-                    for (int oz = 0; oz < clearanceXZ; oz++) {
-                        BlockPos p = new BlockPos(ax + ox, ay + oy, az + oz);
+            // We require:
+            //  - 3x3 area at (cy)
+            //  - 3x3 area at (cy + 1)
+            // Floor below (cy - 1) is allowed to be solid.
+            for (int dy = 0; dy <= 1; dy++) {
+                int y = cy + dy;
 
-                        if (this.level().isEmptyBlock(p)) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        BlockPos p = new BlockPos(cx + dx, y, cz + dz);
+
+                        boolean empty;
+                        try {
+                            empty = this.level().isEmptyBlock(p);
+                        } catch (Throwable t) {
+                            // If we can't even query emptiness, be conservative: treat as blocked.
+                            if (this.tickCount % 200 == 0) {
+                                LOG.warn("[RavenEntity] looksLocallyPassableForClearance: isEmptyBlock failed at {} ({})",
+                                        p, t.toString());
+                            }
+                            return false;
+                        }
+
+                        if (empty) {
                             continue;
                         }
 
-                        BlockState st = this.level().getBlockState(p);
+                        BlockState st;
+                        try {
+                            st = this.level().getBlockState(p);
+                        } catch (Throwable t) {
+                            if (this.tickCount % 200 == 0) {
+                                LOG.warn("[RavenEntity] looksLocallyPassableForClearance: getBlockState failed at {} ({})",
+                                        p, t.toString());
+                            }
+                            return false;
+                        }
+
                         if (st == null) {
                             return false;
                         }
 
+                        // Respect flags if caller chooses to allow leaves/replaceables.
                         if (allowLeaves && st.is(BlockTags.LEAVES)) {
                             continue;
                         }
-
                         if (allowReplaceables && st.canBeReplaced()) {
                             continue;
                         }
 
-                        // blocked
+                        // Any remaining non-air block in this 3x3x2 prism makes candidate invalid.
                         return false;
                     }
                 }
             }
 
+            // All samples OK -> locally clear.
             return true;
         } catch (Throwable t) {
+            if (this.tickCount % 200 == 0) {
+                LOG.warn("[RavenEntity] looksLocallyPassableForClearance failed: {}", t.toString());
+            }
             return false;
         }
     }
@@ -925,8 +964,18 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
      * IMPORTANT:
      * - You must only have ONE method with this signature in the class.
      * - This version supports your safe-start sampling + safe-goal selection.
+     *
+     * NEW: configured for "1x1 cell + 3x3 safety corridor":
+     *  - A* nodes occupy a 1x1x2 column (cellSize=1, clearanceHeight=2).
+     *  - A safety buffer around each node (3x3 horizontally, 2 high) must be pure air.
+     *    => the raven never flies in an air block that has a solid neighbor horizontally
+     *       or directly overhead; only true 3x3 corridors / open space are valid.
      */
-    private boolean ensurePathTo(@Nullable Vec3 goal, boolean highPriority, int timeoutTicks, long seed, @Nullable String reason) {
+    private boolean ensurePathTo(@Nullable Vec3 goal,
+                                 boolean highPriority,
+                                 int timeoutTicks,
+                                 long seed,
+                                 @Nullable String reason) {
         if (this.level().isClientSide) {
             return false;
         }
@@ -997,14 +1046,17 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             lastPathPlanAttemptTick = this.tickCount;
 
-            // Build config for your A*.
+            // ------------------------------------------------------------------
+            // A* CONFIG — 1x1 footprint + 3x3 "no-touching" safety corridor
+            // ------------------------------------------------------------------
             RavenAStarPathing.Config cfg = new RavenAStarPathing.Config();
 
-            // Coarse footprint (2x2x2)
-            cfg.cellSize = 2;
-            cfg.clearanceHeight = 2;
+            // 1x1 column, 2 blocks tall, grid step 1
+            cfg.cellSize = 1;           // width/length in blocks
+            cfg.clearanceHeight = 2;    // 2 blocks tall for the raven
             cfg.gridStep = 1;
 
+            // We do NOT want to treat leaves or replaceables as "air" for flight.
             cfg.allowLeaves = false;
             cfg.allowReplaceables = false;
 
@@ -1013,6 +1065,14 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             cfg.smoothPath = true;
             cfg.tieBreakSeed = seed;
+
+            // HARD RULE: waypoints must never be adjacent (horizontally/overhead) to solids.
+            // Enforce a safety buffer so each node has a clear 3x3x2 prism of air around it.
+            cfg.useSafetyBuffer = true;
+            cfg.safetyBufferXZ = 1;                // 3x3 horizontally
+            cfg.safetyBufferYUp = 1;               // one block of headroom
+            cfg.safetyBufferYDown = 0;             // floor beneath may be solid
+            cfg.safetyBufferRespectsAllowFlags = false; // ANY non-air in buffer => node invalid
 
             RavenAStarPathing.CellBounds bounds = currentHomeCellBounds();
 
@@ -1095,7 +1155,8 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
 
             // Prime movement immediately
-            advanceWaypointIfNeeded(Math.max(20, timeoutTicks), "ensurePathTo(core) accept: " + String.valueOf(reason));
+            advanceWaypointIfNeeded(Math.max(20, timeoutTicks),
+                    "ensurePathTo(core) accept: " + String.valueOf(reason));
             return true;
 
         } catch (Throwable t) {
@@ -3408,8 +3469,8 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     }
 
     // -----------------
-// Debug
-// -----------------
+    // Debug
+    // -----------------
 
     /**
      * Simple RGB lerp between two 0xRRGGBB colors.
@@ -3434,28 +3495,77 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
     /**
      * Debug helper: clear any previously spawned ArmorStand markers used for path visualization.
+     * Also tries to clean up older leaked markers near this raven, even if their IDs were lost.
      */
     private void debugClearOldPathMarkers(ServerLevel serverLevel) {
         try {
-            if (debugPathMarkerIds == null || debugPathMarkerIds.isEmpty()) {
-                return;
-            }
-
-            for (Integer id : debugPathMarkerIds) {
-                if (id == null) {
-                    continue;
-                }
-                try {
-                    Entity e = serverLevel.getEntity(id);
-                    if (e instanceof ArmorStand stand) {
-                        stand.discard();
+            // 1) Clean up by recorded IDs (normal lifecycle)
+            if (debugPathMarkerIds != null && !debugPathMarkerIds.isEmpty()) {
+                for (Integer id : debugPathMarkerIds) {
+                    if (id == null) {
+                        continue;
                     }
+                    try {
+                        Entity e = serverLevel.getEntity(id);
+                        if (e instanceof ArmorStand stand) {
+                            stand.discard();
+                        }
+                    } catch (Throwable ignored) {
+                        // Best-effort cleanup only.
+                    }
+                }
+                debugPathMarkerIds.clear();
+            }
+
+            // 2) Extra safety: clean any *nearby* debug-looking armor stands,
+            //    including ones from old versions where IDs/tags were lost.
+            final double r = DEBUG_PATH_GIZMO_CLEAN_RADIUS;
+            AABB box = this.getBoundingBox().inflate(r);
+
+            List<ArmorStand> candidates = serverLevel.getEntitiesOfClass(
+                    ArmorStand.class,
+                    box,
+                    stand -> {
+                        // Tagged by the current version?
+                        if (stand.getTags().contains(DEBUG_PATH_GIZMO_TAG)) {
+                            return true;
+                        }
+
+                        // Heuristic for old leaked markers:
+                        // - Invisible, invulnerable, no gravity
+                        // - Custom name is purely digits (e.g. "1", "2", ...) or "Goal"
+                        if (!stand.isInvisible()) return false;
+                        if (!stand.isInvulnerable()) return false;
+                        if (!stand.isNoGravity()) return false;
+
+                        Component nameComp = stand.getCustomName();
+                        if (nameComp == null) return false;
+
+                        String name = nameComp.getString();
+                        if (name == null || name.isEmpty()) return false;
+
+                        if ("Goal".equalsIgnoreCase(name) || "End".equalsIgnoreCase(name)) {
+                            return true;
+                        }
+
+                        boolean allDigits = true;
+                        for (int i = 0; i < name.length(); i++) {
+                            if (!Character.isDigit(name.charAt(i))) {
+                                allDigits = false;
+                                break;
+                            }
+                        }
+                        return allDigits;
+                    }
+            );
+
+            for (ArmorStand stand : candidates) {
+                try {
+                    stand.discard();
                 } catch (Throwable ignored) {
-                    // Best-effort cleanup only.
                 }
             }
 
-            debugPathMarkerIds.clear();
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
                 LOG.warn("[RavenEntity] debugClearOldPathMarkers failed safely: {}", t.toString());
@@ -3466,7 +3576,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     /**
      * Debug helper: spawn a small gizmo ArmorStand with a colored text label at the given position.
      *
-     * - Uses a tinted leather helmet to show the color.
+     * - Uses private ArmorStand marker/small/baseplate flags via reflection so it has no hitbox
+     *   and doesn't block building.
+     * - Invisible + no gravity + invulnerable.
      * - Label text is colored to match.
      * - No particles, no big SFX — just a tiny visual marker.
      */
@@ -3481,24 +3593,121 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 return;
             }
 
-            // Tiny floating label just above the block center.
+            // Try to configure as a "pure marker" stand via reflection so we avoid hitboxes
+            // even though setMarker/setSmall/setNoBasePlate are not publicly accessible.
+            try {
+                // setMarker(boolean)
+                try {
+                    java.lang.reflect.Method mSetMarker =
+                            ArmorStand.class.getDeclaredMethod("setMarker", boolean.class);
+                    mSetMarker.setAccessible(true);
+                    mSetMarker.invoke(stand, true);
+                } catch (Throwable ignored) {
+                    // Optional; if it fails we still keep the stand, just not marker-mode.
+                }
+
+                // setSmall(boolean)
+                try {
+                    java.lang.reflect.Method mSetSmall =
+                            ArmorStand.class.getDeclaredMethod("setSmall", boolean.class);
+                    mSetSmall.setAccessible(true);
+                    mSetSmall.invoke(stand, true);
+                } catch (Throwable ignored) {
+                }
+
+                // setNoBasePlate(boolean)
+                try {
+                    java.lang.reflect.Method mSetNoBasePlate =
+                            ArmorStand.class.getDeclaredMethod("setNoBasePlate", boolean.class);
+                    mSetNoBasePlate.setAccessible(true);
+                    mSetNoBasePlate.invoke(stand, true);
+                } catch (Throwable ignored) {
+                }
+
+            } catch (Throwable tCfg) {
+                if (this.tickCount % 200 == 0) {
+                    LOG.warn("[RavenEntity] debugSpawnWaypointMarker: marker-flag reflection failed safely: {}", tCfg.toString());
+                }
+            }
+
+            // Generic debug-stand flags
             stand.setInvisible(true);
             stand.setNoGravity(true);
             stand.setInvulnerable(true);
             stand.setCustomNameVisible(true);
 
+            // Tag it so our cleanup can always find it again.
+            stand.addTag(DEBUG_PATH_GIZMO_TAG);
+
+            // Position just above block center.
             stand.moveTo(pos.x, pos.y + 0.20D, pos.z, 0.0F, 0.0F);
 
+            // Colored label
             stand.setCustomName(
                     Component.literal(label)
                             .withStyle(style -> style.withColor(TextColor.fromRgb(rgb)))
             );
 
             level.addFreshEntity(stand);
-            debugPathMarkerIds.add(stand.getId());
+
+            if (debugPathMarkerIds != null) {
+                debugPathMarkerIds.add(stand.getId());
+            }
+
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
                 LOG.warn("[RavenEntity] debugSpawnWaypointMarker failed safely: {}", t.toString());
+            }
+        }
+    }
+
+    /**
+     * Spawn a few small "dot" markers along the line from a -> b.
+     */
+    private void debugSpawnLineGizmos(ServerLevel level, Vec3 a, Vec3 b, int steps, int rgb) {
+        try {
+            if (level == null || a == null || b == null || steps <= 1) {
+                return;
+            }
+
+            for (int i = 1; i < steps; i++) { // skip exact endpoints; they already have markers
+                double t = (double) i / (double) steps;
+                double x = Mth.lerp(t, a.x, b.x);
+                double y = Mth.lerp(t, a.y, b.y);
+                double z = Mth.lerp(t, a.z, b.z);
+                Vec3 p = new Vec3(x, y, z);
+
+                // Use a small dot character so it reads like a line.
+                debugSpawnWaypointMarker(level, p, "·", rgb);
+            }
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] debugSpawnLineGizmos failed safely: {}", t.toString());
+            }
+        }
+    }
+
+    /**
+     * Spawn a small ring of markers (circle gizmo) around a center point.
+     */
+    private void debugSpawnCircleGizmos(ServerLevel level, Vec3 center, double radius, int points, int rgb) {
+        try {
+            if (level == null || center == null || radius <= 0.0D || points <= 0) {
+                return;
+            }
+
+            for (int i = 0; i < points; i++) {
+                double angle = (2.0D * Math.PI * i) / (double) points;
+                double x = center.x + Math.cos(angle) * radius;
+                double z = center.z + Math.sin(angle) * radius;
+                Vec3 p = new Vec3(x, center.y, z);
+
+                // Use an empty label or a small circle symbol.
+                debugSpawnWaypointMarker(level, p, "◦", rgb);
+            }
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] debugSpawnCircleGizmos failed safely: {}", t.toString());
             }
         }
     }
@@ -3508,7 +3717,8 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
      *
      * - Blue numbered markers "1", "2", "3", ... on current and next waypoints
      *   using a dark-blue -> light-blue gradient.
-     * - Green "Goal" marker on the final pathGoal.
+     * - Between each visible pair of waypoints, a few small dot markers to suggest a line.
+     * - Green "Goal" marker + small ring around the final pathGoal.
      *
      * SERVER-SIDE ONLY, fully gated by DEBUG_DRAW_PATH_GIZMOS.
      */
@@ -3550,6 +3760,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 int labelNumber = 1;
                 int visibleCount = (last - first + 1);
 
+                Vec3 prevCenter = null;
+                int prevColor = START_BLUE;
+
                 for (int i = first; i <= last; i++) {
                     Vec3 wp = this.pathWaypoints.get(i);
                     if (wp == null) continue;
@@ -3569,13 +3782,25 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     }
                     int rgb = lerpRgb(START_BLUE, END_BLUE, t);
 
+                    // Numbered marker at waypoint.
                     String label = Integer.toString(labelNumber++);
                     debugSpawnWaypointMarker(serverLevel, center, label, rgb);
+
+                    // Draw a few dots between this waypoint and previous one to suggest a line.
+                    if (prevCenter != null) {
+                        // Use a small number of steps so we don't spawn too many entities.
+                        int steps = 4;
+                        debugSpawnLineGizmos(serverLevel, prevCenter, center, steps, rgb);
+                    }
+
+                    prevCenter = center;
+                    prevColor = rgb;
                 }
             }
 
             // -------------------------------------
             // Visualize pathGoal (final target) in GREEN
+            // + a small ring around it.
             // -------------------------------------
             if (localPathGoal != null) {
                 Vec3 g = new Vec3(
@@ -3585,7 +3810,12 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 );
 
                 int greenRgb = 0x00FF3C;
+
+                // Central "Goal" marker.
                 debugSpawnWaypointMarker(serverLevel, g, "Goal", greenRgb);
+
+                // Small circle gizmo around the goal (more visual than just text).
+                debugSpawnCircleGizmos(serverLevel, g, 0.75D, 8, greenRgb);
             }
 
             // -------------------------------------
