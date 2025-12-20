@@ -14,6 +14,7 @@ import net.z2six.featheredfriend.entity.raven.RavenAnimMode;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
+import net.z2six.featheredfriend.entity.raven.modules.RavenPlayerAvoidanceHelper;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -357,6 +358,34 @@ public final class Landing {
     }
 
     public boolean isOnValidPerchNowRelaxedForLanding(String debugTag, RavenEntity ravenEntity) {
+        // ---------------------------------------------------------------------
+        // HARD GATE: do not allow relaxed perch acceptance while the raven is
+        // in a player-avoidance override window. Even if we are physically
+        // over a perfect perch, avoidance must win.
+        // ---------------------------------------------------------------------
+        try {
+            if (ravenEntity.isPlayerAvoidanceOverrideActive()) {
+                if (ravenEntity.tickCount % 40 == 0) {
+                    LOG.debug(
+                            "[Landing] {}: skipping relaxed perch check due to player avoidance override. pos={} aiState={}",
+                            debugTag,
+                            ravenEntity.position(),
+                            ravenEntity.getAIState()
+                    );
+                }
+                return false;
+            }
+        } catch (Throwable t) {
+            if (ravenEntity.tickCount % 80 == 0) {
+                LOG.warn(
+                        "[Landing] {}: avoidance gate failed safely in isOnValidPerchNowRelaxedForLanding: {}",
+                        debugTag,
+                        t.toString()
+                );
+            }
+            // On failure we fall back to the normal logic.
+        }
+
         try {
             Phase phase = getPhaseFromRaven(ravenEntity);
             int landingTicks = getLandingTicksFromRaven(ravenEntity);
@@ -668,6 +697,42 @@ public final class Landing {
      * see the same state and we don't get stuck in "landingPhase=FLY_TO_OVERHEAD forever".
      */
     public void tickLandingStateMachine(RandomSource rnd, RavenEntity ravenEntity) {
+        // ---------------------------------------------------------------------
+        // HARD GATE: while player avoidance wants to block landing, landing is
+        // NOT allowed to run at all. This is broader than just "override":
+        //  - true if explicit player-avoidance override is active
+        //  - OR if any player is within the avoidance radius.
+        //
+        // This guarantees:
+        //   "Avoidance. Should. Not. Ever. Be. Interrupted. By. Landing."
+        // ---------------------------------------------------------------------
+        try {
+            if (RavenPlayerAvoidanceHelper.shouldBlockLanding(ravenEntity)) {
+                Phase phaseNow = getPhaseFromRaven(ravenEntity);
+                int landingTicksNow = getLandingTicksFromRaven(ravenEntity);
+
+                if (phaseNow != Phase.NONE || this.landingLeafPos != null || landingTicksNow != 0) {
+                    if (ravenEntity.tickCount % 20 == 0) {
+                        LOG.info(
+                                "[Landing] skipping landing due to player avoidance; clearing landing state. phase={} pos={} leafPos={} idlePerchCorner={} landingTicks={}",
+                                phaseNow,
+                                ravenEntity.position(),
+                                this.landingLeafPos,
+                                this.idlePerchCorner,
+                                landingTicksNow
+                        );
+                    }
+                }
+
+                resetLandingState("player avoidance (global block)", ravenEntity);
+                return;
+            }
+        } catch (Throwable t) {
+            if (ravenEntity.tickCount % 40 == 0) {
+                LOG.warn("[Landing] tickLandingStateMachine avoidance gate failed safely: {}", t.toString());
+            }
+        }
+
         Phase phase = getPhaseFromRaven(ravenEntity);
         int landingTicks = getLandingTicksFromRaven(ravenEntity);
 
@@ -1328,6 +1393,31 @@ public final class Landing {
 
     @Nullable
     public BlockPos pickLandingLeafBlock(RandomSource rnd, RavenEntity ravenEntity) {
+        // ---------------------------------------------------------------------
+        // HARD GATE: if player avoidance is blocking landing (override or just
+        // a nearby player), we do NOT even begin a landing search.
+        // This guarantees that avoidance flight can never transition into
+        // FLY_TO_OVERHEAD or any landing phase until the avoidance condition
+        // has fully cleared.
+        // ---------------------------------------------------------------------
+        try {
+            if (RavenPlayerAvoidanceHelper.shouldBlockLanding(ravenEntity)) {
+                if (ravenEntity.tickCount % 40 == 0) {
+                    LOG.debug(
+                            "[Landing] pickLandingLeafBlock: aborted because player avoidance is blocking landing. pos={} aiState={}",
+                            ravenEntity.position(),
+                            ravenEntity.getAIState()
+                    );
+                }
+                return null;
+            }
+        } catch (Throwable t) {
+            if (ravenEntity.tickCount % 80 == 0) {
+                LOG.warn("[Landing] pickLandingLeafBlock: avoidance gate failed safely: {}", t.toString());
+            }
+            // If the gate fails, we fall through and behave as before.
+        }
+
         try {
             BlockPos homePos = null;
             try {
@@ -1592,6 +1682,29 @@ public final class Landing {
     }
 
     public boolean isOnValidPerchNow(RavenEntity ravenEntity) {
+        // ---------------------------------------------------------------------
+        // HARD GATE: do not allow strict perch detection to succeed while
+        // player avoidance override is active. This avoids any ROAM_FLY -> IDLE
+        // shortcuts or other snaps triggered mid-flee.
+        // ---------------------------------------------------------------------
+        try {
+            if (ravenEntity.isPlayerAvoidanceOverrideActive()) {
+                if (ravenEntity.tickCount % 40 == 0) {
+                    LOG.debug(
+                            "[Landing] isOnValidPerchNow: skipping because player avoidance override is active. pos={} aiState={}",
+                            ravenEntity.position(),
+                            ravenEntity.getAIState()
+                    );
+                }
+                return false;
+            }
+        } catch (Throwable t) {
+            if (ravenEntity.tickCount % 80 == 0) {
+                LOG.warn("[Landing] isOnValidPerchNow: avoidance gate failed safely: {}", t.toString());
+            }
+            // On failure we fall back to the normal logic.
+        }
+
         try {
             BlockPos feetBlock = BlockPos.containing(
                     ravenEntity.getX(),

@@ -143,6 +143,98 @@ public final class RavenPlayerAvoidanceHelper {
         }
     }
 
+    /**
+     * Global "should landing/perching be blocked right now?" check.
+     *
+     * Rules:
+     *  - If a player-avoidance override is active, always block landing.
+     *  - Otherwise, if there is any player within (slightly inflated) avoidance radius,
+     *    we still block landing. This guarantees that once a player walks into the
+     *    avoidance bubble, the raven will not try to perch until the player backs off.
+     *
+     * This is deliberately conservative: it can return true even when we did not
+     * actually arm a special avoidance path, because the user wants:
+     *
+     *      "Avoidance should never be interrupted by landing."
+     */
+    public static boolean shouldBlockLanding(RavenEntity raven) {
+        try {
+            if (raven == null) {
+                return false;
+            }
+            if (raven.level() == null) {
+                return false;
+            }
+            if (raven.level().isClientSide) {
+                return false;
+            }
+            if (!raven.isAlive()) {
+                return false;
+            }
+
+            // If we have an explicit override window, landing is *hard* disabled.
+            try {
+                if (raven.isPlayerAvoidanceOverrideActive()) {
+                    if (raven.tickCount % 40 == 0) {
+                        LOG.debug(
+                                "[RavenPlayerAvoidanceHelper] shouldBlockLanding: true (override active). pos={} aiState={}",
+                                raven.position(),
+                                raven.getAIState()
+                        );
+                    }
+                    return true;
+                }
+            } catch (Throwable t) {
+                if (raven.tickCount % 80 == 0) {
+                    LOG.warn(
+                            "[RavenPlayerAvoidanceHelper] shouldBlockLanding: override check failed safely: {}",
+                            t.toString()
+                    );
+                }
+            }
+
+            // Even without an override, any nearby player within (radius * 1.1)
+            // is enough to block landing.
+            Player nearest = null;
+            try {
+                // Slightly inflated radius so we don't flap right on the edge.
+                double inflatedRadius = AVOID_PLAYER_RADIUS * 1.1D;
+                nearest = findNearestPlayerWithin(raven, inflatedRadius);
+            } catch (Throwable t) {
+                if (raven.tickCount % 80 == 0) {
+                    LOG.warn(
+                            "[RavenPlayerAvoidanceHelper] shouldBlockLanding: player search failed safely: {}",
+                            t.toString()
+                    );
+                }
+            }
+
+            if (nearest != null) {
+                if (raven.tickCount % 40 == 0) {
+                    double dist = nearest.distanceTo(raven);
+                    LOG.info(
+                            "[RavenPlayerAvoidanceHelper] shouldBlockLanding: true (nearest player={} dist={}). pos={} aiState={}",
+                            nearest.getName().getString(),
+                            String.format("%.3f", dist),
+                            raven.position(),
+                            raven.getAIState()
+                    );
+                }
+                return true;
+            }
+
+        } catch (Throwable t) {
+            // Completely swallow failures with a debug log; landing must not crash the game.
+            if (raven != null && raven.tickCount % 80 == 0) {
+                LOG.warn(
+                        "[RavenPlayerAvoidanceHelper] shouldBlockLanding: failed safely with exception: {}",
+                        t.toString()
+                );
+            }
+        }
+        return false;
+    }
+
     private static boolean isHoldingGoldenNugget(Player p) {
         try {
             if (p == null) return false;
