@@ -54,6 +54,7 @@ import net.z2six.featheredfriend.entity.raven.modules.Teleportation;
 import net.z2six.featheredfriend.entity.raven.modules.Landing;
 import net.z2six.featheredfriend.entity.raven.modules.PlayerAvoidance;
 import net.z2six.featheredfriend.entity.raven.pathing.RavenAStarPathing;
+import net.z2six.featheredfriend.entity.raven.RavenSoundEngine;
 
 import java.util.Collections;
 import java.util.List;
@@ -64,19 +65,8 @@ import java.util.List;
  * Raven entity with phase-based AI focusing on:
  *  - Perching ~75% of the time (IDLE_GROUND on LEAVES, NO_AIR).
  *  - Roaming/flying ~25% of the time (ROAM_FLY free flight) before attempting a landing.
- *
- * Pathing refactor:
- *  - All prior "move directly to flyTarget" calls are routed via a coarse (2x2x2) A* waypoint planner.
- *  - Raven still uses smooth steering between waypoints (flyTowardTarget), plus local raycast avoidance as a safety layer.
- *  - If no path can be found, we fall back to the old behavior (simple flyTarget) so the AI never freezes.
- *
- * Surgical fix (requested):
- *  - Re-attempt path planning every X ticks (configurable) because entity-position sampling can occasionally make the start cell
- *    appear "inside a block" (or cause pathological expansions / maxExpanded).
- *  - Add a "safe start sampling" step that probes a few candidate start Vec3s (nudging upward / snapping to block centers)
- *    before calling A*.
- *  - Add explicit logging when we decide to retry / when we compute an adjusted start sample.
- */
+ *  */
+
 public class RavenEntity extends TamableAnimal implements GeoEntity {
 
     // Constructor
@@ -156,8 +146,12 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     private static final ResourceLocation SOUND_RAVEN_AIR_WOOSH_ID =
             ResourceLocation.fromNamespaceAndPath("featheredfriend", "raven.air_woosh");
 
-    // Small cache so we only resolve from the registry once per sound.
-    private static SoundEvent cachedRavenCawingNormal;
+    // Cached SoundEvents (lazy-resolved from the IDs above)
+    private static SoundEvent cachedRavenCawingNormal = null;
+    private static SoundEvent cachedRavenCawAgree = null;
+    private static SoundEvent cachedRavenCawDmg = null;
+    private static SoundEvent cachedRavenCawWhistle = null;
+    private static SoundEvent cachedRavenAirWoosh = null;
 
     // Ambient caw cooldown (server ticks). 0 => may caw this tick if conditions match.
     private int ambientCawCooldownTicks = 0;
@@ -2768,107 +2762,6 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         }
     }
 
-    // --------------------
-    // Sound Engine
-    // --------------------
-
-    private static SoundEvent resolveRavenSound(ResourceLocation id) {
-        try {
-            if (id == null) return null;
-            // BuiltInRegistries.SOUND_EVENT is populated from sounds.json; this gives us the SoundEvent by ID.
-            return BuiltInRegistries.SOUND_EVENT.get(id);
-        } catch (Throwable t) {
-            return null;
-        }
-    }
-
-    private static SoundEvent getRavenCawingNormalSound() {
-        if (cachedRavenCawingNormal == null) {
-            cachedRavenCawingNormal = resolveRavenSound(SOUND_RAVEN_CAWING_NORMAL_ID);
-        }
-        return cachedRavenCawingNormal;
-    }
-
-    private void tickAmbientCawing() {
-        try {
-            if (this.level().isClientSide) {
-                // Server-side only; client will hear broadcast/local playback.
-                return;
-            }
-            if (!this.isAlive()) {
-                return;
-            }
-
-            RavenAIState st = getAIState();
-            boolean inRoamFly = (st == RavenAIState.ROAM_FLY);
-            boolean inIdlePerch = (st == RavenAIState.IDLE_GROUND);
-
-            // Only caw in these two calm-ish modes.
-            if (!inRoamFly && !inIdlePerch) {
-                // When we leave these modes, clamp cooldown so the next entry doesn't instantly spam.
-                if (ambientCawCooldownTicks > 200) { // cap at 10s
-                    ambientCawCooldownTicks = 200;
-                }
-                return;
-            }
-
-            if (ambientCawCooldownTicks > 0) {
-                ambientCawCooldownTicks--;
-                return;
-            }
-
-            // Cooldown expired: play an ambient caw and schedule the next one.
-            // Target: ~1–3 times per minute per raven.
-            //
-            //  - Min delay: 400 ticks  = 20s
-            //  - Max delay: 1200 ticks = 60s
-            // We roll uniformly in [400, 1200], so average ~40s between caws ~ 1.5/minute.
-            RandomSource rnd = this.getRandom();
-            int minDelay = 400;   // 20 seconds
-            int extra = 800;      // +0..40 seconds
-            int rolled = minDelay;
-            try {
-                if (rnd != null) {
-                    rolled = minDelay + rnd.nextInt(extra + 1);
-                }
-            } catch (Throwable ignored) {
-                // Fallback: something reasonable
-                rolled = 600; // 30s
-            }
-            ambientCawCooldownTicks = rolled;
-
-            SoundEvent caw = getRavenCawingNormalSound();
-            if (caw == null) {
-                if (this.tickCount % 200 == 0) {
-                    LOG.warn("[RavenEntity] tickAmbientCawing: raven.cawing_normal SoundEvent not resolved (id={})",
-                            SOUND_RAVEN_CAWING_NORMAL_ID);
-                }
-                return;
-            }
-
-            // Slight pitch variation so it doesn't sound like an exact loop.
-            float volume = 0.9F;
-            float pitchMin = 0.95F;
-            float pitchMax = 1.05F;
-
-            if (soundEngine != null) {
-                soundEngine.playWithRandomPitch(caw, SoundSource.NEUTRAL, volume, pitchMin, pitchMax);
-            } else if (this.tickCount % 200 == 0) {
-                LOG.warn("[RavenEntity] tickAmbientCawing: soundEngine is null; cannot play ambient caw");
-            }
-
-            if (this.tickCount % 200 == 0) {
-                LOG.debug("[RavenEntity] tickAmbientCawing: played ambient caw st={} nextDelay={}t pos={}",
-                        st, ambientCawCooldownTicks, this.position());
-            }
-
-        } catch (Throwable t) {
-            if (this.tickCount % 200 == 0) {
-                LOG.warn("[RavenEntity] tickAmbientCawing failed safely: {}", t.toString());
-            }
-        }
-    }
-
     public BlockPos getHomePosPublic() {
         try {
             return this.homePos;
@@ -3680,6 +3573,159 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         }
     }
 
+    // --------------------
+    // Sound Engine
+    // --------------------
+
+    private static SoundEvent resolveRavenSound(ResourceLocation id) {
+        try {
+            if (id == null) return null;
+            // BuiltInRegistries.SOUND_EVENT is populated from sounds.json; this gives us the SoundEvent by ID.
+            return BuiltInRegistries.SOUND_EVENT.get(id);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private static SoundEvent getRavenCawingNormalSound() {
+        if (cachedRavenCawingNormal == null) {
+            cachedRavenCawingNormal = resolveRavenSound(SOUND_RAVEN_CAWING_NORMAL_ID);
+        }
+        return cachedRavenCawingNormal;
+    }
+
+    private static SoundEvent getRavenCawAgreeSoundInternal() {
+        if (cachedRavenCawAgree == null) {
+            cachedRavenCawAgree = resolveRavenSound(SOUND_RAVEN_CAW_AGREE_ID);
+        }
+        return cachedRavenCawAgree;
+    }
+
+    private static SoundEvent getRavenCawDmgSoundInternal() {
+        if (cachedRavenCawDmg == null) {
+            cachedRavenCawDmg = resolveRavenSound(SOUND_RAVEN_CAW_DMG_ID);
+        }
+        return cachedRavenCawDmg;
+    }
+
+    private static SoundEvent getRavenCawWhistleSoundInternal() {
+        if (cachedRavenCawWhistle == null) {
+            cachedRavenCawWhistle = resolveRavenSound(SOUND_RAVEN_CAW_WHISTLE_ID);
+        }
+        return cachedRavenCawWhistle;
+    }
+
+    private static SoundEvent getRavenAirWooshSoundInternal() {
+        if (cachedRavenAirWoosh == null) {
+            cachedRavenAirWoosh = resolveRavenSound(SOUND_RAVEN_AIR_WOOSH_ID);
+        }
+        return cachedRavenAirWoosh;
+    }
+
+    // ----------------------------------------------------------------------
+    // Public static accessors for modules (LureFollowTame, damage logic, etc)
+    // ----------------------------------------------------------------------
+
+    public static SoundEvent getRavenCawingNormalSoundStatic() {
+        return getRavenCawingNormalSound();
+    }
+
+    public static SoundEvent getRavenCawAgreeSoundStatic() {
+        return getRavenCawAgreeSoundInternal();
+    }
+
+    public static SoundEvent getRavenCawDmgSoundStatic() {
+        return getRavenCawDmgSoundInternal();
+    }
+
+    public static SoundEvent getRavenCawWhistleSoundStatic() {
+        return getRavenCawWhistleSoundInternal();
+    }
+
+    public static SoundEvent getRavenAirWooshSoundStatic() {
+        return getRavenAirWooshSoundInternal();
+    }
+
+    private void tickAmbientCawing() {
+        try {
+            if (this.level().isClientSide) {
+                // Server-side only; client will hear broadcast/local playback.
+                return;
+            }
+            if (!this.isAlive()) {
+                return;
+            }
+
+            RavenAIState st = getAIState();
+            boolean inRoamFly = (st == RavenAIState.ROAM_FLY);
+            boolean inIdlePerch = (st == RavenAIState.IDLE_GROUND);
+
+            // Only caw in these two calm-ish modes.
+            if (!inRoamFly && !inIdlePerch) {
+                // When we leave these modes, clamp cooldown so the next entry doesn't instantly spam.
+                if (ambientCawCooldownTicks > 200) { // cap at 10s
+                    ambientCawCooldownTicks = 200;
+                }
+                return;
+            }
+
+            if (ambientCawCooldownTicks > 0) {
+                ambientCawCooldownTicks--;
+                return;
+            }
+
+            // Cooldown expired: play an ambient caw and schedule the next one.
+            // Target: ~1–3 times per minute per raven.
+            //
+            //  - Min delay: 400 ticks  = 20s
+            //  - Max delay: 1200 ticks = 60s
+            // We roll uniformly in [400, 1200], so average ~40s between caws ~ 1.5/minute.
+            RandomSource rnd = this.getRandom();
+            int minDelay = 400;   // 20 seconds
+            int extra = 800;      // +0..40 seconds
+            int rolled = minDelay;
+            try {
+                if (rnd != null) {
+                    rolled = minDelay + rnd.nextInt(extra + 1);
+                }
+            } catch (Throwable ignored) {
+                // Fallback: something reasonable
+                rolled = 600; // 30s
+            }
+            ambientCawCooldownTicks = rolled;
+
+            SoundEvent caw = getRavenCawingNormalSound();
+            if (caw == null) {
+                if (this.tickCount % 200 == 0) {
+                    LOG.warn("[RavenEntity] tickAmbientCawing: raven.cawing_normal SoundEvent not resolved (id={})",
+                            SOUND_RAVEN_CAWING_NORMAL_ID);
+                }
+                return;
+            }
+
+            // Slight pitch variation so it doesn't sound like an exact loop.
+            float volume = 0.9F;
+            float pitchMin = 0.95F;
+            float pitchMax = 1.05F;
+
+            if (soundEngine != null) {
+                soundEngine.playWithRandomPitch(caw, SoundSource.NEUTRAL, volume, pitchMin, pitchMax);
+            } else if (this.tickCount % 200 == 0) {
+                LOG.warn("[RavenEntity] tickAmbientCawing: soundEngine is null; cannot play ambient caw");
+            }
+
+            if (this.tickCount % 200 == 0) {
+                LOG.debug("[RavenEntity] tickAmbientCawing: played ambient caw st={} nextDelay={}t pos={}",
+                        st, ambientCawCooldownTicks, this.position());
+            }
+
+        } catch (Throwable t) {
+            if (this.tickCount % 200 == 0) {
+                LOG.warn("[RavenEntity] tickAmbientCawing failed safely: {}", t.toString());
+            }
+        }
+    }
+
     // -----------------
     // GeckoLib
     // -----------------
@@ -3715,6 +3761,35 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 LOG.warn("[RavenEntity] Animation controller failed: {}", t.toString());
             }
             return PlayState.CONTINUE;
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Variant helpers (NORMAL / SCROLL)
+    // ---------------------------------------------------------------------
+
+    public RavenVariant getVariant() {
+        try {
+            int raw = this.entityData.get(DATA_VARIANT);
+            return RavenVariant.fromId(raw);
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] getVariant failed safely: {}", t.toString());
+            }
+            return RavenVariant.NORMAL;
+        }
+    }
+
+    public void setVariant(RavenVariant variant) {
+        try {
+            if (variant == null) {
+                variant = RavenVariant.NORMAL;
+            }
+            this.entityData.set(DATA_VARIANT, variant.id());
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] setVariant failed safely: {}", t.toString());
+            }
         }
     }
 

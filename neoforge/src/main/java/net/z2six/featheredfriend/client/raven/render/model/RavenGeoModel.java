@@ -3,7 +3,7 @@ package net.z2six.featheredfriend.client.raven.render.model;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.resources.ResourceLocation;
-import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.client.raven.RavenVisuals;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import net.z2six.featheredfriend.entity.raven.RavenVariant;
 import org.slf4j.Logger;
@@ -19,51 +19,37 @@ public class RavenGeoModel extends GeoModel<RavenEntity> {
 
     private static final Logger LOG = LogUtils.getLogger();
 
-    private static final ResourceLocation GEO_RAVEN =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "geo/raven.geo.json");
-    private static final ResourceLocation GEO_RAVEN_SCROLL =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "geo/ravenscroll.geo.json");
-
-    private static final ResourceLocation TEX_RAVEN =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/entity/raven.png");
-    private static final ResourceLocation TEX_RAVEN_SCROLL =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/entity/ravenscroll.png");
-
-    private static final ResourceLocation ANIM_RAVEN =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "animations/raven.animation.json");
-    private static final ResourceLocation ANIM_RAVEN_SCROLL =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "animations/ravenscroll.animation.json");
-
     @Override
     public ResourceLocation getModelResource(RavenEntity animatable) {
         try {
-            RavenVariant v = animatable != null ? animatable.getRavenVariant() : RavenVariant.NORMAL;
-            return v == RavenVariant.SCROLL ? DYNCATCH(GEO_RAVEN_SCROLL, GEO_RAVEN_SCROLL) : GEO_RAVEN;
+            RavenVariant v = (animatable != null) ? animatable.getVariant() : RavenVariant.NORMAL;
+            // Use visual helper; DYNCATCH kept so you can still breakpoint/future-proof
+            return DYNCATCH(RavenVisuals.model(v), RavenVisuals.model(RavenVariant.NORMAL));
         } catch (Throwable t) {
-            LOG.error("[RavenGeoModel] getModelResource failed, defaulting to GEO_RAVEN", t);
-            return GEO_RAVEN;
+            LOG.error("[RavenGeoModel] getModelResource failed, defaulting to NORMAL model", t);
+            return RavenVisuals.model(RavenVariant.NORMAL);
         }
     }
 
     @Override
     public ResourceLocation getTextureResource(RavenEntity animatable) {
         try {
-            RavenVariant v = animatable != null ? animatable.getRavenVariant() : RavenVariant.NORMAL;
-            return v == RavenVariant.SCROLL ? DYNCATCH(TEX_RAVEN_SCROLL, TEX_RAVEN_SCROLL) : TEX_RAVEN;
+            RavenVariant v = (animatable != null) ? animatable.getVariant() : RavenVariant.NORMAL;
+            return DYNCATCH(RavenVisuals.texture(v), RavenVisuals.texture(RavenVariant.NORMAL));
         } catch (Throwable t) {
-            LOG.error("[RavenGeoModel] getTextureResource failed, defaulting to TEX_RAVEN", t);
-            return TEX_RAVEN;
+            LOG.error("[RavenGeoModel] getTextureResource failed, defaulting to NORMAL texture", t);
+            return RavenVisuals.texture(RavenVariant.NORMAL);
         }
     }
 
     @Override
     public ResourceLocation getAnimationResource(RavenEntity animatable) {
         try {
-            RavenVariant v = animatable != null ? animatable.getRavenVariant() : RavenVariant.NORMAL;
-            return v == RavenVariant.SCROLL ? DYNCATCH(ANIM_RAVEN_SCROLL, ANIM_RAVEN_SCROLL) : ANIM_RAVEN;
+            RavenVariant v = (animatable != null) ? animatable.getVariant() : RavenVariant.NORMAL;
+            return DYNCATCH(RavenVisuals.animation(v), RavenVisuals.animation(RavenVariant.NORMAL));
         } catch (Throwable t) {
-            LOG.error("[RavenGeoModel] getAnimationResource failed, defaulting to ANIM_RAVEN", t);
-            return ANIM_RAVEN;
+            LOG.error("[RavenGeoModel] getAnimationResource failed, defaulting to NORMAL animation", t);
+            return RavenVisuals.animation(RavenVariant.NORMAL);
         }
     }
 

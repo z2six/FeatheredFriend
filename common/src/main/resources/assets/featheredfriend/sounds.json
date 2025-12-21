@@ -2,33 +2,40 @@
   "raven.cawing_normal": {
     "category": "neutral",
     "sounds": [
-      "featheredfriend:raven/cawing_normal1",
-      "featheredfriend:raven/cawing_normal2",
-      "featheredfriend:raven/cawing_normal3"
+      "featheredfriend:raven/normal1",
+      "featheredfriend:raven/normal2",
+      "featheredfriend:raven/normal3"
     ]
   },
   "raven.caw_agree": {
     "category": "neutral",
     "sounds": [
-      "featheredfriend:raven/caw_agree"
+      "featheredfriend:raven/nugget"
     ]
   },
   "raven.caw_dmg": {
     "category": "neutral",
     "sounds": [
-      "featheredfriend:raven/caw_dmg"
+      "featheredfriend:raven/dmg"
     ]
   },
   "raven.caw_whistle": {
     "category": "neutral",
     "sounds": [
-      "featheredfriend:raven/caw_whistle"
+      "featheredfriend:raven/arrive"
     ]
   },
   "raven.air_woosh": {
     "category": "neutral",
     "sounds": [
-      "featheredfriend:raven/air_woosh"
+      "featheredfriend:raven/wingsflap"
+    ]
+  },
+
+  "raven.teleport": {
+    "category": "neutral",
+    "sounds": [
+      "featheredfriend:raven/teleport"
     ]
   }
 }
