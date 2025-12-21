@@ -2891,382 +2891,6 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         }
     }
 
-    /**
-     * Called by PlayerAvoidance when a player is close enough that we should
-     * "fly away" instead of idling / roaming normally.
-     *
-     * Requirements:
-     *  - Must work even if we are currently IDLE_GROUND (perched).
-     *  - Must flip us into ROAM_FLY and into true flight posture (noGravity=true).
-     *  - Must set a concrete flee target and arm playerAvoidanceOverrideTicks so that
-     *    tickRoamFly() enters its "avoidance override" branch.
-     *  - Must NOT crash on any error; log and bail instead.
-     */
-    public void requestPlayerAvoidanceFleeTarget(Player player, double distance) {
-        try {
-            if (player == null) {
-                return;
-            }
-            if (this.level() == null || this.level().isClientSide) {
-                return;
-            }
-            if (!this.isAlive()) {
-                return;
-            }
-
-            // If we're already teleporting (panic or otherwise), don't fight that.
-            if (teleportation != null && teleportation.teleportSeqPhase != Teleportation.TeleportSeqPhase.NONE) {
-                return;
-            }
-
-            // ------------------------------------------------------------------
-            // AVOIDANCE RE-ARM GUARD:
-            // If an avoidance override is already active AND we still have a
-            // path or a flyTarget intent, do NOT clear / re-plan every tick.
-            // Just extend the override window and bail.
-            // ------------------------------------------------------------------
-            boolean overrideActive = playerAvoidanceOverrideTicks > 0;
-
-            Vec3 currentFly = this.flyTarget;
-            int flyTtl = this.flyTargetTimeoutTicks;
-            boolean hasFlyIntent = (currentFly != null && flyTtl > 0);
-
-            int pathPts = (this.pathWaypoints == null ? 0 : this.pathWaypoints.size());
-            boolean hasPathIntent =
-                    (this.pathWaypoints != null
-                            && !this.pathWaypoints.isEmpty()
-                            && this.pathWaypointIndex >= 0
-                            && this.pathWaypointIndex < pathPts);
-
-            if (overrideActive && (hasFlyIntent || hasPathIntent)) {
-                int minOverride = 80; // ~4s
-                playerAvoidanceOverrideTicks = Math.max(playerAvoidanceOverrideTicks, minOverride);
-
-                if (this.tickCount % 40 == 0) {
-                    String name;
-                    try {
-                        name = player.getGameProfile() != null
-                                ? player.getGameProfile().getName()
-                                : player.getName().getString();
-                    } catch (Throwable t) {
-                        name = "unknown";
-                    }
-
-                    LOG.info(
-                            "[RavenEntity] Player avoidance re-arm skipped (already have intent). player={} dist={} overrideTicks={} hasFlyIntent={} hasPathIntent={} flyTarget={} pathPts={} pathIdx={}",
-                            name,
-                            String.format("%.2f", distance),
-                            playerAvoidanceOverrideTicks,
-                            hasFlyIntent,
-                            hasPathIntent,
-                            currentFly,
-                            pathPts,
-                            this.pathWaypointIndex
-                    );
-                }
-                return;
-            }
-
-            // Do not re-arm avoidance too aggressively if a rearm cooldown is active.
-            // (Used mainly by panic teleport recovery and similar.)
-            if (playerAvoidanceRearmCooldownTicks > 0) {
-                return;
-            }
-
-            final Vec3 ravenPos = this.position();
-            Vec3 fleeTarget = null;
-
-            // ------------------------------------------------------------------
-            // 1) ONLY use the path-friendly avoidance target (A*-aware).
-            //    NO simple "straight line away from player" fallback anymore.
-            // ------------------------------------------------------------------
-            try {
-                fleeTarget = computePlayerAvoidanceFleeTarget(player);
-            } catch (Throwable t) {
-                fleeTarget = null;
-                if (this.tickCount % 40 == 0) {
-                    LOG.warn(
-                            "[RavenEntity] requestPlayerAvoidanceFleeTarget: computePlayerAvoidanceFleeTarget failed safely: {}",
-                            t.toString()
-                    );
-                }
-            }
-
-            // If we could not compute a proper A*-friendly flee target, abort.
-            // We explicitly do NOT improvise a straight-line flee anymore.
-            if (fleeTarget == null) {
-                if (this.tickCount % 40 == 0) {
-                    String name;
-                    try {
-                        name = player.getGameProfile() != null
-                                ? player.getGameProfile().getName()
-                                : player.getName().getString();
-                    } catch (Throwable t) {
-                        name = "unknown";
-                    }
-                    LOG.warn(
-                            "[RavenEntity] requestPlayerAvoidanceFleeTarget: no A*-based flee target (computePlayerAvoidanceFleeTarget returned null). " +
-                                    "Skipping avoidance. player={} dist={} pos={}",
-                            name,
-                            String.format("%.2f", distance),
-                            ravenPos
-                    );
-                }
-                return;
-            }
-
-            // ------------------------------------------------------------------
-            // 2) Use the A*-aware helper so avoidance can leverage full pathing.
-            // ------------------------------------------------------------------
-            try {
-                forceRoamFlightFromThreat(fleeTarget, player);
-            } catch (Throwable t) {
-                if (this.tickCount % 40 == 0) {
-                    LOG.error(
-                            "[RavenEntity] requestPlayerAvoidanceFleeTarget: forceRoamFlightFromThreat failed safely: {}",
-                            t.toString()
-                    );
-                }
-            }
-
-            // ------------------------------------------------------------------
-            // 3) Arm / extend the hard override window so tickRoamFly enters
-            //    its avoidance branch and doesn't immediately try to land.
-            // ------------------------------------------------------------------
-            int minOverride = 80; // ~4 seconds
-            playerAvoidanceOverrideTicks = Math.max(playerAvoidanceOverrideTicks, minOverride);
-
-            // While in avoidance we don't want the normal local avoidance cooldown to block us.
-            avoidanceCooldownTicks = 0;
-            stuckTicks = 0;
-
-            // Flight posture: we MUST be flying, not grounded.
-            this.setNoGravity(true);
-            if (this.getAnimMode() != RavenAnimMode.IN_AIR) {
-                this.setAnimMode(RavenAnimMode.IN_AIR);
-            }
-
-            // Give a little upward kick so we actually take off from idle/perch.
-            Vec3 vel = this.getDeltaMovement();
-            double vy = vel.y;
-            if (vy < 0.25D) {
-                vy = 0.25D;
-            }
-            this.setDeltaMovement(vel.x, vy, vel.z);
-
-            // Make sure ROAM_FLY takeoff lock engages; this keeps us in air briefly.
-            if (getAIState() != RavenAIState.ROAM_FLY) {
-                setAIState(RavenAIState.ROAM_FLY);
-            }
-            roamTicksRemaining = 0;
-            if (idleLockTicks <= 0) {
-                idleLockTicks = 12;
-            }
-
-            if (this.tickCount % 20 == 0) {
-                String name;
-                try {
-                    name = player.getGameProfile() != null
-                            ? player.getGameProfile().getName()
-                            : player.getName().getString();
-                } catch (Throwable t) {
-                    name = "unknown";
-                }
-
-                int logPathPts = (this.pathWaypoints == null ? 0 : this.pathWaypoints.size());
-                int logPathIdx = this.pathWaypointIndex;
-                Vec3 pathGoalNow = this.pathGoal;
-                Vec3 pendingGoalNow = this.pathPendingGoal;
-
-                LOG.info(
-                        "[RavenEntity] Player avoidance flee: player={} dist={} fromPos={} fleeTarget={} overrideTicks={} pathPts={} pathIdx={} pathGoal={} pendingGoal={}",
-                        name,
-                        String.format("%.2f", distance),
-                        ravenPos,
-                        fleeTarget,
-                        playerAvoidanceOverrideTicks,
-                        logPathPts,
-                        logPathIdx,
-                        pathGoalNow,
-                        pendingGoalNow
-                );
-            }
-
-        } catch (Throwable t) {
-            LOG.error("[RavenEntity] requestPlayerAvoidanceFleeTarget failed", t);
-        }
-    }
-
-    @org.jetbrains.annotations.Nullable
-    private Vec3 computePlayerAvoidanceFleeTarget(Player player) {
-        try {
-            if (player == null) return null;
-
-            final Vec3 ravenPos = this.position();
-            final Vec3 playerPos = player.position();
-
-            // -----------------------------
-            // 1) Direction away from player in XZ
-            // -----------------------------
-            double dx = ravenPos.x - playerPos.x;
-            double dz = ravenPos.z - playerPos.z;
-
-            double len = Math.sqrt(dx * dx + dz * dz);
-            if (len < 1.0E-4D) {
-                // Degenerate case: same XZ. Choose a random horizontal direction.
-                RandomSource rnd = this.getRandom();
-                double ang = rnd.nextDouble() * (Math.PI * 2.0D);
-                dx = Math.cos(ang);
-                dz = Math.sin(ang);
-                len = 1.0D;
-            }
-
-            double nx = dx / len;
-            double nz = dz / len;
-
-            // -----------------------------
-            // 2) Horizontal flee distance
-            // -----------------------------
-            final double FLEE_DIST = 24.0D; // tune 18..34
-            double tx = ravenPos.x + nx * FLEE_DIST;
-            double tz = ravenPos.z + nz * FLEE_DIST;
-
-            // -----------------------------
-            // 3) Y POLICY (ANTI-BOBBING)
-            //
-            // The vertical bobbing you described is almost always caused by:
-            //  - producing targets with varying Y over and over (heightmap / empty searches up/down)
-            //  - A* "safe goal" adjustments choosing different dy candidates over successive replans
-            //
-            // So for player avoidance we LOCK a stable Y band:
-            //  - Primary: stay near current Y (slightly lifted so flight pathing stays in air)
-            //  - If player is above us, bias down a bit (but still stable)
-            //  - Absolutely avoid heightmap-based "snap Y" here
-            // -----------------------------
-            boolean playerAbove = playerPos.y > ravenPos.y + 1.25D;
-
-            double baseY = ravenPos.y;
-
-            // Gentle down-bias if player is above (still stable, not a search).
-            double desiredDrop = playerAbove ? 3.0D : 0.75D;
-
-            double tyRaw = baseY - desiredDrop;
-
-            // Clamp Y to home bounds using your existing int clamp, then convert back to a stable flight Y.
-            // We deliberately keep it stable (no scanning up/down).
-            int tyInt = clampYToHomeBounds(Mth.floor(tyRaw));
-            double ty = tyInt + 0.75D; // keep in-air, stable
-
-            // -----------------------------
-            // 4) Find an empty-ish target cell WITHOUT changing Y all the time
-            //
-            // We try:
-            //  - exact (tx,tz) at stable ty
-            //  - small horizontal spiral (same Y)
-            //  - finally try ty+1 and ty-1 once each (still bounded, avoids oscillation)
-            // -----------------------------
-            BlockPos base = BlockPos.containing(tx, ty, tz);
-
-            BlockPos chosen = null;
-
-            // Helper lambda-style logic (manual, no new methods).
-            // First attempt: base spot.
-            if (this.level().isEmptyBlock(base) && this.level().getFluidState(base).isEmpty()) {
-                chosen = base;
-            }
-
-            // Horizontal spiral at same Y (cheap, stable)
-            if (chosen == null) {
-                final int R = 4; // 4 blocks radius
-                int y = base.getY();
-
-                // simple square-ring scan
-                for (int r = 1; r <= R && chosen == null; r++) {
-                    // perimeter of square [-r..r] x [-r..r]
-                    for (int ox = -r; ox <= r && chosen == null; ox++) {
-                        int ozA = -r;
-                        int ozB = r;
-
-                        BlockPos p1 = new BlockPos(base.getX() + ox, y, base.getZ() + ozA);
-                        if (this.level().isEmptyBlock(p1) && this.level().getFluidState(p1).isEmpty()) {
-                            chosen = p1;
-                            break;
-                        }
-
-                        if (ozB != ozA) {
-                            BlockPos p2 = new BlockPos(base.getX() + ox, y, base.getZ() + ozB);
-                            if (this.level().isEmptyBlock(p2) && this.level().getFluidState(p2).isEmpty()) {
-                                chosen = p2;
-                                break;
-                            }
-                        }
-                    }
-
-                    for (int oz = -r + 1; oz <= r - 1 && chosen == null; oz++) {
-                        int oxA = -r;
-                        int oxB = r;
-
-                        BlockPos p1 = new BlockPos(base.getX() + oxA, y, base.getZ() + oz);
-                        if (this.level().isEmptyBlock(p1) && this.level().getFluidState(p1).isEmpty()) {
-                            chosen = p1;
-                            break;
-                        }
-
-                        if (oxB != oxA) {
-                            BlockPos p2 = new BlockPos(base.getX() + oxB, y, base.getZ() + oz);
-                            if (this.level().isEmptyBlock(p2) && this.level().getFluidState(p2).isEmpty()) {
-                                chosen = p2;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // One-shot vertical nudge (bounded; prevents "pick different Y every time")
-            if (chosen == null) {
-                BlockPos up = base.above(1);
-                if (this.level().isEmptyBlock(up) && this.level().getFluidState(up).isEmpty()) {
-                    chosen = up;
-                }
-            }
-            if (chosen == null) {
-                BlockPos down = base.below(1);
-                if (this.level().isEmptyBlock(down) && this.level().getFluidState(down).isEmpty()) {
-                    chosen = down;
-                }
-            }
-
-            // Absolute fallback: keep stable Y and just use the target XZ (even if not empty),
-            // because ensurePathTo() / collision logic can still route around.
-            if (chosen == null) {
-                chosen = base;
-                if (this.tickCount % 40 == 0) {
-                    LOG.debug("[RavenEntity] computePlayerAvoidanceFleeTarget: no empty spot found near base={} (using base as fallback) ravenPos={} playerPos={} playerAbove={}",
-                            base, ravenPos, playerPos, playerAbove);
-                }
-            }
-
-            Vec3 out = new Vec3(chosen.getX() + 0.5D, ty, chosen.getZ() + 0.5D);
-
-            if (this.tickCount % 40 == 0) {
-                LOG.debug("[RavenEntity] computePlayerAvoidanceFleeTarget: ravenPos={} playerPos={} playerAbove={} out={} baseY={} tyRaw={} tyStable={}",
-                        ravenPos, playerPos, playerAbove, out,
-                        String.format("%.2f", baseY),
-                        String.format("%.2f", tyRaw),
-                        String.format("%.2f", ty));
-            }
-
-            return out;
-
-        } catch (Throwable t) {
-            if (this.tickCount % 40 == 0) {
-                LOG.warn("[RavenEntity] computePlayerAvoidanceFleeTarget failed safely: {}", t.toString());
-            }
-            return null;
-        }
-    }
-
     @org.jetbrains.annotations.Nullable
     public Vec3 getHomeCenterVec() {
         return new Vec3(
@@ -4091,6 +3715,181 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 LOG.warn("[RavenEntity] Animation controller failed: {}", t.toString());
             }
             return PlayState.CONTINUE;
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // PlayerAvoidance module accessors
+    // ---------------------------------------------------------------------
+
+    // PlayerAvoidance module direct accessor
+    public net.z2six.featheredfriend.entity.raven.modules.PlayerAvoidance getPlayerAvoidanceModule() {
+        try {
+            return this.playeravoidance;
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                getSharedLogger().warn("[RavenEntity] getPlayerAvoidanceModule failed safely: {}", t.toString());
+            }
+            return null;
+        }
+    }
+
+    /**
+     * Exposes RavenEntity's internal logger instance without making the field public.
+     * Keeps log category identical to RavenEntity.LOG usage.
+     */
+    public static org.slf4j.Logger getSharedLogger() {
+        try {
+            return LOG;
+        } catch (Throwable t) {
+            // Ultra-safe fallback: should never happen, but we must not crash.
+            return com.mojang.logging.LogUtils.getLogger();
+        }
+    }
+
+    /**
+     * Public wrapper for the existing private clampYToHomeBounds(int).
+     * Logic is identical; this only fixes access after moving methods into modules.
+     */
+    public int clampYToHomeBoundsPublic(int y) {
+        try {
+            return clampYToHomeBounds(y);
+        } catch (Throwable t) {
+            // If anything goes wrong, return input (safe, non-crashing).
+            // This should never trigger in normal operation.
+            if (this.tickCount % 80 == 0) {
+                getSharedLogger().warn("[RavenEntity] clampYToHomeBoundsPublic failed safely: {}", t.toString());
+            }
+            return y;
+        }
+    }
+
+    // --- Player avoidance override ticks ---
+    public int getPlayerAvoidanceOverrideTicks() {
+        try {
+            return this.playerAvoidanceOverrideTicks;
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    public void setPlayerAvoidanceOverrideTicks(int ticks) {
+        try {
+            this.playerAvoidanceOverrideTicks = ticks;
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                getSharedLogger().warn("[RavenEntity] setPlayerAvoidanceOverrideTicks failed safely: {}", t.toString());
+            }
+        }
+    }
+
+    public int getPlayerAvoidanceRearmCooldownTicks() {
+        try {
+            return this.playerAvoidanceRearmCooldownTicks;
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    // --- Fly target intent ---
+    @org.jetbrains.annotations.Nullable
+    public net.minecraft.world.phys.Vec3 getFlyTarget() {
+        try {
+            return this.flyTarget;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    public int getFlyTargetTimeoutTicks() {
+        try {
+            return this.flyTargetTimeoutTicks;
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    // --- Pathing state used by avoidance re-arm guard/logging ---
+    public java.util.List<net.minecraft.world.phys.Vec3> getPathWaypoints() {
+        try {
+            return this.pathWaypoints;
+        } catch (Throwable t) {
+            return java.util.Collections.emptyList();
+        }
+    }
+
+    public int getPathWaypointIndex() {
+        try {
+            return this.pathWaypointIndex;
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    @org.jetbrains.annotations.Nullable
+    public net.minecraft.world.phys.Vec3 getPathGoal() {
+        try {
+            return this.pathGoal;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    @org.jetbrains.annotations.Nullable
+    public net.minecraft.world.phys.Vec3 getPathPendingGoal() {
+        try {
+            return this.pathPendingGoal;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    // --- Ticks that avoidance must reset to maintain behavior ---
+    public void setAvoidanceCooldownTicks(int ticks) {
+        try {
+            this.avoidanceCooldownTicks = ticks;
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                getSharedLogger().warn("[RavenEntity] setAvoidanceCooldownTicks failed safely: {}", t.toString());
+            }
+        }
+    }
+
+    public void setStuckTicks(int ticks) {
+        try {
+            this.stuckTicks = ticks;
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                getSharedLogger().warn("[RavenEntity] setStuckTicks failed safely: {}", t.toString());
+            }
+        }
+    }
+
+    public void setRoamTicksRemaining(int ticks) {
+        try {
+            this.roamTicksRemaining = ticks;
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                getSharedLogger().warn("[RavenEntity] setRoamTicksRemaining failed safely: {}", t.toString());
+            }
+        }
+    }
+
+    public int getIdleLockTicks() {
+        try {
+            return this.idleLockTicks;
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    public void setIdleLockTicks(int ticks) {
+        try {
+            this.idleLockTicks = ticks;
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                getSharedLogger().warn("[RavenEntity] setIdleLockTicks failed safely: {}", t.toString());
+            }
         }
     }
 

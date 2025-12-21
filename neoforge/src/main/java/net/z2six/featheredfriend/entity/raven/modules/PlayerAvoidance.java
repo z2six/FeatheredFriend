@@ -1,12 +1,17 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/PlayerAvoidance.java
+// neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/modules/PlayerAvoidance.java
 package net.z2six.featheredfriend.entity.raven.modules;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.z2six.featheredfriend.entity.raven.RavenAIState;
+import net.z2six.featheredfriend.entity.raven.RavenAnimMode;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -131,7 +136,7 @@ public final class PlayerAvoidance {
             // Panic teleport if extremely close.
             if (d2 <= PANIC_TELEPORT_RADIUS_SQR) {
                 try {
-                    net.z2six.featheredfriend.entity.raven.modules.Teleportation tp = null;
+                    Teleportation tp = null;
                     try {
                         tp = raven.getTeleportation();
                     } catch (Throwable ignored) {
@@ -169,7 +174,10 @@ public final class PlayerAvoidance {
             }
 
             // Otherwise normal fly-away avoidance.
-            raven.requestPlayerAvoidanceFleeTarget(nearest, dist);
+            net.z2six.featheredfriend.entity.raven.modules.PlayerAvoidance module = raven.getPlayerAvoidanceModule();
+            if (module != null) {
+                module.requestPlayerAvoidanceFleeTarget(nearest, dist, raven);
+            }
 
             if (raven.tickCount % 20 == 0) {
                 LOG.info(
@@ -347,6 +355,372 @@ public final class PlayerAvoidance {
                     : p.getName().getString();
         } catch (Throwable t) {
             return "unknown";
+        }
+    }
+
+    @Nullable
+    public Vec3 computePlayerAvoidanceFleeTarget(Player player, RavenEntity ravenEntity) {
+        try {
+            if (player == null) return null;
+
+            final Vec3 ravenPos = ravenEntity.position();
+            final Vec3 playerPos = player.position();
+
+            // -----------------------------
+            // 1) Direction away from player in XZ
+            // -----------------------------
+            double dx = ravenPos.x - playerPos.x;
+            double dz = ravenPos.z - playerPos.z;
+
+            double len = Math.sqrt(dx * dx + dz * dz);
+            if (len < 1.0E-4D) {
+                // Degenerate case: same XZ. Choose a random horizontal direction.
+                RandomSource rnd = ravenEntity.getRandom();
+                double ang = rnd.nextDouble() * (Math.PI * 2.0D);
+                dx = Math.cos(ang);
+                dz = Math.sin(ang);
+                len = 1.0D;
+            }
+
+            double nx = dx / len;
+            double nz = dz / len;
+
+            // -----------------------------
+            // 2) Horizontal flee distance
+            // -----------------------------
+            final double FLEE_DIST = 24.0D; // tune 18..34
+            double tx = ravenPos.x + nx * FLEE_DIST;
+            double tz = ravenPos.z + nz * FLEE_DIST;
+
+            // -----------------------------
+            // 3) Y POLICY (ANTI-BOBBING)
+            // -----------------------------
+            boolean playerAbove = playerPos.y > ravenPos.y + 1.25D;
+
+            double baseY = ravenPos.y;
+
+            // Gentle down-bias if player is above (still stable, not a search).
+            double desiredDrop = playerAbove ? 3.0D : 0.75D;
+
+            double tyRaw = baseY - desiredDrop;
+
+            // Clamp Y to home bounds using RavenEntity accessor (logic identical).
+            int tyInt = ravenEntity.clampYToHomeBoundsPublic(Mth.floor(tyRaw));
+            double ty = tyInt + 0.75D; // keep in-air, stable
+
+            // -----------------------------
+            // 4) Find an empty-ish target cell WITHOUT changing Y all the time
+            // -----------------------------
+            BlockPos base = BlockPos.containing(tx, ty, tz);
+
+            BlockPos chosen = null;
+
+            // First attempt: base spot.
+            if (ravenEntity.level().isEmptyBlock(base) && ravenEntity.level().getFluidState(base).isEmpty()) {
+                chosen = base;
+            }
+
+            // Horizontal spiral at same Y (cheap, stable)
+            if (chosen == null) {
+                final int R = 4; // 4 blocks radius
+                int y = base.getY();
+
+                // simple square-ring scan
+                for (int r = 1; r <= R && chosen == null; r++) {
+                    // perimeter of square [-r..r] x [-r..r]
+                    for (int ox = -r; ox <= r && chosen == null; ox++) {
+                        int ozA = -r;
+                        int ozB = r;
+
+                        BlockPos p1 = new BlockPos(base.getX() + ox, y, base.getZ() + ozA);
+                        if (ravenEntity.level().isEmptyBlock(p1) && ravenEntity.level().getFluidState(p1).isEmpty()) {
+                            chosen = p1;
+                            break;
+                        }
+
+                        if (ozB != ozA) {
+                            BlockPos p2 = new BlockPos(base.getX() + ox, y, base.getZ() + ozB);
+                            if (ravenEntity.level().isEmptyBlock(p2) && ravenEntity.level().getFluidState(p2).isEmpty()) {
+                                chosen = p2;
+                                break;
+                            }
+                        }
+                    }
+
+                    for (int oz = -r + 1; oz <= r - 1 && chosen == null; oz++) {
+                        int oxA = -r;
+                        int oxB = r;
+
+                        BlockPos p1 = new BlockPos(base.getX() + oxA, y, base.getZ() + oz);
+                        if (ravenEntity.level().isEmptyBlock(p1) && ravenEntity.level().getFluidState(p1).isEmpty()) {
+                            chosen = p1;
+                            break;
+                        }
+
+                        if (oxB != oxA) {
+                            BlockPos p2 = new BlockPos(base.getX() + oxB, y, base.getZ() + oz);
+                            if (ravenEntity.level().isEmptyBlock(p2) && ravenEntity.level().getFluidState(p2).isEmpty()) {
+                                chosen = p2;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // One-shot vertical nudge (bounded; prevents "pick different Y every time")
+            if (chosen == null) {
+                BlockPos up = base.above(1);
+                if (ravenEntity.level().isEmptyBlock(up) && ravenEntity.level().getFluidState(up).isEmpty()) {
+                    chosen = up;
+                }
+            }
+            if (chosen == null) {
+                BlockPos down = base.below(1);
+                if (ravenEntity.level().isEmptyBlock(down) && ravenEntity.level().getFluidState(down).isEmpty()) {
+                    chosen = down;
+                }
+            }
+
+            // Absolute fallback: keep stable Y and just use the target XZ (even if not empty)
+            if (chosen == null) {
+                chosen = base;
+                if (ravenEntity.tickCount % 40 == 0) {
+                    RavenEntity.getSharedLogger().debug(
+                            "[RavenEntity] computePlayerAvoidanceFleeTarget: no empty spot found near base={} (using base as fallback) ravenPos={} playerPos={} playerAbove={}",
+                            base, ravenPos, playerPos, playerAbove
+                    );
+                }
+            }
+
+            Vec3 out = new Vec3(chosen.getX() + 0.5D, ty, chosen.getZ() + 0.5D);
+
+            if (ravenEntity.tickCount % 40 == 0) {
+                RavenEntity.getSharedLogger().debug(
+                        "[RavenEntity] computePlayerAvoidanceFleeTarget: ravenPos={} playerPos={} playerAbove={} out={} baseY={} tyRaw={} tyStable={}",
+                        ravenPos, playerPos, playerAbove, out,
+                        String.format("%.2f", baseY),
+                        String.format("%.2f", tyRaw),
+                        String.format("%.2f", ty)
+                );
+            }
+
+            return out;
+
+        } catch (Throwable t) {
+            if (ravenEntity != null && ravenEntity.tickCount % 40 == 0) {
+                RavenEntity.getSharedLogger().warn("[RavenEntity] computePlayerAvoidanceFleeTarget failed safely: {}", t.toString());
+            }
+            return null;
+        }
+    }
+
+    /**
+     * Called by PlayerAvoidance when a player is close enough that we should
+     * "fly away" instead of idling / roaming normally.
+     */
+    public void requestPlayerAvoidanceFleeTarget(Player player, double distance, RavenEntity ravenEntity) {
+        try {
+            if (player == null) {
+                return;
+            }
+            if (ravenEntity.level() == null || ravenEntity.level().isClientSide) {
+                return;
+            }
+            if (!ravenEntity.isAlive()) {
+                return;
+            }
+
+            // If we're already teleporting (panic or otherwise), don't fight that.
+            Teleportation tpNow = null;
+            try {
+                tpNow = ravenEntity.getTeleportation();
+            } catch (Throwable ignored) {
+                tpNow = null;
+            }
+            if (tpNow != null && tpNow.teleportSeqPhase != Teleportation.TeleportSeqPhase.NONE) {
+                return;
+            }
+
+            // ------------------------------------------------------------------
+            // AVOIDANCE RE-ARM GUARD:
+            // If an avoidance override is already active AND we still have a
+            // path or a flyTarget intent, do NOT clear / re-plan every tick.
+            // Just extend the override window and bail.
+            // ------------------------------------------------------------------
+            boolean overrideActive = ravenEntity.getPlayerAvoidanceOverrideTicks() > 0;
+
+            Vec3 currentFly = ravenEntity.getFlyTarget();
+            int flyTtl = ravenEntity.getFlyTargetTimeoutTicks();
+            boolean hasFlyIntent = (currentFly != null && flyTtl > 0);
+
+            List<Vec3> waypoints = ravenEntity.getPathWaypoints();
+            int pathPts = (waypoints == null ? 0 : waypoints.size());
+
+            int pathIdx = ravenEntity.getPathWaypointIndex();
+            boolean hasPathIntent =
+                    (waypoints != null
+                            && !waypoints.isEmpty()
+                            && pathIdx >= 0
+                            && pathIdx < pathPts);
+
+            if (overrideActive && (hasFlyIntent || hasPathIntent)) {
+                int minOverride = 80; // ~4s
+                ravenEntity.setPlayerAvoidanceOverrideTicks(
+                        Math.max(ravenEntity.getPlayerAvoidanceOverrideTicks(), minOverride)
+                );
+
+                if (ravenEntity.tickCount % 40 == 0) {
+                    String name;
+                    try {
+                        name = player.getGameProfile() != null
+                                ? player.getGameProfile().getName()
+                                : player.getName().getString();
+                    } catch (Throwable t) {
+                        name = "unknown";
+                    }
+
+                    RavenEntity.getSharedLogger().info(
+                            "[RavenEntity] Player avoidance re-arm skipped (already have intent). player={} dist={} overrideTicks={} hasFlyIntent={} hasPathIntent={} flyTarget={} pathPts={} pathIdx={}",
+                            name,
+                            String.format("%.2f", distance),
+                            ravenEntity.getPlayerAvoidanceOverrideTicks(),
+                            hasFlyIntent,
+                            hasPathIntent,
+                            currentFly,
+                            pathPts,
+                            pathIdx
+                    );
+                }
+                return;
+            }
+
+            // Do not re-arm avoidance too aggressively if a rearm cooldown is active.
+            if (ravenEntity.getPlayerAvoidanceRearmCooldownTicks() > 0) {
+                return;
+            }
+
+            final Vec3 ravenPos = ravenEntity.position();
+            Vec3 fleeTarget = null;
+
+            // ------------------------------------------------------------------
+            // 1) ONLY use the path-friendly avoidance target (A*-aware).
+            // ------------------------------------------------------------------
+            try {
+                fleeTarget = computePlayerAvoidanceFleeTarget(player, ravenEntity);
+            } catch (Throwable t) {
+                fleeTarget = null;
+                if (ravenEntity.tickCount % 40 == 0) {
+                    RavenEntity.getSharedLogger().warn(
+                            "[RavenEntity] requestPlayerAvoidanceFleeTarget: computePlayerAvoidanceFleeTarget failed safely: {}",
+                            t.toString()
+                    );
+                }
+            }
+
+            // If we could not compute a proper A*-friendly flee target, abort.
+            if (fleeTarget == null) {
+                if (ravenEntity.tickCount % 40 == 0) {
+                    String name;
+                    try {
+                        name = player.getGameProfile() != null
+                                ? player.getGameProfile().getName()
+                                : player.getName().getString();
+                    } catch (Throwable t) {
+                        name = "unknown";
+                    }
+                    RavenEntity.getSharedLogger().warn(
+                            "[RavenEntity] requestPlayerAvoidanceFleeTarget: no A*-based flee target (computePlayerAvoidanceFleeTarget returned null). " +
+                                    "Skipping avoidance. player={} dist={} pos={}",
+                            name,
+                            String.format("%.2f", distance),
+                            ravenPos
+                    );
+                }
+                return;
+            }
+
+            // ------------------------------------------------------------------
+            // 2) Use the A*-aware helper so avoidance can leverage full pathing.
+            // ------------------------------------------------------------------
+            try {
+                ravenEntity.forceRoamFlightFromThreat(fleeTarget, player);
+            } catch (Throwable t) {
+                if (ravenEntity.tickCount % 40 == 0) {
+                    RavenEntity.getSharedLogger().error(
+                            "[RavenEntity] requestPlayerAvoidanceFleeTarget: forceRoamFlightFromThreat failed safely: {}",
+                            t.toString()
+                    );
+                }
+            }
+
+            // ------------------------------------------------------------------
+            // 3) Arm / extend the hard override window
+            // ------------------------------------------------------------------
+            int minOverride = 80; // ~4 seconds
+            ravenEntity.setPlayerAvoidanceOverrideTicks(
+                    Math.max(ravenEntity.getPlayerAvoidanceOverrideTicks(), minOverride)
+            );
+
+            // While in avoidance we don't want the normal local avoidance cooldown to block us.
+            ravenEntity.setAvoidanceCooldownTicks(0);
+            ravenEntity.setStuckTicks(0);
+
+            // Flight posture: we MUST be flying, not grounded.
+            ravenEntity.setNoGravity(true);
+            if (ravenEntity.getAnimMode() != RavenAnimMode.IN_AIR) {
+                ravenEntity.setAnimMode(RavenAnimMode.IN_AIR);
+            }
+
+            // Give a little upward kick so we actually take off from idle/perch.
+            Vec3 vel = ravenEntity.getDeltaMovement();
+            double vy = vel.y;
+            if (vy < 0.25D) {
+                vy = 0.25D;
+            }
+            ravenEntity.setDeltaMovement(vel.x, vy, vel.z);
+
+            // Make sure ROAM_FLY takeoff lock engages; this keeps us in air briefly.
+            if (ravenEntity.getAIState() != RavenAIState.ROAM_FLY) {
+                ravenEntity.setAIState(RavenAIState.ROAM_FLY);
+            }
+            ravenEntity.setRoamTicksRemaining(0);
+            if (ravenEntity.getIdleLockTicks() <= 0) {
+                ravenEntity.setIdleLockTicks(12);
+            }
+
+            if (ravenEntity.tickCount % 20 == 0) {
+                String name;
+                try {
+                    name = player.getGameProfile() != null
+                            ? player.getGameProfile().getName()
+                            : player.getName().getString();
+                } catch (Throwable t) {
+                    name = "unknown";
+                }
+
+                List<Vec3> logWaypoints = ravenEntity.getPathWaypoints();
+                int logPathPts = (logWaypoints == null ? 0 : logWaypoints.size());
+                int logPathIdx = ravenEntity.getPathWaypointIndex();
+                Vec3 pathGoalNow = ravenEntity.getPathGoal();
+                Vec3 pendingGoalNow = ravenEntity.getPathPendingGoal();
+
+                RavenEntity.getSharedLogger().info(
+                        "[RavenEntity] Player avoidance flee: player={} dist={} fromPos={} fleeTarget={} overrideTicks={} pathPts={} pathIdx={} pathGoal={} pendingGoal={}",
+                        name,
+                        String.format("%.2f", distance),
+                        ravenPos,
+                        fleeTarget,
+                        ravenEntity.getPlayerAvoidanceOverrideTicks(),
+                        logPathPts,
+                        logPathIdx,
+                        pathGoalNow,
+                        pendingGoalNow
+                );
+            }
+
+        } catch (Throwable t) {
+            RavenEntity.getSharedLogger().error("[RavenEntity] requestPlayerAvoidanceFleeTarget failed", t);
         }
     }
 }
