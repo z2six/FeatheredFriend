@@ -23,6 +23,7 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.entity.raven.RavenSoundEngine;
+import net.minecraft.world.InteractionResult;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -84,6 +85,20 @@ public class LureFollowTame {
     public static final String NBT_TAME_NUGGETS_REQUIRED = "GoldenNuggetsRequiredToTame";
     private int goldenNuggetsRequiredToTame = 0;
 
+    // Total nuggets actually paid toward taming (by the lure player only).
+    // This is *not* persisted yet (you can wire NBT later in RavenEntity).
+    private int tamingNuggetsPaidTotal = 0;
+
+    // Hand-feed "countdown" caw sequence (per RMB nugget).
+    // This is separate from the arrival-based lureAgreeSequence logic.
+    private boolean handFeedSequenceActive = false;
+    private int handFeedCawsRemaining = 0;
+    private int handFeedCawCooldownTicks = 0;
+
+    // Tunables for how fast the hand-feed caws play.
+    private static final int HAND_FEED_CAW_INTERVAL_MIN_TICKS = 6;  // ~0.3s
+    private static final int HAND_FEED_CAW_INTERVAL_MAX_TICKS = 10; // ~0.5s
+
     // Follow owner: 3x3x3 pocket targeting + override gating
     private boolean followOverrideActive = false;
     private @Nullable BlockPos followPocketAnchor = null; // anchor block for 3x3x3 pocket (center block at y)
@@ -131,6 +146,245 @@ public class LureFollowTame {
     // ---------------------------------------------------------------------------------------------
     // ACCESSORS / BASIC HELPERS -------------------------------------------------------------------
     // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Handle RMB interaction for taming-related actions (feeding golden nuggets).
+     *
+     * This is called from RavenEntity.mobInteract(...) on both client and server.
+     * - CLIENT: only decides whether the interaction should visually succeed
+     *           (hand swing, sound sync handled by server) – NO game logic here.
+     * - SERVER: performs the actual nugget feeding via tryFeedLureTamingNugget(...).
+     *
+     * Returns:
+     *   - InteractionResult.PASS   -> RavenEntity falls back to default behavior.
+     *   - InteractionResult.SUCCESS / sidedSuccess(...) -> interaction handled by taming.
+     */
+    public InteractionResult handleTamingInteract(Player player, ItemStack stack, boolean isClientSide) {
+        try {
+            String side = isClientSide ? "CLIENT" : "SERVER";
+            String playerName = (player == null ? "null" : player.getName().getString());
+            String itemDesc = (stack == null ? "null" : stack.toString());
+
+            LOG.info("[RavenEntity] handleTamingInteract ENTER: side={} player={} item={}",
+                    side, playerName, itemDesc);
+
+            if (player == null) {
+                LOG.info("[RavenEntity] handleTamingInteract: player is null -> PASS");
+                return InteractionResult.PASS;
+            }
+
+            if (stack == null || stack.isEmpty()) {
+                LOG.info("[RavenEntity] handleTamingInteract: empty stack -> PASS");
+                return InteractionResult.PASS;
+            }
+
+            // We only care about golden nuggets at all.
+            if (!stack.is(Items.GOLD_NUGGET)) {
+                LOG.info("[RavenEntity] handleTamingInteract: item is not GOLD_NUGGET -> PASS");
+                return InteractionResult.PASS;
+            }
+
+            // From here on, it is "a taming-relevant interaction" from the item's perspective.
+            // Client vs server behavior:
+            if (isClientSide) {
+                // Client: just say "yep, this is a handled interaction" so the hand animates.
+                LOG.info("[RavenEntity] handleTamingInteract: CLIENT side, returning sidedSuccess(true)");
+                return InteractionResult.sidedSuccess(true);
+            }
+
+            // SERVER side: perform actual feed logic.
+            boolean handled = tryFeedLureTamingNugget(player, stack);
+
+            LOG.info("[RavenEntity] handleTamingInteract: SERVER tryFeedLureTamingNugget handled={} (player={} item={})",
+                    handled, playerName, itemDesc);
+
+            if (!handled) {
+                // Either:
+                //  - lure-follow not active
+                //  - wrong player (not the lure player)
+                //  - tame cost already fully paid
+                //  - or some other guard rejected it
+                // In all cases we let the interaction fall through to base logic.
+                return InteractionResult.PASS;
+            }
+
+            // Handled on server: we consumed the nugget and started the countdown sequence.
+            // sidedSuccess(false) means "handled on server" and syncs with the client.
+            return InteractionResult.sidedSuccess(false);
+
+        } catch (Throwable t) {
+            if (raven != null && raven.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] handleTamingInteract failed safely: {}", t.toString());
+            }
+            // Fail-safe: never nuke all interactions because taming blew up.
+            return InteractionResult.PASS;
+        }
+    }
+
+    /**
+     * Try to feed ONE golden nugget for taming via RMB on the raven.
+     *
+     * Rules:
+     *  - Only the *current lure player* may feed (their UUID must match lureFollowPlayerUuid).
+     *  - If conditions are met, exactly ONE nugget is consumed (unless in creative),
+     *    taming progress is advanced, and a "countdown" agree-caw sequence is started
+     *    with length = remaining nuggets needed.
+     *  - If the raven is already fully paid, we consume nothing and only return true
+     *    if you want to treat the interaction as "handled".
+     *
+     * @return true if this method handled the interaction (even if no nugget was consumed),
+     *         false if the caller should treat it as "not a taming feed".
+     */
+    public boolean tryFeedLureTamingNugget(Player player, ItemStack stack) {
+        try {
+            if (player == null) return false;
+            if (stack == null || stack.isEmpty()) return false;
+
+            if (raven.level() == null) return false;
+            if (raven.level().isClientSide) return false; // server-only
+            if (!raven.isAlive()) return false;
+
+            // Must be a gold nugget.
+            if (!stack.is(Items.GOLD_NUGGET)) {
+                return false;
+            }
+
+            // Lure-follow must be active, and player must be the current lure source.
+            if (!isLureFollowActive()) {
+                if (raven.tickCount % 80 == 0) {
+                    LOG.debug("[RavenEntity] tryFeedLureTamingNugget: lure not active, reject feed. pos={}", raven.position());
+                }
+                return false;
+            }
+
+            if (lureFollowPlayerUuid == null || !lureFollowPlayerUuid.equals(player.getUUID())) {
+                // Someone other than the lure player is trying to feed:
+                // DO NOT consume, DO NOT advance taming.
+                if (raven.tickCount % 80 == 0) {
+                    LOG.debug("[RavenEntity] tryFeedLureTamingNugget: player {} is not current lure player, rejecting feed.",
+                            player.getName().getString());
+                }
+                return false;
+            }
+
+            // Make sure the per-raven tame cost is initialized.
+            initGoldenNuggetsRequiredToTameIfNeeded("tryFeedLureTamingNugget");
+
+            if (goldenNuggetsRequiredToTame <= 0) {
+                if (raven.tickCount % 80 == 0) {
+                    LOG.warn("[RavenEntity] tryFeedLureTamingNugget: goldenNuggetsRequiredToTame <= 0, nothing to pay. pos={}",
+                            raven.position());
+                }
+                return true; // treat as handled, but nothing to do
+            }
+
+            // If we've already fully paid, don't consume more; just treat as handled.
+            if (tamingNuggetsPaidTotal >= goldenNuggetsRequiredToTame) {
+                if (raven.tickCount % 80 == 0) {
+                    LOG.debug("[RavenEntity] tryFeedLureTamingNugget: already fully paid (paid={} / required={})",
+                            tamingNuggetsPaidTotal, goldenNuggetsRequiredToTame);
+                }
+                return true;
+            }
+
+            // Consume ONE nugget (unless creative / insta-build).
+            try {
+                if (!player.getAbilities().instabuild) {
+                    stack.shrink(1);
+                }
+            } catch (Throwable t) {
+                if (raven.tickCount % 80 == 0) {
+                    LOG.warn("[RavenEntity] tryFeedLureTamingNugget: failed to shrink stack: {}", t.toString());
+                }
+            }
+
+            // Advance taming progress.
+            tamingNuggetsPaidTotal = Math.max(0, tamingNuggetsPaidTotal + 1);
+            if (tamingNuggetsPaidTotal > goldenNuggetsRequiredToTame) {
+                tamingNuggetsPaidTotal = goldenNuggetsRequiredToTame;
+            }
+
+            int remaining = Math.max(0, goldenNuggetsRequiredToTame - tamingNuggetsPaidTotal);
+
+            if (raven.tickCount % 40 == 0) {
+                LOG.debug("[RavenEntity] tryFeedLureTamingNugget: player={} paid=1 -> totalPaid={} / required={} remaining={}",
+                        player.getName().getString(),
+                        tamingNuggetsPaidTotal,
+                        goldenNuggetsRequiredToTame,
+                        remaining);
+            }
+
+            // Start / restart the per-click "countdown" agree-caw sequence.
+            // This guarantees that spam RMB cancels the previous sequence and
+            // uses the latest 'remaining' count.
+            startHandFeedAgreeSequence(remaining, "nugget feed");
+
+            // NOTE: When remaining == 0, you can later plug in the actual "tame" action here.
+            // For now we just stop at "fully paid" and let the caller handle taming if desired.
+            if (remaining == 0 && raven.tickCount % 40 == 0) {
+                LOG.debug("[RavenEntity] tryFeedLureTamingNugget: tame cost fully paid; remaining=0. pos={}", raven.position());
+            }
+
+            return true;
+
+        } catch (Throwable t) {
+            if (raven.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] tryFeedLureTamingNugget failed safely: {}", t.toString());
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Start (or restart) the hand-feed "countdown" agree-caw sequence.
+     *
+     * It plays raven.caw_agree exactly remainingCaws times with a short interval
+     * between each, independent of the arrival-based ceremonial sequence.
+     *
+     * If remainingCaws <= 0, this simply cancels any active hand-feed sequence.
+     *
+     * Spam RMB is handled by always cancelling/resetting previous hand-feed
+     * state before starting the new sequence.
+     */
+    private void startHandFeedAgreeSequence(int remainingCaws, String context) {
+        try {
+            // Always cancel any in-progress hand-feed sequence.
+            handFeedSequenceActive = false;
+            handFeedCawsRemaining = 0;
+            handFeedCawCooldownTicks = 0;
+
+            if (raven.level() == null || raven.level().isClientSide) {
+                LOG.info("[RavenEntity] startHandFeedAgreeSequence: abort (no level or client-side). context={} remaining={}",
+                        context, remainingCaws);
+                return;
+            }
+            if (!raven.isAlive()) {
+                LOG.info("[RavenEntity] startHandFeedAgreeSequence: abort (raven not alive). context={} remaining={}",
+                        context, remainingCaws);
+                return;
+            }
+
+            if (remainingCaws <= 0) {
+                LOG.info("[RavenEntity] startHandFeedAgreeSequence: remaining<=0, cancelling. context={} remaining={} pos={}",
+                        context, remainingCaws, raven.position());
+                return;
+            }
+
+            handFeedSequenceActive = true;
+            handFeedCawsRemaining = remainingCaws;
+            handFeedCawCooldownTicks = 0;
+
+            LOG.info("[RavenEntity] startHandFeedAgreeSequence: START hand-feed sequence caws={} context={} pos={}",
+                    remainingCaws, context, raven.position());
+
+        } catch (Throwable t) {
+            LOG.warn("[RavenEntity] startHandFeedAgreeSequence failed safely: {}", t.toString());
+            // Hard-cancel on failure
+            handFeedSequenceActive = false;
+            handFeedCawsRemaining = 0;
+            handFeedCawCooldownTicks = 0;
+        }
+    }
 
     /**
      * If A* repeatedly fails during lure-follow, fall back to a direct fly target
@@ -533,6 +787,112 @@ public class LureFollowTame {
         }
     }
 
+    /**
+     * Drive the hand-feed "countdown" agree-caw sequence once per tick.
+     * Call this from RavenEntity's main tick (e.g. aiStep or tickFollowOwner),
+     * on the *server side* only.
+     *
+     * This is separate from tickLureAgreeSequenceProgress(), which handles
+     * the ceremonial arrival-based sequence with global cooldown.
+     */
+    public void tickHandFeedAgreeSequence() {
+        try {
+            if (!handFeedSequenceActive) {
+                return;
+            }
+
+            if (raven == null) {
+                LOG.warn("[RavenEntity] tickHandFeedAgreeSequence: raven null, cancelling.");
+                handFeedSequenceActive = false;
+                handFeedCawsRemaining = 0;
+                handFeedCawCooldownTicks = 0;
+                return;
+            }
+
+            if (raven.level() == null || raven.level().isClientSide) {
+                LOG.info("[RavenEntity] tickHandFeedAgreeSequence: wrong side or no level, cancelling. side={}",
+                        raven.level() == null ? "null" : (raven.level().isClientSide ? "CLIENT" : "SERVER"));
+                handFeedSequenceActive = false;
+                handFeedCawsRemaining = 0;
+                handFeedCawCooldownTicks = 0;
+                return;
+            }
+
+            if (!raven.isAlive()) {
+                LOG.info("[RavenEntity] tickHandFeedAgreeSequence: raven not alive, cancelling.");
+                handFeedSequenceActive = false;
+                handFeedCawsRemaining = 0;
+                handFeedCawCooldownTicks = 0;
+                return;
+            }
+
+            if (handFeedCawCooldownTicks > 0) {
+                handFeedCawCooldownTicks--;
+                return;
+            }
+
+            SoundEvent agree = getLureAgreeSound();
+            if (agree == null) {
+                LOG.warn("[RavenEntity] tickHandFeedAgreeSequence: agree sound unresolved, cancelling sequence.");
+                handFeedSequenceActive = false;
+                handFeedCawsRemaining = 0;
+                handFeedCawCooldownTicks = 0;
+                return;
+            }
+
+            // Play one caw now.
+            int before = handFeedCawsRemaining;
+            try {
+                float volume = 0.9F;
+                float pitchMin = 0.97F;
+                float pitchMax = 1.03F;
+                soundEngine.playWithRandomPitch(agree, SoundSource.NEUTRAL, volume, pitchMin, pitchMax);
+            } catch (Throwable t) {
+                LOG.warn("[RavenEntity] tickHandFeedAgreeSequence: play failed: {}", t.toString());
+            }
+
+            handFeedCawsRemaining--;
+
+            LOG.info("[RavenEntity] tickHandFeedAgreeSequence: played hand-feed caw (before={} after={} pos={})",
+                    before, handFeedCawsRemaining, raven.position());
+
+            if (handFeedCawsRemaining <= 0) {
+                // Sequence done.
+                handFeedSequenceActive = false;
+                handFeedCawsRemaining = 0;
+                handFeedCawCooldownTicks = 0;
+
+                LOG.info("[RavenEntity] tickHandFeedAgreeSequence: sequence COMPLETE at pos={}", raven.position());
+                return;
+            }
+
+            // Schedule next caw with a small random delay.
+            int delay = HAND_FEED_CAW_INTERVAL_MIN_TICKS;
+            try {
+                RandomSource rnd = raven.getRandom();
+                if (rnd != null) {
+                    int span = Math.max(0, HAND_FEED_CAW_INTERVAL_MAX_TICKS - HAND_FEED_CAW_INTERVAL_MIN_TICKS);
+                    if (span == 0) {
+                        delay = HAND_FEED_CAW_INTERVAL_MIN_TICKS;
+                    } else {
+                        delay = HAND_FEED_CAW_INTERVAL_MIN_TICKS + rnd.nextInt(span + 1);
+                    }
+                }
+            } catch (Throwable ignored) {
+                delay = HAND_FEED_CAW_INTERVAL_MIN_TICKS;
+            }
+
+            handFeedCawCooldownTicks = Math.max(0, delay);
+
+        } catch (Throwable t) {
+            LOG.warn("[RavenEntity] tickHandFeedAgreeSequence failed safely: {}", t.toString());
+            // Fail-safe: cancel to avoid stuck loops.
+            handFeedSequenceActive = false;
+            handFeedCawsRemaining = 0;
+            handFeedCawCooldownTicks = 0;
+        }
+    }
+
     // Expose followOverrideActive as a read-only flag
 
     public boolean isFollowOverrideActive() {
@@ -808,8 +1168,11 @@ public class LureFollowTame {
             } catch (Throwable ignored) {
             }
 
-            // Drive the taming "agree caw" sequence every tick.
+            // Drive the taming "agree caw" sequences every tick:
+            //  - Arrival-based sequence (global cooldown)
+            //  - Hand-feed countdown sequence (per RMB nugget)
             tickLureAgreeSequenceProgress();
+            tickHandFeedAgreeSequence();
 
             invokeResetLandingState("follow");
             setPrivateInt("idleLockTicks", 0);
@@ -1343,6 +1706,11 @@ public class LureFollowTame {
         // Also reset any in-progress agree-caw sequence for this lure session.
         stopLureAgreeSequence("clearLureFollowState");
         wasAtLureGoalLastTick = false;
+
+        // Stop any hand-feed countdown that might still be running.
+        handFeedSequenceActive = false;
+        handFeedCawsRemaining = 0;
+        handFeedCawCooldownTicks = 0;
     }
 
     // Returns true if the player is *currently* holding a lure item (gold nugget) in either hand.

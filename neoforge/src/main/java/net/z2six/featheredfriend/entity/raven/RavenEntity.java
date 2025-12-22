@@ -40,6 +40,8 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.InteractionHand;
 
 // Debug particles
 import net.minecraft.network.chat.Component;
@@ -2384,6 +2386,69 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             if (idleLockTicks <= 0) {
                 idleLockTicks = 12;
             }
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Player interaction (RMB) – bridge into LureFollowTame for golden nugget taming
+    // ---------------------------------------------------------------------------------------------
+    @Override
+    public InteractionResult mobInteract(Player player, InteractionHand hand) {
+        try {
+            // Unthrottled debug so we KNOW if this ever fires
+            LOG.info("[RavenEntity] mobInteract ENTER: player={} hand={} pos={} side={}",
+                    (player == null ? "null" : player.getName().getString()),
+                    hand,
+                    this.position(),
+                    this.level() == null ? "null" : (this.level().isClientSide ? "CLIENT" : "SERVER"));
+
+            if (player == null) {
+                return InteractionResult.PASS;
+            }
+
+            ItemStack stack = player.getItemInHand(hand);
+
+            // ----------------------------------------------------------------------
+            // Lure/taming interact hook: feed golden nuggets while lure-following.
+            // All real logic lives in LureFollowTame; this is just a thin bridge.
+            // ----------------------------------------------------------------------
+            try {
+                if (this.lureFollowTame != null) {
+                    InteractionResult lureResult = this.lureFollowTame.handleTamingInteract(
+                            player,
+                            stack,
+                            this.level().isClientSide
+                    );
+
+                    LOG.info("[RavenEntity] mobInteract: handleTamingInteract returned {} (item={}, side={})",
+                            lureResult,
+                            (stack == null ? "null" : stack.toString()),
+                            this.level().isClientSide ? "CLIENT" : "SERVER");
+
+                    // If the taming logic actually handled the interaction, we’re done.
+                    if (lureResult != InteractionResult.PASS) {
+                        return lureResult;
+                    }
+                } else {
+                    LOG.info("[RavenEntity] mobInteract: lureFollowTame == null, skipping taming hook");
+                }
+            } catch (Throwable t) {
+                LOG.warn("[RavenEntity] mobInteract lure/tame hook failed safely: {}", t.toString());
+            }
+
+            // ----------------------------------------------------------------------
+            // If LureFollowTame didn’t care, fall back to vanilla / base behavior.
+            // ----------------------------------------------------------------------
+            InteractionResult base = super.mobInteract(player, hand);
+            LOG.info("[RavenEntity] mobInteract: super.mobInteract result={} side={}",
+                    base,
+                    this.level() != null && this.level().isClientSide ? "CLIENT" : "SERVER");
+            return base;
+
+        } catch (Throwable t) {
+            LOG.error("[RavenEntity] mobInteract failed safely", t);
+            // Fail-safe: don’t break all interactions if something goes wrong.
+            return InteractionResult.PASS;
         }
     }
 
