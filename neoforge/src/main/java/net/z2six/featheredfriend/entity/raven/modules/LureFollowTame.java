@@ -1043,7 +1043,7 @@ public class LureFollowTame {
             }
 
             // If the player is NOT currently holding a lure item (gold nugget),
-            // treat this as "lure dropped" and clear state.
+// treat this as "lure dropped" and clear state.
             if (!isLureItemInHand(player)) {
                 if (lureFollowPlayerUuid != null || lureFollowTicks > 0 || followOverrideActive) {
                     clearLureFollowState("requestLureFollowPlayer: player no longer holding lure item");
@@ -1051,8 +1051,30 @@ public class LureFollowTame {
                 return;
             }
 
-            // Refresh lure memory
-            this.lureFollowPlayerUuid = player.getUUID();
+            // -------------------------------------------------------------------------------------
+            // LURE LOCKING:
+            // If we already have an active lure player that is NOT this one, do NOT steal the bird.
+            // Only when the existing lure becomes invalid (isLureFollowActive() returns false),
+            // may a new player claim the lure-follow.
+            // -------------------------------------------------------------------------------------
+            java.util.UUID incomingId = player.getUUID();
+
+            if (this.lureFollowPlayerUuid != null && !incomingId.equals(this.lureFollowPlayerUuid)) {
+                // Check if the existing lure is still considered active.
+                if (isLureFollowActive()) {
+                    if (raven.tickCount % 40 == 0) {
+                        LOG.debug("[RavenEntity] requestLureFollowPlayer: already lured by {} – ignoring new lure from {}",
+                                this.lureFollowPlayerUuid,
+                                player.getName().getString());
+                    }
+                    return;
+                }
+                // If isLureFollowActive() returned false, it has already cleared the stale state.
+                // Fall through and allow this new player to take over as the lure source.
+            }
+
+            // Refresh / claim lure memory (either first time, or same player as before).
+            this.lureFollowPlayerUuid = incomingId;
             int refresh = LURE_FOLLOW_REFRESH_TICKS;
             if (this.lureFollowTicks < refresh) {
                 this.lureFollowTicks = refresh;
