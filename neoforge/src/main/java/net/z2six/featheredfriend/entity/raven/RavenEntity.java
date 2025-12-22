@@ -2414,19 +2414,18 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // ----------------------------------------------------------------------
             try {
                 if (this.lureFollowTame != null) {
-                    InteractionResult lureResult = this.lureFollowTame.handleTamingInteract(
-                            player,
-                            stack,
-                            this.level().isClientSide
-                    );
+                    InteractionResult lureResult = this.lureFollowTame.handleTamingInteract(player, hand);
 
-                    LOG.info("[RavenEntity] mobInteract: handleTamingInteract returned {} (item={}, side={})",
+                    LOG.info(
+                            "[RavenEntity] mobInteract: handleTamingInteract returned {} (item={}, side={})",
                             lureResult,
                             (stack == null ? "null" : stack.toString()),
-                            this.level().isClientSide ? "CLIENT" : "SERVER");
+                            this.level().isClientSide ? "CLIENT" : "SERVER"
+                    );
 
-                    // If the taming logic actually handled the interaction, we’re done.
-                    if (lureResult != InteractionResult.PASS) {
+                    // If the taming logic handled the interaction (consume / success),
+                    // we’re done and let it own this RMB.
+                    if (lureResult.consumesAction()) {
                         return lureResult;
                     }
                 } else {
