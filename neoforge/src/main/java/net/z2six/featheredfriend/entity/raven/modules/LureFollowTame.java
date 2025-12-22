@@ -329,6 +329,28 @@ public class LureFollowTame {
                         remaining);
             }
 
+            // NEW: Tamed raven flow – if fully paid, trigger naming GUI via TamedRaven module.
+            if (remaining == 0) {
+                try {
+                    net.z2six.featheredfriend.entity.raven.modules.TamedRaven tamed =
+                            raven.getTamedRavenModule();
+                    if (tamed != null) {
+                        if (raven.tickCount % 40 == 0) {
+                            LOG.info("[RavenEntity] tryFeedLureTamingNugget: tame cost fully paid; triggering TamedRaven.onTamingFullyPaid. pos={}",
+                                    raven.position());
+                        }
+                        tamed.onTamingFullyPaid(player);
+                    } else if (raven.tickCount % 80 == 0) {
+                        LOG.warn("[RavenEntity] tryFeedLureTamingNugget: TamedRaven module is null on fully-paid event. pos={}",
+                                raven.position());
+                    }
+                } catch (Throwable t) {
+                    if (raven.tickCount % 80 == 0) {
+                        LOG.warn("[RavenEntity] tryFeedLureTamingNugget: onTamingFullyPaid failed safely: {}", t.toString());
+                    }
+                }
+            }
+
             // Start / restart the per-click "countdown" agree-caw sequence.
             // This guarantees that spam RMB cancels the previous sequence and
             // uses the latest 'remaining' count.
@@ -1043,7 +1065,7 @@ public class LureFollowTame {
             }
 
             // If the player is NOT currently holding a lure item (gold nugget),
-// treat this as "lure dropped" and clear state.
+            // treat this as "lure dropped" and clear state.
             if (!isLureItemInHand(player)) {
                 if (lureFollowPlayerUuid != null || lureFollowTicks > 0 || followOverrideActive) {
                     clearLureFollowState("requestLureFollowPlayer: player no longer holding lure item");

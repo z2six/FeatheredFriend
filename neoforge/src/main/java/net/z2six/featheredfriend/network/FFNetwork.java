@@ -2,6 +2,7 @@
 package net.z2six.featheredfriend.network;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.client.Minecraft;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -12,6 +13,7 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.data.KnownPlayersClientCache;
+import net.z2six.featheredfriend.client.screen.RavenNamingScreen;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
@@ -80,7 +82,21 @@ public final class FFNetwork {
                     FFNetwork::handleBreakSealOnServer
             );
 
-            LOG.info("[FFNetwork] Registered KnownPlayersPayload (S2C), SealStampCarveResultPacket (C2S), WaxSealPacket (C2S), BreakSealPacket (C2S)");
+            // NEW: OpenRavenNameScreenPayload (S2C)
+            registrar.playToClient(
+                    OpenRavenNameScreenPayload.TYPE,
+                    OpenRavenNameScreenPayload.STREAM_CODEC,
+                    FFNetwork::handleOpenRavenNameScreenOnClient
+            );
+
+            // NEW: RavenNameChosenPacket (C2S)
+            registrar.playToServer(
+                    RavenNameChosenPacket.TYPE,
+                    RavenNameChosenPacket.STREAM_CODEC,
+                    FFNetwork::handleRavenNameChosenOnServer
+            );
+
+            LOG.info("[FFNetwork] Registered KnownPlayersPayload (S2C), SealStampCarveResultPacket (C2S), WaxSealPacket (C2S), BreakSealPacket (C2S), OpenRavenNameScreenPayload (S2C), RavenNameChosenPacket (C2S)");
         } catch (Throwable t) {
             LOG.error("[FFNetwork] Failed to register payload handlers", t);
         }
@@ -233,7 +249,76 @@ public final class FFNetwork {
     }
 
     // ---------------------------------------------------------------------
-    // KnownPlayers payload type
+    // NEW: Tamed Raven – Open naming screen (S2C)
+    // ---------------------------------------------------------------------
+
+    public static void sendOpenRavenNamingScreen(@NotNull ServerPlayer player,
+                                                 int ravenEntityId) {
+        try {
+            OpenRavenNameScreenPayload payload = new OpenRavenNameScreenPayload(ravenEntityId);
+            PacketDistributor.sendToPlayer(player, payload);
+            LOG.debug("[FFNetwork] Sent OpenRavenNameScreenPayload to {} for ravenEntityId={}",
+                    player.getGameProfile().getName(), ravenEntityId);
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendOpenRavenNamingScreen failed for player={}",
+                    player.getGameProfile().getName(), t);
+        }
+    }
+
+    private static void handleOpenRavenNameScreenOnClient(@NotNull OpenRavenNameScreenPayload payload,
+                                                          @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                Minecraft mc = Minecraft.getInstance();
+                if (mc == null || mc.player == null) return;
+                if (mc.level == null) return;
+
+                int id = payload.ravenEntityId();
+                LOG.debug("[FFNetwork] handleOpenRavenNameScreenOnClient: opening GUI for ravenEntityId={}", id);
+                mc.setScreen(new RavenNamingScreen(id));
+
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] Failed to handle OpenRavenNameScreenPayload on client", t);
+            }
+        });
+    }
+
+    // ---------------------------------------------------------------------
+    // NEW: Tamed Raven – Name chosen (client → server)
+    // ---------------------------------------------------------------------
+
+    public static void sendRavenNameChosenToServer(int ravenEntityId,
+                                                   @NotNull String name) {
+        try {
+            RavenNameChosenPacket p = new RavenNameChosenPacket(
+                    ravenEntityId,
+                    name != null ? name : ""
+            );
+            PacketDistributor.sendToServer(p);
+            LOG.debug("[FFNetwork] Sent RavenNameChosenPacket to server (ravenEntityId={})", ravenEntityId);
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendRavenNameChosenToServer failed", t);
+        }
+    }
+
+    private static void handleRavenNameChosenOnServer(@NotNull RavenNameChosenPacket payload,
+                                                      @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                if (!(context.player() instanceof ServerPlayer serverPlayer)) {
+                    LOG.error("[FFNetwork] handleRavenNameChosenOnServer: context.player() is not a ServerPlayer");
+                    return;
+                }
+
+                RavenNameChosenPacket.handle(payload, serverPlayer);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] Failed to handle RavenNameChosenPacket on server", t);
+            }
+        });
+    }
+
+    // ---------------------------------------------------------------------
+    // KnownPlayers payload type (existing)
     // ---------------------------------------------------------------------
 
     public record KnownPlayersPayload(List<String> names) implements CustomPacketPayload {
@@ -269,6 +354,43 @@ public final class FFNetwork {
 
         @Override
         public @NotNull Type<KnownPlayersPayload> type() {
+            return TYPE;
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // NEW: OpenRavenNameScreenPayload (S2C)
+    // ---------------------------------------------------------------------
+
+    public record OpenRavenNameScreenPayload(int ravenEntityId) implements CustomPacketPayload {
+
+        public static final Type<OpenRavenNameScreenPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "open_raven_name_screen"));
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, OpenRavenNameScreenPayload> STREAM_CODEC =
+                StreamCodec.of(OpenRavenNameScreenPayload::encode, OpenRavenNameScreenPayload::decode);
+
+        private static void encode(@NotNull RegistryFriendlyByteBuf buf,
+                                   @NotNull OpenRavenNameScreenPayload payload) {
+            try {
+                buf.writeVarInt(payload.ravenEntityId());
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] OpenRavenNameScreenPayload encode failed", t);
+            }
+        }
+
+        private static @NotNull OpenRavenNameScreenPayload decode(@NotNull RegistryFriendlyByteBuf buf) {
+            try {
+                int id = buf.readVarInt();
+                return new OpenRavenNameScreenPayload(id);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] OpenRavenNameScreenPayload decode failed", t);
+                return new OpenRavenNameScreenPayload(-1);
+            }
+        }
+
+        @Override
+        public @NotNull Type<OpenRavenNameScreenPayload> type() {
             return TYPE;
         }
     }

@@ -57,6 +57,7 @@ import net.z2six.featheredfriend.entity.raven.modules.Landing;
 import net.z2six.featheredfriend.entity.raven.modules.PlayerAvoidance;
 import net.z2six.featheredfriend.entity.raven.pathing.RavenAStarPathing;
 import net.z2six.featheredfriend.entity.raven.RavenSoundEngine;
+import net.z2six.featheredfriend.entity.raven.modules.TamedRaven;
 
 import java.util.Collections;
 import java.util.List;
@@ -129,6 +130,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     private final Teleportation teleportation = new Teleportation(this);
     private final Landing landing = new Landing(this);
     private final PlayerAvoidance playeravoidance = new PlayerAvoidance(this);
+    private final TamedRaven tamedRaven = new TamedRaven(this); // Tamed raven helper (extra taming/owner utilities)
 
     // --------------------
     // Sound handling
@@ -544,7 +546,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // once per second
             if (this.tickCount % 20 != 0) return;
 
-            RavenAIState st = getAIState();
+            RavenAIState st = getAIStateForDebug();
 
             LOG.info("[RavenEntity] HEARTBEAT({}): ai={} pos={} vel={} noGravity={} onGround={} hColl={} vColl={} landingPhase={} landingLeafPos={} landingTicks={} idlePerchCorner={} idleTicksRemaining={} idleCommitTicks={} idleLeafLossTicks={} idleLockTicks={} roamTicksRemaining={} flyTarget={} flyTtl={} pathGoal={} pendingGoal={} pathPts={} pathIdx={}",
                     where,
@@ -1570,7 +1572,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // PATH RETRY LOOP — HARD GATED BY PLAYER AVOIDANCE
             // ------------------------------------------------------------------
             {
-                RavenAIState st = getAIState();
+                RavenAIState st = getAIStateForDebug();
 
                 boolean retryAllowed =
                         (teleportation.teleportSeqPhase == Teleportation.TeleportSeqPhase.NONE) &&
@@ -1687,7 +1689,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         setAIState(RavenAIState.FOLLOW_OWNER);
                     }
                 } else {
-                    RavenAIState st = getAIState();
+                    RavenAIState st = getAIStateForDebug();
                     if (st == RavenAIState.FOLLOW_OWNER) {
                         setAIState(RavenAIState.IDLE_GROUND);
                         idleTicksRemaining = 0;
@@ -3687,7 +3689,14 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     }
 
     // ----------------------------------------------------------------------
-    // Public static accessors for modules (LureFollowTame, damage logic, etc)
+    // TamedRaven accessors
+    // ----------------------------------------------------------------------
+    public net.z2six.featheredfriend.entity.raven.modules.TamedRaven getTamedRavenModule() {
+        return this.tamedRaven;
+    }
+
+    // ----------------------------------------------------------------------
+    // Public static accessors for sound
     // ----------------------------------------------------------------------
 
     public static SoundEvent getRavenCawingNormalSoundStatic() {
@@ -3720,7 +3729,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 return;
             }
 
-            RavenAIState st = getAIState();
+            RavenAIState st = getAIStateForDebug();
             boolean inRoamFly = (st == RavenAIState.ROAM_FLY);
             boolean inIdlePerch = (st == RavenAIState.IDLE_GROUND);
 
