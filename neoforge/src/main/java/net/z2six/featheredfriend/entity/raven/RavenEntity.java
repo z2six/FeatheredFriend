@@ -3080,19 +3080,30 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // Only spawn feather FX if damage was actually applied and we're still alive.
             if (result && !this.level().isClientSide && this.isAlive()) {
                 try {
-                    Vec3 pos = this.position();
-                    double fxX = pos.x();
-                    double fxY = pos.y() + 0.6D;
-                    double fxZ = pos.z();
+                    if (this.level() instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+                        Vec3 pos = this.position();
+                        double fxX = pos.x();
+                        double fxY = pos.y() + 0.6D;
+                        double fxZ = pos.z();
 
-                    FeatherParticles.spawnFeatherBurst(fxX, fxY, fxZ);
+                        // Let FeatherParticles dictate how many feathers per burst.
+                        int count = net.z2six.featheredfriend.entity.raven.modules.FeatherParticles.getFeathersPerBurst();
 
-                    if (this.tickCount % 40 == 0) {
-                        LOG.info("[RavenEntity] hurt: spawned FeatherParticles burst on hit at pos={}", pos);
+                        serverLevel.sendParticles(
+                                net.z2six.featheredfriend.registry.FFNeoForgeParticles.FEATHER.get(),
+                                fxX, fxY, fxZ,
+                                count,
+                                0.4D, 0.25D, 0.4D, // spread
+                                0.0D               // speed; motion handled client-side
+                        );
+
+                        if (this.tickCount % 40 == 0) {
+                            LOG.info("[RavenEntity] hurt: spawned FEATHER hit FX at pos={} count={}", pos, count);
+                        }
                     }
                 } catch (Throwable tFx) {
                     if (this.tickCount % 80 == 0) {
-                        LOG.warn("[RavenEntity] hurt: FeatherParticles.spawnFeatherBurst failed safely: {}",
+                        LOG.warn("[RavenEntity] hurt: FEATHER hit FX failed safely: {}",
                                 tFx.toString());
                     }
                 }

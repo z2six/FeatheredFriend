@@ -284,9 +284,7 @@ public final class TamedRaven {
     /**
      * Start the despawn FX + fade-out.
      *  - Spawns the Enderpop burst (server-side).
-     *  - Sends a single FEATHER particle "burst anchor"; the client-side
-     *    FEATHER provider (via FeatherParticles) will spawn
-     *    FEATHERS_PER_BURST feather quads at this position and fade them out.
+     *  - Spawns FEATHER particles (server-side); client renders them via FeatherParticles.
      *  - Sets fade alpha to fully visible (255).
      *  - Arms the short fade sequence; actual fade/despawn is driven by tickServer().
      */
@@ -319,19 +317,18 @@ public final class TamedRaven {
                 tp.setTeleportFadeAlpha(255, raven);
             }
 
-            // FEATHER burst: send a single FEATHER "anchor" particle.
-            // The client-side provider (FFClientParticles) calls FeatherParticles.spawnFeatherBurst(...)
-            // which in turn spawns FEATHERS_PER_BURST individual feathers and fades them out.
+            // FEATHER burst: count is controlled centrally in FeatherParticles.
             try {
+                int count = FeatherParticles.getFeathersPerBurst();
                 serverLevel.sendParticles(
                         FFNeoForgeParticles.FEATHER.get(),
                         x, y, z,
-                        1,          // ONE burst anchor -> FEATHERS_PER_BURST actual feathers
-                        0.0D, 0.0D, 0.0D, // no spread; FeatherParticles handles positions
-                        0.0D
+                        count,
+                        0.4D, 0.25D, 0.4D, // spread
+                        0.0D               // speed; motion variance handled by vanilla + provider
                 );
                 if (raven.tickCount % 40 == 0) {
-                    LOG.info("[TamedRaven] beginDespawnWithFx: spawned FEATHER burst marker at {}", pos);
+                    LOG.info("[TamedRaven] beginDespawnWithFx: spawned FEATHER particles at {} count={}", pos, count);
                 }
             } catch (Throwable tFeathers) {
                 if (raven.tickCount % 80 == 0) {
