@@ -58,6 +58,7 @@ import net.z2six.featheredfriend.entity.raven.modules.PlayerAvoidance;
 import net.z2six.featheredfriend.entity.raven.pathing.RavenAStarPathing;
 import net.z2six.featheredfriend.entity.raven.RavenSoundEngine;
 import net.z2six.featheredfriend.entity.raven.modules.TamedRaven;
+import net.z2six.featheredfriend.entity.raven.modules.FeatherParticles;
 
 import java.util.Collections;
 import java.util.List;
@@ -1544,6 +1545,21 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 // While teleporting, we do NOTHING else except FX.
                 teleportation.tickTeleportFxServer(this);
                 return;
+            }
+
+
+            // ------------------------------------------------------------------
+            // TAMED RAVEN DESPAWN FADE (server only)
+            // ------------------------------------------------------------------
+            try {
+                net.z2six.featheredfriend.entity.raven.modules.TamedRaven tamed = this.getTamedRavenModule();
+                if (tamed != null) {
+                    tamed.tickServer();
+                }
+            } catch (Throwable t) {
+                if (this.tickCount % 80 == 0) {
+                    LOG.error("[RavenEntity] aiStep: TamedRaven.tickServer failed safely", t);
+                }
             }
 
             // ------------------------------------------------------------------
@@ -3041,7 +3057,10 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             if (dodge) {
                 // Dodged: no damage applied.
                 if (this.tickCount % 20 == 0) {
-                    LOG.info("[RavenEntity] hurt: DODGED damage. amount={} src={} pos={}", amount, (source == null ? "null" : source.toString()), this.position());
+                    LOG.info("[RavenEntity] hurt: DODGED damage. amount={} src={} pos={}",
+                            amount,
+                            (source == null ? "null" : source.toString()),
+                            this.position());
                 }
                 return false;
             }
@@ -3051,7 +3070,32 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             if (this.tickCount % 20 == 0) {
                 LOG.info("[RavenEntity] hurt: took damage. applied={} amount={} src={} hpNow={} pos={}",
-                        result, amount, (source == null ? "null" : source.toString()), this.getHealth(), this.position());
+                        result,
+                        amount,
+                        (source == null ? "null" : source.toString()),
+                        this.getHealth(),
+                        this.position());
+            }
+
+            // Only spawn feather FX if damage was actually applied and we're still alive.
+            if (result && !this.level().isClientSide && this.isAlive()) {
+                try {
+                    Vec3 pos = this.position();
+                    double fxX = pos.x();
+                    double fxY = pos.y() + 0.6D;
+                    double fxZ = pos.z();
+
+                    FeatherParticles.spawnFeatherBurst(fxX, fxY, fxZ);
+
+                    if (this.tickCount % 40 == 0) {
+                        LOG.info("[RavenEntity] hurt: spawned FeatherParticles burst on hit at pos={}", pos);
+                    }
+                } catch (Throwable tFx) {
+                    if (this.tickCount % 80 == 0) {
+                        LOG.warn("[RavenEntity] hurt: FeatherParticles.spawnFeatherBurst failed safely: {}",
+                                tFx.toString());
+                    }
+                }
             }
 
             return result;
@@ -3073,6 +3117,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
         }
     }
+
 
     /**
      * Returns the "effective" AI state for debug/logging purposes.

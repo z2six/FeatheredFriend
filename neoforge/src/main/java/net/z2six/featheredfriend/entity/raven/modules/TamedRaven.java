@@ -10,6 +10,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
+import net.z2six.featheredfriend.registry.FFNeoForgeParticles;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -30,6 +31,12 @@ public final class TamedRaven {
     private static final Logger LOG = LogUtils.getLogger();
 
     private static final int MAX_NAME_CHARS = 26;
+
+    /**
+     * How long the fade-out lasts once we start despawn FX.
+     *  - 10 ticks = 0.5s at 20 TPS.
+     *  - Uses same alpha range (0..255) as Teleportation logic.
+     */
     private static final int DESPAWN_FADE_TICKS = 10;
 
     private final RavenEntity raven;
@@ -41,8 +48,7 @@ public final class TamedRaven {
     @Nullable
     private UUID pendingOwnerUuid = null;
 
-    // Despawn-with-FX state (server only). Kept for future use / safety,
-    // but despawn now happens immediately in beginDespawnWithFx.
+    // Despawn-with-FX state (server only)
     private boolean despawnWithFxActive = false;
     private int despawnWithFxTicks = 0;
 
@@ -67,7 +73,8 @@ public final class TamedRaven {
 
             if (!(player instanceof ServerPlayer serverPlayer)) {
                 if (isClientSide && raven.tickCount % 40 == 0) {
-                    LOG.debug("[TamedRaven] onTamingFullyPaid: non-ServerPlayer on client; ignoring. player={}", player.getName().getString());
+                    LOG.debug("[TamedRaven] onTamingFullyPaid: non-ServerPlayer on client; ignoring. player={}",
+                            player.getName().getString());
                 }
                 return;
             }
@@ -134,7 +141,7 @@ public final class TamedRaven {
             // Store bound raven data tied to player (for later summoning).
             storeTamedRavenForPlayer(player, name);
 
-            // Play FX + despawn.
+            // Play FX + fade-out, then despawn via tickServer().
             beginDespawnWithFx(serverLevel, player, name);
 
         } catch (Throwable t) {
@@ -143,9 +150,13 @@ public final class TamedRaven {
     }
 
     /**
-     * Server-side tick: originally meant to drive fade-out over multiple ticks.
-     * Left in place for future use / safety, but despawn is now handled
-     * immediately in beginDespawnWithFx to avoid wiring issues.
+     * Server-side tick: drives the "fade out and then despawn" sequence
+     * after naming is completed.
+     *
+     * Must be called from RavenEntity's server tick/AI step:
+     *
+     *   TamedRaven tamed = this.getTamedRavenModule();
+     *   if (tamed != null) tamed.tickServer();
      */
     public void tickServer() {
         try {
@@ -270,6 +281,15 @@ public final class TamedRaven {
         }
     }
 
+    /**
+     * Start the despawn FX + fade-out.
+     *  - Spawns the Enderpop burst (server-side).
+     *  - Sends a single FEATHER particle "burst anchor"; the client-side
+     *    FEATHER provider (via FeatherParticles) will spawn
+     *    FEATHERS_PER_BURST feather quads at this position and fade them out.
+     *  - Sets fade alpha to fully visible (255).
+     *  - Arms the short fade sequence; actual fade/despawn is driven by tickServer().
+     */
     private void beginDespawnWithFx(ServerLevel serverLevel, ServerPlayer owner, String name) {
         try {
             if (serverLevel == null) return;
@@ -285,6 +305,7 @@ public final class TamedRaven {
                     ^ owner.getUUID().getMostSignificantBits()
                     ^ name.hashCode();
 
+            // Server-side Enderpop burst (already visible to nearby players)
             Teleportation tp = raven.getTeleportation();
             if (tp != null) {
                 tp.spawnEnderpopBurst(
@@ -294,24 +315,36 @@ public final class TamedRaven {
                         "tamed_raven_store",
                         raven
                 );
-                // Set to fully visible just before "blink out" (renderer-specific)
+                // Start fully visible; tickServer() will drive 255 → 0.
                 tp.setTeleportFadeAlpha(255, raven);
             }
 
-            // Mark active (for future fade-tick use) but also immediately discard
+            // FEATHER burst: send a single FEATHER "anchor" particle.
+            // The client-side provider (FFClientParticles) calls FeatherParticles.spawnFeatherBurst(...)
+            // which in turn spawns FEATHERS_PER_BURST individual feathers and fades them out.
+            try {
+                serverLevel.sendParticles(
+                        FFNeoForgeParticles.FEATHER.get(),
+                        x, y, z,
+                        1,          // ONE burst anchor -> FEATHERS_PER_BURST actual feathers
+                        0.0D, 0.0D, 0.0D, // no spread; FeatherParticles handles positions
+                        0.0D
+                );
+                if (raven.tickCount % 40 == 0) {
+                    LOG.info("[TamedRaven] beginDespawnWithFx: spawned FEATHER burst marker at {}", pos);
+                }
+            } catch (Throwable tFeathers) {
+                if (raven.tickCount % 80 == 0) {
+                    LOG.warn("[TamedRaven] beginDespawnWithFx: FEATHER particle spawn failed safely: {}",
+                            tFeathers.toString());
+                }
+            }
+
             this.despawnWithFxActive = true;
             this.despawnWithFxTicks = 0;
 
             LOG.info("[TamedRaven] beginDespawnWithFx: owner={} name='{}' id={} pos={}",
                     owner.getGameProfile().getName(), name, raven.getId(), pos);
-
-            // Immediate despawn to guarantee the raven disappears even if tickServer() is never called.
-            try {
-                raven.discard();
-            } catch (Throwable t) {
-                LOG.error("[TamedRaven] beginDespawnWithFx: immediate discard failed", t);
-                this.despawnWithFxActive = false;
-            }
 
         } catch (Throwable t) {
             LOG.error("[TamedRaven] beginDespawnWithFx failed safely", t);

@@ -25,6 +25,9 @@ import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.entity.raven.RavenSoundEngine;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
+import net.minecraft.server.level.ServerPlayer;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -149,6 +152,55 @@ public class LureFollowTame {
     // ---------------------------------------------------------------------------------------------
 
     /**
+     * Returns true if this player already has a stored/tamed raven
+     * according to the TamedRaven player-persistent NBT.
+     *
+     * Structure (from TamedRaven.storeTamedRavenForPlayer):
+     *
+     *   player.getPersistentData() -> <root> {
+     *       <Constants.MOD_ID>: {
+     *           TamedRaven: {
+     *               HasTamedRaven: 1b
+     *               ...
+     *           }
+     *       }
+     *   }
+     */
+    private boolean playerHasTamedRaven(Player player) {
+        try {
+            if (!(player instanceof ServerPlayer serverPlayer)) {
+                return false;
+            }
+
+            CompoundTag root = serverPlayer.getPersistentData();
+            if (root == null) {
+                return false;
+            }
+
+            CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
+            if (!ffTag.contains("TamedRaven", Tag.TAG_COMPOUND)) {
+                return false;
+            }
+
+            CompoundTag ravenTag = ffTag.getCompound("TamedRaven");
+            boolean has = ravenTag.getBoolean("HasTamedRaven");
+
+            if (has && raven.tickCount % 200 == 0) {
+                LOG.debug("[RavenEntity] playerHasTamedRaven: player={} hasBoundRaven=true",
+                        serverPlayer.getName().getString());
+            }
+
+            return has;
+
+        } catch (Throwable t) {
+            if (raven != null && raven.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] playerHasTamedRaven failed safely: {}", t.toString());
+            }
+            return false;
+        }
+    }
+
+    /**
      * Handle RMB interaction for taming-related actions (feeding golden nuggets).
      *
      * This is called from RavenEntity.mobInteract(...) on both client and server.
@@ -179,6 +231,16 @@ public class LureFollowTame {
                     hand,
                     itemCount,
                     itemKey);
+
+            // If the player already has a stored/tamed raven, completely disable
+            // the taming interaction (no lure-based taming for multiple ravens).
+            if (!clientSide && playerHasTamedRaven(player)) {
+                if (raven.tickCount % 80 == 0) {
+                    LOG.info("[RavenEntity] handleTamingInteract: player={} already has a tamed raven; taming disabled.",
+                            player.getName().getString());
+                }
+                return InteractionResult.PASS;
+            }
 
             // CLIENT: just play the hand animation when the server accepts it.
             if (clientSide) {
@@ -235,6 +297,16 @@ public class LureFollowTame {
             if (raven.level() == null) return false;
             if (raven.level().isClientSide) return false; // server-only
             if (!raven.isAlive()) return false;
+
+            // If the player already has a stored/tamed raven, do NOT allow feeding
+            // nuggets for a new tame.
+            if (playerHasTamedRaven(player)) {
+                if (raven.tickCount % 80 == 0) {
+                    LOG.info("[RavenEntity] tryFeedLureTamingNugget: player={} already has a tamed raven; rejecting feed.",
+                            player.getName().getString());
+                }
+                return false;
+            }
 
             // Grab the *actual* held stack for this hand.
             ItemStack stack = player.getItemInHand(hand);
@@ -1060,6 +1132,16 @@ public class LureFollowTame {
                 // Player is not a valid lure source -> drop lure if we had one.
                 if (lureFollowPlayerUuid != null || lureFollowTicks > 0 || followOverrideActive) {
                     clearLureFollowState("requestLureFollowPlayer: player invalid");
+                }
+                return;
+            }
+
+            // If this player already has a stored/tamed raven, completely disable lure-follow
+            // for them. They are only allowed a single raven companion.
+            if (playerHasTamedRaven(player)) {
+                if (raven.tickCount % 80 == 0) {
+                    LOG.debug("[RavenEntity] requestLureFollowPlayer: player={} already has a tamed raven; ignoring lure.",
+                            player.getName().getString());
                 }
                 return;
             }

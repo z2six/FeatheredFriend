@@ -6,9 +6,11 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.neoforge.common.NeoForge;
 import net.z2six.featheredfriend.client.FFNeoForgeClient;
 import net.z2six.featheredfriend.client.particle.FFClientParticles;
 import net.z2six.featheredfriend.client.raven.RavenClientEvents;
+import net.z2six.featheredfriend.command.FeatheredFriendCommands;
 import net.z2six.featheredfriend.config.FFCalendarConfig;
 import net.z2six.featheredfriend.network.FFNetwork;
 import net.z2six.featheredfriend.registry.FFCreativeTabsNeoForge;
@@ -30,6 +32,7 @@ import org.slf4j.Logger;
  *  - Register payload handlers via mod event bus listener (NeoForge 1.21.1 safe).
  *  - Register entity types + attributes (Raven).
  *  - Register Raven natural spawning logic.
+ *  - Register admin/debug commands (via NeoForge EVENT_BUS).
  */
 @Mod(Constants.MOD_ID)
 public class FeatheredFriend {
@@ -119,6 +122,16 @@ public class FeatheredFriend {
             LOG.info("[FeatheredFriend] Hooked RavenSpawnEvents (natural spawning)");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to hook RavenSpawnEvents", t);
+        }
+
+        // ---------------------------------------------------------------------
+        // Commands: register admin/debug commands via helper (global NeoForge bus).
+        // ---------------------------------------------------------------------
+        try {
+            FeatheredFriendCommands.register();
+            LOG.info("[FeatheredFriend] Registered FeatheredFriendCommands");
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriend] Failed to register FeatheredFriendCommands", t);
         }
 
         LOG.info("[FeatheredFriend] NeoForge initialization complete");

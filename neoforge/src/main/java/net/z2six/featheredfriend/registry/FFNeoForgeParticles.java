@@ -37,7 +37,20 @@ public final class FFNeoForgeParticles {
                 }
             });
 
-    private FFNeoForgeParticles() {}
+    public static final DeferredHolder<ParticleType<?>, SimpleParticleType> FEATHER =
+            PARTICLE_TYPES.register("feather", () -> {
+                try {
+                    // true = always show (ignore distance culling)
+                    return new SimpleParticleType(true);
+                } catch (Throwable t) {
+                    LOG.error("[FFNeoForgeParticles] Failed creating SimpleParticleType(feather); falling back", t);
+                    return new SimpleParticleType(true);
+                }
+            });
+
+    private FFNeoForgeParticles() {
+        // no instances
+    }
 
     public static void register(IEventBus modEventBus) {
         LOG.info("[FFNeoForgeParticles] Registering particle types");
