@@ -31,6 +31,8 @@ import net.z2six.featheredfriend.registry.FFNeoForgeEntities;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -724,6 +726,98 @@ public final class TamedRavenScrollWatcher {
         } catch (Throwable t) {
             LOG.warn("[TamedRavenScrollWatcher] readTamedRavenInfo failed safely: {}", t.toString());
             return null;
+        }
+    }
+
+    /**
+     * Handles the specific case:
+     *  - Player RMBs a tamed RavenEntity
+     *  - with a Sealed Scroll in hand
+     *  - and the player is the raven's owner.
+     *
+     * Called from RavenEntity.mobInteract(...) on BOTH CLIENT and SERVER.
+     *
+     * Returns:
+     *   - PASS    -> scroll interaction not handled here; let other logic run.
+     *   - SUCCESS / CONSUME / sidedSuccess(...) -> interaction consumed by scroll logic.
+     */
+    public static InteractionResult handleSealedScrollInteract(@NotNull RavenEntity raven,
+                                                               @NotNull Player player,
+                                                               @NotNull InteractionHand hand) {
+        try {
+            Level level = raven.level();
+            if (level == null) {
+                return InteractionResult.PASS;
+            }
+
+            boolean clientSide = level.isClientSide;
+            ItemStack stack = player.getItemInHand(hand);
+
+            // Only care about our sealed scroll item
+            if (stack == null || stack.isEmpty()) {
+                return InteractionResult.PASS;
+            }
+
+            ResourceLocation key = BuiltInRegistries.ITEM.getKey(stack.getItem());
+            if (key == null || !SEALED_SCROLL_ID.equals(key)) {
+                return InteractionResult.PASS;
+            }
+
+            // Only when this raven is tamed and owned by the player using the scroll
+            boolean isOwner = false;
+            try {
+                isOwner = raven.isTame() && raven.isOwnedBy(player);
+            } catch (Throwable t) {
+                LOG.warn("[TamedRavenScrollWatcher] handleSealedScrollInteract: owner check failed safely for raven id={}: {}",
+                        raven.getId(), t.toString());
+            }
+
+            if (!isOwner) {
+                // Not the owner's raven -> do nothing special, let other logic run.
+                LOG.info(
+                        "[TamedRavenScrollWatcher] handleSealedScrollInteract: player='{}' used scroll on raven id={} but is not owner (ignoring).",
+                        safePlayerName(player),
+                        raven.getId()
+                );
+                return InteractionResult.PASS;
+            }
+
+            // At this point we KNOW:
+            //  - The item is a sealed scroll
+            //  - The raven is tamed
+            //  - The player is the raven's owner
+
+            if (clientSide) {
+                // CLIENT: just make it look successful, real logic is server-side.
+                LOG.info(
+                        "[TamedRavenScrollWatcher] handleSealedScrollInteract: CLIENT accepted sealed scroll use " +
+                                "(player='{}', raven id={}, hand={}, stack={})",
+                        safePlayerName(player),
+                        raven.getId(),
+                        hand,
+                        stack
+                );
+                return InteractionResult.sidedSuccess(true);
+            }
+
+            // SERVER: this is where we will later implement "give the scroll to the raven".
+            // For now we just log and claim the interaction so nothing else handles it.
+            LOG.info(
+                    "[TamedRavenScrollWatcher] handleSealedScrollInteract: SERVER accepted sealed scroll use " +
+                            "(player='{}', raven id={}, hand={}, stack={})",
+                    safePlayerName(player),
+                    raven.getId(),
+                    hand,
+                    stack
+            );
+
+            // NOTE: We do NOT modify the item yet. We only claim the interaction.
+            // When you’re ready to actually "give" the scroll to the raven, the logic goes here.
+            return InteractionResult.CONSUME;
+
+        } catch (Throwable t) {
+            LOG.error("[TamedRavenScrollWatcher] handleSealedScrollInteract failed safely", t);
+            return InteractionResult.PASS;
         }
     }
 

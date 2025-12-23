@@ -37,7 +37,6 @@ import software.bernie.geckolib.animation.AnimationState;
 import software.bernie.geckolib.animation.PlayState;
 import software.bernie.geckolib.animation.RawAnimation;
 import software.bernie.geckolib.util.GeckoLibUtil;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
@@ -53,6 +52,7 @@ import net.minecraft.world.phys.AABB;
 
 // Modules
 import net.z2six.featheredfriend.entity.raven.pathing.RavenAStarPathing;
+import net.z2six.featheredfriend.world.TamedRavenScrollWatcher;
 
 import java.util.Collections;
 import java.util.List;
@@ -2434,6 +2434,31 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             ItemStack stack = player.getItemInHand(hand);
 
             // ----------------------------------------------------------------------
+            // FIRST: sealed scroll -> delegate to TamedRavenScrollWatcher
+            // Only consumes the interaction when:
+            //   - item is the Sealed Scroll
+            //   - this raven is tamed and owned by the player
+            //   - handler decides to accept it (CLIENT + SERVER)
+            // ----------------------------------------------------------------------
+            try {
+                InteractionResult scrollResult =
+                        TamedRavenScrollWatcher.handleSealedScrollInteract(this, player, hand);
+
+                if (scrollResult.consumesAction()) {
+                    LOG.info(
+                            "[RavenEntity] mobInteract: sealed-scroll handler consumed interaction: result={} side={}",
+                            scrollResult,
+                            this.level() == null
+                                    ? "null"
+                                    : (this.level().isClientSide ? "CLIENT" : "SERVER")
+                    );
+                    return scrollResult;
+                }
+            } catch (Throwable t) {
+                LOG.warn("[RavenEntity] mobInteract scroll handler failed safely: {}", t.toString());
+            }
+
+            // ----------------------------------------------------------------------
             // Lure/taming interact hook: feed golden nuggets while lure-following.
             // All real logic lives in LureFollowTame; this is just a thin bridge.
             // ----------------------------------------------------------------------
@@ -2461,7 +2486,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
 
             // ----------------------------------------------------------------------
-            // If LureFollowTame didn’t care, fall back to vanilla / base behavior.
+            // If neither scroll logic nor LureFollowTame cared, fall back to vanilla.
             // ----------------------------------------------------------------------
             InteractionResult base = super.mobInteract(player, hand);
             LOG.info("[RavenEntity] mobInteract: super.mobInteract result={} side={}",
