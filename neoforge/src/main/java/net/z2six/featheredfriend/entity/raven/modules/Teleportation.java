@@ -19,6 +19,9 @@ import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import java.util.List;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.sounds.SoundEvents;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -567,6 +570,33 @@ public final class Teleportation {
                     TELEPORT_FX_SPREAD_XZ, TELEPORT_FX_SPREAD_Y, TELEPORT_FX_SPREAD_XZ,
                     TELEPORT_FX_SPEED
             );
+
+            try {
+                BlockPos soundPos = BlockPos.containing(x, y, z);
+                Vec3 soundVec = new Vec3(x, y, z);
+
+                // Play vanilla enderman teleport overlay
+                RavenSoundEngine.playAt(
+                        level,
+                        SoundEvents.ENDERMAN_TELEPORT,
+                        SoundSource.NEUTRAL,
+                        soundVec,
+                        0.25F,
+                        1.0F
+                );
+
+                if (ravenEntity.tickCount % 40 == 0) {
+                    LOG.debug("[Teleportation] spawnEnderpopBurst sound: id={} pos={} soundPos={}",
+                            ravenEntity.getId(),
+                            soundVec,
+                            soundPos);
+                }
+
+            } catch (Throwable soundErr) {
+                if (ravenEntity.tickCount % 80 == 0) {
+                    LOG.warn("[Teleportation] spawnEnderpopBurst: sound playback failed safely: {}", soundErr.toString());
+                }
+            }
 
             if (ravenEntity.tickCount % 20 == 0) {
                 LOG.debug("[Teleportation] EnderpopBurst: id={} why={} count={} spread=({}, {}, {}) speed={} pos=({}, {}, {}) seed={}",

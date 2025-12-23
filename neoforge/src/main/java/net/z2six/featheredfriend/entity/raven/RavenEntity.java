@@ -26,6 +26,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.z2six.featheredfriend.entity.raven.modules.*;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import software.bernie.geckolib.animatable.GeoEntity;
@@ -51,14 +52,7 @@ import net.minecraft.network.chat.TextColor;
 import net.minecraft.world.phys.AABB;
 
 // Modules
-import net.z2six.featheredfriend.entity.raven.modules.LureFollowTame;
-import net.z2six.featheredfriend.entity.raven.modules.Teleportation;
-import net.z2six.featheredfriend.entity.raven.modules.Landing;
-import net.z2six.featheredfriend.entity.raven.modules.PlayerAvoidance;
 import net.z2six.featheredfriend.entity.raven.pathing.RavenAStarPathing;
-import net.z2six.featheredfriend.entity.raven.RavenSoundEngine;
-import net.z2six.featheredfriend.entity.raven.modules.TamedRaven;
-import net.z2six.featheredfriend.entity.raven.modules.FeatherParticles;
 
 import java.util.Collections;
 import java.util.List;
@@ -126,7 +120,6 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     // --------------------
     // Modules
     // --------------------
-    private final RavenSoundEngine soundEngine = new RavenSoundEngine(this);
     private final LureFollowTame lureFollowTame = new LureFollowTame(this); // Not part of sound but hey why not put it here
     private final Teleportation teleportation = new Teleportation(this);
     private final Landing landing = new Landing(this);
@@ -150,6 +143,8 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             ResourceLocation.fromNamespaceAndPath("featheredfriend", "raven.caw_whistle");
     private static final ResourceLocation SOUND_RAVEN_AIR_WOOSH_ID =
             ResourceLocation.fromNamespaceAndPath("featheredfriend", "raven.air_woosh");
+    private static final ResourceLocation SOUND_RAVEN_TELEPORT_ID =
+            ResourceLocation.fromNamespaceAndPath("featheredfriend", "raven.teleport");
 
     // Cached SoundEvents (lazy-resolved from the IDs above)
     private static SoundEvent cachedRavenCawingNormal = null;
@@ -157,6 +152,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     private static SoundEvent cachedRavenCawDmg = null;
     private static SoundEvent cachedRavenCawWhistle = null;
     private static SoundEvent cachedRavenAirWoosh = null;
+    private static SoundEvent cachedRavenTeleport = null;
 
     // Ambient caw cooldown (server ticks). 0 => may caw this tick if conditions match.
     private int ambientCawCooldownTicks = 0;
@@ -603,6 +599,18 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     }
 
     private Vec3 clampTargetToHomeBounds(Vec3 target) {
+        // NEW: During FOLLOW_OWNER, do NOT clamp to the home radius/Y band.
+        try {
+            if (getAIState() == RavenAIState.FOLLOW_OWNER) {
+                return target;
+            }
+        } catch (Throwable t) {
+            // If something goes wrong, fall through to the old behavior rather than crashing.
+            if (this.tickCount % 200 == 0) {
+                LOG.warn("[RavenEntity] clampTargetToHomeBounds: FOLLOW_OWNER guard failed safely: {}", t.toString());
+            }
+        }
+
         double clampedY = clampYToHomeBounds((int) Math.round(target.y));
 
         double hx = homePos.getX() + 0.5D;
@@ -1652,7 +1660,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // ------------------------------------------------------------------
             // OUT-OF-HOME-BOUNDS — DISABLED DURING PLAYER AVOIDANCE
             // ------------------------------------------------------------------
-            if (playerAvoidanceOverrideTicks <= 0 && isOutOfHomeBounds(this.position())) {
+            if (playerAvoidanceOverrideTicks <= 0
+                    && getAIState() != RavenAIState.FOLLOW_OWNER
+                    && isOutOfHomeBounds(this.position())) {
                 if (this.tickCount % 40 == 0) {
                     LOG.debug("[RavenEntity] Out of bounds, commanding return to home bounds");
                 }
@@ -1697,13 +1707,10 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             if (playerAvoidanceOverrideTicks <= 0) {
                 if (canFollow) {
-                    if (isOutOfHomeBounds(owner.position())) {
-                        if (lureFollowTame != null) {
-                            lureFollowTame.triggerFollowCooldownAndReturn();
-                        }
-                    } else {
-                        setAIState(RavenAIState.FOLLOW_OWNER);
-                    }
+                    // NEW: Do NOT gate follow by home bounds anymore.
+                    // Home bounds are still respected for idle/roam/landing,
+                    // but FOLLOW_OWNER is allowed to go anywhere with the player.
+                    setAIState(RavenAIState.FOLLOW_OWNER);
                 } else {
                     RavenAIState st = getAIStateForDebug();
                     if (st == RavenAIState.FOLLOW_OWNER) {
@@ -3046,10 +3053,10 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // Our combat blink logic (server authoritative).
             boolean dodge = false;
             try {
-                dodge = RavenDamageDodgeHandler.handleHurt(this, source, amount);
+                dodge = net.z2six.featheredfriend.entity.raven.modules.DamageDodge.handleHurt(this, source, amount);
             } catch (Throwable t) {
                 if (this.tickCount % 80 == 0) {
-                    LOG.warn("[RavenEntity] hurt: RavenDamageDodgeHandler failed safely: {}", t.toString());
+                    LOG.warn("[RavenEntity] hurt: DamageDodge failed safely: {}", t.toString());
                 }
                 dodge = false;
             }
@@ -3699,84 +3706,11 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     // Sound Engine
     // --------------------
 
-    private static SoundEvent resolveRavenSound(ResourceLocation id) {
-        try {
-            if (id == null) return null;
-            // BuiltInRegistries.SOUND_EVENT is populated from sounds.json; this gives us the SoundEvent by ID.
-            return BuiltInRegistries.SOUND_EVENT.get(id);
-        } catch (Throwable t) {
-            return null;
-        }
-    }
-
-    private static SoundEvent getRavenCawingNormalSound() {
-        if (cachedRavenCawingNormal == null) {
-            cachedRavenCawingNormal = resolveRavenSound(SOUND_RAVEN_CAWING_NORMAL_ID);
-        }
-        return cachedRavenCawingNormal;
-    }
-
-    private static SoundEvent getRavenCawAgreeSoundInternal() {
-        if (cachedRavenCawAgree == null) {
-            cachedRavenCawAgree = resolveRavenSound(SOUND_RAVEN_CAW_AGREE_ID);
-        }
-        return cachedRavenCawAgree;
-    }
-
-    private static SoundEvent getRavenCawDmgSoundInternal() {
-        if (cachedRavenCawDmg == null) {
-            cachedRavenCawDmg = resolveRavenSound(SOUND_RAVEN_CAW_DMG_ID);
-        }
-        return cachedRavenCawDmg;
-    }
-
-    private static SoundEvent getRavenCawWhistleSoundInternal() {
-        if (cachedRavenCawWhistle == null) {
-            cachedRavenCawWhistle = resolveRavenSound(SOUND_RAVEN_CAW_WHISTLE_ID);
-        }
-        return cachedRavenCawWhistle;
-    }
-
-    private static SoundEvent getRavenAirWooshSoundInternal() {
-        if (cachedRavenAirWoosh == null) {
-            cachedRavenAirWoosh = resolveRavenSound(SOUND_RAVEN_AIR_WOOSH_ID);
-        }
-        return cachedRavenAirWoosh;
-    }
-
-    // ----------------------------------------------------------------------
-    // TamedRaven accessors
-    // ----------------------------------------------------------------------
-    public net.z2six.featheredfriend.entity.raven.modules.TamedRaven getTamedRavenModule() {
-        return this.tamedRaven;
-    }
-
-    // ----------------------------------------------------------------------
-    // Public static accessors for sound
-    // ----------------------------------------------------------------------
-
-    public static SoundEvent getRavenCawingNormalSoundStatic() {
-        return getRavenCawingNormalSound();
-    }
-
-    public static SoundEvent getRavenCawAgreeSoundStatic() {
-        return getRavenCawAgreeSoundInternal();
-    }
-
-    public static SoundEvent getRavenCawDmgSoundStatic() {
-        return getRavenCawDmgSoundInternal();
-    }
-
-    public static SoundEvent getRavenCawWhistleSoundStatic() {
-        return getRavenCawWhistleSoundInternal();
-    }
-
-    public static SoundEvent getRavenAirWooshSoundStatic() {
-        return getRavenAirWooshSoundInternal();
-    }
-
     private void tickAmbientCawing() {
         try {
+            if (this.level() == null) {
+                return;
+            }
             if (this.level().isClientSide) {
                 // Server-side only; client will hear broadcast/local playback.
                 return;
@@ -3803,7 +3737,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 return;
             }
 
-            // Cooldown expired: play an ambient caw and schedule the next one.
+            // Cooldown expired: schedule the next one.
             // Target: ~1–3 times per minute per raven.
             //
             //  - Min delay: 400 ticks  = 20s
@@ -3823,25 +3757,28 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
             ambientCawCooldownTicks = rolled;
 
-            SoundEvent caw = getRavenCawingNormalSound();
-            if (caw == null) {
+            if (SOUND_RAVEN_CAWING_NORMAL_ID == null) {
                 if (this.tickCount % 200 == 0) {
-                    LOG.warn("[RavenEntity] tickAmbientCawing: raven.cawing_normal SoundEvent not resolved (id={})",
-                            SOUND_RAVEN_CAWING_NORMAL_ID);
+                    LOG.warn("[RavenEntity] tickAmbientCawing: SOUND_RAVEN_CAWING_NORMAL_ID is null");
                 }
                 return;
             }
 
-            // Slight pitch variation so it doesn't sound like an exact loop.
+            String soundId = SOUND_RAVEN_CAWING_NORMAL_ID.toString();
             float volume = 0.9F;
             float pitchMin = 0.95F;
             float pitchMax = 1.05F;
 
-            if (soundEngine != null) {
-                soundEngine.playWithRandomPitch(caw, SoundSource.NEUTRAL, volume, pitchMin, pitchMax);
-            } else if (this.tickCount % 200 == 0) {
-                LOG.warn("[RavenEntity] tickAmbientCawing: soundEngine is null; cannot play ambient caw");
-            }
+            RavenSoundEngine.playAtWithRandomPitch(
+                    this.level(),
+                    soundId,
+                    SoundSource.NEUTRAL,
+                    this.position(),
+                    volume,
+                    pitchMin,
+                    pitchMax,
+                    rnd
+            );
 
             if (this.tickCount % 200 == 0) {
                 LOG.debug("[RavenEntity] tickAmbientCawing: played ambient caw st={} nextDelay={}t pos={}",
@@ -3851,6 +3788,50 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         } catch (Throwable t) {
             if (this.tickCount % 200 == 0) {
                 LOG.warn("[RavenEntity] tickAmbientCawing failed safely: {}", t.toString());
+            }
+        }
+    }
+
+    /**
+     * Play the raven "arrive" sound (raven.caw_whistle) safely.
+     * Call this exactly once when the raven arrives at / reaches its owner.
+     */
+    public void playRavenArriveSound() {
+        try {
+            if (this.level() == null) return;
+            if (!this.isAlive()) return;
+
+            if (SOUND_RAVEN_CAW_WHISTLE_ID == null) {
+                if (this.tickCount % 200 == 0) {
+                    LOG.warn("[RavenEntity] playRavenArriveSound: SOUND_RAVEN_CAW_WHISTLE_ID is null");
+                }
+                return;
+            }
+
+            String soundId = SOUND_RAVEN_CAW_WHISTLE_ID.toString();
+
+            float volume = 1.0F;
+            float pitchMin = 0.98F;
+            float pitchMax = 1.02F;
+
+            RavenSoundEngine.playAtWithRandomPitch(
+                    this.level(),
+                    soundId,
+                    SoundSource.NEUTRAL,
+                    this.position(),
+                    volume,
+                    pitchMin,
+                    pitchMax,
+                    this.getRandom()
+            );
+
+            if (this.tickCount % 200 == 0) {
+                LOG.debug("[RavenEntity] playRavenArriveSound: played arrive sound at pos={}", this.position());
+            }
+
+        } catch (Throwable t) {
+            if (this.tickCount % 200 == 0) {
+                LOG.warn("[RavenEntity] playRavenArriveSound failed safely: {}", t.toString());
             }
         }
     }
@@ -3891,6 +3872,13 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
             return PlayState.CONTINUE;
         }
+    }
+
+    // ----------------------------------------------------------------------
+    // TamedRaven accessors
+    // ----------------------------------------------------------------------
+    public net.z2six.featheredfriend.entity.raven.modules.TamedRaven getTamedRavenModule() {
+        return this.tamedRaven;
     }
 
     // ---------------------------------------------------------------------

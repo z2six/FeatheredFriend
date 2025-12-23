@@ -18,11 +18,8 @@ import org.slf4j.Logger;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.z2six.featheredfriend.Constants;
-import net.z2six.featheredfriend.entity.raven.RavenSoundEngine;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.nbt.CompoundTag;
@@ -46,20 +43,15 @@ public class LureFollowTame {
     // VARIABLES -----------------------------------------------------------------------------------
     // ---------------------------------------------------------------------------------------------
 
-    // Dedicated sound helper for lure/taming sequences.
-    // This is independent of RavenEntity's own soundEngine but uses the same world APIs.
-    private final RavenSoundEngine soundEngine;
-
     // ---------------------------------------------------------------------------------------------
     // Taming "agree caw" sequence (plays raven.caw_agree N times, where N = tame cost)
     // ---------------------------------------------------------------------------------------------
 
-    // SoundEvent ID from sounds.json: "raven.caw_agree"
-    // This is the event key (the part after the namespace).
-    private static final String TAMING_AGREE_SOUND_EVENT_ID = "raven.caw_agree";
+    // Full sounds.json ID for the "agree caw" sound.
+    private static final String TAMING_AGREE_SOUND_ID = Constants.MOD_ID + ":raven.caw_agree";
 
-    // Local cache for the resolved SoundEvent so we don't hammer the registry every tick.
-    private static SoundEvent cachedAgreeSound = null;
+    // Arrival air-woosh sound (owner follow arrival).
+    private static final String ARRIVAL_SOUND_ID = Constants.MOD_ID + ":raven.caw_whistle";
 
     // Config: global cooldown between *whole* agree-caw sequences,
     // and per-caw interval bounds (speed control inside the sequence).
@@ -83,6 +75,10 @@ public class LureFollowTame {
     // Tracks whether we were "at the lure goal" last tick so we only start
     // the agree sequence once per arrival, not every tick while hovering there.
     private boolean wasAtLureGoalLastTick = false;
+
+    // Tracks whether we were "at the follow goal" (owner or lure) last tick,
+    // so we can fire arrival events and sounds only once per arrival.
+    private boolean wasAtFollowGoalLastTick = false;
 
     // Random per-spawn "tame cost" (3..6 golden nuggets). Persisted via NBT.
     // NOTE: NBT read/write for this field still lives in RavenEntity; this is just the backing store.
@@ -144,7 +140,6 @@ public class LureFollowTame {
 
     public LureFollowTame(RavenEntity raven) {
         this.raven = raven;
-        this.soundEngine = new RavenSoundEngine(raven);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -665,76 +660,6 @@ public class LureFollowTame {
         }
     }
 
-    // Resolve and cache the "raven.caw_agree" SoundEvent.
-    private SoundEvent getLureAgreeSound() {
-        try {
-            // Fast path: already cached
-            if (cachedAgreeSound != null) {
-                return cachedAgreeSound;
-            }
-
-            SoundEvent resolved = null;
-
-            // ------------------------------------------------------------------
-            // 1) Try RavenEntity's static helper (if registered there, reuse it)
-            // ------------------------------------------------------------------
-            try {
-                resolved = RavenEntity.getRavenCawAgreeSoundStatic();
-            } catch (Throwable t) {
-                if (raven.tickCount % 200 == 0) {
-                    LOG.warn(
-                            "[RavenEntity] getLureAgreeSound: exception calling getRavenCawAgreeSoundStatic: {}",
-                            t.toString()
-                    );
-                }
-            }
-
-            // ------------------------------------------------------------------
-            // 2) If that returned null, create an ad-hoc SoundEvent from the ID.
-            //
-            // This does NOT rely on the SoundEvent registry: it just wraps the
-            // ResourceLocation that /playsound already uses successfully.
-            // The sound engine will look up the actual audio in sounds.json.
-            // ------------------------------------------------------------------
-            if (resolved == null) {
-                ResourceLocation id = ResourceLocation.fromNamespaceAndPath(
-                        Constants.MOD_ID,           // "featheredfriend"
-                        TAMING_AGREE_SOUND_EVENT_ID // "raven.caw_agree"
-                );
-
-                resolved = SoundEvent.createVariableRangeEvent(id);
-
-                if (raven.tickCount % 200 == 0) {
-                    LOG.warn(
-                            "[RavenEntity] getLureAgreeSound: created ad-hoc SoundEvent for id={} (not found in registry)",
-                            id
-                    );
-                }
-            }
-
-            // Cache for future calls.
-            cachedAgreeSound = resolved;
-
-            if (raven.tickCount % 200 == 0) {
-                // If it *is* in the registry, this will show the key; otherwise null.
-                var regKey = BuiltInRegistries.SOUND_EVENT.getKey(resolved);
-                LOG.debug(
-                        "[RavenEntity] getLureAgreeSound: using SoundEvent={} registryKey={}",
-                        resolved,
-                        regKey
-                );
-            }
-
-            return cachedAgreeSound;
-
-        } catch (Throwable t) {
-            if (raven.tickCount % 200 == 0) {
-                LOG.warn("[RavenEntity] getLureAgreeSound failed safely: {}", t.toString());
-            }
-            return null;
-        }
-    }
-
     /**
      * Start the taming "agree caw" sequence:
      * plays raven.caw_agree exactly goldenNuggetsRequiredToTame times over time.
@@ -836,18 +761,36 @@ public class LureFollowTame {
                 return;
             }
 
-            SoundEvent agree = getLureAgreeSound();
-            if (agree == null) {
-                stopLureAgreeSequence("agree sound unresolved");
-                return;
+            // Play one agree caw at the raven's position via RavenSoundEngine.
+            float volume = 0.9F;
+            float pitchMin = 0.95F;
+            float pitchMax = 1.05F;
+
+            float lo = pitchMin;
+            float hi = pitchMax;
+            if (lo > hi) {
+                float tmp = lo;
+                lo = hi;
+                hi = tmp;
             }
 
-            if (soundEngine != null) {
-                float volume = 0.9F;
-                float pitchMin = 0.95F;
-                float pitchMax = 1.05F;
-                soundEngine.playWithRandomPitch(agree, SoundSource.NEUTRAL, volume, pitchMin, pitchMax);
+            float pitch;
+            try {
+                RandomSource rnd = raven.getRandom();
+                float t = (rnd == null) ? 0.5F : rnd.nextFloat();
+                pitch = lo + (hi - lo) * t;
+            } catch (Throwable ignored) {
+                pitch = (lo + hi) * 0.5F;
             }
+
+            RavenSoundEngine.playAt(
+                    raven.level(),
+                    TAMING_AGREE_SOUND_ID,
+                    SoundSource.NEUTRAL,
+                    raven.position(),
+                    volume,
+                    pitch
+            );
 
             lureAgreeCawsRemaining--;
 
@@ -951,22 +894,38 @@ public class LureFollowTame {
                 return;
             }
 
-            SoundEvent agree = getLureAgreeSound();
-            if (agree == null) {
-                LOG.warn("[RavenEntity] tickHandFeedAgreeSequence: agree sound unresolved, cancelling sequence.");
-                handFeedSequenceActive = false;
-                handFeedCawsRemaining = 0;
-                handFeedCawCooldownTicks = 0;
-                return;
-            }
-
-            // Play one caw now.
+            // Play one agree caw at the raven's position via RavenSoundEngine.
             int before = handFeedCawsRemaining;
             try {
                 float volume = 0.9F;
                 float pitchMin = 0.97F;
                 float pitchMax = 1.03F;
-                soundEngine.playWithRandomPitch(agree, SoundSource.NEUTRAL, volume, pitchMin, pitchMax);
+
+                float lo = pitchMin;
+                float hi = pitchMax;
+                if (lo > hi) {
+                    float tmp = lo;
+                    lo = hi;
+                    hi = tmp;
+                }
+
+                float pitch;
+                try {
+                    RandomSource rnd = raven.getRandom();
+                    float t = (rnd == null) ? 0.5F : rnd.nextFloat();
+                    pitch = lo + (hi - lo) * t;
+                } catch (Throwable ignored) {
+                    pitch = (lo + hi) * 0.5F;
+                }
+
+                RavenSoundEngine.playAt(
+                        raven.level(),
+                        TAMING_AGREE_SOUND_ID,
+                        SoundSource.NEUTRAL,
+                        raven.position(),
+                        volume,
+                        pitch
+                );
             } catch (Throwable t) {
                 LOG.warn("[RavenEntity] tickHandFeedAgreeSequence: play failed: {}", t.toString());
             }
@@ -1375,6 +1334,7 @@ public class LureFollowTame {
                 }
                 // We are no longer "at goal" for lure, so reset the arrival flag.
                 wasAtLureGoalLastTick = false;
+                wasAtFollowGoalLastTick = false;
 
                 raven.setAIState(RavenAIState.IDLE_GROUND);
                 setPrivateInt("idleTicksRemaining", 0);
@@ -1426,17 +1386,24 @@ public class LureFollowTame {
                 atGoal = false;
             }
 
-            // Detect the moment we *first* arrive at the lure goal, so we only
-            // start the agree sequence once per arrival, not every hover tick.
+            // Detect first arrival in *any* follow mode (owner or lure).
+            boolean firstArrivalAny = atGoal && !wasAtFollowGoalLastTick;
+            wasAtFollowGoalLastTick = atGoal;
+
+            // Detect the moment we *first* arrive in lure-follow mode,
+            // so we only trigger the taming agree-caw sequence once per arrival.
             boolean shouldStartAgreeSequence = false;
-            if (usingLure && atGoal) {
-                if (!wasAtLureGoalLastTick && lureAgreeSequenceGlobalCooldownTicks <= 0) {
-                    shouldStartAgreeSequence = true;
-                }
+            if (usingLure && atGoal && !wasAtLureGoalLastTick && lureAgreeSequenceGlobalCooldownTicks <= 0) {
+                shouldStartAgreeSequence = true;
             }
             wasAtLureGoalLastTick = usingLure && atGoal;
 
             if (atGoal) {
+                // Fire generic arrival hook once per arrival (owner or lure).
+                if (firstArrivalAny) {
+                    onRavenArrivedAtFollowTarget(target, usingLure, computedFront);
+                }
+
                 // If we're lure-following (gold nugget) and just arrived,
                 // start the taming agree-caw sequence.
                 if (shouldStartAgreeSequence) {
@@ -2155,6 +2122,84 @@ public class LureFollowTame {
 
         } catch (Throwable t) {
             return rawGoal;
+        }
+    }
+
+    private void onRavenArrivedAtFollowTarget(Player target, boolean usingLure, @Nullable Vec3 frontGoal) {
+        try {
+            if (raven == null) return;
+            if (raven.level() == null || raven.level().isClientSide) return;
+            if (target == null) return;
+
+            LOG.info("[RavenEntity] onRavenArrivedAtFollowTarget: target={} usingLure={} pos={} frontGoal={}",
+                    target.getName().getString(),
+                    usingLure,
+                    raven.position(),
+                    frontGoal);
+
+            String soundId;
+            float volume;
+            float pitchMin;
+            float pitchMax;
+
+            if (usingLure) {
+                // Lure-follow arrival: use the agree caw.
+                soundId = TAMING_AGREE_SOUND_ID;            // "featheredfriend:raven.caw_agree"
+                volume = 1.0F;
+                pitchMin = 0.98F;
+                pitchMax = 1.02F;
+            } else {
+                // Owner-follow arrival: gentle air-woosh.
+                soundId = ARRIVAL_SOUND_ID;       // "featheredfriend:raven.arrival"
+                volume = 0.8F;
+                pitchMin = 0.95F;
+                pitchMax = 1.05F;
+            }
+
+            try {
+                float lo = pitchMin;
+                float hi = pitchMax;
+                if (lo > hi) {
+                    float tmp = lo;
+                    lo = hi;
+                    hi = tmp;
+                }
+
+                float pitch;
+                try {
+                    RandomSource rnd = raven.getRandom();
+                    float t = (rnd == null) ? 0.5F : rnd.nextFloat();
+                    pitch = lo + (hi - lo) * t;
+                } catch (Throwable ignored) {
+                    pitch = (lo + hi) * 0.5F;
+                }
+
+                RavenSoundEngine.playAt(
+                        raven.level(),
+                        soundId,
+                        SoundSource.NEUTRAL,
+                        raven.position(),
+                        volume,
+                        pitch
+                );
+
+                LOG.info("[RavenEntity] onRavenArrivedAtFollowTarget: played arrival sound={} usingLure={} pos={}",
+                        soundId,
+                        usingLure,
+                        raven.position());
+            } catch (Throwable t) {
+                if (raven.tickCount % 80 == 0) {
+                    LOG.warn("[RavenEntity] onRavenArrivedAtFollowTarget: sound playback failed safely: {}", t.toString());
+                }
+            }
+
+            // If later you want to hook Teleportation / achievements / stats,
+            // this remains the central arrival hook.
+
+        } catch (Throwable t) {
+            if (raven != null && raven.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] onRavenArrivedAtFollowTarget failed safely: {}", t.toString());
+            }
         }
     }
 

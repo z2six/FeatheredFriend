@@ -1,9 +1,10 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenDamageDodgeHandler.java
-package net.z2six.featheredfriend.entity.raven;
+// neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/DamageDodge.java
+package net.z2six.featheredfriend.entity.raven.modules;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.damagesource.DamageSource;
+import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import org.slf4j.Logger;
 
 /**
@@ -15,13 +16,13 @@ import org.slf4j.Logger;
  *
  * All heavy logic stays in RavenEntity, this class is only orchestration.
  */
-public final class RavenDamageDodgeHandler {
+public final class DamageDodge {
     private static final Logger LOG = LogUtils.getLogger();
 
     // 75% chance to dodge
     public static final float DODGE_CHANCE = 0.75f;
 
-    private RavenDamageDodgeHandler() {
+    private DamageDodge() {
     }
 
     /**
@@ -60,7 +61,7 @@ public final class RavenDamageDodgeHandler {
                 } else {
                     if (raven.tickCount % 40 == 0) {
                         // FIX: RavenEntity.LOG is private; use this class' logger.
-                        LOG.warn("[RavenDamageDodgeHandler] DamageBlink skipped: teleportation module null. pos={} src={} amt={}",
+                        LOG.warn("[DamageDodge] DamageBlink skipped: teleportation module null. pos={} src={} amt={}",
                                 raven.position(),
                                 (source == null ? "null" : source.toString()),
                                 amount);
@@ -70,7 +71,7 @@ public final class RavenDamageDodgeHandler {
             } catch (Throwable t) {
                 if (raven.tickCount % 40 == 0) {
                     // FIX: RavenEntity.LOG is private; use this class' logger.
-                    LOG.warn("[RavenDamageDodgeHandler] DamageBlink failed safely: {}", t.toString());
+                    LOG.warn("[DamageDodge] DamageBlink failed safely: {}", t.toString());
                 }
                 teleportStartedOrQueued = false;
             }
@@ -80,7 +81,7 @@ public final class RavenDamageDodgeHandler {
             boolean dodge = (rnd.nextFloat() < DODGE_CHANCE);
 
             if (raven.tickCount % 20 == 0) {
-                LOG.info("[RavenDamageDodgeHandler] handleHurt: dodge={} chance={} amount={} src={} teleportStartedOrQueued={} pos={} ai={}",
+                LOG.info("[DamageDodge] handleHurt: dodge={} chance={} amount={} src={} teleportStartedOrQueued={} pos={} ai={}",
                         dodge, DODGE_CHANCE, amount,
                         (source == null ? "null" : source.toString()),
                         teleportStartedOrQueued,
@@ -97,7 +98,7 @@ public final class RavenDamageDodgeHandler {
             // Fail-safe: never crash, never block damage if handler fails.
             try {
                 if (raven != null && raven.tickCount % 80 == 0) {
-                    LOG.warn("[RavenDamageDodgeHandler] handleHurt failed safely: {}", t.toString());
+                    LOG.warn("[DamageDodge] handleHurt failed safely: {}", t.toString());
                 }
             } catch (Throwable ignored) {
             }

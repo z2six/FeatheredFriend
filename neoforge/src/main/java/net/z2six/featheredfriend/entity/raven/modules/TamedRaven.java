@@ -151,7 +151,7 @@ public final class TamedRaven {
 
     /**
      * Server-side tick: drives the "fade out and then despawn" sequence
-     * after naming is completed.
+     * after naming is completed or when scroll-despawn requests FX.
      *
      * Must be called from RavenEntity's server tick/AI step:
      *
@@ -287,8 +287,12 @@ public final class TamedRaven {
      *  - Spawns FEATHER particles (server-side); client renders them via FeatherParticles.
      *  - Sets fade alpha to fully visible (255).
      *  - Arms the short fade sequence; actual fade/despawn is driven by tickServer().
+     *
+     * This is used both when:
+     *  - The initial tame/name completes, and
+     *  - A scroll-summoned raven should be dismissed with the same FX.
      */
-    private void beginDespawnWithFx(ServerLevel serverLevel, ServerPlayer owner, String name) {
+    public void beginDespawnWithFx(ServerLevel serverLevel, ServerPlayer owner, String name) {
         try {
             if (serverLevel == null) return;
             if (raven == null) return;
