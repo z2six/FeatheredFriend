@@ -19,6 +19,7 @@ import net.z2six.featheredfriend.registry.FFNeoForgeItems;
 import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
 import net.z2six.featheredfriend.registry.FFNeoForgeParticles;
 import net.z2six.featheredfriend.world.RavenSpawnEvents;
+import net.z2six.featheredfriend.world.TamedRavenScrollWatcher;
 import org.slf4j.Logger;
 
 /**
@@ -33,6 +34,7 @@ import org.slf4j.Logger;
  *  - Register entity types + attributes (Raven).
  *  - Register Raven natural spawning logic.
  *  - Register admin/debug commands (via NeoForge EVENT_BUS).
+ *  - Register TamedRavenScrollWatcher to detect sealed scroll usage.
  */
 @Mod(Constants.MOD_ID)
 public class FeatheredFriend {
@@ -122,6 +124,16 @@ public class FeatheredFriend {
             LOG.info("[FeatheredFriend] Hooked RavenSpawnEvents (natural spawning)");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to hook RavenSpawnEvents", t);
+        }
+
+        // ---------------------------------------------------------------------
+        // TamedRavenScrollWatcher: reacts when a player holds a sealed scroll.
+        // ---------------------------------------------------------------------
+        try {
+            TamedRavenScrollWatcher.register();
+            LOG.info("[FeatheredFriend] Registered TamedRavenScrollWatcher");
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriend] Failed to register TamedRavenScrollWatcher", t);
         }
 
         // ---------------------------------------------------------------------
