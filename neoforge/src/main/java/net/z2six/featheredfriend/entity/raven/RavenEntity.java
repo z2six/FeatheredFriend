@@ -8,6 +8,7 @@ import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
@@ -1698,18 +1699,36 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             // ------------------------------------------------------------------
             // FOLLOW LOGIC — DISABLED DURING PLAYER AVOIDANCE
+            //  - Special case: scroll-summoned ravens while the owner is holding
+            //    the sealed scroll are HARD-LOCKED into FOLLOW_OWNER.
+            //    In that case we ignore the normal follow cooldown, so they
+            //    never drop back into ROAM_FLY just because follow logic
+            //    temporarily set a cooldown.
             // ------------------------------------------------------------------
             Player owner = (lureFollowTame != null) ? lureFollowTame.getOwnerPlayerServerSafe() : null;
+
+            // True when:
+            //  - this raven is scroll-summoned, AND
+            //  - its owner is online in this level, AND
+            //  - that owner is currently holding a sealed scroll.
+            boolean scrollSummonFollowLock = isScrollSummonFollowLockActive();
+
             boolean canFollow =
                     owner != null &&
                             this.isTame() &&
-                            getFollowCooldownTicks() <= 0;
+                            (scrollSummonFollowLock || getFollowCooldownTicks() <= 0);
 
             if (playerAvoidanceOverrideTicks <= 0) {
                 if (canFollow) {
                     // NEW: Do NOT gate follow by home bounds anymore.
                     // Home bounds are still respected for idle/roam/landing,
                     // but FOLLOW_OWNER is allowed to go anywhere with the player.
+                    //
+                    // Additionally: if this is a scroll-summoned raven and the
+                    // owner is actively holding the sealed scroll, we *force*
+                    // FOLLOW_OWNER every tick (ignoring follow cooldown), so
+                    // the raven never drifts back into ROAM_FLY while being
+                    // "whistled" in by the player.
                     setAIState(RavenAIState.FOLLOW_OWNER);
                 } else {
                     RavenAIState st = getAIStateForDebug();
@@ -3448,6 +3467,54 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             if (this.tickCount % 80 == 0) {
                 LOG.warn("[RavenEntity] debugClearOldPathMarkers failed safely: {}", t.toString());
             }
+        }
+    }
+
+    /**
+     * Returns true if this raven should be hard-locked into FOLLOW_OWNER because:
+     *  - it is a scroll-summoned raven (TAG_SCROLL_SUMMONED), AND
+     *  - its owner is online in this ServerLevel, AND
+     *  - that owner is currently holding a sealed scroll in main hand.
+     *
+     * This is used to *ignore* the normal follow cooldown and prevent a
+     * scroll-summoned raven from dropping back into ROAM_FLY while the
+     * player is actively "calling" it with the scroll.
+     */
+    private boolean isScrollSummonFollowLockActive() {
+        try {
+            if (!(this.level() instanceof ServerLevel serverLevel)) {
+                return false;
+            }
+
+            ServerPlayer owner = TamedRavenScrollWatcher.getScrollSummonOwnerIfHoldingScroll(serverLevel, this);
+            if (owner == null) {
+                return false;
+            }
+
+            // Optional debug: very low-frequency so it doesn't spam.
+            if (this.tickCount % 80 == 0) {
+                try {
+                    String name = owner.getGameProfile().getName();
+                    LOG.debug(
+                            "[RavenEntity] Scroll-summon follow lock active for owner='{}' pos={} aiState={} followCd={}",
+                            name,
+                            this.position(),
+                            getAIStateForDebug(),
+                            getFollowCooldownTicks()
+                    );
+                } catch (Throwable ignored) {
+                    // Ignore name / log formatting issues.
+                }
+            }
+
+            return true;
+
+        } catch (Throwable t) {
+            if (this.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] isScrollSummonFollowLockActive failed safely for id={}: {}",
+                        this.getId(), t.toString());
+            }
+            return false;
         }
     }
 

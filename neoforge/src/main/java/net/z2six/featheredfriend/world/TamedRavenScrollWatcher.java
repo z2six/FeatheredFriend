@@ -1112,6 +1112,79 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
+    /**
+     * Returns true if this raven is currently marked as a scroll-summoned raven
+     * via the TAG_SCROLL_SUMMONED scoreboard tag.
+     */
+    public static boolean isScrollSummonedRaven(@NotNull RavenEntity raven) {
+        try {
+            return raven.getTags().contains(TAG_SCROLL_SUMMONED);
+        } catch (Throwable t) {
+            LOG.warn("[TamedRavenScrollWatcher] isScrollSummonedRaven failed safely for id={}: {}",
+                    raven.getId(), t.toString());
+            return false;
+        }
+    }
+
+    /**
+     * Convenience helper:
+     *  - Only valid on the server (ServerLevel).
+     *  - Returns the raven's owner as ServerPlayer *iff*:
+     *      * the raven is scroll-summoned, AND
+     *      * the owner is online in this level, AND
+     *      * the owner is currently holding a sealed scroll in main hand.
+     *
+     * Otherwise returns null.
+     */
+    @Nullable
+    public static ServerPlayer getScrollSummonOwnerIfHoldingScroll(@NotNull ServerLevel level,
+                                                                   @NotNull RavenEntity raven) {
+        try {
+            // Must be tagged as scroll-summoned.
+            if (!isScrollSummonedRaven(raven)) {
+                return null;
+            }
+
+            UUID ownerId;
+            try {
+                ownerId = raven.getOwnerUUID();
+            } catch (Throwable t) {
+                LOG.warn("[TamedRavenScrollWatcher] getScrollSummonOwnerIfHoldingScroll: getOwnerUUID failed safely for id={}: {}",
+                        raven.getId(), t.toString());
+                return null;
+            }
+
+            if (ownerId == null) {
+                return null;
+            }
+
+            ServerPlayer owner;
+            try {
+                owner = level.getServer().getPlayerList().getPlayer(ownerId);
+            } catch (Throwable t) {
+                LOG.warn("[TamedRavenScrollWatcher] getScrollSummonOwnerIfHoldingScroll: player lookup failed safely for ownerId={}: {}",
+                        ownerId, t.toString());
+                return null;
+            }
+
+            if (owner == null) {
+                return null;
+            }
+
+            // Reuse the existing helper to validate scroll in main hand.
+            if (!isHoldingSealedScroll(owner)) {
+                return null;
+            }
+
+            return owner;
+
+        } catch (Throwable t) {
+            LOG.warn("[TamedRavenScrollWatcher] getScrollSummonOwnerIfHoldingScroll failed safely for raven id={}: {}",
+                    raven.getId(), t.toString());
+            return null;
+        }
+    }
+
     private static String safePlayerName(@NotNull Player player) {
         try {
             return player.getGameProfile().getName();

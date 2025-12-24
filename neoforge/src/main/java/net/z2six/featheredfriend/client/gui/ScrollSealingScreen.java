@@ -208,8 +208,12 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private final WaxSealVisualizer waxSealVisualizer =
             new WaxSealVisualizer();
 
-    private SigilPattern hoverSigilPattern = null;
-    private SigilPattern placedSigilPattern = null;
+    // Small (in-place) sigil preview + final pattern
+    private SigilPattern hoverSigilPattern = null;      // small preview while hovering in the small gizmo
+    private SigilPattern placedSigilPattern = null;     // small final seal in the small gizmo
+
+    // Separate zoomed sigil pattern for the zoom gizmo
+    private SigilPattern placedSigilPatternZoom = null; // zoom-radius final seal
 
     // Gentle 1s fade after placing the seal
     private static final int PLACED_FADE_TICKS_TOTAL = 20;
@@ -502,24 +506,21 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             //  - OR a zoom preview built from the currently selected stamp
             SigilPattern patternForZoom = null;
 
-            if (placedSealShown && placedSigilPattern != null) {
-                // When already stamped, show that sigil enlarged.
-                patternForZoom = placedSigilPattern;
-            } else {
-                if (this.sealStampTargetMode
-                        && this.sealStampSlotIndex >= 0
-                        && this.sealStampStackForRender != null
-                        && !this.sealStampStackForRender.isEmpty()
-                        && inZoomArea) {
+            if (placedSealShown && placedSigilPatternZoom != null) {
+                // When already stamped, show the dedicated zoom-radius sigil pattern.
+                patternForZoom = placedSigilPatternZoom;
+            } else if (this.sealStampTargetMode
+                    && this.sealStampSlotIndex >= 0
+                    && this.sealStampStackForRender != null
+                    && !this.sealStampStackForRender.isEmpty()
+                    && inZoomArea) {
 
-                    // Fresh zoom pattern with the independent zoom radius
-                    SigilPattern zoomPattern = buildZoomPatternFromStamp(this.sealStampStackForRender);
-                    if (zoomPattern != null) {
-                        patternForZoom = zoomPattern;
-                        // Keep this as our current hover pattern as well, so the
-                        // "placed" sigil can reuse it for the admiration fade.
-                        this.hoverSigilPattern = zoomPattern;
-                    }
+                // Fresh zoom pattern with the independent zoom radius.
+                // NOTE: this is only used for the zoom preview; the small gizmo
+                // uses its own smaller pattern so it isn't just a cropped center.
+                SigilPattern zoomPattern = buildZoomPatternFromStamp(this.sealStampStackForRender);
+                if (zoomPattern != null) {
+                    patternForZoom = zoomPattern;
                 }
             }
 
@@ -1707,11 +1708,12 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                             );
 
                             try {
-                                if (this.hoverSigilPattern != null) {
-                                    this.placedSigilPattern = this.hoverSigilPattern;
-                                } else {
-                                    this.placedSigilPattern = buildPatternFromStamp(actualStamp);
-                                }
+                                // Build separate small + zoom patterns so the small gizmo
+                                // uses a genuinely smaller sigil instead of a cropped zoom one.
+                                this.placedSigilPattern = buildPatternFromStamp(actualStamp);
+                                this.placedSigilPatternZoom = buildZoomPatternFromStamp(actualStamp);
+                                this.hoverSigilPattern = null; // discard any preview pattern
+
                                 this.placedSealShown = (this.placedSigilPattern != null);
                                 this.placedFadeTicks = 0;
 
