@@ -446,16 +446,6 @@ public final class RavenCourierRuntime {
                     1.0F + (level.random.nextFloat() - 0.5F) * 0.2F
             );
 
-            // Player whistle at the recipient's position (so it feels like they are "receiving" a raven).
-            RavenSoundEngine.playAt(
-                    level,
-                    "featheredfriend:raven.whistle",
-                    SoundSource.NEUTRAL,
-                    playerPos,
-                    0.35F,
-                    1.0F
-            );
-
         } catch (Throwable t) {
             LOG.warn("[RavenCourierRuntime] playCourierSpawnFx failed safely: {}", t.toString());
         }

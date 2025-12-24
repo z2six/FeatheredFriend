@@ -21,6 +21,8 @@ import net.z2six.featheredfriend.registry.FFNeoForgeParticles;
 import net.z2six.featheredfriend.world.RavenSpawnEvents;
 import net.z2six.featheredfriend.world.TamedRavenScrollWatcher;
 import net.z2six.featheredfriend.world.RavenCourierRuntime;
+import net.z2six.featheredfriend.chat.ChatDisabler;
+
 import org.slf4j.Logger;
 
 /**
@@ -125,6 +127,16 @@ public class FeatheredFriend {
             LOG.info("[FeatheredFriend] Hooked RavenSpawnEvents (natural spawning)");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to hook RavenSpawnEvents", t);
+        }
+
+        // ---------------------------------------------------------------------
+        // ChatDisabler: allow commands but block all player-to-player chat.
+        // ---------------------------------------------------------------------
+        try {
+            ChatDisabler.register();
+            LOG.info("[FeatheredFriend] Registered ChatDisabler (commands allowed, global chat disabled)");
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriend] Failed to register ChatDisabler", t);
         }
 
         // ---------------------------------------------------------------------
