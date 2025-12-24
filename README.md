@@ -1,32 +1,156 @@
-# MultiLoader Template
+![Feathered Friends banner](https://media.forgecdn.net/attachments/description/null/description_d99b0f3c-59bb-4b67-b6bb-a0fdfe0f8076.png)
 
-This project provides a Gradle project template that can compile Minecraft mods for multiple modloaders using a common project for the sources. This project does not require any third party libraries or dependencies. If you have any questions or want to discuss the project, please join our [Discord](https://discord.myceliummod.network).
+**Feathered Friends** is a roleplay-focused communication overhaul that replaces boring vanilla chat with something far more flavorful: trained ravens, wax-sealed scrolls, and unique personal sigils.
 
-## Getting Started
+---
 
-### IntelliJ IDEA
-This guide will show how to import the MultiLoader Template into IntelliJ IDEA. The setup process is roughly equivalent to setting up the modloaders independently and should be very familiar to anyone who has worked with their MDKs.
+## What is Feathered Friends?
 
-1. Clone or download this repository to your computer.
-2. Configure the project by setting the properties in the `gradle.properties` file. You will also need to change the `rootProject.name`  property in `settings.gradle`, this should match the folder name of your project, or else IDEA may complain.
-3. Open the template's root folder as a new project in IDEA. This is the folder that contains this README.md file and the gradlew executable.
-4. If your default JVM/JDK is not Java 21 you will encounter an error when opening the project. This error is fixed by going to `File > Settings > Build, Execution, Deployment > Build Tools > Gradle > Gradle JVM` and changing the value to a valid Java 21 JVM. You will also need to set the Project SDK to Java 21. This can be done by going to `File > Project Structure > Project SDK`. Once both have been set open the Gradle tab in IDEA and click the refresh button to reload the project.
-5. Open your Run/Debug Configurations. Under the `Application` category there should now be options to run Fabric and NeoForge projects. Select one of the client options and try to run it.
-6. Assuming you were able to run the game in step 5 your workspace should now be set up.
+Instead of typing into vanilla chat, you communicate by writing scrolls, sealing them with wax and your personal sigil, and sending them off via your trained raven.  
+By default, **vanilla chat is disabled** (server-side config can re-enable it if desired).
 
-### Eclipse
-While it is possible to use this template in Eclipse it is not recommended. During the development of this template multiple critical bugs and quirks related to Eclipse were found at nearly every level of the required build tools. While we continue to work with these tools to report and resolve issues support for projects like these are not there yet. For now Eclipse is considered unsupported by this project. The development cycle for build tools is notoriously slow so there are no ETAs available.
+The goal is to provide a **simple, immersive, and meaningful** way to talk to other players that fits perfectly into medieval / fantasy / roleplay worlds.
 
-## Development Guide
-When using this template the majority of your mod should be developed in the `common` project. The `common` project is compiled against the vanilla game and is used to hold code that is shared between the different loader-specific versions of your mod. The `common` project has no knowledge or access to ModLoader specific code, apis, or concepts. Code that requires something from a specific loader must be done through the project that is specific to that loader, such as the `fabric` or `neoforge` projects.
+---
 
-Loader specific projects such as the `fabric` and `neoforge` project are used to load the `common` project into the game. These projects also define code that is specific to that loader. Loader specific projects can access all the code in the `common` project. It is important to remember that the `common` project can not access code from loader specific projects.
+## How it works – from wild raven to trusted courier
 
-## Removing Platforms and Loaders
-While this template has support for many modloaders, new loaders may appear in the future, and existing loaders may become less relevant.
+1. **Find a Raven**  
+   Explore the world and locate a wild raven. They’re cautious and clever, so don’t expect them to be instantly friendly.
 
-Removing loader specific projects is as easy as deleting the folder, and removing the `include("projectname")` line from the `settings.gradle` file.
-For example if you wanted to remove support for `forge` you would follow the following steps:
+2. **Tame the Raven**  
+   Ravens love Golden Nuggets, but they’re not all the same.  
+   Each raven has its own personality – some tame easily, others are stubborn.  
+   Listen to its cawing to figure out how much it wants from you.
 
-1. Delete the subproject folder. For example, delete `MultiLoader-Template/forge`.
-2. Remove the project from `settings.gradle`. For example, remove `include("forge")`. 
+3. **Craft your Seal Stamp & forge your Sigil**  
+   Craft your **Seal Stamp**, then carve a **completely unique sigil** into it.  
+   Your sigil is generated from a secret passphrase and stored securely using **SHA-256**.  
+   No other player can legitimately reproduce your sigil.
+
+4. **Write and seal your Scroll**  
+   Craft a scroll (**2x paper vertically**) and write your message on it.  
+   When you’re done, use wax and your Seal Stamp to create a **Sealed Scroll** that bears your personal sigil.
+
+5. **Summon your Raven**  
+   Whistle for your raven to come to you. Once it’s by your side, hold the **Sealed Scroll** in your hand.
+
+6. **Send your message**  
+   Right-click your raven while holding the Sealed Scroll.  
+   The raven immediately takes off and delivers the message to the target player – even if **the sender and/or recipient are offline**.  
+   The delivery system is handled entirely server-side and stored in world data.
+
+---
+
+## Sigils, Seal Stamps & Identity
+
+Your sigil is your in-world identity. It can’t be copied, forged, or reliably brute-forced by other players:
+
+- Sigils are derived from a **secret passphrase** → turned into a SHA-256 key → used as a **seed** for generation.
+- Sigils are composed from **Seed, Style, and Etchings**, giving you endless combinations.
+- The result: practical in-world “signatures” that are **visually unique** and **cryptographically safe** to use on scrolls.
+
+Some example sigils:
+
+|  |  |
+|---|---|
+| ![Sigil example 1](https://media.forgecdn.net/attachments/description/null/description_46b03b19-5da6-4724-9d41-ec220a578761.png) | ![Sigil example 2](https://media.forgecdn.net/attachments/description/null/description_8db1ccd6-c4d2-4136-9210-92a6956ce55c.png) |
+| ![Sigil example 3](https://media.forgecdn.net/attachments/description/null/description_c8ea1f85-2ab7-40ab-be09-631ebb20844e.png) | ![Sigil example 4](https://media.forgecdn.net/attachments/description/null/description_bde1ecbf-af2a-4a16-bea6-38aac097adca.png) |
+
+---
+
+## Scrolls & Writing Interface
+
+To send a message, you’ll first craft and write your scroll:
+
+- **Crafting**: 2x Paper placed vertically in a crafting grid → basic scroll.
+- **Writing**: Open the scroll UI and write your message exactly as you want it delivered.
+- **Sealing**: Apply wax + your Seal Stamp to bind the contents and imprint your sigil.
+
+![Scroll writing UI](https://media.forgecdn.net/attachments/description/null/description_ce4bbd53-86cf-405e-b364-e3494f19a15c.png)
+
+---
+
+## Custom Date & Calendar System
+
+Feathered Friends also ships with a **fully customizable in-game date system**.  
+By default, your world starts on:
+
+**Day 1 of Dawnroot, 1 A.N.**  
+*(Year 1 After Notch 😉)*
+
+- Day / month / year names are configurable.
+- Perfect for lore-rich servers that want their own in-world calendar.
+- Pairs naturally with written correspondence and long-lasting roleplay campaigns.
+
+---
+
+## Raven AI & Behavior
+
+Ravens aren’t just re-skinned parrots – they’re built to feel smart, cautious, and a little bit supernatural:
+
+- **Custom A\* Pathfinding**  
+  Ravens use a custom A\* implementation tuned to keep them from getting stuck on terrain.  
+  If a raven *does* get into trouble, it will gracefully **teleport nearby or further along its path** rather than hanging in place forever.
+
+- **Hard to Kill**  
+  Ravens have a **75% chance to dodge incoming damage**.  
+  When they’re hurt or feel threatened, they will **teleport away** to safety and try to avoid further contact.
+
+- **Eyes and Ears Everywhere**  
+  Ravens are extremely perceptive. They “see” and “hear” players around them and will **flee as soon as they detect danger**.  
+  They hear and see everything. 😉
+
+---
+
+## Delivery System & Multiplayer Support
+
+- **Server-side Delivery**  
+  Raven deliveries are **fully independent of any specific player or entity**.  
+  A central delivery system runs on the server and is stored in world data.
+
+- **Works with Offline Players**  
+  You can send scrolls to both **online and offline** players.  
+  Once someone has logged in at least once, they are remembered as a **known player** and can receive ravens anytime.
+
+- **Player Cache**  
+  Known players are cached so you can keep sending messages without needing them online every time.
+
+- **Configurable Vanilla Chat**  
+  By default, vanilla chat is turned off to encourage raven-based communication.  
+  Server admins can re-enable vanilla chat in the config if needed.
+
+---
+
+## Planned & Ongoing Work
+
+**Todo / Roadmap**
+
+- General bug fixing (please report any issues you find!)
+- More polish for UI, particles, sounds, and raven behavior
+- Additional sigil **Styles** and variations
+- More / better sound effects for ravens, seals, and scroll handling
+- After a period of stabilization and polishing:
+    - Port to all NeoForge 1.21.x versions
+    - Port to Forge 1.20.1
+
+---
+
+## Licensing
+
+- **Code:** MIT License
+- **Assets (textures, models, sounds, etc.):** **ALL RIGHTS RESERVED** by Z2SIX
+
+You are free to read, modify, and build on the **code** under the terms of the MIT license.  
+However, **any changes to or redistribution of the assets outside this mod** is **not allowed under any circumstances**.
+
+---
+
+## Distribution & Modpacks
+
+You may include **Feathered Friends** in modpacks and on servers as long as:
+
+- The mod’s JAR and assets remain **unmodified** inside the pack.
+- You do not extract or reuse the art / audio assets outside of this mod.
+
+If you enjoy the mod, a link back to this page is always appreciated. 🖋️🕊️
