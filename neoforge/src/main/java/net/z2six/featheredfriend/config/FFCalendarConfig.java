@@ -195,8 +195,8 @@ public final class FFCalendarConfig {
      * we fall back to defaults and log.
      *
      * NOTE: This matches the existing constructor:
-     *   CalendarDefinition(@NotNull String[] monthNames,
-     *                      @NotNull String yearSuffix,
+     *   CalendarDefinition(NotNull String[] monthNames,
+     *                      NotNull String yearSuffix,
      *                      int daysPerMonth,
      *                      long ticksPerDay)
      */

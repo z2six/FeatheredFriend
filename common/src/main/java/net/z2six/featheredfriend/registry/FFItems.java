@@ -18,7 +18,7 @@ import java.util.function.Supplier;
  *
  * Common, loader-agnostic item "registry".
  *
- * - Defines item factories in a deterministic map (id -> Supplier<Item>).
+ * - Defines item factories in a deterministic map (id -> Supplier `Item`).
  * - Loader-specific modules (NeoForge/Fabric) are responsible for turning these
  *   into real registry entries using their own DeferredRegister / Registry APIs.
  *

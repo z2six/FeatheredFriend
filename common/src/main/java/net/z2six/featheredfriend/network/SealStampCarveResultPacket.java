@@ -24,7 +24,7 @@ import org.slf4j.Logger;
  *
  *   CustomData: {
  *     SealStamp: {
- *       Owner:   "<owner-string>",
+ *       Owner:   "owner-string",
  *       Seed:    long,
  *       Slices:  int,
  *       ShapeSet:int

@@ -16,7 +16,7 @@ import org.jetbrains.annotations.NotNull;
  *        * Build a shapeMask (union of all slices) where:
  *              shapeMask[y][x] == true  => "this pixel should be carved out of the wax"
  *        * Final pattern:
- *              final[y][x] = boundaryMask[y][x] && !shapeMask[y][x].
+ *              final[y][x] = boundaryMask[y][x] and !shapeMask[y][x].
  *
  * Important:
  *  - Shape sets should NEVER set pixels[y][x] back to false as a way to

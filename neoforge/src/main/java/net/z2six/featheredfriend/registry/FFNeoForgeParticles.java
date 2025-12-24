@@ -16,8 +16,8 @@ import org.slf4j.Logger;
  *
  * NeoForge particle registry.
  *
- * NOTE: Registry is Registries.PARTICLE_TYPE => ParticleType<?>
- * so DeferredRegister must be DeferredRegister<ParticleType<?>>.
+ * NOTE: Registry is Registries.PARTICLE_TYPE => ParticleType
+ * so DeferredRegister must be DeferredRegister ParticleType.
  */
 public final class FFNeoForgeParticles {
 

@@ -66,7 +66,7 @@ import java.util.UUID;
  *      * If inventory is full, the scroll is dropped at the player's feet.
  *  - Handle courier raven death:
  *      * The scroll is dropped at the raven's position.
- *      * The sender is notified (if online): "Your raven, <name>, has perished..."
+ *      * The sender is notified (if online): "Your raven, name, has perished..."
  *      * The job is removed from RavenCourierData so the sender is free to send again.
  *
  * Implementation notes:

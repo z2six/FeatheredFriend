@@ -48,7 +48,7 @@ import java.util.UUID;
  *     - discMask   = solid wax disc.
  *     - shapeMask  = union of shapes across all slices.
  *     - Classic "carved" view:
- *           carved[y][x] = discMask[y][x] && !shapeMask[y][x].
+ *           carved[y][x] = discMask[y][x] and !shapeMask[y][x].
  *       This is no longer baked into the generator; callers decide how to
  *       visualize disc vs. shapes.
  *
@@ -655,7 +655,7 @@ public final class SealSigilGenerator {
      *
      * Convenience:
      *  - getCarvedMask() / getPixels() => classic "disc minus shapes" mask:
-     *        carved[y][x] = discMask[y][x] && !shapeMask[y][x].
+     *        carved[y][x] = discMask[y][x] and !shapeMask[y][x].
      *
      * The legacy constructors (taking only "pixels") are kept for compatibility
      * and treat the given pixels as an already-carved mask.
@@ -746,7 +746,7 @@ public final class SealSigilGenerator {
 
         /**
          * Classic "carved disc" mask:
-         *  carved[y][x] = discMask[y][x] && !shapeMask[y][x].
+         *  carved[y][x] = discMask[y][x] and !shapeMask[y][x].
          *
          * If this pattern was constructed via the legacy constructors, this simply
          * returns the original pixels array.

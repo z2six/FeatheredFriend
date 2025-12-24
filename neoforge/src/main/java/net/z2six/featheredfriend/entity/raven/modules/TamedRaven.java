@@ -58,7 +58,7 @@ public final class TamedRaven {
 
     /**
      * Called by LureFollowTame the moment the taming gold-nugget cost
-     * has been fully paid (remaining <= 0) by the current lure player.
+     * has been fully paid (remaining less than 0) by the current lure player.
      *
      * This only does anything on the SERVER side. The client can log, but
      * the GUI open request is driven from server → client via FFNetwork.

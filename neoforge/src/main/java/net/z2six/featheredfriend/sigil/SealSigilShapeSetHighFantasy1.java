@@ -13,7 +13,7 @@ import org.slf4j.Logger;
  *
  * Visual goals:
  *  - Big, readable, magical silhouettes:
- *      * Arcane starbursts & magic circles.
+ *      * Arcane starbursts and magic circles.
  *      * Dragon-like serpentine arcs (head + spine).
  *      * Flame crowns and tongues of fire.
  *      * Meteor/comet streaks.

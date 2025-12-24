@@ -105,7 +105,7 @@ public class SealStampItem extends Item {
      *
      *   CustomData: {
      *     SealStamp: {
-     *       Owner:   "<uuid-string>",
+     *       Owner:   "uuid-string",
      *       Seed:    long,
      *       Slices:  int,
      *       ShapeSet:int
