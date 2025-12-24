@@ -105,6 +105,12 @@ public final class TamedRavenScrollWatcher {
      */
     private static final Map<UUID, Boolean> LAST_HOLDING_SEALED_SCROLL = new ConcurrentHashMap<>();
 
+    /**
+     * Lifetime of a scroll-summoned raven in ticks.
+     * 60 seconds * 20 ticks per second = 1200 ticks.
+     */
+    private static final long SCROLL_SUMMON_LIFETIME_TICKS = 60L * 20L;
+
     private TamedRavenScrollWatcher() {
         // no-op
     }
@@ -163,6 +169,67 @@ public final class TamedRavenScrollWatcher {
 
             // Discover all scroll-summoned ravens for this player in the world via tag + owner UUID.
             List<RavenEntity> scrollRavens = findScrollSummonedRavensForPlayer(serverLevel, serverPlayer);
+
+            // Enforce lifetime: any scroll-summoned raven whose recorded despawn time
+            // has passed will be despawned here before any further logic.
+            if (!scrollRavens.isEmpty()) {
+                long nowGameTime = serverLevel.getGameTime();
+                List<RavenEntity> expired = new ArrayList<>();
+
+                for (RavenEntity r : scrollRavens) {
+                    try {
+                        CompoundTag root = r.getPersistentData();
+                        if (root == null) {
+                            continue;
+                        }
+                        CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
+                        if (ffTag == null || ffTag.isEmpty()) {
+                            continue;
+                        }
+
+                        long despawnAt = ffTag.getLong("ScrollSummonedDespawnAt");
+                        if (despawnAt > 0L && nowGameTime >= despawnAt) {
+                            expired.add(r);
+
+                            LOG.info(
+                                    "[TamedRavenScrollWatcher] Lifetime expired for scroll raven id={} owner='{}' now={} despawnAt={}",
+                                    r.getId(),
+                                    safePlayerName(serverPlayer),
+                                    nowGameTime,
+                                    despawnAt
+                            );
+                        }
+                    } catch (Throwable t) {
+                        LOG.warn(
+                                "[TamedRavenScrollWatcher] Lifetime check failed safely for raven id={}: {}",
+                                r.getId(),
+                                t.toString()
+                        );
+                    }
+                }
+
+                if (!expired.isEmpty()) {
+                    for (RavenEntity r : expired) {
+                        try {
+                            despawnOneScrollSummonedRaven(
+                                    serverLevel,
+                                    serverPlayer,
+                                    r,
+                                    "scroll lifetime expired (60s)"
+                            );
+                        } catch (Throwable t) {
+                            LOG.error(
+                                    "[TamedRavenScrollWatcher] Failed safely while despawning expired scroll raven id={}: {}",
+                                    r.getId(),
+                                    t.toString()
+                            );
+                        }
+                        // Remove from the working list so the rest of the logic
+                        // (auto-summon, dedup, etc.) does not try to operate on it.
+                        scrollRavens.remove(r);
+                    }
+                }
+            }
 
             // If player is gone or dead, just clean up any scroll ravens and bail.
             if (!player.isAlive() || player.isRemoved()) {
@@ -460,11 +527,25 @@ public final class TamedRavenScrollWatcher {
             try {
                 CompoundTag root = raven.getPersistentData();
                 CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
+
+                long now = level.getGameTime();
+                long despawnAt = now + SCROLL_SUMMON_LIFETIME_TICKS;
+
                 ffTag.putBoolean("ScrollSummoned", true);
                 ffTag.putString("ScrollSummonedOwner", owner.getUUID().toString());
+                ffTag.putLong("ScrollSummonedDespawnAt", despawnAt);
+
                 root.put(Constants.MOD_ID, ffTag);
+
+                LOG.debug(
+                        "[TamedRavenScrollWatcher] spawnSummonedRaven: lifetime set for id={} now={} despawnAt={}",
+                        raven.getId(),
+                        now,
+                        despawnAt
+                );
             } catch (Throwable t) {
-                LOG.warn("[TamedRavenScrollWatcher] spawnSummonedRaven: persistent ScrollSummoned tag failed safely: {}", t.toString());
+                LOG.warn("[TamedRavenScrollWatcher] spawnSummonedRaven: persistent ScrollSummoned tag failed safely: {}",
+                        t.toString());
             }
 
             // Tag via scoreboard tag: primary detection mechanism.
@@ -635,12 +716,16 @@ public final class TamedRavenScrollWatcher {
                     if (ffTag != null && !ffTag.isEmpty()) {
                         ffTag.remove("ScrollSummoned");
                         ffTag.remove("ScrollSummonedOwner");
+                        ffTag.remove("ScrollSummonedDespawnAt");
                         root.put(Constants.MOD_ID, ffTag);
                     }
                 }
             } catch (Throwable t) {
-                LOG.warn("[TamedRavenScrollWatcher] despawnOneScrollSummonedRaven: clearing ScrollSummoned NBT failed safely for id={}: {}",
-                        raven.getId(), t.toString());
+                LOG.warn(
+                        "[TamedRavenScrollWatcher] despawnOneScrollSummonedRaven: clearing ScrollSummoned NBT failed safely for id={}: {}",
+                        raven.getId(),
+                        t.toString()
+                );
             }
 
         } catch (Throwable t) {

@@ -205,7 +205,7 @@ public final class FeatherParticles {
      *  - Starts on a small sphere around the given center.
      *  - Initial velocity points directly AWAY from the center
      *    (hurling outwards), plus an upward bonus.
-     *  - Applies manual gravity & drag.
+     *  - Applies manual gravity and drag.
      *  - Rolls back and forth between ±FEATHER_MAX_SWING_DEG using a sine wave.
      *  - Fades alpha from FEATHER_ALPHA_START → FEATHER_ALPHA_END over lifetime.
      *  - Has randomized initial roll and swing phase, so feathers don't rock in sync.

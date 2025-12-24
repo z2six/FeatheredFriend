@@ -16,7 +16,7 @@ import org.slf4j.Logger;
  * neoforge/src/main/java/net/z2six/featheredfriend/client/particle/EnderpopParticle.java
  *
  * Enderpop particle (ONE-SHOT):
- * - Uses SpriteSet animation (requires assets/<modid>/particles/enderpop.json listing multiple textures).
+ * - Uses SpriteSet animation (requires assets/modid/particles/enderpop.json listing multiple textures).
  * - Fullbright so it's visible even in shadows.
  * - Fades in/out + slight scale pop.
  *
