@@ -1,10 +1,10 @@
-![Feathered Friends banner](https://media.forgecdn.net/attachments/description/null/description_d99b0f3c-59bb-4b67-b6bb-a0fdfe0f8076.png)
+![Feathered Friend banner](https://media.forgecdn.net/attachments/description/null/description_d99b0f3c-59bb-4b67-b6bb-a0fdfe0f8076.png)
 
-**Feathered Friends** is a roleplay-focused communication overhaul that replaces boring vanilla chat with something far more flavorful: trained ravens, wax-sealed scrolls, and unique personal sigils.
+**Feathered Friend** is a roleplay-focused communication overhaul that replaces boring vanilla chat with something far more flavorful: trained ravens, wax-sealed scrolls, and unique personal sigils.
 
 ---
 
-## What is Feathered Friends?
+## What is Feathered Friend?
 
 Instead of typing into vanilla chat, you communicate by writing scrolls, sealing them with wax and your personal sigil, and sending them off via your trained raven.  
 By default, **vanilla chat is disabled** (server-side config can re-enable it if desired).
@@ -73,7 +73,7 @@ To send a message, you’ll first craft and write your scroll:
 
 ## Custom Date & Calendar System
 
-Feathered Friends also ships with a **fully customizable in-game date system**.  
+Feathered Friend also ships with a **fully customizable in-game date system**.  
 By default, your world starts on:
 
 **Day 1 of Dawnroot, 1 A.N.**  
@@ -148,7 +148,7 @@ However, **any changes to or redistribution of the assets outside this mod** is 
 
 ## Distribution & Modpacks
 
-You may include **Feathered Friends** in modpacks and on servers as long as:
+You may include **Feathered Friend** in modpacks and on servers as long as:
 
 - The mod’s JAR and assets remain **unmodified** inside the pack.
 - You do not extract or reuse the art / audio assets outside of this mod.
