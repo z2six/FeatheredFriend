@@ -80,6 +80,7 @@ public class RavenCourierData extends SavedData {
         public final UUID recipientUuid;
         public final String recipientName;
         public final CompoundTag sealedScrollNbt;
+        public final String ravenName;
         public boolean inFlight;
 
         public DeliveryJob(long jobId,
@@ -88,7 +89,8 @@ public class RavenCourierData extends SavedData {
                            @NotNull UUID recipientUuid,
                            @NotNull String recipientName,
                            @NotNull CompoundTag sealedScrollNbt,
-                           boolean inFlight) {
+                           boolean inFlight,
+                           @NotNull String ravenName) {
             this.jobId = jobId;
             this.senderUuid = senderUuid;
             this.senderName = senderName;
@@ -96,6 +98,7 @@ public class RavenCourierData extends SavedData {
             this.recipientName = recipientName;
             this.sealedScrollNbt = sealedScrollNbt;
             this.inFlight = inFlight;
+            this.ravenName = ravenName;
         }
     }
 
@@ -196,6 +199,9 @@ public class RavenCourierData extends SavedData {
 
                     CompoundTag sealedScrollNbt = jobTag.getCompound("SealedScroll");
 
+                    // Raven name as saved (may be empty for older saves).
+                    String ravenName = jobTag.getString("RavenName");
+
                     // We ignore any stored "InFlight" state on load.
                     // All jobs become "not in flight" in a fresh server session.
                     boolean inFlight = false;
@@ -212,7 +218,8 @@ public class RavenCourierData extends SavedData {
                             recipientUuid,
                             recipientName,
                             sealedScrollNbt.copy(),
-                            inFlight
+                            inFlight,
+                            ravenName == null ? "" : ravenName
                     );
 
                     jobsByRecipient
@@ -273,6 +280,9 @@ public class RavenCourierData extends SavedData {
 
                     // Saved for debugging/visibility only; ignored on load.
                     jobTag.putBoolean("InFlight", job.inFlight);
+
+                    // Raven name at the time the job was created.
+                    jobTag.putString("RavenName", job.ravenName == null ? "" : job.ravenName);
 
                     jobsList.add(jobTag);
                 }
@@ -406,6 +416,21 @@ public class RavenCourierData extends SavedData {
             UUID senderUuid = sender.getUUID();
             String senderName = sender.getGameProfile().getName();
 
+            // Capture the raven's current name so we can use it for the courier.
+            String ravenName;
+            try {
+                if (raven.getCustomName() != null) {
+                    String n = raven.getCustomName().getString();
+                    ravenName = (n != null && !n.isEmpty()) ? n : "Raven";
+                } else {
+                    ravenName = "Raven";
+                }
+            } catch (Throwable t) {
+                LOG.warn("[RavenCourierData] createJobFromSealedScroll: failed to read raven custom name for raven id={}: {}",
+                        raven.getId(), t.toString());
+                ravenName = "Raven";
+            }
+
             long jobId = nextJobId++;
             if (jobId <= 0L) {
                 jobId = 1L;
@@ -419,7 +444,8 @@ public class RavenCourierData extends SavedData {
                     recipientUuid,
                     recipientName,
                     sealed.copy(),
-                    false // inFlight (runtime-only; never persisted across sessions)
+                    false, // inFlight (runtime-only; never persisted across sessions)
+                    ravenName
             );
 
             jobsByRecipient
@@ -429,13 +455,14 @@ public class RavenCourierData extends SavedData {
             setDirty();
 
             LOG.info(
-                    "[RavenCourierData] Created delivery job id={} from sealed scroll (sender='{}' [{}], recipient='{}' [{}], ravenId={})",
+                    "[RavenCourierData] Created delivery job id={} from sealed scroll (sender='{}' [{}], recipient='{}' [{}], ravenId={} ravenName='{}')",
                     jobId,
                     senderName,
                     senderUuid,
                     recipientName,
                     recipientUuid,
-                    raven.getId()
+                    raven.getId(),
+                    ravenName
             );
 
             return job;

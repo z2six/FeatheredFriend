@@ -341,10 +341,15 @@ public final class RavenCourierRuntime {
                         job.jobId, t.toString());
             }
 
-            // Name: use sender name if available, otherwise generic.
-            String ravenName = job.senderName != null && !job.senderName.isEmpty()
-                    ? job.senderName + "'s Raven"
-                    : "Courier Raven";
+            // Name: "<SenderName>'s <RavenName>" if available, otherwise fallback.
+            String baseRavenName = (job.ravenName != null && !job.ravenName.isEmpty())
+                    ? job.ravenName
+                    : "Raven";
+
+            String ravenName = (job.senderName != null && !job.senderName.isEmpty())
+                    ? job.senderName + "'s " + baseRavenName
+                    : baseRavenName;
+
             ensureRavenName(raven, ravenName);
 
             // Mark as a courier raven via persistent data + scoreboard tag.
@@ -660,8 +665,144 @@ public final class RavenCourierRuntime {
     }
 
     /**
+     * Build a Sealed Scroll ItemStack from a job's SealedScroll payload,
+     * tracking delivery history in the SealedScroll compound:
+     *
+     *   SealedScroll: {
+     *     ...original fields...,
+     *
+     *     // legacy (always mirrors "last" delivery)
+     *     DeliveredToName: "<name or empty>",
+     *     DeliveredToUUID: "<uuid or empty>",
+     *     DeliveredToUnknown: true/false,
+     *
+     *     // new fields
+     *     FirstDeliveredToName: "<name or empty>",
+     *     FirstDeliveredToUUID: "<uuid or empty>",
+     *     FirstDeliveredToUnknown: true/false,
+     *
+     *     LastDeliveredToName: "<name or empty>",
+     *     LastDeliveredToUUID: "<uuid or empty>",
+     *     LastDeliveredToUnknown: true/false,
+     *
+     *     SuccessfulDeliveries: <int>,
+     *     FailedDeliveries:     <int>
+     *   }
+     *
+     * Semantics:
+     *  - FirstDelivered* is set on the *first* recorded delivery of this scroll
+     *    (successful or not) and never changes afterwards.
+     *  - LastDelivered* is overwritten on every delivery.
+     *  - SuccessfulDeliveries is incremented for successful deliveries to a player
+     *    (RMB with free inventory slot).
+     *  - FailedDeliveries is incremented for deliveries that end up dropped on the ground
+     *    (no free inventory slot, raven death, etc.).
+     */
+    @NotNull
+    private static ItemStack buildDeliveredScrollStack(@NotNull Item sealedScrollItem,
+                                                       @NotNull RavenCourierData.DeliveryJob job,
+                                                       @Nullable String deliveredName,
+                                                       @Nullable UUID deliveredUuid,
+                                                       boolean successfulDelivery) {
+        ItemStack stack = new ItemStack(sealedScrollItem);
+        try {
+            CompoundTag sealedCopy = (job.sealedScrollNbt == null)
+                    ? new CompoundTag()
+                    : job.sealedScrollNbt.copy();
+
+            // --- Read existing counters (if any) ---
+            int successCount = 0;
+            int failedCount = 0;
+            try {
+                if (sealedCopy.contains("SuccessfulDeliveries", Tag.TAG_INT)) {
+                    successCount = sealedCopy.getInt("SuccessfulDeliveries");
+                }
+                if (sealedCopy.contains("FailedDeliveries", Tag.TAG_INT)) {
+                    failedCount = sealedCopy.getInt("FailedDeliveries");
+                }
+            } catch (Throwable counterReadErr) {
+                LOG.warn("[RavenCourierRuntime] buildDeliveredScrollStack: failed to read existing delivery counters for jobId={}: {}",
+                        job.jobId, counterReadErr.toString());
+            }
+
+            // --- Bump appropriate counter for this outcome ---
+            if (successfulDelivery) {
+                successCount++;
+            } else {
+                failedCount++;
+            }
+
+            sealedCopy.putInt("SuccessfulDeliveries", successCount);
+            sealedCopy.putInt("FailedDeliveries", failedCount);
+
+            // --- Compute this delivery's identity ---
+            String dName = (deliveredName == null) ? "" : deliveredName;
+            String dUuidStr = (deliveredUuid == null) ? "" : deliveredUuid.toString();
+            boolean unknown = dName.isEmpty();
+
+            // --- First-delivery fields: only set once ---
+            boolean hasFirst = false;
+            try {
+                String firstName = sealedCopy.getString("FirstDeliveredToName");
+                String firstUuid = sealedCopy.getString("FirstDeliveredToUUID");
+                boolean firstUnknown = sealedCopy.getBoolean("FirstDeliveredToUnknown");
+
+                hasFirst = (!firstName.isEmpty() || !firstUuid.isEmpty() || firstUnknown);
+            } catch (Throwable firstReadErr) {
+                LOG.warn("[RavenCourierRuntime] buildDeliveredScrollStack: failed to read FirstDelivered* for jobId={}: {}",
+                        job.jobId, firstReadErr.toString());
+            }
+
+            if (!hasFirst) {
+                sealedCopy.putString("FirstDeliveredToName", dName);
+                sealedCopy.putString("FirstDeliveredToUUID", dUuidStr);
+                sealedCopy.putBoolean("FirstDeliveredToUnknown", unknown);
+            }
+
+            // --- Last-delivery fields: always overwrite ---
+            sealedCopy.putString("LastDeliveredToName", dName);
+            sealedCopy.putString("LastDeliveredToUUID", dUuidStr);
+            sealedCopy.putBoolean("LastDeliveredToUnknown", unknown);
+
+            // --- Legacy aliases (mirror "last" delivery for backward compatibility) ---
+            sealedCopy.putString("DeliveredToName", dName);
+            sealedCopy.putString("DeliveredToUUID", dUuidStr);
+            sealedCopy.putBoolean("DeliveredToUnknown", unknown);
+
+            // Wrap back into CustomData root: { SealedScroll: <sealedCopy> }
+            CompoundTag customRoot = new CompoundTag();
+            customRoot.put("SealedScroll", sealedCopy);
+            CustomData customData = CustomData.of(customRoot);
+            stack.set(net.minecraft.core.component.DataComponents.CUSTOM_DATA, customData);
+
+            if (LOG.isDebugEnabled()) {
+                LOG.debug(
+                        "[RavenCourierRuntime] buildDeliveredScrollStack: jobId={} success={} first='{}' last='{}' succCnt={} failCnt={}",
+                        job.jobId,
+                        successfulDelivery,
+                        sealedCopy.getString("FirstDeliveredToName"),
+                        sealedCopy.getString("LastDeliveredToName"),
+                        successCount,
+                        failedCount
+                );
+            }
+
+        } catch (Throwable t) {
+            LOG.error("[RavenCourierRuntime] buildDeliveredScrollStack failed safely for jobId={}: {}",
+                    job.jobId, t.toString());
+        }
+        return stack;
+    }
+
+    /**
      * Constructs a new Sealed Scroll ItemStack from the job's SealedScroll NBT,
-     * adds it to the player's inventory, and drops it if the inventory is full.
+     * annotates it with delivery history, and either:
+     *  - puts it into the player's inventory (successful delivery), or
+     *  - drops it at the player's feet (failed delivery: no free slot).
+     *
+     * SuccessfulDeliveries is incremented only when the player has at least one
+     * empty inventory slot and we place the scroll directly into their inventory.
+     * FailedDeliveries is incremented when the scroll must be dropped on the ground.
      */
     private static boolean giveSealedScrollToPlayerFromJob(@NotNull ServerLevel level,
                                                            @NotNull ServerPlayer player,
@@ -674,32 +815,42 @@ public final class RavenCourierRuntime {
                 return false;
             }
 
-            ItemStack stack = new ItemStack(sealedScrollItem);
-            CompoundTag sealedCopy = job.sealedScrollNbt == null ? new CompoundTag() : job.sealedScrollNbt.copy();
+            // Determine if the player has at least one empty slot.
+            boolean hasSpace = hasEmptyInventorySlot(player);
 
-            // Reconstruct the exact CustomData payload:
-            // CustomData root: { SealedScroll: <sealedCopy> }
-            CompoundTag customRoot = new CompoundTag();
-            customRoot.put("SealedScroll", sealedCopy);
-            CustomData customData = CustomData.of(customRoot);
-            stack.set(net.minecraft.core.component.DataComponents.CUSTOM_DATA, customData);
+            // Build the scroll stack with correct outcome (success/failure).
+            ItemStack stack = buildDeliveredScrollStack(
+                    sealedScrollItem,
+                    job,
+                    safePlayerName(player),
+                    player.getUUID(),
+                    hasSpace // successfulDelivery flag
+            );
 
-            boolean added = false;
-            try {
-                added = player.getInventory().add(stack);
-            } catch (Throwable t) {
-                LOG.warn("[RavenCourierRuntime] giveSealedScrollToPlayerFromJob: add to inventory failed safely for player='{}': {}",
-                        safePlayerName(player), t.toString());
+            boolean handled = false;
+
+            if (hasSpace) {
+                // Successful delivery: insert into first empty slot.
+                handled = insertIntoFirstEmptySlot(player, stack);
+                if (!handled) {
+                    // Safety net: if insertion somehow failed despite hasSpace, treat as failure and drop it.
+                    LOG.warn(
+                            "[RavenCourierRuntime] giveSealedScrollToPlayerFromJob: insertion failed despite hasSpace=true for player='{}'; dropping instead.",
+                            safePlayerName(player)
+                    );
+                    handled = true;
+                    player.drop(stack, false);
+                }
+            } else {
+                // No free slot -> failed delivery; stack is already flagged as failure by buildDeliveredScrollStack.
+                handled = true;
+                player.drop(stack, false);
             }
 
-            if (!added || !stack.isEmpty()) {
-                // Either inventory was full or add() left a remainder; drop it.
-                try {
-                    player.drop(stack, false);
-                } catch (Throwable t) {
-                    LOG.warn("[RavenCourierRuntime] giveSealedScrollToPlayerFromJob: drop failed safely for player='{}': {}",
-                            safePlayerName(player), t.toString());
-                }
+            if (!handled) {
+                LOG.warn("[RavenCourierRuntime] giveSealedScrollToPlayerFromJob: scroll not handed out correctly for player='{}' (jobId={})",
+                        safePlayerName(player), job.jobId);
+                return false;
             }
 
             // Notify the player.
@@ -710,12 +861,16 @@ public final class RavenCourierRuntime {
                     "[FeatheredFriend] You retrieved a sealed scroll"
                             + (senderName.isEmpty() ? "" : " from " + senderName)
                             + (recipientName.isEmpty() ? "" : " addressed to " + recipientName)
-                            + "."
+                            + (hasSpace ? "." : " (your inventory was full, so it was dropped nearby).")
             );
             player.sendSystemMessage(msg);
 
-            LOG.info("[RavenCourierRuntime] giveSealedScrollToPlayerFromJob: delivered sealed scroll for jobId={} to player='{}'",
-                    job.jobId, safePlayerName(player));
+            LOG.info(
+                    "[RavenCourierRuntime] giveSealedScrollToPlayerFromJob: {} delivery of sealed scroll for jobId={} to player='{}'",
+                    hasSpace ? "successful" : "failed (dropped)",
+                    job.jobId,
+                    safePlayerName(player)
+            );
 
             return true;
 
@@ -789,13 +944,14 @@ public final class RavenCourierRuntime {
                 return;
             }
 
-            ItemStack stack = new ItemStack(sealedScrollItem);
-            CompoundTag sealedCopy = job.sealedScrollNbt == null ? new CompoundTag() : job.sealedScrollNbt.copy();
-
-            CompoundTag customRoot = new CompoundTag();
-            customRoot.put("SealedScroll", sealedCopy);
-            CustomData customData = CustomData.of(customRoot);
-            stack.set(net.minecraft.core.component.DataComponents.CUSTOM_DATA, customData);
+            // Raven death: no direct recipient -> mark as failed delivery with unknown target.
+            ItemStack stack = buildDeliveredScrollStack(
+                    sealedScrollItem,
+                    job,
+                    null,
+                    null,
+                    false // successfulDelivery = false (failed delivery)
+            );
 
             raven.spawnAtLocation(stack, 0.2F);
 
@@ -804,6 +960,66 @@ public final class RavenCourierRuntime {
 
         } catch (Throwable t) {
             LOG.error("[RavenCourierRuntime] dropSealedScrollAtRaven failed safely for jobId={}", job.jobId, t);
+        }
+    }
+
+    /**
+     * Returns true if the player has at least one completely empty slot
+     * in their inventory.
+     */
+    private static boolean hasEmptyInventorySlot(@NotNull ServerPlayer player) {
+        try {
+            int size = player.getInventory().getContainerSize();
+            for (int i = 0; i < size; i++) {
+                ItemStack existing = player.getInventory().getItem(i);
+                if (existing == null || existing.isEmpty()) {
+                    if (LOG.isDebugEnabled()) {
+                        LOG.debug("[RavenCourierRuntime] hasEmptyInventorySlot: found empty slot {} for player='{}'",
+                                i, safePlayerName(player));
+                    }
+                    return true;
+                }
+            }
+        } catch (Throwable t) {
+            LOG.warn("[RavenCourierRuntime] hasEmptyInventorySlot failed safely for player='{}': {}",
+                    safePlayerName(player), t.toString());
+        }
+        return false;
+    }
+
+    /**
+     * Inserts the given stack into the first empty inventory slot of the player.
+     *
+     * @return true if the stack was placed into an empty slot, false otherwise.
+     */
+    private static boolean insertIntoFirstEmptySlot(@NotNull ServerPlayer player,
+                                                    @NotNull ItemStack stack) {
+        try {
+            if (stack.isEmpty()) {
+                return false;
+            }
+
+            int size = player.getInventory().getContainerSize();
+            for (int i = 0; i < size; i++) {
+                ItemStack existing = player.getInventory().getItem(i);
+                if (existing == null || existing.isEmpty()) {
+                    player.getInventory().setItem(i, stack);
+                    if (LOG.isDebugEnabled()) {
+                        LOG.debug("[RavenCourierRuntime] insertIntoFirstEmptySlot: placed scroll in slot {} for player='{}'",
+                                i, safePlayerName(player));
+                    }
+                    return true;
+                }
+            }
+
+            LOG.warn("[RavenCourierRuntime] insertIntoFirstEmptySlot: no empty slot found for player='{}' despite hasEmptyInventorySlot=true",
+                    safePlayerName(player));
+            return false;
+
+        } catch (Throwable t) {
+            LOG.warn("[RavenCourierRuntime] insertIntoFirstEmptySlot failed safely for player='{}': {}",
+                    safePlayerName(player), t.toString());
+            return false;
         }
     }
 
