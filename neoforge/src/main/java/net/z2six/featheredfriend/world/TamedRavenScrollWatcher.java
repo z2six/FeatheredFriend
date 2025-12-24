@@ -184,6 +184,32 @@ public final class TamedRavenScrollWatcher {
                 return;
             }
 
+            // If this player currently has any open courier jobs as SENDER, their raven
+            // is considered "busy" delivering a scroll. In that case we NEVER keep or
+            // spawn a scroll-summoned follower raven *while holding a sealed scroll*.
+            RavenCourierData courierData = RavenCourierData.get(serverLevel);
+            boolean hasPendingAsSender = courierData.hasOpenJobsAsSender(playerId);
+            if (hasPendingAsSender && holdingNow) {
+                if (!scrollRavens.isEmpty()) {
+                    for (RavenEntity r : scrollRavens) {
+                        despawnOneScrollSummonedRaven(
+                                serverLevel,
+                                serverPlayer,
+                                r,
+                                "courier-dispatch: sender has pending delivery job"
+                        );
+                    }
+                }
+                if (serverPlayer.tickCount % 80 == 0) {
+                    LOG.info(
+                            "[TamedRavenScrollWatcher] Player '{}' has pending courier job(s); " +
+                                    "disabling scroll-summoned raven while sealed scroll is held.",
+                            safePlayerName(player)
+                    );
+                }
+                return;
+            }
+
             // If the player is NOT holding the sealed scroll, despawn all scroll-summoned ravens.
             if (!holdingNow) {
                 if (!scrollRavens.isEmpty()) {
@@ -800,19 +826,91 @@ public final class TamedRavenScrollWatcher {
                 return InteractionResult.sidedSuccess(true);
             }
 
-            // SERVER: this is where we will later implement "give the scroll to the raven".
-            // For now we just log and claim the interaction so nothing else handles it.
-            LOG.info(
-                    "[TamedRavenScrollWatcher] handleSealedScrollInteract: SERVER accepted sealed scroll use " +
-                            "(player='{}', raven id={}, hand={}, stack={})",
-                    safePlayerName(player),
-                    raven.getId(),
-                    hand,
+            // SERVER: perform the first leg of courier dispatch.
+            if (!(player instanceof ServerPlayer serverPlayer)) {
+                // Should never happen on logical server, but we guard anyway.
+                LOG.warn("[TamedRavenScrollWatcher] handleSealedScrollInteract: player is not ServerPlayer on server side");
+                return InteractionResult.PASS;
+            }
+            if (!(level instanceof ServerLevel serverLevel)) {
+                LOG.warn("[TamedRavenScrollWatcher] handleSealedScrollInteract: level is not ServerLevel on server side");
+                return InteractionResult.PASS;
+            }
+
+            // 1) Create a delivery job in RavenCourierData from this Sealed Scroll.
+            RavenCourierData courierData = RavenCourierData.get(serverLevel);
+            RavenCourierData.DeliveryJob job = courierData.createJobFromSealedScroll(
+                    serverPlayer,
+                    raven,
                     stack
             );
 
-            // NOTE: We do NOT modify the item yet. We only claim the interaction.
-            // When you’re ready to actually "give" the scroll to the raven, the logic goes here.
+            if (job == null) {
+                // Something about the scroll's NBT / recipient data was invalid.
+                // We do NOT consume the item and we do NOT despawn the raven.
+                LOG.warn(
+                        "[TamedRavenScrollWatcher] handleSealedScrollInteract: FAILED to create courier job " +
+                                "(player='{}', raven id={}, hand={}, stack={})",
+                        safePlayerName(serverPlayer),
+                        raven.getId(),
+                        hand,
+                        stack
+                );
+                return InteractionResult.PASS;
+            }
+
+            LOG.info(
+                    "[TamedRavenScrollWatcher] handleSealedScrollInteract: SERVER created courier jobId={} from sealed scroll " +
+                            "(sender='{}', recipient='{}', ravenId={})",
+                    job.jobId,
+                    job.senderName,
+                    job.recipientName,
+                    raven.getId()
+            );
+
+            // 2) Switch the model of this raven to the SCROLL variant (visually holding the scroll).
+            try {
+                raven.setRavenVariant(net.z2six.featheredfriend.entity.raven.RavenVariant.SCROLL);
+            } catch (Throwable t) {
+                LOG.warn("[TamedRavenScrollWatcher] handleSealedScrollInteract: setRavenVariant(SCROLL) failed safely for id={}: {}",
+                        raven.getId(), t.toString());
+            }
+
+            // 3) Consume exactly ONE Sealed Scroll from the player's hand (the one we just used),
+            //    now that we KNOW the job was created and stored successfully.
+            try {
+                ItemStack inHand = serverPlayer.getItemInHand(hand);
+                if (!inHand.isEmpty() && inHand.getItem() == stack.getItem()) {
+                    inHand.shrink(1);
+                } else {
+                    // If for some weird reason the item changed between checks, log and skip.
+                    LOG.warn("[TamedRavenScrollWatcher] handleSealedScrollInteract: item in hand changed before consumption for player='{}'",
+                            safePlayerName(serverPlayer));
+                }
+            } catch (Throwable t) {
+                LOG.warn("[TamedRavenScrollWatcher] handleSealedScrollInteract: shrink(1) failed safely for player='{}': {}",
+                        safePlayerName(serverPlayer),
+                        t.toString());
+            }
+
+            // 4) Trigger fade-out / despawn FX for this raven, but ONLY because job creation succeeded.
+            try {
+                despawnOneScrollSummonedRaven(
+                        serverLevel,
+                        serverPlayer,
+                        raven,
+                        "courier-dispatch: sealed scroll accepted"
+                );
+            } catch (Throwable t) {
+                LOG.error("[TamedRavenScrollWatcher] handleSealedScrollInteract: despawnOneScrollSummonedRaven failed safely for id={}: {}",
+                        raven.getId(),
+                        t.toString());
+                // Fail-safe: if FX despawn fails, we do NOT forcibly discard here,
+                // so the raven remains in-world rather than causing a hard state mismatch.
+            }
+
+            // We fully handled this interaction: the scroll was turned into a courier job,
+            // the raven swapped to SCROLL variant and began its fade-out.
             return InteractionResult.CONSUME;
 
         } catch (Throwable t) {

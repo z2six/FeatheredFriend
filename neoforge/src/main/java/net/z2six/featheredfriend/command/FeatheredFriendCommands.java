@@ -1,21 +1,29 @@
 // MainFile: neoforge/src/main/java/net/z2six/featheredfriend/command/FeatheredFriendCommands.java
 package net.z2six.featheredfriend.command;
 
+import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.logging.LogUtils;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.arguments.GameProfileArgument;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.world.RavenCourierData;
 import org.slf4j.Logger;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.UUID;
 
 public final class FeatheredFriendCommands {
 
@@ -47,12 +55,36 @@ public final class FeatheredFriendCommands {
         try {
             CommandDispatcher<CommandSourceStack> dispatcher = event.getDispatcher();
 
-            // Root: /featheredfriend clear_tamed_raven
+            // Root: /featheredfriend ...
             dispatcher.register(
                     Commands.literal("featheredfriend")
                             .requires(src -> src.hasPermission(2)) // OP-only
+                            // -----------------------------------------------------------------
+                            // /featheredfriend clear_tamed_raven
+                            // -----------------------------------------------------------------
                             .then(Commands.literal("clear_tamed_raven")
                                     .executes(FeatheredFriendCommands::executeClearTamedRavenSelf)
+                            )
+                            // -----------------------------------------------------------------
+                            // /featheredfriend courier ...
+                            // -----------------------------------------------------------------
+                            .then(Commands.literal("courier")
+                                    // /featheredfriend courier list
+                                    // /featheredfriend courier list <player>
+                                    .then(Commands.literal("list")
+                                            .executes(FeatheredFriendCommands::executeCourierListAll)
+                                            .then(Commands.argument("player", GameProfileArgument.gameProfile())
+                                                    .executes(FeatheredFriendCommands::executeCourierListPlayer)
+                                            )
+                                    )
+                                    // /featheredfriend courier clear
+                                    // /featheredfriend courier clear <player>
+                                    .then(Commands.literal("clear")
+                                            .executes(FeatheredFriendCommands::executeCourierClearAll)
+                                            .then(Commands.argument("player", GameProfileArgument.gameProfile())
+                                                    .executes(FeatheredFriendCommands::executeCourierClearPlayer)
+                                            )
+                                    )
                             )
             );
 
@@ -63,11 +95,19 @@ public final class FeatheredFriendCommands {
                             .executes(FeatheredFriendCommands::executeClearTamedRavenSelf)
             );
 
-            LOG.info("[FeatheredFriendCommands] Commands registered: /featheredfriend clear_tamed_raven, /ff_clear_tamed_raven");
+            LOG.info("[FeatheredFriendCommands] Commands registered: " +
+                    "/featheredfriend clear_tamed_raven, " +
+                    "/ff_clear_tamed_raven, " +
+                    "/featheredfriend courier list [player], " +
+                    "/featheredfriend courier clear [player]");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendCommands] onRegisterCommands failed", t);
         }
     }
+
+    // ---------------------------------------------------------------------
+    // clear_tamed_raven
+    // ---------------------------------------------------------------------
 
     /**
      * Command handler:
@@ -200,6 +240,186 @@ public final class FeatheredFriendCommands {
             LOG.error("[FeatheredFriendCommands] clearPlayerTamedRavenData failed for player={}",
                     (player == null ? "null" : player.getGameProfile().getName()), t);
             return false;
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Courier commands
+    // ---------------------------------------------------------------------
+
+    /**
+     * /featheredfriend courier list
+     *
+     * Lists all pending courier jobs in the world.
+     */
+    private static int executeCourierListAll(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack source = ctx.getSource();
+        try {
+            ServerLevel level = source.getLevel();
+            RavenCourierData data = RavenCourierData.get(level);
+
+            List<RavenCourierData.DeliveryJob> jobs = data.getAllJobsFlat();
+            if (jobs.isEmpty()) {
+                source.sendSuccess(
+                        () -> Component.literal("[FeatheredFriend] No pending raven courier jobs found."),
+                        false
+                );
+                return 0;
+            }
+
+            source.sendSuccess(
+                    () -> Component.literal("[FeatheredFriend] Pending raven courier jobs: " + jobs.size()),
+                    false
+            );
+
+            for (RavenCourierData.DeliveryJob job : jobs) {
+                if (job == null) {
+                    continue;
+                }
+                final String line = String.format(
+                        " - id=%d sender='%s' [%s] -> recipient='%s' [%s] inFlight=%s sealedScroll=%s",
+                        job.jobId,
+                        job.senderName,
+                        job.senderUuid,
+                        job.recipientName,
+                        job.recipientUuid,
+                        job.inFlight,
+                        job.sealedScrollNbt // full SealedScroll compound
+                );
+                source.sendSuccess(() -> Component.literal(line), false);
+            }
+
+            return jobs.size();
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriendCommands] executeCourierListAll failed", t);
+            source.sendFailure(Component.literal("[FeatheredFriend] Error while listing courier jobs; see log."));
+            return 0;
+        }
+    }
+
+    /**
+     * /featheredfriend courier list <player>
+     *
+     * Lists all courier jobs where the given player is either sender OR recipient.
+     */
+    private static int executeCourierListPlayer(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        CommandSourceStack source = ctx.getSource();
+        try {
+            Collection<GameProfile> profiles = GameProfileArgument.getGameProfiles(ctx, "player");
+            if (profiles.isEmpty()) {
+                source.sendFailure(Component.literal("[FeatheredFriend] No matching player found."));
+                return 0;
+            }
+
+            GameProfile profile = profiles.iterator().next();
+            UUID targetUuid = profile.getId();
+            String targetName = profile.getName();
+
+            ServerLevel level = source.getLevel();
+            RavenCourierData data = RavenCourierData.get(level);
+
+            List<RavenCourierData.DeliveryJob> jobs = data.getJobsForPlayer(targetUuid);
+            if (jobs.isEmpty()) {
+                source.sendSuccess(
+                        () -> Component.literal("[FeatheredFriend] No courier jobs found for player '" + targetName + "'."),
+                        false
+                );
+                return 0;
+            }
+
+            source.sendSuccess(
+                    () -> Component.literal("[FeatheredFriend] Courier jobs for '" + targetName + "': " + jobs.size()),
+                    false
+            );
+
+            for (RavenCourierData.DeliveryJob job : jobs) {
+                if (job == null) {
+                    continue;
+                }
+                final String line = String.format(
+                        " - id=%d sender='%s' [%s] -> recipient='%s' [%s] inFlight=%s",
+                        job.jobId,
+                        job.senderName,
+                        job.senderUuid,
+                        job.recipientName,
+                        job.recipientUuid,
+                        job.inFlight,
+                        job.sealedScrollNbt // full SealedScroll compound
+                );
+                source.sendSuccess(() -> Component.literal(line), false);
+            }
+
+            return jobs.size();
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriendCommands] executeCourierListPlayer failed", t);
+            source.sendFailure(Component.literal("[FeatheredFriend] Error while listing courier jobs for player; see log."));
+            return 0;
+        }
+    }
+
+    /**
+     * /featheredfriend courier clear
+     *
+     * Removes ALL courier jobs from the world.
+     */
+    private static int executeCourierClearAll(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack source = ctx.getSource();
+        try {
+            ServerLevel level = source.getLevel();
+            RavenCourierData data = RavenCourierData.get(level);
+
+            int removed = data.clearAllJobs();
+            source.sendSuccess(
+                    () -> Component.literal("[FeatheredFriend] Cleared " + removed + " raven courier job(s) from the world."),
+                    true
+            );
+            return removed > 0 ? 1 : 0;
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriendCommands] executeCourierClearAll failed", t);
+            source.sendFailure(Component.literal("[FeatheredFriend] Error while clearing courier jobs; see log."));
+            return 0;
+        }
+    }
+
+    /**
+     * /featheredfriend courier clear <player>
+     *
+     * Removes all courier jobs where the given player is either sender OR recipient.
+     */
+    private static int executeCourierClearPlayer(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        CommandSourceStack source = ctx.getSource();
+        try {
+            Collection<GameProfile> profiles = GameProfileArgument.getGameProfiles(ctx, "player");
+            if (profiles.isEmpty()) {
+                source.sendFailure(Component.literal("[FeatheredFriend] No matching player found."));
+                return 0;
+            }
+
+            GameProfile profile = profiles.iterator().next();
+            UUID targetUuid = profile.getId();
+            String targetName = profile.getName();
+
+            ServerLevel level = source.getLevel();
+            RavenCourierData data = RavenCourierData.get(level);
+
+            int removed = data.clearJobsForPlayer(targetUuid);
+
+            source.sendSuccess(
+                    () -> Component.literal(
+                            "[FeatheredFriend] Cleared "
+                                    + removed
+                                    + " raven courier job(s) for player '"
+                                    + targetName
+                                    + "'."
+                    ),
+                    true
+            );
+
+            return removed > 0 ? 1 : 0;
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriendCommands] executeCourierClearPlayer failed", t);
+            source.sendFailure(Component.literal("[FeatheredFriend] Error while clearing courier jobs for player; see log."));
+            return 0;
         }
     }
 }

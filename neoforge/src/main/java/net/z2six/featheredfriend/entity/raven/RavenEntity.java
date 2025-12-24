@@ -218,7 +218,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
     // -------------------- Debug, gizmos, etc --------------------
     // Debug: visualize A* path / waypoints in-world with labeled markers.
-    private static final boolean DEBUG_DRAW_PATH_GIZMOS = true; // set to true when testing
+    private static final boolean DEBUG_DRAW_PATH_GIZMOS = false; // set to true when testing
 
     // How many waypoints around the current index to visualize (current + next N-1).
     private static final int DEBUG_PATH_GIZMO_MAX_WAYPOINTS = 20;
@@ -3899,13 +3899,6 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         }
     }
 
-    // ----------------------------------------------------------------------
-    // TamedRaven accessors
-    // ----------------------------------------------------------------------
-    public net.z2six.featheredfriend.entity.raven.modules.TamedRaven getTamedRavenModule() {
-        return this.tamedRaven;
-    }
-
     // ---------------------------------------------------------------------
     // Variant helpers (NORMAL / SCROLL)
     // ---------------------------------------------------------------------
@@ -3933,6 +3926,13 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 LOG.warn("[RavenEntity] setVariant failed safely: {}", t.toString());
             }
         }
+    }
+
+    // ----------------------------------------------------------------------
+    // TamedRaven accessors
+    // ----------------------------------------------------------------------
+    public net.z2six.featheredfriend.entity.raven.modules.TamedRaven getTamedRavenModule() {
+        return this.tamedRaven;
     }
 
     // ---------------------------------------------------------------------
