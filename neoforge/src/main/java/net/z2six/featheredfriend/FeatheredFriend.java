@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/FeatheredFriend.java
+// neoforge/src/main/java/net/z2six/featheredfriend/FeatheredFriend.java
 package net.z2six.featheredfriend;
 
 import com.mojang.logging.LogUtils;
@@ -7,7 +7,9 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
+import net.z2six.featheredfriend.chat.ChatDisabler;
 import net.z2six.featheredfriend.client.FFNeoForgeClient;
+import net.z2six.featheredfriend.client.FFKeyBindings;
 import net.z2six.featheredfriend.client.particle.FFClientParticles;
 import net.z2six.featheredfriend.client.raven.RavenClientEvents;
 import net.z2six.featheredfriend.command.FeatheredFriendCommands;
@@ -18,26 +20,28 @@ import net.z2six.featheredfriend.registry.FFNeoForgeEntities;
 import net.z2six.featheredfriend.registry.FFNeoForgeItems;
 import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
 import net.z2six.featheredfriend.registry.FFNeoForgeParticles;
+import net.z2six.featheredfriend.world.RavenCourierRuntime;
 import net.z2six.featheredfriend.world.RavenSpawnEvents;
 import net.z2six.featheredfriend.world.TamedRavenScrollWatcher;
-import net.z2six.featheredfriend.world.RavenCourierRuntime;
-import net.z2six.featheredfriend.chat.ChatDisabler;
-
 import org.slf4j.Logger;
 
 /**
+ * neoforge/src/main/java/net/z2six/featheredfriend/FeatheredFriend.java
+ *
  * NeoForge entrypoint for FeatheredFriend.
  *
  * Responsibilities:
  *  - Invoke common init code.
  *  - Register NeoForge-specific registries (items, menus, creative tabs, particles).
  *  - Register server-side calendar config.
- *  - Hook client-only registration (menu screens, entity renderers, particle providers) via the mod event bus.
+ *  - Hook client-only registration (menu screens, entity renderers, particle providers, keybindings).
  *  - Register payload handlers via mod event bus listener (NeoForge 1.21.1 safe).
  *  - Register entity types + attributes (Raven).
  *  - Register Raven natural spawning logic.
  *  - Register admin/debug commands (via NeoForge EVENT_BUS).
  *  - Register TamedRavenScrollWatcher to detect sealed scroll usage.
+ *  - Register RavenCourierRuntime for courier ravens.
+ *  - Register ChatDisabler to respect world-owned chat disable setting.
  */
 @Mod(Constants.MOD_ID)
 public class FeatheredFriend {
@@ -106,7 +110,7 @@ public class FeatheredFriend {
             LOG.error("[FeatheredFriend] Failed to hook client menu screen registration", t);
         }
 
-        // Client-only: entity renderers + particle providers
+        // Client-only: entity renderers + particle providers + keybindings
         try {
             if (FMLEnvironment.dist == Dist.CLIENT) {
                 modEventBus.addListener(RavenClientEvents::onRegisterRenderers);
@@ -114,6 +118,10 @@ public class FeatheredFriend {
 
                 modEventBus.addListener(FFClientParticles::onRegisterParticleProviders);
                 LOG.info("[FeatheredFriend] Hooked particle provider registration listener (client only)");
+
+                // Keybindings + settings GUI + whistle key (client only)
+                FFKeyBindings.register(modEventBus);
+                LOG.info("[FeatheredFriend] Registered FFKeyBindings (client only)");
             } else {
                 LOG.info("[FeatheredFriend] Skipping client-only listeners on non-client dist");
             }
@@ -127,16 +135,6 @@ public class FeatheredFriend {
             LOG.info("[FeatheredFriend] Hooked RavenSpawnEvents (natural spawning)");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to hook RavenSpawnEvents", t);
-        }
-
-        // ---------------------------------------------------------------------
-        // ChatDisabler: allow commands but block all player-to-player chat.
-        // ---------------------------------------------------------------------
-        try {
-            ChatDisabler.register();
-            LOG.info("[FeatheredFriend] Registered ChatDisabler (commands allowed, global chat disabled)");
-        } catch (Throwable t) {
-            LOG.error("[FeatheredFriend] Failed to register ChatDisabler", t);
         }
 
         // ---------------------------------------------------------------------
@@ -157,6 +155,16 @@ public class FeatheredFriend {
             LOG.info("[FeatheredFriend] Registered RavenCourierRuntime");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to register RavenCourierRuntime", t);
+        }
+
+        // ---------------------------------------------------------------------
+        // ChatDisabler: respects FeatheredFriendSettingsData.chatDisabled.
+        // ---------------------------------------------------------------------
+        try {
+            ChatDisabler.register();
+            LOG.info("[FeatheredFriend] Registered ChatDisabler");
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriend] Failed to register ChatDisabler", t);
         }
 
         // ---------------------------------------------------------------------
