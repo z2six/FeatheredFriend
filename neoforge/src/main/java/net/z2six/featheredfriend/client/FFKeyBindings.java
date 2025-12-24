@@ -20,6 +20,10 @@ import org.jetbrains.annotations.NotNull;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 
+import net.minecraft.network.chat.Component;
+import net.z2six.featheredfriend.world.TamedRavenScrollWatcher;
+import net.z2six.featheredfriend.network.FFNetwork;
+
 /**
  * neoforge/src/main/java/net/z2six/featheredfriend/client/FFKeyBindings.java
  *
@@ -129,36 +133,45 @@ public final class FFKeyBindings {
 
     private static void handleWhistleKey(@NotNull Minecraft mc, @NotNull LocalPlayer player) {
         try {
-            LOG.info("[FFKeyBindings] Whistle key pressed by '{}'", player.getGameProfile().getName());
+            // First: client-side check if the player is holding a sealed scroll.
+            if (!TamedRavenScrollWatcher.isHoldingSealedScroll(player)) {
+                try {
+                    player.displayClientMessage(
+                            Component.literal("[FeatheredFriend] Hold a sealed scroll to whistle for your raven."),
+                            true
+                    );
+                } catch (Throwable msgErr) {
+                    LOG.warn("[FFKeyBindings] Failed to show 'hold scroll' message to '{}': {}",
+                            player.getGameProfile().getName(), msgErr.toString());
+                }
 
-            if (mc.level == null) {
+                LOG.info(
+                        "[FFKeyBindings] Whistle key ignored: player='{}' is not holding a sealed scroll.",
+                        player.getGameProfile().getName()
+                );
                 return;
             }
 
-            // Play the raven whistle sound locally at the player's position.
+            // If we *are* holding a sealed scroll: send a C2S request to the server.
+            // The server-side handler should call TamedRavenScrollWatcher.handleWhistleSummonRequest(...)
+            // for the requesting player.
             try {
-                ResourceLocation soundId = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "raven.whistle");
-                SoundEvent event = BuiltInRegistries.SOUND_EVENT.get(soundId);
-                if (event != null) {
-                    mc.level.playLocalSound(
-                            player.getX(),
-                            player.getY(),
-                            player.getZ(),
-                            event,
-                            SoundSource.PLAYERS,
-                            0.6F,
-                            1.0F,
-                            false
+                FFNetwork.sendWhistleForRaven();
+                LOG.info("[FFKeyBindings] Sent whistle request packet for player='{}'",
+                        player.getGameProfile().getName());
+            } catch (Throwable netErr) {
+                LOG.error("[FFKeyBindings] Failed to send whistle packet for player='{}'",
+                        player.getGameProfile().getName(), netErr);
+                try {
+                    player.displayClientMessage(
+                            Component.literal("[FeatheredFriend] Failed to whistle for your raven (network error)."),
+                            true
                     );
-                    LOG.debug("[FFKeyBindings] Played local raven whistle sound at player position.");
-                } else {
-                    LOG.warn("[FFKeyBindings] Whistle sound '{}' not found in registry.", soundId);
+                } catch (Throwable msgErr) {
+                    LOG.warn("[FFKeyBindings] Failed to show whistle error message to '{}': {}",
+                            player.getGameProfile().getName(), msgErr.toString());
                 }
-            } catch (Throwable soundErr) {
-                LOG.warn("[FFKeyBindings] Failed to play whistle sound safely: {}", soundErr.toString());
             }
-
-            // Future: send a packet to the server to actually command the raven(s).
 
         } catch (Throwable t) {
             LOG.error("[FFKeyBindings] handleWhistleKey failed safely", t);

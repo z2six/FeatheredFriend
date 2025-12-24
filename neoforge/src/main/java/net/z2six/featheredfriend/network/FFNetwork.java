@@ -54,52 +54,87 @@ public final class FFNetwork {
         try {
             var registrar = event.registrar("1");
 
-            // Existing: KnownPlayersPayload (S2C)
+            // KnownPlayersPayload (S2C)
             registrar.playToClient(
                     KnownPlayersPayload.TYPE,
                     KnownPlayersPayload.STREAM_CODEC,
                     FFNetwork::handleKnownPlayersOnClient
             );
 
-            // Existing: SealStampCarveResultPacket (C2S)
+            // SealStampCarveResultPacket (C2S)
             registrar.playToServer(
                     SealStampCarveResultPacket.TYPE,
                     SealStampCarveResultPacket.STREAM_CODEC,
                     FFNetwork::handleSealStampCarveResultOnServer
             );
 
-            // Existing: WaxSealPacket (C2S)
+            // WaxSealPacket (C2S)
             registrar.playToServer(
                     WaxSealPacket.TYPE,
                     WaxSealPacket.STREAM_CODEC,
                     FFNetwork::handleWaxSealOnServer
             );
 
-            // NEW: BreakSealPacket (C2S)
+            // BreakSealPacket (C2S)
             registrar.playToServer(
                     BreakSealPacket.TYPE,
                     BreakSealPacket.STREAM_CODEC,
                     FFNetwork::handleBreakSealOnServer
             );
 
-            // NEW: OpenRavenNameScreenPayload (S2C)
+            // OpenRavenNameScreenPayload (S2C)
             registrar.playToClient(
                     OpenRavenNameScreenPayload.TYPE,
                     OpenRavenNameScreenPayload.STREAM_CODEC,
                     FFNetwork::handleOpenRavenNameScreenOnClient
             );
 
-            // NEW: RavenNameChosenPacket (C2S)
+            // RavenNameChosenPacket (C2S)
             registrar.playToServer(
                     RavenNameChosenPacket.TYPE,
                     RavenNameChosenPacket.STREAM_CODEC,
                     FFNetwork::handleRavenNameChosenOnServer
             );
 
+            // WhistleForRavenPacket (C2S – no payload data)
+            registrar.playToServer(
+                    WhistleForRavenPacket.TYPE,
+                    WhistleForRavenPacket.STREAM_CODEC,
+                    FFNetwork::handleWhistleForRavenOnServer
+            );
+
             LOG.info("[FFNetwork] Registered KnownPlayersPayload (S2C), SealStampCarveResultPacket (C2S), WaxSealPacket (C2S), BreakSealPacket (C2S), OpenRavenNameScreenPayload (S2C), RavenNameChosenPacket (C2S)");
         } catch (Throwable t) {
             LOG.error("[FFNetwork] Failed to register payload handlers", t);
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // WhistleForRavenPacket handler (C2S)
+    // ---------------------------------------------------------------------
+
+    private static void handleWhistleForRavenOnServer(@NotNull WhistleForRavenPacket payload,
+                                                      @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                if (!(context.player() instanceof ServerPlayer serverPlayer)) {
+                    LOG.error("[FFNetwork] handleWhistleForRavenOnServer: context.player() is not a ServerPlayer");
+                    return;
+                }
+
+                LOG.debug("[FFNetwork] handleWhistleForRavenOnServer: processing whistle request for player='{}'",
+                        serverPlayer.getGameProfile().getName());
+
+                // Delegate to the scroll watcher. This will:
+                //  - Re-check scroll on the server.
+                //  - Check stored tamed raven.
+                //  - Spawn / reuse / deduplicate ravens with FX.
+                net.z2six.featheredfriend.world.TamedRavenScrollWatcher.handleWhistleSummonRequest(serverPlayer);
+
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] Failed to handle WhistleForRavenPacket on server", t);
+            }
+        });
     }
 
     // ---------------------------------------------------------------------
@@ -284,6 +319,43 @@ public final class FFNetwork {
     }
 
     // ---------------------------------------------------------------------
+    // NEW: WhistleForRavenPacket (client → server, no payload data)
+    // ---------------------------------------------------------------------
+
+    public record WhistleForRavenPacket() implements CustomPacketPayload {
+
+        public static final Type<WhistleForRavenPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "whistle_for_raven"));
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, WhistleForRavenPacket> STREAM_CODEC =
+                StreamCodec.of(WhistleForRavenPacket::encode, WhistleForRavenPacket::decode);
+
+        private static void encode(@NotNull RegistryFriendlyByteBuf buf,
+                                   @NotNull WhistleForRavenPacket payload) {
+            try {
+                // No fields – nothing to write.
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] WhistleForRavenPacket encode failed", t);
+            }
+        }
+
+        private static @NotNull WhistleForRavenPacket decode(@NotNull RegistryFriendlyByteBuf buf) {
+            try {
+                // No fields – nothing to read.
+                return new WhistleForRavenPacket();
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] WhistleForRavenPacket decode failed", t);
+                return new WhistleForRavenPacket();
+            }
+        }
+
+        @Override
+        public @NotNull Type<WhistleForRavenPacket> type() {
+            return TYPE;
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // NEW: Tamed Raven – Name chosen (client → server)
     // ---------------------------------------------------------------------
 
@@ -355,6 +427,17 @@ public final class FFNetwork {
         @Override
         public @NotNull Type<KnownPlayersPayload> type() {
             return TYPE;
+        }
+    }
+
+    // Whistle sending (client → server)
+    public static void sendWhistleForRaven() {
+        try {
+            WhistleForRavenPacket p = new WhistleForRavenPacket();
+            PacketDistributor.sendToServer(p);
+            LOG.debug("[FFNetwork] Sent WhistleForRavenPacket to server");
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendWhistleForRaven failed safely", t);
         }
     }
 
