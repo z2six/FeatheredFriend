@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/world/RavenCourierData.java
+// neoforge/src/main/java/net/z2six/featheredfriend/world/RavenCourierData.java
 package net.z2six.featheredfriend.world;
 
 import com.mojang.logging.LogUtils;
@@ -65,7 +65,13 @@ public class RavenCourierData extends SavedData {
      * - senderUuid/senderName: who handed the scroll to their raven.
      * - recipientUuid/recipientName: where the raven should ultimately deliver.
      * - sealedScrollNbt: contents of the "SealedScroll" compound from the scroll's CustomData.
-     * - inFlight: whether a courier raven is currently spawned for this job (future use).
+     * - inFlight: whether a courier raven is currently spawned for this job
+     *   in THIS server session.
+     *
+     * IMPORTANT:
+     * - inFlight is treated as a runtime-only hint:
+     *   * It is saved for debugging/visibility.
+     *   * It is ALWAYS reset to false on world-load (see readFromNbt).
      */
     public static final class DeliveryJob {
         public final long jobId;
@@ -189,7 +195,10 @@ public class RavenCourierData extends SavedData {
                     String recipientName = jobTag.getString("RecipientName");
 
                     CompoundTag sealedScrollNbt = jobTag.getCompound("SealedScroll");
-                    boolean inFlight = jobTag.getBoolean("InFlight");
+
+                    // We ignore any stored "InFlight" state on load.
+                    // All jobs become "not in flight" in a fresh server session.
+                    boolean inFlight = false;
 
                     if (senderUuid == null || recipientUuid == null || sealedScrollNbt.isEmpty()) {
                         LOG.warn("[RavenCourierData] Skipping malformed job entry at index {} (missing UUIDs or SealedScroll).", i);
@@ -262,6 +271,7 @@ public class RavenCourierData extends SavedData {
                         jobTag.put("SealedScroll", job.sealedScrollNbt.copy());
                     }
 
+                    // Saved for debugging/visibility only; ignored on load.
                     jobTag.putBoolean("InFlight", job.inFlight);
 
                     jobsList.add(jobTag);
@@ -339,7 +349,8 @@ public class RavenCourierData extends SavedData {
                                                  @NotNull ItemStack scrollStack) {
         try {
             if (scrollStack.isEmpty()) {
-                LOG.warn("[RavenCourierData] createJobFromSealedScroll: stack is empty for player='{}'.", sender.getGameProfile().getName());
+                LOG.warn("[RavenCourierData] createJobFromSealedScroll: stack is empty for player='{}'.",
+                        sender.getGameProfile().getName());
                 return null;
             }
 
@@ -408,7 +419,7 @@ public class RavenCourierData extends SavedData {
                     recipientUuid,
                     recipientName,
                     sealed.copy(),
-                    false // inFlight
+                    false // inFlight (runtime-only; never persisted across sessions)
             );
 
             jobsByRecipient
@@ -453,45 +464,31 @@ public class RavenCourierData extends SavedData {
     }
 
     /**
-     * Returns an immutable flat list of ALL pending jobs.
-     *
-     * Intended for debugging and admin commands.
+     * Returns an immutable flat list of ALL pending jobs (across all recipients).
      */
     @NotNull
     public List<DeliveryJob> getAllJobsFlat() {
-        if (jobsByRecipient.isEmpty()) {
-            return Collections.emptyList();
-        }
         List<DeliveryJob> out = new ArrayList<>();
-        for (List<DeliveryJob> jobs : jobsByRecipient.values()) {
-            if (jobs == null || jobs.isEmpty()) {
+        for (List<DeliveryJob> list : jobsByRecipient.values()) {
+            if (list == null || list.isEmpty()) {
                 continue;
             }
-            out.addAll(jobs);
-        }
-        if (out.isEmpty()) {
-            return Collections.emptyList();
+            out.addAll(list);
         }
         return List.copyOf(out);
     }
 
     /**
-     * Returns all jobs where the given player is either the sender OR the recipient.
-     *
-     * Used by admin commands for "per-player" views.
+     * Returns an immutable list of jobs where the given UUID is either sender OR recipient.
      */
     @NotNull
     public List<DeliveryJob> getJobsForPlayer(@NotNull UUID playerUuid) {
-        if (jobsByRecipient.isEmpty()) {
-            return Collections.emptyList();
-        }
-
         List<DeliveryJob> out = new ArrayList<>();
-        for (List<DeliveryJob> jobs : jobsByRecipient.values()) {
-            if (jobs == null || jobs.isEmpty()) {
+        for (List<DeliveryJob> list : jobsByRecipient.values()) {
+            if (list == null || list.isEmpty()) {
                 continue;
             }
-            for (DeliveryJob job : jobs) {
+            for (DeliveryJob job : list) {
                 if (job == null) {
                     continue;
                 }
@@ -500,15 +497,11 @@ public class RavenCourierData extends SavedData {
                 }
             }
         }
-
-        if (out.isEmpty()) {
-            return Collections.emptyList();
-        }
         return List.copyOf(out);
     }
 
     /**
-     * Marks a specific job as removed (e.g. after successful delivery).
+     * Marks a specific job as removed (e.g. after successful delivery or failure).
      */
     public void removeJob(long jobId, @NotNull UUID recipientUuid) {
         try {
@@ -564,31 +557,25 @@ public class RavenCourierData extends SavedData {
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Clearing helpers (used by commands)
-    // ---------------------------------------------------------------------
-
     /**
-     * Clears ALL jobs from this world.
+     * Clears ALL courier jobs from the world.
      *
      * @return number of jobs removed.
      */
     public int clearAllJobs() {
         try {
-            int total = 0;
-            for (List<DeliveryJob> jobs : jobsByRecipient.values()) {
-                if (jobs != null) {
-                    total += jobs.size();
+            int count = 0;
+            for (List<DeliveryJob> list : jobsByRecipient.values()) {
+                if (list != null) {
+                    count += list.size();
                 }
             }
             jobsByRecipient.clear();
-
-            if (total > 0) {
+            if (count > 0) {
                 setDirty();
             }
-
-            LOG.info("[RavenCourierData] clearAllJobs: removed {} job(s).", total);
-            return total;
+            LOG.info("[RavenCourierData] clearAllJobs: removed {} job(s).", count);
+            return count;
         } catch (Throwable t) {
             LOG.error("[RavenCourierData] clearAllJobs failed safely: {}", t.toString());
             return 0;
@@ -596,48 +583,69 @@ public class RavenCourierData extends SavedData {
     }
 
     /**
-     * Clears all jobs where the given player is either sender OR recipient.
+     * Clears all courier jobs where the given player is either sender OR recipient.
      *
      * @return number of jobs removed.
      */
     public int clearJobsForPlayer(@NotNull UUID playerUuid) {
         try {
-            if (jobsByRecipient.isEmpty()) {
-                return 0;
-            }
-
             int removed = 0;
             Iterator<Map.Entry<UUID, List<DeliveryJob>>> it = jobsByRecipient.entrySet().iterator();
             while (it.hasNext()) {
                 Map.Entry<UUID, List<DeliveryJob>> entry = it.next();
-                List<DeliveryJob> jobs = entry.getValue();
-                if (jobs == null || jobs.isEmpty()) {
+                List<DeliveryJob> list = entry.getValue();
+                if (list == null || list.isEmpty()) {
                     continue;
                 }
 
-                int before = jobs.size();
-                jobs.removeIf(job ->
-                        job != null && (playerUuid.equals(job.senderUuid) || playerUuid.equals(job.recipientUuid))
-                );
-                int delta = before - jobs.size();
-                if (delta > 0) {
-                    removed += delta;
-                }
+                int before = list.size();
+                list.removeIf(job ->
+                        job != null && (playerUuid.equals(job.senderUuid) || playerUuid.equals(job.recipientUuid)));
+                int after = list.size();
 
-                if (jobs.isEmpty()) {
+                removed += (before - after);
+
+                if (list.isEmpty()) {
                     it.remove();
                 }
             }
 
             if (removed > 0) {
                 setDirty();
-                LOG.info("[RavenCourierData] clearJobsForPlayer: removed {} job(s) for player={}", removed, playerUuid);
             }
 
+            LOG.info("[RavenCourierData] clearJobsForPlayer: removed {} job(s) for player={}", removed, playerUuid);
             return removed;
+
         } catch (Throwable t) {
             LOG.error("[RavenCourierData] clearJobsForPlayer failed safely: {}", t.toString());
             return 0;
+        }
+    }
+
+    /**
+     * Lookup helper for runtime: find a job by its jobId.
+     */
+    @Nullable
+    public DeliveryJob getJobById(long jobId) {
+        try {
+            if (jobsByRecipient.isEmpty()) {
+                return null;
+            }
+            for (List<DeliveryJob> list : jobsByRecipient.values()) {
+                if (list == null || list.isEmpty()) {
+                    continue;
+                }
+                for (DeliveryJob job : list) {
+                    if (job != null && job.jobId == jobId) {
+                        return job;
+                    }
+                }
+            }
+            return null;
+        } catch (Throwable t) {
+            LOG.error("[RavenCourierData] getJobById failed safely: {}", t.toString());
+            return null;
         }
     }
 }

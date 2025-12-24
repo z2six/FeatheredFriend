@@ -20,6 +20,7 @@ import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
 import net.z2six.featheredfriend.registry.FFNeoForgeParticles;
 import net.z2six.featheredfriend.world.RavenSpawnEvents;
 import net.z2six.featheredfriend.world.TamedRavenScrollWatcher;
+import net.z2six.featheredfriend.world.RavenCourierRuntime;
 import org.slf4j.Logger;
 
 /**
@@ -134,6 +135,16 @@ public class FeatheredFriend {
             LOG.info("[FeatheredFriend] Registered TamedRavenScrollWatcher");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to register TamedRavenScrollWatcher", t);
+        }
+
+        // ---------------------------------------------------------------------
+        // RavenCourierRuntime
+        // ---------------------------------------------------------------------
+        try {
+            RavenCourierRuntime.register();
+            LOG.info("[FeatheredFriend] Registered RavenCourierRuntime");
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriend] Failed to register RavenCourierRuntime", t);
         }
 
         // ---------------------------------------------------------------------
