@@ -40,6 +40,8 @@ import net.z2six.featheredfriend.registry.FFNeoForgeEntities;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
+import java.util.HashMap;
+import java.util.Map;
 
 import java.util.HashSet;
 import java.util.List;
@@ -95,6 +97,17 @@ public final class RavenCourierRuntime {
      */
     private static final ResourceLocation SEALED_SCROLL_ID =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "scroll_sealed");
+
+    /**
+     * Lifetime of a courier raven in ticks.
+     * 60 seconds * 20 ticks per second = 1200 ticks.
+     */
+    private static final long COURIER_LIFETIME_TICKS = 60L * 20L;
+
+    /**
+     * NBT key used to store the lifetime deadline for courier ravens.
+     */
+    private static final String NBT_COURIER_DESPAWN_AT = "CourierDespawnAt";
 
     /**
      * How often (in server ticks) we attempt to dispatch new courier ravens.
@@ -170,6 +183,9 @@ public final class RavenCourierRuntime {
     /**
      * Core dispatch logic:
      *  - Reads all pending jobs from RavenCourierData.
+     *  - Reconciles them with any existing courier ravens already in the world:
+     *      * Marks jobs as in-flight when a courier raven is already carrying them.
+     *      * Enforces per-raven lifetime and cleans up expired / stray ravens.
      *  - Builds concurrency sets (senders/recipients already in-flight).
      *  - For jobs whose recipient is online and not currently busy as sender/recipient,
      *    spawns a courier raven carrying that job's scroll.
@@ -184,27 +200,41 @@ public final class RavenCourierRuntime {
 
             RavenCourierData data = RavenCourierData.get(overworld);
             List<RavenCourierData.DeliveryJob> allJobs = data.getAllJobsFlat();
-            if (allJobs.isEmpty()) {
-                return;
-            }
 
-            // Build sets of "busy" senders and recipients based on jobs already marked inFlight.
+            // These are filled both from existing courier ravens (via reconciliation)
+            // and from jobs that are explicitly marked inFlight.
             Set<UUID> busySenders = new HashSet<>();
             Set<UUID> busyRecipients = new HashSet<>();
 
+            // NEW: reconcile jobs with any courier ravens already in the world AND
+            // enforce per-raven lifetimes (60s) before attempting to spawn new ones.
+            reconcileJobsWithExistingCourierRavens(server, overworld, data, allJobs, busySenders, busyRecipients);
+
+            // Also respect any jobs already marked inFlight that might not currently
+            // have an in-world raven (should be rare but keeps us robust).
             for (RavenCourierData.DeliveryJob job : allJobs) {
                 if (job == null) {
                     continue;
                 }
-                if (!job.inFlight) {
+                RavenCourierData.DeliveryJob liveJob = data.getJobById(job.jobId);
+                if (liveJob == null) {
+                    // Job may have been removed by a timeout or other logic.
                     continue;
                 }
-                if (job.senderUuid != null) {
-                    busySenders.add(job.senderUuid);
+                if (!liveJob.inFlight) {
+                    continue;
                 }
-                if (job.recipientUuid != null) {
-                    busyRecipients.add(job.recipientUuid);
+                if (liveJob.senderUuid != null) {
+                    busySenders.add(liveJob.senderUuid);
                 }
+                if (liveJob.recipientUuid != null) {
+                    busyRecipients.add(liveJob.recipientUuid);
+                }
+            }
+
+            if (allJobs.isEmpty()) {
+                // No jobs left after reconciliation -> nothing to dispatch.
+                return;
             }
 
             int dispatchedCount = 0;
@@ -213,6 +243,14 @@ public final class RavenCourierRuntime {
                 if (job == null) {
                     continue;
                 }
+
+                // Always re-resolve the job from the data store so we see removals
+                // performed by earlier logic (timeouts, manual removal, etc.).
+                RavenCourierData.DeliveryJob liveJob = data.getJobById(job.jobId);
+                if (liveJob == null) {
+                    continue;
+                }
+                job = liveJob;
 
                 // Already in-flight in this server session -> skip.
                 if (job.inFlight) {
@@ -241,6 +279,24 @@ public final class RavenCourierRuntime {
 
                 ServerLevel targetLevel = recipient.serverLevel();
                 if (targetLevel == null || targetLevel.isClientSide()) {
+                    continue;
+                }
+
+                // HARD SAFETY: if a courier raven already exists for this jobId anywhere
+                // in the world, we must NOT spawn another one.
+                if (hasActiveCourierRavenForJob(server, job.jobId)) {
+                    job.inFlight = true;
+                    data.setDirty();
+
+                    if (senderId != null) {
+                        busySenders.add(senderId);
+                    }
+                    busyRecipients.add(recipientId);
+
+                    LOG.warn(
+                            "[RavenCourierRuntime] dispatchPendingDeliveries: jobId={} already has an active courier raven; skipping duplicate spawn.",
+                            job.jobId
+                    );
                     continue;
                 }
 
@@ -276,6 +332,268 @@ public final class RavenCourierRuntime {
     // ---------------------------------------------------------------------
     // Courier raven spawn helpers
     // ---------------------------------------------------------------------
+
+    /**
+     * Returns true if there is at least one live courier raven in any loaded level
+     * whose CourierJobId matches the given jobId.
+     */
+    private static boolean hasActiveCourierRavenForJob(@NotNull MinecraftServer server, long jobId) {
+        try {
+            if (jobId <= 0L) {
+                return false;
+            }
+
+            for (ServerLevel level : server.getAllLevels()) {
+                try {
+                    double minX = level.getWorldBorder().getMinX() - 16.0D;
+                    double minZ = level.getWorldBorder().getMinZ() - 16.0D;
+                    double maxX = level.getWorldBorder().getMaxX() + 16.0D;
+                    double maxZ = level.getWorldBorder().getMaxZ() + 16.0D;
+                    double minY = level.getMinBuildHeight() - 1;
+                    double maxY = level.getMaxBuildHeight() + 1;
+
+                    AABB worldBox = new AABB(minX, minY, minZ, maxX, maxY, maxZ);
+
+                    List<RavenEntity> ravens = level.getEntitiesOfClass(
+                            RavenEntity.class,
+                            worldBox,
+                            e -> e != null && e.isAlive() && !e.isRemoved()
+                    );
+
+                    for (RavenEntity raven : ravens) {
+                        if (!isCourierRaven(raven)) {
+                            continue;
+                        }
+                        long ravenJobId = getCourierJobIdFromRaven(raven);
+                        if (ravenJobId == jobId) {
+                            return true;
+                        }
+                    }
+                } catch (Throwable levelErr) {
+                    LOG.warn(
+                            "[RavenCourierRuntime] hasActiveCourierRavenForJob: level scan failed safely: {}",
+                            levelErr.toString()
+                    );
+                }
+            }
+        } catch (Throwable t) {
+            LOG.warn(
+                    "[RavenCourierRuntime] hasActiveCourierRavenForJob failed safely for jobId={}: {}",
+                    jobId,
+                    t.toString()
+            );
+        }
+        return false;
+    }
+
+    /**
+     * Handles the case where a courier raven has exceeded its intended lifetime.
+     * We treat this similar to death:
+     *  - Drop the sealed scroll at the raven's position (failed delivery).
+     *  - Notify the sender if online.
+     *  - Remove the job from RavenCourierData.
+     *  - Despawn the raven with FX and clear its courier flags.
+     */
+    private static void handleCourierRavenTimeout(@NotNull ServerLevel level,
+                                                  @NotNull RavenCourierData data,
+                                                  @NotNull RavenEntity raven,
+                                                  @NotNull RavenCourierData.DeliveryJob job) {
+        try {
+            // Drop the scroll at the raven's location as a failed delivery.
+            dropSealedScrollAtRaven(level, raven, job);
+
+            // Inform the sender (same UX as death).
+            notifySenderOfRavenDeath(level, raven, job);
+
+            // Remove the job so the sender is free again.
+            data.removeJob(job.jobId, job.recipientUuid);
+
+            // Despawn the raven with FX, using the best available context player.
+            ServerPlayer contextPlayer = null;
+            MinecraftServer server = level.getServer();
+            if (server != null) {
+                // Prefer the recipient as context, then the sender, then any online player.
+                if (job.recipientUuid != null) {
+                    contextPlayer = server.getPlayerList().getPlayer(job.recipientUuid);
+                }
+                if (contextPlayer == null && job.senderUuid != null) {
+                    contextPlayer = server.getPlayerList().getPlayer(job.senderUuid);
+                }
+                if (contextPlayer == null) {
+                    List<ServerPlayer> players = server.getPlayerList().getPlayers();
+                    if (!players.isEmpty()) {
+                        contextPlayer = players.get(0);
+                    }
+                }
+            }
+
+            if (contextPlayer != null) {
+                despawnCourierRaven(level, contextPlayer, raven, "lifetime expired");
+            } else {
+                // No online players -> just clear flags and discard without fancy FX.
+                LOG.warn(
+                        "[RavenCourierRuntime] handleCourierRavenTimeout: no context player available; discarding raven id={} silently.",
+                        raven.getId()
+                );
+                clearCourierFlags(raven);
+                raven.discard();
+            }
+        } catch (Throwable t) {
+            LOG.error("[RavenCourierRuntime] handleCourierRavenTimeout failed safely for jobId={}", job.jobId, t);
+            try {
+                clearCourierFlags(raven);
+                raven.discard();
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    /**
+     * Reconciles RavenCourierData jobs with any courier ravens that already exist
+     * in the world, and enforces per-raven lifetimes.
+     *
+     * Responsibilities:
+     *  - For each courier raven with a valid job:
+     *      * If CourierDespawnAt is missing, initialize it to now + COURIER_LIFETIME_TICKS.
+     *      * If its lifetime has expired -> drop scroll, notify sender, remove job, despawn raven.
+     *      * Otherwise mark the job as in-flight and add its sender/recipient to the busy sets.
+     *  - For courier ravens with invalid or unknown jobIds:
+     *      * Clear courier flags and discard them as strays (no scroll drop, since there is no job).
+     */
+    private static void reconcileJobsWithExistingCourierRavens(@NotNull MinecraftServer server,
+                                                               @NotNull ServerLevel overworld,
+                                                               @NotNull RavenCourierData data,
+                                                               @NotNull List<RavenCourierData.DeliveryJob> allJobs,
+                                                               @NotNull Set<UUID> busySenders,
+                                                               @NotNull Set<UUID> busyRecipients) {
+        try {
+            // Build a quick lookup map from jobId -> job.
+            Map<Long, RavenCourierData.DeliveryJob> jobsById = new HashMap<>();
+            for (RavenCourierData.DeliveryJob job : allJobs) {
+                if (job == null) {
+                    continue;
+                }
+                jobsById.put(job.jobId, job);
+            }
+
+            // Scan all loaded levels for courier ravens.
+            for (ServerLevel level : server.getAllLevels()) {
+                try {
+                    double minX = level.getWorldBorder().getMinX() - 16.0D;
+                    double minZ = level.getWorldBorder().getMinZ() - 16.0D;
+                    double maxX = level.getWorldBorder().getMaxX() + 16.0D;
+                    double maxZ = level.getWorldBorder().getMaxZ() + 16.0D;
+                    double minY = level.getMinBuildHeight() - 1;
+                    double maxY = level.getMaxBuildHeight() + 1;
+
+                    AABB worldBox = new AABB(minX, minY, minZ, maxX, maxY, maxZ);
+
+                    List<RavenEntity> ravens = level.getEntitiesOfClass(
+                            RavenEntity.class,
+                            worldBox,
+                            e -> e != null && e.isAlive() && !e.isRemoved()
+                    );
+
+                    for (RavenEntity raven : ravens) {
+                        if (!isCourierRaven(raven)) {
+                            continue;
+                        }
+
+                        long jobId = getCourierJobIdFromRaven(raven);
+                        if (jobId <= 0L) {
+                            // Courier-tagged raven with no valid job -> stray, clean it up.
+                            LOG.warn(
+                                    "[RavenCourierRuntime] reconcile: courier raven id={} has no valid CourierJobId; discarding stray courier.",
+                                    raven.getId()
+                            );
+                            clearCourierFlags(raven);
+                            raven.discard();
+                            continue;
+                        }
+
+                        RavenCourierData.DeliveryJob job = jobsById.get(jobId);
+                        if (job == null) {
+                            // Raven references a job that no longer exists; treat as stray.
+                            LOG.warn(
+                                    "[RavenCourierRuntime] reconcile: courier raven id={} refers to unknown jobId={}; discarding stray courier.",
+                                    raven.getId(),
+                                    jobId
+                            );
+                            clearCourierFlags(raven);
+                            raven.discard();
+                            continue;
+                        }
+
+                        // Lifetime enforcement and in-flight bookkeeping for this raven/job.
+                        try {
+                            CompoundTag root = raven.getPersistentData();
+                            CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
+
+                            long now = level.getGameTime();
+                            long despawnAt = ffTag.getLong(NBT_COURIER_DESPAWN_AT);
+
+                            // Backwards-compat: older ravens may not have a despawn deadline yet.
+                            if (despawnAt <= 0L) {
+                                despawnAt = now + COURIER_LIFETIME_TICKS;
+                                ffTag.putLong(NBT_COURIER_DESPAWN_AT, despawnAt);
+                                root.put(Constants.MOD_ID, ffTag);
+
+                                if (LOG.isDebugEnabled()) {
+                                    LOG.debug(
+                                            "[RavenCourierRuntime] reconcile: initializing lifetime for courier raven id={} jobId={} now={} despawnAt={}",
+                                            raven.getId(),
+                                            job.jobId,
+                                            now,
+                                            despawnAt
+                                    );
+                                }
+                            }
+
+                            if (now >= despawnAt) {
+                                LOG.info(
+                                        "[RavenCourierRuntime] reconcile: lifetime expired for courier raven id={} jobId={} now={} despawnAt={}",
+                                        raven.getId(),
+                                        job.jobId,
+                                        now,
+                                        despawnAt
+                                );
+
+                                // Treat as a failed delivery similar to death.
+                                handleCourierRavenTimeout(level, data, raven, job);
+
+                                // Remove this job from our local lookup so we don't
+                                // accidentally treat it as dispatchable later.
+                                jobsById.remove(job.jobId);
+                                continue;
+                            }
+                        } catch (Throwable lifetimeErr) {
+                            LOG.warn(
+                                    "[RavenCourierRuntime] reconcile: lifetime check failed safely for raven id={} jobId={}: {}",
+                                    raven.getId(),
+                                    job.jobId,
+                                    lifetimeErr.toString()
+                            );
+                        }
+
+                        // Alive and within lifetime -> mark job as in-flight and update busy sets.
+                        job.inFlight = true;
+
+                        if (job.senderUuid != null) {
+                            busySenders.add(job.senderUuid);
+                        }
+                        if (job.recipientUuid != null) {
+                            busyRecipients.add(job.recipientUuid);
+                        }
+                    }
+
+                } catch (Throwable levelErr) {
+                    LOG.warn("[RavenCourierRuntime] reconcile: level scan failed safely: {}", levelErr.toString());
+                }
+            }
+        } catch (Throwable t) {
+            LOG.error("[RavenCourierRuntime] reconcileJobsWithExistingCourierRavens failed safely", t);
+        }
+    }
 
     @Nullable
     private static RavenEntity spawnCourierRavenForJob(@NotNull ServerLevel level,
@@ -352,8 +670,8 @@ public final class RavenCourierRuntime {
 
             ensureRavenName(raven, ravenName);
 
-            // Mark as a courier raven via persistent data + scoreboard tag.
-            attachCourierJobToRaven(raven, job);
+            // Mark as a courier raven via persistent data + scoreboard tag + lifetime.
+            attachCourierJobToRaven(level, raven, job);
 
             // Actually add to the world.
             level.addFreshEntity(raven);
@@ -379,9 +697,10 @@ public final class RavenCourierRuntime {
     }
 
     /**
-     * Attach courier job metadata to the raven (NBT + scoreboard tag).
+     * Attach courier job metadata (including lifetime) to the raven (NBT + scoreboard tag).
      */
-    private static void attachCourierJobToRaven(@NotNull RavenEntity raven,
+    private static void attachCourierJobToRaven(@NotNull ServerLevel level,
+                                                @NotNull RavenEntity raven,
                                                 @NotNull RavenCourierData.DeliveryJob job) {
         try {
             CompoundTag root = raven.getPersistentData();
@@ -397,17 +716,38 @@ public final class RavenCourierRuntime {
                 ffTag.putUUID("CourierRecipientUUID", job.recipientUuid);
             }
 
+            long now = level.getGameTime();
+            long despawnAt = now + COURIER_LIFETIME_TICKS;
+            ffTag.putLong(NBT_COURIER_DESPAWN_AT, despawnAt);
+
             root.put(Constants.MOD_ID, ffTag);
+
+            if (LOG.isDebugEnabled()) {
+                LOG.debug(
+                        "[RavenCourierRuntime] attachCourierJobToRaven: lifetime set for raven id={} jobId={} now={} despawnAt={}",
+                        raven.getId(),
+                        job.jobId,
+                        now,
+                        despawnAt
+                );
+            }
         } catch (Throwable t) {
-            LOG.warn("[RavenCourierRuntime] attachCourierJobToRaven: NBT write failed safely for raven id={}: {}",
-                    raven.getId(), t.toString());
+            LOG.warn(
+                    "[RavenCourierRuntime] attachCourierJobToRaven: NBT write failed safely for raven id={}: {}",
+                    raven.getId(),
+                    t.toString()
+            );
         }
 
         try {
             raven.addTag(TAG_COURIER_RAVEN);
         } catch (Throwable t) {
-            LOG.warn("[RavenCourierRuntime] attachCourierJobToRaven: addTag({}) failed safely for raven id={}: {}",
-                    TAG_COURIER_RAVEN, raven.getId(), t.toString());
+            LOG.warn(
+                    "[RavenCourierRuntime] attachCourierJobToRaven: addTag({}) failed safely for raven id={}: {}",
+                    TAG_COURIER_RAVEN,
+                    raven.getId(),
+                    t.toString()
+            );
         }
     }
 
@@ -1081,6 +1421,7 @@ public final class RavenCourierRuntime {
                     ffTag.remove("CourierJobId");
                     ffTag.remove("CourierSenderUUID");
                     ffTag.remove("CourierRecipientUUID");
+                    ffTag.remove(NBT_COURIER_DESPAWN_AT);
                     root.put(Constants.MOD_ID, ffTag);
                 }
             }
