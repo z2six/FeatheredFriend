@@ -54,6 +54,7 @@ import net.minecraft.world.phys.AABB;
 // Modules
 import net.z2six.featheredfriend.entity.raven.pathing.RavenAStarPathing;
 import net.z2six.featheredfriend.world.TamedRavenScrollWatcher;
+import net.z2six.featheredfriend.entity.raven.modules.TamedRavenDeathHandler;
 
 import java.util.Collections;
 import java.util.List;
@@ -3180,6 +3181,28 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         }
     }
 
+    @Override
+    public void die(net.minecraft.world.damagesource.DamageSource source) {
+        try {
+            super.die(source);
+        } catch (Throwable t) {
+            if (this.tickCount % 40 == 0) {
+                LOG.error("[RavenEntity] die: super.die failed; suppressing to prevent crash. src={}",
+                        (source == null ? "null" : source.toString()), t);
+            }
+        }
+
+        // Fire TamedRaven death logic on the server side only.
+        try {
+            if (!this.level().isClientSide) {
+                net.z2six.featheredfriend.entity.raven.modules.TamedRavenDeathHandler.onRavenDeath(this, source);
+            }
+        } catch (Throwable t) {
+            if (this.tickCount % 40 == 0) {
+                LOG.error("[RavenEntity] die: TamedRavenDeathHandler failed safely: {}", t.toString());
+            }
+        }
+    }
 
     /**
      * Returns the "effective" AI state for debug/logging purposes.

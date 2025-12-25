@@ -173,7 +173,7 @@ public final class FeatheredFriendCommands {
      *
      * @return true if we actually found HasTamedRaven == true and cleared it.
      */
-    private static boolean clearPlayerTamedRavenData(ServerPlayer player) {
+    public static boolean clearPlayerTamedRavenData(ServerPlayer player) {
         try {
             if (player == null) {
                 return false;
