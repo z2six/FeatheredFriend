@@ -20,28 +20,31 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent;
 import net.z2six.featheredfriend.Constants;
 import org.slf4j.Logger;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 
 /**
  * neoforge/src/main/java/net/z2six/featheredfriend/world/RavenSpawnEvents.java
  *
- * DEBUG-HEAVY spawner tuning for testing Raven AI.
+ * Natural spawner for Ravens.
  *
- * Fixes included:
- *  1) Prevent "infinite spawns" by ensuring:
- *      - spawn search radius is ALWAYS within singleton radius
- *      - per-player spawn cooldown is enforced
- *  2) Prevent spawning while player is far above terrain (e.g., pathfinding test rig in the sky)
- *  3) Throttle spawn logs to avoid latest.log spam
- *  4) NEW: Hard toggle to disable ALL spawning without removing the event listener.
+ * Intent / design goals:
+ *  - Ravens are more common in tree-heavy biomes (we spawn on leaves tops).
+ *  - You are likely to encounter at least one raven in a forest-style biome over time.
+ *  - Seeing two ravens together should be rare but possible.
+ *  - Seeing none at all is still possible, just less likely in dense forests.
  *
- * Spawn rule (still the core behavior):
- *  - Very small chance of spawning on top of ANY leaves block.
- *  - Must have air blocks above the spawn position.
- *  - Singleton near a player: player should never see 2 ravens spawned.
+ * Implementation notes:
+ *  - We no longer do "X ravens per player" or per-player spawn cooldown logic.
+ *  - Instead, we enforce a *local* population cap in a radius around each player:
+ *      * Soft target = 1 raven in the radius.
+ *      * Hard cap   = 2 ravens in the radius.
+ *  - When 0 ravens are nearby, spawn rolls are relatively more generous.
+ *  - When 1 raven is nearby, spawn rolls are much rarer.
+ *  - When 2 or more ravens are nearby, we skip further spawns in that region.
+ *
+ *  - Spawns happen on top of LEAVES blocks with some air above.
+ *  - We avoid spawning when the player is far above the world surface (sky rigs).
+ *  - Debug and spawn logs are throttled to avoid log spam.
  */
 public final class RavenSpawnEvents {
 
@@ -59,34 +62,73 @@ public final class RavenSpawnEvents {
      *  - you are creating a new world and don't want any natural ravens yet
      *  - you are debugging other systems and want a quiet log
      *
-     * Note:
-     *  - Listener still remains registered; we just early-return.
-     *  - This is intentional so you can flip this in code without touching registration.
+     * Listener remains registered; we just early-return.
      */
-    private static final boolean ENABLE_SPAWNING = false;
+    private static final boolean ENABLE_SPAWNING = true;
 
-    // ---------- DEV/TUNING ----------
-
-    /** How often to run spawn attempts per level. 20 ticks = 1 second. */
-    private static final int CHECK_INTERVAL_TICKS = 1;
-
-    /** Spawn chance per eligible player per check. 1.0 = always roll "yes". */
-    private static final double SPAWN_CHANCE_PER_CHECK = 1.0D;
+    // ---------------------------------------------------------------------
+    // TUNING CONSTANTS
+    // ---------------------------------------------------------------------
 
     /**
-     * Singleton radius:
-     *  - If any raven exists inside this radius around player, do not spawn.
-     * IMPORTANT:
-     *  - Your old setup searched up to 160 blocks but singleton radius was 96 blocks,
-     *    so you could spawn ravens outside the singleton AABB every tick forever.
+     * How often to run spawn attempts per level.
+     * 20 ticks = 1 second. 200 ticks ~= 10 seconds.
+     *
+     * We keep this reasonably low frequency since the check walks chunks and entities.
      */
-    private static final double SINGLETON_RADIUS = 96.0D;
+    private static final int CHECK_INTERVAL_TICKS = 200;
 
-    /** How far from player we sample random columns for leaves-top spawns. */
-    private static final int SEARCH_RADIUS_BLOCKS = 160;
+    /**
+     * Local population radius within which we inspect existing ravens.
+     *
+     * We use this both for:
+     *  - limiting local population (soft/hard cap)
+     *  - clamping spawn search radius
+     */
+    private static final double LOCAL_RAVEN_RADIUS = 96.0D;
+
+    /**
+     * Soft target and hard maximum for ravens near a player.
+     *
+     * Behavior:
+     *  - If ravenCount == 0:
+     *        we use SPAWN_CHANCE_EMPTY_AREA
+     *  - If ravenCount == 1:
+     *        we use SPAWN_CHANCE_WITH_ONE_RAVEN (much smaller)
+     *  - If ravenCount >= HARD_MAX_RAVENS_IN_RADIUS:
+     *        we do not spawn
+     *
+     * This yields:
+     *  - "likely to find one" over time in dense forests
+     *  - "two is rare" because the second spawn is much less likely
+     */
+    private static final int SOFT_TARGET_RAVENS_IN_RADIUS = 1;
+    private static final int HARD_MAX_RAVENS_IN_RADIUS = 2;
+
+    /**
+     * Spawn chances per check depending on local population.
+     *
+     * These are tuned under the assumption of:
+     *  - CHECK_INTERVAL_TICKS = 200 (one check ~ every 10 seconds)
+     *  - Leaves-rich area => high chance to find at least one valid leaves column.
+     *
+     * Rough intuition (for a player staying in a forest):
+     *  - EMPTY_AREA: ~0.02 => about 1 raven per Minecraft day on average.
+     *  - ONE_RAVEN: ~0.002 => much rarer second raven in the same area.
+     */
+    private static final double SPAWN_CHANCE_EMPTY_AREA = 0.04D;
+    private static final double SPAWN_CHANCE_WITH_ONE_RAVEN = 0.002D;
+
+    /**
+     * How far from player we sample random columns for leaves-top spawns.
+     *
+     * This will be clamped to remain inside LOCAL_RAVEN_RADIUS so that
+     * we never spawn outside the population-control radius.
+     */
+    private static final int SEARCH_RADIUS_BLOCKS = 64;
 
     /** How many random columns we try each check before giving up. */
-    private static final int CANDIDATE_COLUMNS_PER_CHECK = 200;
+    private static final int CANDIDATE_COLUMNS_PER_CHECK = 64;
 
     /** How far down from surface we scan to find leaves. */
     private static final int MAX_DOWNWARD_SCAN = 96;
@@ -95,56 +137,60 @@ public final class RavenSpawnEvents {
     private static final int REQUIRED_AIR_ABOVE = 2;
 
     /** Raven entity id (registry name). */
-    private static final ResourceLocation RAVEN_ID = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "raven");
+    private static final ResourceLocation RAVEN_ID =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "raven");
 
     /** Debug logging throttle (ticks). */
     private static final int DEBUG_LOG_INTERVAL_TICKS = 100;
 
     /** Spawn log throttle (ticks). */
-    private static final int SPAWN_LOG_INTERVAL_TICKS = 60;
-
-    /**
-     * Per-player cooldown after a spawn succeeds (ticks).
-     * This is a hard stop against spam even if something goes wrong with singleton detection.
-     */
-    private static final int PER_PLAYER_SPAWN_COOLDOWN_TICKS = 20 * 10; // 10s
+    private static final int SPAWN_LOG_INTERVAL_TICKS = 200;
 
     /**
      * Sky-test safety:
      * If player is more than this many blocks above the local WORLD_SURFACE height at their X/Z, we do not spawn.
-     * (This avoids your "200 blocks above ground" test area from constantly triggering spawns.)
+     * (Prevents constant spawning around your 200-block-high test platforms.)
      */
-    private static final int MAX_PLAYER_HEIGHT_ABOVE_SURFACE = 48;
+    private static final int MAX_PLAYER_HEIGHT_ABOVE_SURFACE = 128;
 
-    // --- runtime state ---
-    private static final Map<UUID, Long> LAST_SPAWN_TICK_BY_PLAYER = new HashMap<>();
+    // ---------------------------------------------------------------------
+    // LIFECYCLE
+    // ---------------------------------------------------------------------
 
-    private RavenSpawnEvents() {}
+    private RavenSpawnEvents() {
+        // no instances
+    }
 
     public static void register() {
         try {
             NeoForge.EVENT_BUS.addListener(RavenSpawnEvents::onLevelTickPost);
-            LOG.info("[RavenSpawnEvents] Registered LevelTickEvent.Post listener (DEV tuned). ENABLE_SPAWNING={}", ENABLE_SPAWNING);
+            LOG.info(
+                    "[RavenSpawnEvents] Registered LevelTickEvent.Post listener. ENABLE_SPAWNING={}",
+                    ENABLE_SPAWNING
+            );
         } catch (Throwable t) {
             LOG.error("[RavenSpawnEvents] Failed to register listeners", t);
         }
     }
+
+    // ---------------------------------------------------------------------
+    // EVENT HANDLER
+    // ---------------------------------------------------------------------
 
     private static void onLevelTickPost(LevelTickEvent.Post event) {
         if (!(event.getLevel() instanceof net.minecraft.server.level.ServerLevel level)) {
             return;
         }
 
-        // Master kill-switch (NEW)
+        // Master kill-switch
         if (!ENABLE_SPAWNING) {
-            // Keep silent; you asked for a toggle you can flip without log spam.
-            // If you want visibility, temporarily add a throttled log here.
+            // Intentionally silent; flip the flag when needed.
             return;
         }
 
         try {
             long gameTime = level.getGameTime();
-            if ((gameTime % CHECK_INTERVAL_TICKS) != 0) {
+            if ((gameTime % CHECK_INTERVAL_TICKS) != 0L) {
                 return;
             }
 
@@ -155,18 +201,20 @@ public final class RavenSpawnEvents {
 
             EntityType<?> ravenType = BuiltInRegistries.ENTITY_TYPE.get(RAVEN_ID);
             if (ravenType == null) {
-                if ((gameTime % DEBUG_LOG_INTERVAL_TICKS) == 0) {
+                if ((gameTime % DEBUG_LOG_INTERVAL_TICKS) == 0L) {
                     LOG.warn("[RavenSpawnEvents] Raven EntityType not found for id {}", RAVEN_ID);
                 }
                 return;
             }
 
-            // Keep search radius inside singleton radius to prevent "spawn outside the singleton AABB" spam.
             final int effectiveSearchRadius = computeEffectiveSearchRadius();
             if (effectiveSearchRadius <= 0) {
-                if ((gameTime % DEBUG_LOG_INTERVAL_TICKS) == 0) {
-                    LOG.warn("[RavenSpawnEvents] effectiveSearchRadius <= 0 (SEARCH_RADIUS_BLOCKS={}, SINGLETON_RADIUS={}). Spawning disabled.",
-                            SEARCH_RADIUS_BLOCKS, SINGLETON_RADIUS);
+                if ((gameTime % DEBUG_LOG_INTERVAL_TICKS) == 0L) {
+                    LOG.warn(
+                            "[RavenSpawnEvents] effectiveSearchRadius <= 0 (SEARCH_RADIUS_BLOCKS={}, LOCAL_RAVEN_RADIUS={}). Spawning disabled.",
+                            SEARCH_RADIUS_BLOCKS,
+                            LOCAL_RAVEN_RADIUS
+                    );
                 }
                 return;
             }
@@ -176,101 +224,110 @@ public final class RavenSpawnEvents {
                     continue;
                 }
 
-                // Sky-test safety: don't spawn when player is far above terrain.
+                // Skip when player is far above the terrain.
                 if (isPlayerTooHighAboveSurface(level, player, gameTime)) {
                     continue;
                 }
 
-                // Per-player cooldown: prevents spam even if singleton logic fails (and also reduces noise).
-                if (isPlayerOnSpawnCooldown(player, gameTime)) {
+                int ravenCount = countRavensNearPlayer(level, player);
+                if (ravenCount >= HARD_MAX_RAVENS_IN_RADIUS) {
+                    // Already at or above hard cap; do not spawn more here.
                     continue;
                 }
 
-                // Singleton rule
-                if (hasRavenNearPlayer(level, player)) {
-                    continue;
+                // Decide spawn chance based on local population.
+                double spawnChance;
+                if (ravenCount <= 0) {
+                    spawnChance = SPAWN_CHANCE_EMPTY_AREA;
+                } else if (ravenCount <= SOFT_TARGET_RAVENS_IN_RADIUS) {
+                    spawnChance = SPAWN_CHANCE_WITH_ONE_RAVEN;
+                } else {
+                    // Between soft target and hard cap; very narrow band, but be conservative.
+                    spawnChance = SPAWN_CHANCE_WITH_ONE_RAVEN;
                 }
 
                 RandomSource rnd = level.getRandom();
-                if (rnd.nextDouble() > SPAWN_CHANCE_PER_CHECK) {
+                if (rnd.nextDouble() >= spawnChance) {
                     continue;
                 }
 
                 BlockPos spawnPos = findLeavesTopSpawnPos(level, player, rnd, effectiveSearchRadius);
                 if (spawnPos == null) {
-                    if ((gameTime % DEBUG_LOG_INTERVAL_TICKS) == 0) {
-                        LOG.info("[RavenSpawnEvents] No valid leaves-top spawn found near player {} (effectiveRadius={} blocks).",
-                                safeName(player), effectiveSearchRadius);
+                    if ((gameTime % DEBUG_LOG_INTERVAL_TICKS) == 0L) {
+                        LOG.info(
+                                "[RavenSpawnEvents] No valid leaves-top spawn found near player {} (effectiveRadius={} blocks).",
+                                safeName(player),
+                                effectiveSearchRadius
+                        );
                     }
                     continue;
                 }
 
                 if (spawnRaven(level, ravenType, spawnPos)) {
-                    // Record cooldown
-                    LAST_SPAWN_TICK_BY_PLAYER.put(player.getUUID(), gameTime);
-
-                    // Throttle log spam
-                    if ((gameTime % SPAWN_LOG_INTERVAL_TICKS) == 0) {
-                        LOG.info("[RavenSpawnEvents] Spawned raven at {} near player {}", spawnPos, safeName(player));
-                    } else if ((gameTime % DEBUG_LOG_INTERVAL_TICKS) == 0) {
-                        LOG.debug("[RavenSpawnEvents] Spawned raven at {} near player {}", spawnPos, safeName(player));
+                    if ((gameTime % SPAWN_LOG_INTERVAL_TICKS) == 0L) {
+                        LOG.info(
+                                "[RavenSpawnEvents] Spawned raven at {} near player {} (previousCount={})",
+                                spawnPos,
+                                safeName(player),
+                                ravenCount
+                        );
+                    } else if ((gameTime % DEBUG_LOG_INTERVAL_TICKS) == 0L) {
+                        LOG.debug(
+                                "[RavenSpawnEvents] Spawned raven at {} near player {} (previousCount={})",
+                                spawnPos,
+                                safeName(player),
+                                ravenCount
+                        );
                     }
                 }
             }
-
         } catch (Throwable t) {
             LOG.error("[RavenSpawnEvents] onLevelTickPost failed", t);
         }
     }
 
+    // ---------------------------------------------------------------------
+    // SUPPORT / HELPERS
+    // ---------------------------------------------------------------------
+
+    /**
+     * Ensure our spawn search radius is always fully inside LOCAL_RAVEN_RADIUS so
+     * we never spawn outside the population-control radius.
+     */
     private static int computeEffectiveSearchRadius() {
         try {
-            // We must ensure any spawn found is inside SINGLETON_RADIUS,
-            // otherwise you can spawn a raven outside the singleton box and then spawn another next tick.
-            int maxInsideSingleton = (int) Math.floor(SINGLETON_RADIUS) - 8; // small buffer
-            if (maxInsideSingleton <= 0) {
+            int maxInsideLocal = (int) Math.floor(LOCAL_RAVEN_RADIUS) - 8; // small safety buffer
+            if (maxInsideLocal <= 0) {
                 return 0;
             }
-            return Math.max(1, Math.min(SEARCH_RADIUS_BLOCKS, maxInsideSingleton));
+            return Math.max(1, Math.min(SEARCH_RADIUS_BLOCKS, maxInsideLocal));
         } catch (Throwable t) {
             LOG.error("[RavenSpawnEvents] computeEffectiveSearchRadius failed", t);
             return 0;
         }
     }
 
-    private static boolean isPlayerOnSpawnCooldown(Player player, long gameTime) {
-        try {
-            UUID id = player.getUUID();
-            Long last = LAST_SPAWN_TICK_BY_PLAYER.get(id);
-            if (last == null) {
-                return false;
-            }
-            long dt = gameTime - last;
-            if (dt < 0) {
-                // world time weirdness; reset
-                LAST_SPAWN_TICK_BY_PLAYER.remove(id);
-                return false;
-            }
-            return dt < PER_PLAYER_SPAWN_COOLDOWN_TICKS;
-        } catch (Throwable t) {
-            LOG.error("[RavenSpawnEvents] isPlayerOnSpawnCooldown failed", t);
-            // Fail-safe: if in doubt, don't spawn spam
-            return true;
-        }
-    }
-
-    private static boolean isPlayerTooHighAboveSurface(net.minecraft.server.level.ServerLevel level, Player player, long gameTime) {
+    private static boolean isPlayerTooHighAboveSurface(net.minecraft.server.level.ServerLevel level,
+                                                       Player player,
+                                                       long gameTime) {
         try {
             BlockPos p = player.blockPosition();
 
             int surfaceY;
             try {
-                surfaceY = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE, p.getX(), p.getZ());
+                surfaceY = level.getHeight(
+                        net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE,
+                        p.getX(),
+                        p.getZ()
+                );
             } catch (Throwable t) {
-                // If height query fails, be conservative and don't spawn
-                if ((gameTime % DEBUG_LOG_INTERVAL_TICKS) == 0) {
-                    LOG.debug("[RavenSpawnEvents] Surface height query failed for player {} at xz=({},{}). Spawning skipped.",
-                            safeName(player), p.getX(), p.getZ());
+                if ((gameTime % DEBUG_LOG_INTERVAL_TICKS) == 0L) {
+                    LOG.debug(
+                            "[RavenSpawnEvents] Surface height query failed for player {} at xz=({},{}). Spawning skipped.",
+                            safeName(player),
+                            p.getX(),
+                            p.getZ()
+                    );
                 }
                 return true;
             }
@@ -279,9 +336,15 @@ public final class RavenSpawnEvents {
             int above = playerY - surfaceY;
 
             if (above > MAX_PLAYER_HEIGHT_ABOVE_SURFACE) {
-                if ((gameTime % DEBUG_LOG_INTERVAL_TICKS) == 0) {
-                    LOG.info("[RavenSpawnEvents] Player {} is too high above surface (playerY={}, surfaceY={}, delta={} > {}). Spawning disabled for this player.",
-                            safeName(player), playerY, surfaceY, above, MAX_PLAYER_HEIGHT_ABOVE_SURFACE);
+                if ((gameTime % DEBUG_LOG_INTERVAL_TICKS) == 0L) {
+                    LOG.info(
+                            "[RavenSpawnEvents] Player {} is too high above surface (playerY={}, surfaceY={}, delta={} > {}). Spawning disabled for this player.",
+                            safeName(player),
+                            playerY,
+                            surfaceY,
+                            above,
+                            MAX_PLAYER_HEIGHT_ABOVE_SURFACE
+                    );
                 }
                 return true;
             }
@@ -298,25 +361,59 @@ public final class RavenSpawnEvents {
             if (player.getGameProfile() != null && player.getGameProfile().getName() != null) {
                 return player.getGameProfile().getName();
             }
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
         return "<unknown>";
     }
 
-    private static boolean hasRavenNearPlayer(net.minecraft.server.level.ServerLevel level, Player player) {
+    /**
+     * Counts how many ravens exist within LOCAL_RAVEN_RADIUS of the given player.
+     *
+     * This is a *local population* check, not a "per player" quota in the sense of
+     * "X ravens per connected player". We simply limit density in the area around
+     * the player.
+     */
+    private static int countRavensNearPlayer(net.minecraft.server.level.ServerLevel level, Player player) {
         try {
-            AABB box = player.getBoundingBox().inflate(SINGLETON_RADIUS);
-            List<Entity> ravens = level.getEntities((Entity) null, box, e ->
-                    e != null && e.getType() != null && RAVEN_ID.equals(BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()))
+            AABB box = player.getBoundingBox().inflate(LOCAL_RAVEN_RADIUS);
+
+            // *** FIX: use getEntitiesOfClass to avoid ambiguous getEntities() overload ***
+            List<Entity> ravens = level.getEntitiesOfClass(
+                    Entity.class,
+                    box,
+                    e -> e != null
+                            && e.getType() != null
+                            && RAVEN_ID.equals(BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()))
             );
-            return ravens != null && !ravens.isEmpty();
+
+            int count = (ravens == null) ? 0 : ravens.size();
+
+            // Very light, throttled debug.
+            long gameTime = level.getGameTime();
+            if ((gameTime % DEBUG_LOG_INTERVAL_TICKS) == 0L) {
+                LOG.debug(
+                        "[RavenSpawnEvents] countRavensNearPlayer: player={} count={} radius={}",
+                        safeName(player),
+                        count,
+                        LOCAL_RAVEN_RADIUS
+                );
+            }
+
+            return count;
         } catch (Throwable t) {
-            LOG.error("[RavenSpawnEvents] hasRavenNearPlayer failed", t);
-            // Fail-safe: avoid spawning duplicates if check fails
-            return true;
+            LOG.error("[RavenSpawnEvents] countRavensNearPlayer failed", t);
+            // Fail-safe: if we can't count, pretend we are at hard cap so we don't spam spawns.
+            return HARD_MAX_RAVENS_IN_RADIUS;
         }
     }
 
-    private static BlockPos findLeavesTopSpawnPos(net.minecraft.server.level.ServerLevel level, Player player, RandomSource rnd, int effectiveSearchRadius) {
+    /**
+     * Try to find a spawn position above a LEAVES block near the player.
+     */
+    private static BlockPos findLeavesTopSpawnPos(net.minecraft.server.level.ServerLevel level,
+                                                  Player player,
+                                                  RandomSource rnd,
+                                                  int effectiveSearchRadius) {
         BlockPos origin = player.blockPosition();
 
         for (int attempt = 0; attempt < CANDIDATE_COLUMNS_PER_CHECK; attempt++) {
@@ -333,8 +430,13 @@ public final class RavenSpawnEvents {
 
             int topY;
             try {
-                topY = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE, x, z);
+                topY = level.getHeight(
+                        net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE,
+                        x,
+                        z
+                );
             } catch (Throwable t) {
+                // Heightmap lookup failed; skip this column.
                 continue;
             }
 
@@ -364,12 +466,12 @@ public final class RavenSpawnEvents {
                     continue;
                 }
 
-                // One more small safety: ensure spawn position is still within singleton radius from player.
-                // (Should be guaranteed by effectiveSearchRadius, but keep it robust.)
+                // Keep spawn within the same local radius we're using for population control.
                 double dxp = (spawnPos.getX() + 0.5D) - (origin.getX() + 0.5D);
                 double dzp = (spawnPos.getZ() + 0.5D) - (origin.getZ() + 0.5D);
-                double dist = Math.sqrt(dxp * dxp + dzp * dzp);
-                if (dist > SINGLETON_RADIUS - 1.0D) {
+                double distSq = dxp * dxp + dzp * dzp;
+                double maxDist = LOCAL_RAVEN_RADIUS - 1.0D;
+                if (distSq > (maxDist * maxDist)) {
                     continue;
                 }
 
@@ -380,14 +482,16 @@ public final class RavenSpawnEvents {
         return null;
     }
 
-    private static boolean isAirColumn(net.minecraft.server.level.ServerLevel level, BlockPos start, int airBlocksNeeded) {
+    private static boolean isAirColumn(net.minecraft.server.level.ServerLevel level,
+                                       BlockPos start,
+                                       int airBlocksNeeded) {
         try {
-            BlockPos p = start;
+            BlockPos pos = start;
             for (int i = 0; i < airBlocksNeeded; i++) {
-                if (!level.isEmptyBlock(p)) {
+                if (!level.isEmptyBlock(pos)) {
                     return false;
                 }
-                p = p.above();
+                pos = pos.above();
             }
             return true;
         } catch (Throwable t) {
@@ -396,7 +500,9 @@ public final class RavenSpawnEvents {
         }
     }
 
-    private static boolean spawnRaven(net.minecraft.server.level.ServerLevel level, EntityType<?> type, BlockPos pos) {
+    private static boolean spawnRaven(net.minecraft.server.level.ServerLevel level,
+                                      EntityType<?> type,
+                                      BlockPos pos) {
         try {
             Entity created = type.create(level);
             if (created == null) {
@@ -404,18 +510,37 @@ public final class RavenSpawnEvents {
                 return false;
             }
 
-            created.moveTo(pos.getX() + 0.5D, pos.getY(), pos.getZ() + 0.5D, level.getRandom().nextFloat() * 360.0F, 0.0F);
+            created.moveTo(
+                    pos.getX() + 0.5D,
+                    pos.getY(),
+                    pos.getZ() + 0.5D,
+                    level.getRandom().nextFloat() * 360.0F,
+                    0.0F
+            );
 
             if (created instanceof Mob mob) {
-                mob.finalizeSpawn(level, level.getCurrentDifficultyAt(pos), MobSpawnType.NATURAL, null);
+                try {
+                    mob.finalizeSpawn(
+                            level,
+                            level.getCurrentDifficultyAt(pos),
+                            MobSpawnType.NATURAL,
+                            null
+                    );
+                } catch (Throwable t) {
+                    LOG.warn(
+                            "[RavenSpawnEvents] finalizeSpawn failed for raven at {} – continuing with spawned entity",
+                            pos,
+                            t
+                    );
+                }
             }
 
             boolean ok = level.addFreshEntity(created);
             if (!ok) {
                 LOG.warn("[RavenSpawnEvents] addFreshEntity returned false at {}", pos);
             }
-            return ok;
 
+            return ok;
         } catch (Throwable t) {
             LOG.error("[RavenSpawnEvents] spawnRaven failed at {}", pos, t);
             return false;
