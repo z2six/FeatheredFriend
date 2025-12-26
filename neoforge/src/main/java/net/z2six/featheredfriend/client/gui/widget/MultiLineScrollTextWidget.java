@@ -18,6 +18,7 @@ import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 /**
@@ -68,6 +69,23 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
     private int selectionStart = -1;
     private int selectionEnd = -1;
     private int selectionAnchor = -1;
+
+    // ---------------------------------------------------------------------
+    // NEW: caches for correct wrapping width calculations under custom fonts
+    // ---------------------------------------------------------------------
+
+    /**
+     * Cache measured widths of (fontId, char) to avoid repeated Component allocations.
+     * Key is a compact int derived from customFontId.hashCode() and the character code.
+     */
+    private final HashMap<Integer, Integer> charWidthCache = new HashMap<>();
+
+    /**
+     * Cache whether the font json exists on disk so we don't hit the resource manager constantly.
+     * null = unknown, will be resolved lazily.
+     */
+    @Nullable
+    private Boolean customFontResourcePresentCache = null;
 
     private record LineInfo(int start, int end) {
     }
@@ -177,6 +195,15 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
 
     public void setCustomFontId(@Nullable ResourceLocation fontId) {
         this.customFontId = fontId;
+
+        // NEW: invalidate caches because width measurement depends on custom font.
+        try {
+            this.charWidthCache.clear();
+            this.customFontResourcePresentCache = null;
+        } catch (Throwable t) {
+            LOG.error("[MultiLineScrollTextWidget] Failed to clear font caches", t);
+        }
+
         LOG.debug("[MultiLineScrollTextWidget] setCustomFontId -> {}", fontId);
     }
 
@@ -221,7 +248,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             LOG.error("[MultiLineScrollTextWidget] setAlpha failed", t);
         }
     }
-
 
     // ---------------------------------------------------------------------
     // Selection helpers
@@ -481,13 +507,49 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         guiGraphics.drawString(this.font, toDraw, x, y, argb, shadow);
     }
 
+    /**
+     * NEW: measure char width using the same font styling used during rendering.
+     * This fixes premature line wrapping when a custom font is narrower/wider than vanilla.
+     */
+    private int measureCharWidth(char c) {
+        try {
+            int fontHash = (this.customFontId != null) ? this.customFontId.hashCode() : 0;
+
+            // Compact key; collisions are extremely unlikely and harmless (worst case: slightly off width for rare combos).
+            int key = (fontHash * 31) ^ (int) c;
+
+            Integer cached = this.charWidthCache.get(key);
+            if (cached != null) {
+                return cached;
+            }
+
+            Component comp = applyCustomFont(Component.literal(String.valueOf(c)));
+            int w = this.font.width(comp);
+
+            this.charWidthCache.put(key, w);
+            return w;
+        } catch (Throwable t) {
+            LOG.error("[MultiLineScrollTextWidget] measureCharWidth failed, falling back to vanilla width", t);
+            try {
+                return this.font.width(String.valueOf(c));
+            } catch (Throwable ignored) {
+                return 0;
+            }
+        }
+    }
+
     private Component applyCustomFont(@NotNull Component base) {
         if (this.customFontId == null) {
             return base;
         }
 
         try {
-            var rm = Minecraft.getInstance().getResourceManager();
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null) {
+                return base;
+            }
+
+            var rm = mc.getResourceManager();
 
             // Looks for assets/<ns>/font/<path>.json
             ResourceLocation fontJson = ResourceLocation.fromNamespaceAndPath(
@@ -495,7 +557,15 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                     "font/" + this.customFontId.getPath() + ".json"
             );
 
-            boolean exists = rm.getResource(fontJson).isPresent();
+            // NEW: cache resource existence check to avoid spamming resource manager (important for wrapping measurements).
+            Boolean existsCached = this.customFontResourcePresentCache;
+            boolean exists;
+            if (existsCached != null) {
+                exists = existsCached;
+            } else {
+                exists = rm.getResource(fontJson).isPresent();
+                this.customFontResourcePresentCache = exists;
+            }
 
             if (!exists) {
                 LOG.debug("[MultiLineScrollTextWidget] Font resource {} not present, falling back to default", fontJson);
@@ -808,8 +878,7 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
 
         for (int i = 0; i < line.length(); i++) {
             char c = line.charAt(i);
-            String s = String.valueOf(c);
-            Component comp = applyCustomFont(Component.literal(s));
+            Component comp = applyCustomFont(Component.literal(String.valueOf(c)));
             int w = this.font.width(comp);
 
             // If click is in the left half of this char, snap before it.
@@ -1242,6 +1311,9 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         try {
             String selected = safeSubstring(this.text, selectionStart, selectionEnd);
             Minecraft mc = Minecraft.getInstance();
+            if (mc == null) {
+                return;
+            }
             mc.keyboardHandler.setClipboard(selected);
             LOG.debug("[MultiLineScrollTextWidget] Copied selection to clipboard");
         } catch (Throwable t) {
@@ -1257,6 +1329,9 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         try {
             String selected = safeSubstring(this.text, selectionStart, selectionEnd);
             Minecraft mc = Minecraft.getInstance();
+            if (mc == null) {
+                return;
+            }
             mc.keyboardHandler.setClipboard(selected);
             LOG.debug("[MultiLineScrollTextWidget] Cut selection to clipboard");
             deleteSelection();
@@ -1268,6 +1343,9 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
     private void pasteFromClipboard() {
         try {
             Minecraft mc = Minecraft.getInstance();
+            if (mc == null) {
+                return;
+            }
             String clip = mc.keyboardHandler.getClipboard();
             if (clip == null || clip.isEmpty()) {
                 return;
@@ -1354,7 +1432,9 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                     break;
                 }
 
-                int charWidth = font.width(String.valueOf(c));
+                // NEW: use accurate measurement that matches rendering (custom font aware)
+                int charWidth = measureCharWidth(c);
+
                 if (currentWidth + charWidth > maxWidth) {
                     if (lastSpace > lineStart) {
                         // Wrap at last space
@@ -1418,7 +1498,9 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                         break;
                     }
 
-                    int charWidth = font.width(String.valueOf(c));
+                    // NEW: use accurate measurement that matches rendering (custom font aware)
+                    int charWidth = measureCharWidth(c);
+
                     if (currentWidth + charWidth > maxWidth) {
                         if (lastSpace > lineStart) {
                             // Wrap at last space

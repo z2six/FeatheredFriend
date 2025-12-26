@@ -53,20 +53,20 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     private static final ResourceLocation STAMP_UI_TEXTURE =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/stampscreen/stamp_ui.png");
 
-// ---------------------------------------------------------------------
-// GUI dimensions
-// ---------------------------------------------------------------------
+    // ---------------------------------------------------------------------
+    // GUI dimensions
+    // ---------------------------------------------------------------------
 
     // Match the stamp_ui.png dimensions exactly (304x192)
     private static final int GUI_WIDTH = 272;
     private static final int GUI_HEIGHT = 160;
 
-// ---------------------------------------------------------------------
-// "Secret" field config (relative to GUI origin)
-// ---------------------------------------------------------------------
+    // ---------------------------------------------------------------------
+    // "Secret" field config (relative to GUI origin)
+    // ---------------------------------------------------------------------
 
     // Size
-    private static final int SECRET_WIDTH = 100;
+    private static final int SECRET_WIDTH = 130;
     private static final int SECRET_HEIGHT = 28;
     private static final int SECRET_MAX_CHARS = 52;
     private static final int SECRET_MAX_LINES = 2;
@@ -74,11 +74,11 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     // Position
     // Y is absolute from top of GUI; X is centered + offset.
     private static final int SECRET_Y = 22;
-    private static final int SECRET_X_OFFSET = -52; // negative -> shift left, positive -> shift right
+    private static final int SECRET_X_OFFSET = -35; // negative -> shift left, positive -> shift right
 
-// ---------------------------------------------------------------------
-// Left column (Etchings / Style / Carve / Scale) config
-// ---------------------------------------------------------------------
+    // ---------------------------------------------------------------------
+    // Left column (Etchings / Style / Carve / Scale) config
+    // ---------------------------------------------------------------------
 
     // Base X for the left column (relative to GUI origin).
     private static final int LEFT_COLUMN_X = 26;
