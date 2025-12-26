@@ -309,6 +309,10 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         this.secretField.setCustomFontId(GOTHIC_FONT_ID);
         this.secretField.setEditable(true);
 
+        // make placeholder almost-white and typed text pure white
+        this.secretField.setPlaceholderColor(0xEFEFEF);  // very light gray
+        this.secretField.setTextColor(0xFFFFFFFF);       // white
+
         this.addRenderableWidget(this.secretField);
 
         // -----------------------------------------------------------------
