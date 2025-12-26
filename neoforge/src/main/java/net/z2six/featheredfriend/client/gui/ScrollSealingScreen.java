@@ -188,7 +188,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     // Message widget config
     private static final int MESSAGE_X = 30;
     private static final int MESSAGE_Y = 62;
-    private static final int MESSAGE_WIDTH = 125;
+    private static final int MESSAGE_WIDTH = 150;
     private static final int MESSAGE_HEIGHT = 6 * 9 + 10; // ~6 lines
     private static final int MESSAGE_MAX_CHARS = 512;
     private static final int MESSAGE_MAX_LINES = 12;
