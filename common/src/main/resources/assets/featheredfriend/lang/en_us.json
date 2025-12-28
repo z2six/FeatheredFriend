@@ -10,5 +10,7 @@
   "screen.featheredfriend.scroll_sealing": "Scroll Sealing",
   "screen.featheredfriend.scroll_sealing.seal_button": "Seal (Placeholder)",
 
-  "jei.featheredfriend.scroll_sealed.info": "Sealed Scrolls are created from Unsealed Scrolls inside the Scroll Sealing GUI."
+  "jei.featheredfriend.scroll_sealed.info": "Sealed Scrolls are created from Unsealed Scrolls inside the Scroll Sealing GUI.",
+
+  "entity.featheredfriend.raven": "Raven"
 }
