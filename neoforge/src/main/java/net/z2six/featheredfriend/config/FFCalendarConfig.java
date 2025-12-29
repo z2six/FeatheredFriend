@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/config/FFCalendarConfig.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/config/FFCalendarConfig.java
 package net.z2six.featheredfriend.config;
 
 import com.mojang.logging.LogUtils;
@@ -21,16 +21,16 @@ import java.util.List;
  *
  * - Defines:
  *   * Month names (8 entries, ordered)
- *   * Year suffix (e.g. "AN" for "After Notch")
+ *   * Year suffix (e.g. "A.N.")
+ *   * Days per month (server-authoritative, synced to clients)
  *
  * - Server-authoritative:
  *   * Only the SERVER config is defined here.
  *   * Clients should always respect the server-provided values via sync,
  *     not their local config.
  *
- * This class is NeoForge-only and must not be referenced directly
- * from common code. Common layers should instead go through whatever
- * abstraction we wire up later (e.g. a CalendarManager / platform API).
+ * NOTE:
+ * - We intentionally do NOT make ticksPerDay configurable here per your requirement.
  */
 public final class FFCalendarConfig {
 
@@ -53,10 +53,19 @@ public final class FFCalendarConfig {
 
     public static final String DEFAULT_YEAR_SUFFIX = "A.N.";
 
-    // Simple constants for now; if you ever want 20-minute days etc.,
-    // change here + in your common CalendarDefinition usage.
-    public static final int DAYS_PER_MONTH = 28;
+    /**
+     * Default days-per-month. Historically this was 28. We keep 28 as default
+     * to preserve existing behavior unless the server owner changes it.
+     *
+     * For perfect sync with Serene Seasons sub_season_duration=16, set daysPerMonth=24 in the server config.
+     */
+    public static final int DEFAULT_DAYS_PER_MONTH = 28;
+
     public static final int MONTHS_PER_YEAR = DEFAULT_MONTH_NAMES.length;
+
+    /**
+     * Not configurable in this task; used for dayIndex calculation everywhere.
+     */
     public static final int TICKS_PER_DAY = 24000;
 
     // ---------------------------------------------------------------------
@@ -67,6 +76,11 @@ public final class FFCalendarConfig {
 
     public static final ModConfigSpec.ConfigValue<List<? extends String>> MONTH_NAMES;
     public static final ModConfigSpec.ConfigValue<String> YEAR_SUFFIX;
+
+    /**
+     * NEW: server-authoritative days per month (synced to clients).
+     */
+    public static final ModConfigSpec.IntValue DAYS_PER_MONTH;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -87,16 +101,29 @@ public final class FFCalendarConfig {
 
         YEAR_SUFFIX = builder
                 .comment(
-                        "Year suffix string, e.g. \"AN\" for \"After Notch\".",
-                        "Used when displaying dates like: Day 17 of Dawnroot, 112 AN."
+                        "Year suffix string, e.g. \"A.N.\" for \"After Notch\".",
+                        "Used when displaying dates like: Day 17 of Dawnroot, 112 A.N."
                 )
                 .define("yearSuffix", DEFAULT_YEAR_SUFFIX);
+
+        DAYS_PER_MONTH = builder
+                .comment(
+                        "How many in-game days each month lasts before progressing to the next month.",
+                        "This is server-authoritative and synced to clients.",
+                        "",
+                        "Examples:",
+                        "- Vanilla-ish fantasy default: 28",
+                        "- Perfect sync with Serene Seasons sub_season_duration=16: set this to 24",
+                        "",
+                        "Valid range: 1..365"
+                )
+                .defineInRange("daysPerMonth", DEFAULT_DAYS_PER_MONTH, 1, 365);
 
         builder.pop();
 
         SERVER_SPEC = builder.build();
 
-        LOG.debug("[FFCalendarConfig] Built SERVER config spec for calendar");
+        LOG.debug("[FFCalendarConfig] Built SERVER config spec for calendar (monthNames/yearSuffix/daysPerMonth)");
     }
 
     // ---------------------------------------------------------------------
@@ -109,7 +136,7 @@ public final class FFCalendarConfig {
      * Call this once from your NeoForge main mod class constructor, e.g.:
      *
      * <pre>
-     * public FeatheredFriendNeoForge(IEventBus modBus, ModContainer container) {
+     * public FeatheredFriend(IEventBus modBus) {
      *     FFCalendarConfig.register();
      *     ...
      * }
@@ -129,7 +156,7 @@ public final class FFCalendarConfig {
     }
 
     // ---------------------------------------------------------------------
-    // Safe accessors (server-side use; client should read synced values)
+    // Safe accessors (server-side use; client reads synced values)
     // ---------------------------------------------------------------------
 
     /**
@@ -170,7 +197,7 @@ public final class FFCalendarConfig {
     }
 
     /**
-     * Returns the configured year suffix (e.g. "AN"), or the default if
+     * Returns the configured year suffix (e.g. "A.N."), or the default if
      * config is missing/blank.
      */
     public static String getYearSuffix() {
@@ -188,17 +215,34 @@ public final class FFCalendarConfig {
     }
 
     /**
-     * Builds a CalendarDefinition using the *server* config values.
+     * NEW: Returns server-authoritative days-per-month, synced to clients.
+     * Defensive: clamps to [1..365] and logs on invalid values.
+     */
+    public static int getDaysPerMonth() {
+        try {
+            int v = DAYS_PER_MONTH.get();
+            if (v <= 0) {
+                LOG.warn("[FFCalendarConfig] daysPerMonth <= 0 ({}), using default {}", v, DEFAULT_DAYS_PER_MONTH);
+                return DEFAULT_DAYS_PER_MONTH;
+            }
+            if (v > 365) {
+                LOG.warn("[FFCalendarConfig] daysPerMonth > 365 ({}), clamping to 365", v);
+                return 365;
+            }
+            return v;
+        } catch (Throwable t) {
+            LOG.error("[FFCalendarConfig] getDaysPerMonth failed, using default {}", DEFAULT_DAYS_PER_MONTH, t);
+            return DEFAULT_DAYS_PER_MONTH;
+        }
+    }
+
+    /**
+     * Builds a CalendarDefinition using the server config values.
      *
      * This is what NeoForgePlatformHelper calls.
-     * It is safe to call on the logical server; if anything goes wrong
-     * we fall back to defaults and log.
+     * Safe to call; falls back to defaults and logs.
      *
-     * NOTE: This matches the existing constructor:
-     *   CalendarDefinition(NotNull String[] monthNames,
-     *                      NotNull String yearSuffix,
-     *                      int daysPerMonth,
-     *                      long ticksPerDay)
+     * NOTE: ticksPerDay is intentionally constant (24000) in this task.
      */
     public static CalendarDefinition getCalendarDefinition() {
         try {
@@ -208,20 +252,21 @@ public final class FFCalendarConfig {
             }
 
             String suffix = getYearSuffix();
+            int daysPerMonth = getDaysPerMonth();
 
             String[] namesArray = monthNamesList.toArray(new String[0]);
 
             CalendarDefinition def = new CalendarDefinition(
                     namesArray,
                     suffix,
-                    DAYS_PER_MONTH,
-                    TICKS_PER_DAY
+                    daysPerMonth,
+                    (long) TICKS_PER_DAY
             );
 
             LOG.debug(
                     "[FFCalendarConfig] Built CalendarDefinition: months={}, daysPerMonth={}, suffix='{}', ticksPerDay={}",
                     namesArray.length,
-                    DAYS_PER_MONTH,
+                    daysPerMonth,
                     suffix,
                     TICKS_PER_DAY
             );
@@ -234,8 +279,8 @@ public final class FFCalendarConfig {
             return new CalendarDefinition(
                     DEFAULT_MONTH_NAMES,
                     DEFAULT_YEAR_SUFFIX,
-                    DAYS_PER_MONTH,
-                    TICKS_PER_DAY
+                    DEFAULT_DAYS_PER_MONTH,
+                    (long) TICKS_PER_DAY
             );
         }
     }

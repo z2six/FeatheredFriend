@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/client/ClientCalendarEvents.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/client/ClientCalendarEvents.java
 package net.z2six.featheredfriend.client;
 
 import com.mojang.logging.LogUtils;
@@ -33,7 +33,6 @@ import org.slf4j.Logger;
  */
 @EventBusSubscriber(modid = Constants.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.GAME)
 public final class ClientCalendarEvents {
-
     private static final Logger LOG = LogUtils.getLogger();
 
     // Popup timing (ticks at 20 TPS)
@@ -74,6 +73,9 @@ public final class ClientCalendarEvents {
             }
 
             long dayTime = mc.level.getDayTime(); // absolute time in ticks
+
+            // ticksPerDay is intentionally NOT configurable in this task.
+            // We keep using the constant, but still validate to be ultra-safe.
             long ticksPerDay = FFCalendarConfig.TICKS_PER_DAY;
             if (ticksPerDay <= 0L) {
                 LOG.warn("[ClientCalendarEvents] FFCalendarConfig.TICKS_PER_DAY <= 0 ({}), using 24000 fallback", ticksPerDay);
@@ -284,7 +286,6 @@ public final class ClientCalendarEvents {
             // Small “diamond” under the center of the text: a tiny cross / plus shape.
             int centerX = textX + textWidth / 2;
             int diamondY = textY + textHeight + 3; // just below the baseline
-
             // Vertical stroke
             g.fill(centerX, diamondY - 1, centerX + 1, diamondY + 2, ornamentColor);
             // Horizontal stroke
@@ -300,41 +301,42 @@ public final class ClientCalendarEvents {
     // -------------------------------------------------------------------------
 
     /**
-     * Builds the display string for a given day index using FFCalendarConfig.
+     * Builds the display string for a given day index using the SERVER-synced config values.
      *
-     * Day index 0 -> "Day 1 of Dawnroot, 1 AN" (with defaults).
+     * Day index 0 -> "Day 1 of Dawnroot, 1 A.N." (with defaults).
      *
      * Made public so other client-side UI (e.g. ScrollSealingScreen) can reuse
      * the exact same calendar formatting.
      */
     public static @NotNull Component buildDateMessage(long dayIndex) {
         try {
-            int daysPerMonth = FFCalendarConfig.DAYS_PER_MONTH;
+            // IMPORTANT: daysPerMonth is now server-authoritative + synced.
+            int daysPerMonth = FFCalendarConfig.getDaysPerMonth();
             int monthsPerYear = FFCalendarConfig.MONTHS_PER_YEAR;
-            long ticksPerDay = FFCalendarConfig.TICKS_PER_DAY;
 
             if (daysPerMonth <= 0) {
-                daysPerMonth = 28;
+                LOG.warn("[ClientCalendarEvents] buildDateMessage: daysPerMonth <= 0 ({}), falling back to {}", daysPerMonth, FFCalendarConfig.DEFAULT_DAYS_PER_MONTH);
+                daysPerMonth = FFCalendarConfig.DEFAULT_DAYS_PER_MONTH;
             }
             if (monthsPerYear <= 0) {
+                LOG.warn("[ClientCalendarEvents] buildDateMessage: monthsPerYear <= 0 ({}), falling back to 8", monthsPerYear);
                 monthsPerYear = 8;
-            }
-            if (ticksPerDay <= 0L) {
-                ticksPerDay = 24000L;
             }
 
             long totalDaysPerYear = (long) daysPerMonth * (long) monthsPerYear;
             if (totalDaysPerYear <= 0L) {
+                LOG.warn("[ClientCalendarEvents] buildDateMessage: totalDaysPerYear <= 0, forcing safe fallback");
                 totalDaysPerYear = (long) daysPerMonth * 8L;
             }
 
             // Ensure non-negative
             if (dayIndex < 0L) {
+                LOG.warn("[ClientCalendarEvents] buildDateMessage: dayIndex < 0 ({}), clamping to 0", dayIndex);
                 dayIndex = 0L;
             }
 
             long yearIndex = dayIndex / totalDaysPerYear; // 0-based
-            int yearNumber = (int) (yearIndex + 1);       // 1-based
+            int yearNumber = (int) (yearIndex + 1);       // 1-based display (preserved behavior)
 
             int dayOfYear = (int) (dayIndex % totalDaysPerYear); // 0..(totalDaysPerYear-1)
             int monthIndex = dayOfYear / daysPerMonth;           // 0..monthsPerYear-1
