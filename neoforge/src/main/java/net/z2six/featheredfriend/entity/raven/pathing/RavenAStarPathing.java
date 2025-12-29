@@ -59,13 +59,13 @@ public final class RavenAStarPathing {
      * Master debug switch for this class.
      * Flip this to false to silence RavenAStarPathing logs without touching call sites.
      */
-    public static boolean DEBUG_LOGS = true;
+    public static boolean DEBUG_LOGS = false;
 
     /**
      * If true, prints an INFO line for EVERY findPath call.
      * This is the "I want to be 100% sure A* is running" switch.
      */
-    public static boolean FORCE_LOG_EVERY_CALL = true;
+    public static boolean FORCE_LOG_EVERY_CALL = false;
 
     /**
      * If FORCE_LOG_EVERY_CALL is false, we rate-limit the ENTER log to at most once per N ms.
@@ -75,7 +75,7 @@ public final class RavenAStarPathing {
     /**
      * If true, includes a short caller hint (stack top) in the ENTER log.
      */
-    public static boolean LOG_CALLER_HINT = true;
+    public static boolean LOG_CALLER_HINT = false;
 
     /**
      * Treat Vec3.y as FEET/base Y (Minecraft entity.position()).

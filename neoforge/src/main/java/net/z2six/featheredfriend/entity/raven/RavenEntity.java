@@ -264,12 +264,12 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     /**
      * If true, we emit a log whenever we alter the start sample (so you can SEE when the surgical fix is active).
      */
-    private static final boolean PATH_START_SAMPLE_LOGS = true;
+    private static final boolean PATH_START_SAMPLE_LOGS = false;
 
     /**
      * If true, we emit a log whenever we skip planning due to retry throttle, and when a retry window opens.
      */
-    private static final boolean PATH_RETRY_LOGS = true;
+    private static final boolean PATH_RETRY_LOGS = false;
 
     // If pathing repeatedly fails, we fall back to old direct setFlyTarget behavior.
     private int pathFailCooldownTicks = 0;
@@ -1131,6 +1131,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 pathReplanCooldownTicks = Math.max(pathReplanCooldownTicks, 6);
                 pathRetryCooldownTicks = highPriority ? 5 : 20;
 
+                /*
                 if (this.tickCount % 20 == 0) {
                     LOG.info("[RavenEntity] ensurePathTo(core): A* FAIL (fails={} reason={}) start={} rawGoal={} safeGoal={} pos={} vel={} collH={} collV={} bounds={}",
                             consecutivePathPlanFails,
@@ -1144,6 +1145,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                             this.verticalCollision,
                             bounds);
                 }
+                 */
 
                 return false;
             }
