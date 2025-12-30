@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [1.3.2]
+- Added multilanguage support by using Minecraft's default font as fallback.
+
 ## [1.3.1]
 - Fixed & revamped known players data for the recipient field.
 

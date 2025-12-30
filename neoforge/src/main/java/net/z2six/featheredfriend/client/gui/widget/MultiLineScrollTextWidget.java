@@ -80,13 +80,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
      */
     private final HashMap<Integer, Integer> charWidthCache = new HashMap<>();
 
-    /**
-     * Cache whether the font json exists on disk so we don't hit the resource manager constantly.
-     * null = unknown, will be resolved lazily.
-     */
-    @Nullable
-    private Boolean customFontResourcePresentCache = null;
-
     private record LineInfo(int start, int end) {
     }
 
@@ -199,7 +192,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         // NEW: invalidate caches because width measurement depends on custom font.
         try {
             this.charWidthCache.clear();
-            this.customFontResourcePresentCache = null;
         } catch (Throwable t) {
             LOG.error("[MultiLineScrollTextWidget] Failed to clear font caches", t);
         }
@@ -544,34 +536,10 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         }
 
         try {
-            Minecraft mc = Minecraft.getInstance();
-            if (mc == null) {
-                return base;
-            }
-
-            var rm = mc.getResourceManager();
-
-            // Looks for assets/<ns>/font/<path>.json
-            ResourceLocation fontJson = ResourceLocation.fromNamespaceAndPath(
-                    this.customFontId.getNamespace(),
-                    "font/" + this.customFontId.getPath() + ".json"
-            );
-
-            // NEW: cache resource existence check to avoid spamming resource manager (important for wrapping measurements).
-            Boolean existsCached = this.customFontResourcePresentCache;
-            boolean exists;
-            if (existsCached != null) {
-                exists = existsCached;
-            } else {
-                exists = rm.getResource(fontJson).isPresent();
-                this.customFontResourcePresentCache = exists;
-            }
-
-            if (!exists) {
-                LOG.debug("[MultiLineScrollTextWidget] Font resource {} not present, falling back to default", fontJson);
-                return base;
-            }
-
+            // IMPORTANT:
+            // Do NOT probe ResourceManager here (rm.getResource(...)) — can crash under UnionFS during reload/startup.
+            // Just apply the font style. If the font or glyph is missing, MC will fall back (and your gothic12.json
+            // already references minecraft:default for missing glyphs).
             MutableComponent mutable = base.copy();
             Style style = mutable.getStyle().withFont(this.customFontId);
             mutable.setStyle(style);
