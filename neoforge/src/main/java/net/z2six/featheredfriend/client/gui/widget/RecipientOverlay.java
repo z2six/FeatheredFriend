@@ -17,20 +17,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
-/**
- * // neoforge/src/main/java/net/z2six/featheredfriend/client/gui/widget/RecipientOverlay.java
- *
- * RecipientOverlay
- *
- * A modern-ish overlay for choosing a player as scroll recipient.
- *
- * Responsibilities:
- *  - Shows a list of known players (online + offline) using the client cache.
- *  - Includes a filter field ("Filter players...") using MultiLineScrollTextWidget.
- *  - Renders on top of the scroll GUI with a semi-transparent background.
- *  - Invokes a callback when a player is selected.
- *  - Can be opened/closed, and knows if the mouse is over it.
- */
 public final class RecipientOverlay {
 
     private static final Logger LOG = LogUtils.getLogger();
@@ -44,7 +30,6 @@ public final class RecipientOverlay {
     private final Font font;
     private final SelectionCallback callback;
 
-    // Overlay position/size (absolute screen coordinates)
     private int x;
     private int y;
     private final int width;
@@ -52,7 +37,6 @@ public final class RecipientOverlay {
 
     private boolean active = false;
 
-    // Layout constants (inside overlay)
     private static final int PADDING = 6;
     private static final int HEADER_HEIGHT = 12;
     private static final int FILTER_HEIGHT = 14;
@@ -79,11 +63,10 @@ public final class RecipientOverlay {
         this.width = width;
         this.height = height;
 
-        // Filter box uses our custom widget, single-line config.
         this.filterField = new MultiLineScrollTextWidget(
                 font,
                 x + PADDING,
-                y + PADDING + HEADER_HEIGHT, // below header row (even if we don't draw a title, we keep spacing)
+                y + PADDING + HEADER_HEIGHT,
                 width - PADDING * 2,
                 FILTER_HEIGHT,
                 64,
@@ -91,7 +74,6 @@ public final class RecipientOverlay {
                 Component.literal("Filter players...")
         );
 
-        // Make the filter text white, without affecting any other widgets.
         try {
             this.filterField.setTextColor(0xFFFFFFFF);
             LOG.debug("[RecipientOverlay] Set filterField text color to 0xFFFFFFFF (white)");
@@ -102,10 +84,6 @@ public final class RecipientOverlay {
         LOG.debug("[RecipientOverlay] Created at ({},{}) size=({},{})", x, y, width, height);
     }
 
-    // ---------------------------------------------------------------------
-    // External API
-    // ---------------------------------------------------------------------
-
     public boolean isActive() {
         return active;
     }
@@ -113,7 +91,6 @@ public final class RecipientOverlay {
     public void setPosition(int x, int y) {
         this.x = x;
         this.y = y;
-        // Also move filter field
         this.filterField.setX(x + PADDING);
         this.filterField.setY(y + PADDING + HEADER_HEIGHT);
     }
@@ -123,11 +100,17 @@ public final class RecipientOverlay {
             this.active = true;
             LOG.debug("[RecipientOverlay] open()");
 
-            // Clear filter text and placeholder
             this.filterField.setText("");
             this.filterField.setFocused(true);
 
-            // Refresh players from cache (also seeds from connection)
+            // Request authoritative server list (UUID+name) in case we missed a broadcast / opened too early.
+            try {
+                KnownPlayersClientCache.getInstance().requestRefreshFromServer();
+                LOG.debug("[RecipientOverlay] Requested known player refresh from server");
+            } catch (Throwable t) {
+                LOG.error("[RecipientOverlay] Failed to request known players from server", t);
+            }
+
             reloadFromClientCache();
         } catch (Throwable t) {
             LOG.error("[RecipientOverlay] open() failed", t);
@@ -161,6 +144,11 @@ public final class RecipientOverlay {
         if (!active) return;
         try {
             this.filterField.tick();
+
+            // Keep online/offline status fresh and catch any newly received server list updates.
+            // This is cheap.
+            reloadFromClientCache();
+            updateFilter();
         } catch (Throwable t) {
             LOG.error("[RecipientOverlay] tick() failed", t);
         }
@@ -185,18 +173,16 @@ public final class RecipientOverlay {
         if (!active) return false;
 
         try {
-            // ESC closes overlay only (screen stays open)
             if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 close(true);
                 return true;
             }
 
-            // Eat 'E' so it does not close the container while filtering
+            // prevent inventory from opening while typing/selecting
             if (keyCode == GLFW.GLFW_KEY_E) {
                 return true;
             }
 
-            // Basic navigation keys to filter field
             boolean handled = this.filterField.keyPressed(keyCode, scanCode, modifiers);
             if (handled) {
                 updateFilter();
@@ -210,11 +196,6 @@ public final class RecipientOverlay {
         }
     }
 
-    /**
-     * Called from the parent screen's mouseClicked.
-     *
-     * @return true if the overlay consumed the click.
-     */
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (!active || button != 0) {
             return false;
@@ -222,28 +203,29 @@ public final class RecipientOverlay {
 
         try {
             if (!isMouseOverOverlay(mouseX, mouseY)) {
-                // Click outside -> close overlay and consume the click.
                 close(true);
                 LOG.debug("[RecipientOverlay] Click outside overlay -> closing");
                 return true;
             }
 
-            // Click inside overlay:
-            // 1) Check if click landed in an entry row.
             int listTop = y + PADDING + HEADER_HEIGHT + FILTER_HEIGHT + PADDING;
             int mouseYInt = (int) mouseY;
             int index = (mouseYInt - listTop) / (ENTRY_HEIGHT + ENTRY_SPACING);
 
             if (index >= 0 && index < visiblePlayers.size()) {
                 KnownPlayersClientCache.KnownPlayerEntry entry = visiblePlayers.get(index);
-                if (callback != null) {
-                    callback.onPlayerSelected(entry.getUuid(), entry.getName());
+
+                if (entry != null && entry.getUuid() != null && entry.getName() != null && !entry.getName().isBlank()) {
+                    if (callback != null) {
+                        callback.onPlayerSelected(entry.getUuid(), entry.getName());
+                    }
+                    close(false);
+                    return true;
+                } else {
+                    LOG.warn("[RecipientOverlay] Clicked invalid entry index={} entry={}", index, entry);
                 }
-                close(false);
-                return true;
             }
 
-            // 2) Otherwise, let filter field handle focus click.
             this.filterField.mouseClicked(mouseX, mouseY, button);
             return true;
         } catch (Throwable t) {
@@ -256,16 +238,14 @@ public final class RecipientOverlay {
         if (!active) return;
 
         try {
-            // Semi-transparent dark background
             guiGraphics.fill(
                     x,
                     y,
                     x + width,
                     y + height,
-                    0xC0000000  // ARGB: ~75% black
+                    0xC0000000
             );
 
-            // Slightly lighter inner panel
             guiGraphics.fill(
                     x + 1,
                     y + 1,
@@ -274,16 +254,14 @@ public final class RecipientOverlay {
                     0xC0222222
             );
 
-            // Filter field
             this.filterField.render(guiGraphics, mouseX, mouseY, partialTick);
 
-            // List of players
             int listTop = y + PADDING + HEADER_HEIGHT + FILTER_HEIGHT + PADDING;
             int currentY = listTop;
 
             for (KnownPlayersClientCache.KnownPlayerEntry entry : visiblePlayers) {
                 if (currentY + ENTRY_HEIGHT > y + height - PADDING) {
-                    break; // out of space
+                    break;
                 }
 
                 renderEntry(guiGraphics, entry, currentY);
@@ -294,18 +272,16 @@ public final class RecipientOverlay {
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Internal helpers
-    // ---------------------------------------------------------------------
-
     private void reloadFromClientCache() {
         try {
             KnownPlayersClientCache cache = KnownPlayersClientCache.getInstance();
-            cache.refreshFromClientConnection(); // at least online players
-            List<KnownPlayersClientCache.KnownPlayerEntry> players = cache.getAllPlayers();
+
+            // Defensive: ensure online players get inserted even if server list packet hasn’t arrived yet.
+            cache.refreshFromClientConnection();
+
+            List<KnownPlayersClientCache.KnownPlayerEntry> players = cache.getAllPlayersSorted();
 
             this.allPlayers = new ArrayList<>(players);
-            // Sort by name
             this.allPlayers.sort(Comparator.comparing(
                     KnownPlayersClientCache.KnownPlayerEntry::getName,
                     String.CASE_INSENSITIVE_ORDER
@@ -332,6 +308,7 @@ public final class RecipientOverlay {
 
             List<KnownPlayersClientCache.KnownPlayerEntry> filtered = new ArrayList<>();
             for (KnownPlayersClientCache.KnownPlayerEntry p : allPlayers) {
+                if (p == null || p.getName() == null) continue;
                 if (p.getName().toLowerCase(Locale.ROOT).contains(lower)) {
                     filtered.add(p);
                 }
@@ -349,7 +326,6 @@ public final class RecipientOverlay {
         int xLeft = x + PADDING;
         int xRight = x + width - PADDING;
 
-        // Background for the row
         g.fill(
                 xLeft,
                 yTop,
@@ -358,7 +334,6 @@ public final class RecipientOverlay {
                 0x80222222
         );
 
-        // "Head" placeholder: small square on left
         int headSize = ENTRY_HEIGHT - 4;
         int headX = xLeft + 2;
         int headY = yTop + 2;
@@ -371,7 +346,6 @@ public final class RecipientOverlay {
                 0xFF555555
         );
 
-        // Online / offline indicator: small dot on right side of the row
         int dotRadius = 3;
         int dotCx = xRight - 6;
         int dotCy = yTop + ENTRY_HEIGHT / 2;
@@ -385,7 +359,6 @@ public final class RecipientOverlay {
                 dotColor
         );
 
-        // Player name
         g.drawString(
                 font,
                 entry.getName(),

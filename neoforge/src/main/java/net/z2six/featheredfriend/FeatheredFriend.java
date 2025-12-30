@@ -6,7 +6,6 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLEnvironment;
-import net.neoforged.neoforge.common.NeoForge;
 import net.z2six.featheredfriend.chat.ChatDisabler;
 import net.z2six.featheredfriend.client.FFNeoForgeClient;
 import net.z2six.featheredfriend.client.FFKeyBindings;
@@ -14,6 +13,7 @@ import net.z2six.featheredfriend.client.particle.FFClientParticles;
 import net.z2six.featheredfriend.client.raven.RavenClientEvents;
 import net.z2six.featheredfriend.command.FeatheredFriendCommands;
 import net.z2six.featheredfriend.config.FFCalendarConfig;
+import net.z2six.featheredfriend.events.FFPlayerEvents;
 import net.z2six.featheredfriend.network.FFNetwork;
 import net.z2six.featheredfriend.registry.FFCreativeTabsNeoForge;
 import net.z2six.featheredfriend.registry.FFNeoForgeEntities;
@@ -25,24 +25,6 @@ import net.z2six.featheredfriend.world.RavenSpawnEvents;
 import net.z2six.featheredfriend.world.TamedRavenScrollWatcher;
 import org.slf4j.Logger;
 
-/**
- * neoforge/src/main/java/net/z2six/featheredfriend/FeatheredFriend.java
- *
- * NeoForge entrypoint for FeatheredFriend.
- *
- * Responsibilities:
- *  - Invoke common init code.
- *  - Register NeoForge-specific registries (items, menus, creative tabs, particles).
- *  - Register server-side calendar config.
- *  - Hook client-only registration (menu screens, entity renderers, particle providers, keybindings).
- *  - Register payload handlers via mod event bus listener (NeoForge 1.21.1 safe).
- *  - Register entity types + attributes (Raven).
- *  - Register Raven natural spawning logic.
- *  - Register admin/debug commands (via NeoForge EVENT_BUS).
- *  - Register TamedRavenScrollWatcher to detect sealed scroll usage.
- *  - Register RavenCourierRuntime for courier ravens.
- *  - Register ChatDisabler to respect world-owned chat disable setting.
- */
 @Mod(Constants.MOD_ID)
 public class FeatheredFriend {
 
@@ -51,27 +33,23 @@ public class FeatheredFriend {
     public FeatheredFriend(IEventBus modEventBus) {
         LOG.info("[FeatheredFriend] Initializing NeoForge side");
 
-        // Common initialization (shared between platforms)
         try {
             CommonClass.init();
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] CommonClass.init() failed", t);
         }
 
-        // Server-side calendar config (NeoForge-specific)
         try {
             FFCalendarConfig.register();
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] FFCalendarConfig.register() failed", t);
         }
 
-        // NeoForge registries
         try {
             FFNeoForgeItems.register(modEventBus);
             FFCreativeTabsNeoForge.register(modEventBus);
             FFNeoForgeMenus.register(modEventBus);
 
-            // Particles (TYPE registry)
             FFNeoForgeParticles.register(modEventBus);
 
             LOG.info("[FeatheredFriend] Registered NeoForge registries (items/tabs/menus/particles)");
@@ -79,7 +57,6 @@ public class FeatheredFriend {
             LOG.error("[FeatheredFriend] Failed to register NeoForge registries", t);
         }
 
-        // Entities
         try {
             FFNeoForgeEntities.register(modEventBus);
             LOG.info("[FeatheredFriend] Registered NeoForge entity registries");
@@ -87,7 +64,6 @@ public class FeatheredFriend {
             LOG.error("[FeatheredFriend] Failed to register NeoForge entities", t);
         }
 
-        // Networking: payload handler registration (MOD bus event)
         try {
             modEventBus.addListener(FFNetwork::register);
             LOG.info("[FeatheredFriend] Hooked FFNetwork payload registration listener");
@@ -95,14 +71,12 @@ public class FeatheredFriend {
             LOG.error("[FeatheredFriend] Failed to hook FFNetwork payload registration listener", t);
         }
 
-        // Legacy no-op call (kept for compatibility with your current structure)
         try {
             FFNetwork.registerSimpleMessages();
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] FFNetwork.registerSimpleMessages() failed", t);
         }
 
-        // Client-only: menu screens (called only on physical client)
         try {
             modEventBus.addListener(FFNeoForgeClient::onRegisterMenuScreens);
             LOG.info("[FeatheredFriend] Hooked client menu screen registration listener");
@@ -110,7 +84,6 @@ public class FeatheredFriend {
             LOG.error("[FeatheredFriend] Failed to hook client menu screen registration", t);
         }
 
-        // Client-only: entity renderers + particle providers + keybindings
         try {
             if (FMLEnvironment.dist == Dist.CLIENT) {
                 modEventBus.addListener(RavenClientEvents::onRegisterRenderers);
@@ -119,7 +92,6 @@ public class FeatheredFriend {
                 modEventBus.addListener(FFClientParticles::onRegisterParticleProviders);
                 LOG.info("[FeatheredFriend] Hooked particle provider registration listener (client only)");
 
-                // Keybindings + settings GUI + whistle key (client only)
                 FFKeyBindings.register(modEventBus);
                 LOG.info("[FeatheredFriend] Registered FFKeyBindings (client only)");
             } else {
@@ -129,7 +101,14 @@ public class FeatheredFriend {
             LOG.error("[FeatheredFriend] Failed to hook client-only listeners", t);
         }
 
-        // Server-only-ish: Raven natural spawning (listener is server-only at runtime, safe to register always)
+        // ✅ Replace deprecated @EventBusSubscriber(bus=GAME) with explicit registration
+        try {
+            FFPlayerEvents.register();
+            LOG.info("[FeatheredFriend] Registered FFPlayerEvents (player login -> known-player persistence + broadcast)");
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriend] Failed to register FFPlayerEvents", t);
+        }
+
         try {
             RavenSpawnEvents.register();
             LOG.info("[FeatheredFriend] Hooked RavenSpawnEvents (natural spawning)");
@@ -137,9 +116,6 @@ public class FeatheredFriend {
             LOG.error("[FeatheredFriend] Failed to hook RavenSpawnEvents", t);
         }
 
-        // ---------------------------------------------------------------------
-        // TamedRavenScrollWatcher: reacts when a player holds a sealed scroll.
-        // ---------------------------------------------------------------------
         try {
             TamedRavenScrollWatcher.register();
             LOG.info("[FeatheredFriend] Registered TamedRavenScrollWatcher");
@@ -147,9 +123,6 @@ public class FeatheredFriend {
             LOG.error("[FeatheredFriend] Failed to register TamedRavenScrollWatcher", t);
         }
 
-        // ---------------------------------------------------------------------
-        // RavenCourierRuntime
-        // ---------------------------------------------------------------------
         try {
             RavenCourierRuntime.register();
             LOG.info("[FeatheredFriend] Registered RavenCourierRuntime");
@@ -157,9 +130,6 @@ public class FeatheredFriend {
             LOG.error("[FeatheredFriend] Failed to register RavenCourierRuntime", t);
         }
 
-        // ---------------------------------------------------------------------
-        // ChatDisabler: respects FeatheredFriendSettingsData.chatDisabled.
-        // ---------------------------------------------------------------------
         try {
             ChatDisabler.register();
             LOG.info("[FeatheredFriend] Registered ChatDisabler");
@@ -167,9 +137,6 @@ public class FeatheredFriend {
             LOG.error("[FeatheredFriend] Failed to register ChatDisabler", t);
         }
 
-        // ---------------------------------------------------------------------
-        // Commands: register admin/debug commands via helper (global NeoForge bus).
-        // ---------------------------------------------------------------------
         try {
             FeatheredFriendCommands.register();
             LOG.info("[FeatheredFriend] Registered FeatheredFriendCommands");

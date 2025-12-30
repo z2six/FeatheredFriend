@@ -4,20 +4,12 @@ package net.z2six.featheredfriend.client.network;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
-import net.z2six.featheredfriend.client.data.KnownPlayersClientCache;
+import net.z2six.featheredfriend.client.knownplayers.KnownPlayersClientCache;
 import net.z2six.featheredfriend.client.screen.RavenNamingScreen;
 import net.z2six.featheredfriend.network.FFNetwork;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
-/**
- * // neoforge/src/main/java/net/z2six/featheredfriend/client/network/FFNetworkClientHandlers.java
- *
- * Client-only handlers for S2C payloads.
- *
- * This class MUST only ever be loaded on the client.
- * The server-safe FFNetwork dispatches here via reflection.
- */
 public final class FFNetworkClientHandlers {
 
     private static final Logger LOG = LogUtils.getLogger();
@@ -28,8 +20,9 @@ public final class FFNetworkClientHandlers {
     public static void handleKnownPlayersOnClient(@NotNull FFNetwork.KnownPlayersPayload payload,
                                                   @NotNull IPayloadContext context) {
         try {
-            KnownPlayersClientCache.update(payload.names());
-            LOG.debug("[FFNetworkClientHandlers] Updated client known-players cache: {} names", payload.names().size());
+            KnownPlayersClientCache cache = KnownPlayersClientCache.getInstance();
+            cache.replaceAllFromServer(payload.players());
+            LOG.debug("[FFNetworkClientHandlers] Updated client known-players cache: {} entries", payload.players().size());
         } catch (Throwable t) {
             LOG.error("[FFNetworkClientHandlers] handleKnownPlayersOnClient failed", t);
         }

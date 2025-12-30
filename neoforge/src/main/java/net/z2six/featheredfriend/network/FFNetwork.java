@@ -1,4 +1,3 @@
-// FFNetwork.java
 // neoforge/src/main/java/net/z2six/featheredfriend/network/FFNetwork.java
 package net.z2six.featheredfriend.network;
 
@@ -12,35 +11,20 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.data.FFKnownPlayersData;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
+import java.util.*;
 
 /**
- * Payload-based networking registration for NeoForge.
- *
- * IMPORTANT SERVER SAFETY NOTE:
- *  - This class MUST be safe to load on a dedicated server.
- *  - Therefore it must NOT import or reference net.minecraft.client.* or any client-only classes.
- *
- * Client-only packet handling is delegated to:
- *   net.z2six.featheredfriend.client.network.FFNetworkClientHandlers
- * via reflection, so the server never needs to load that class.
- *
- * FeatheredFriend (NeoForge entrypoint) must call:
- *   modEventBus.addListener(FFNetwork::register);
+ * Payload-based networking for FeatheredFriend.
  */
 public final class FFNetwork {
 
     private static final Logger LOG = LogUtils.getLogger();
 
-    /**
-     * Client-only handler class name (do NOT reference directly from server-safe code).
-     */
     private static final String CLIENT_HANDLER_CLASS =
             "net.z2six.featheredfriend.client.network.FFNetworkClientHandlers";
 
@@ -54,9 +38,6 @@ public final class FFNetwork {
         }
     }
 
-    /**
-     * Legacy stub retained so old call sites don't break.
-     */
     public static void registerSimpleMessages() {
         try {
             LOG.info("[FFNetwork] registerSimpleMessages() called; payload-based networking is used (no-op)");
@@ -65,20 +46,10 @@ public final class FFNetwork {
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Payload registration
-    // ---------------------------------------------------------------------
-
     public static void register(final RegisterPayloadHandlersEvent event) {
         try {
             LOG.info("[FFNetwork] RegisterPayloadHandlersEvent received -> registering payloads");
             var registrar = event.registrar("1");
-
-            // -----------------------------------------------------------------
-            // S2C payloads (server -> client)
-            // IMPORTANT: still register on dedicated server so the channel exists
-            // in the handshake. The handler will never run on server.
-            // -----------------------------------------------------------------
 
             registrar.playToClient(
                     KnownPlayersPayload.TYPE,
@@ -92,9 +63,11 @@ public final class FFNetwork {
                     FFNetwork::handleOpenRavenNameScreenOnClientProxy
             );
 
-            // -----------------------------------------------------------------
-            // C2S payloads (client -> server)
-            // -----------------------------------------------------------------
+            registrar.playToServer(
+                    RequestKnownPlayersPacket.TYPE,
+                    RequestKnownPlayersPacket.STREAM_CODEC,
+                    FFNetwork::handleRequestKnownPlayersOnServer
+            );
 
             registrar.playToServer(
                     SealStampCarveResultPacket.TYPE,
@@ -126,7 +99,7 @@ public final class FFNetwork {
                     FFNetwork::handleWhistleForRavenOnServer
             );
 
-            LOG.info("[FFNetwork] Registered payload channels: known_players, open_raven_name_screen, " +
+            LOG.info("[FFNetwork] Registered payload channels: known_players, request_known_players, open_raven_name_screen, " +
                     "seal_stamp_carve_result, wax_seal, break_seal, raven_name_chosen, whistle_for_raven");
 
         } catch (Throwable t) {
@@ -134,9 +107,9 @@ public final class FFNetwork {
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Client-side proxies (server-safe)
-    // ---------------------------------------------------------------------
+    // ---------------------------
+    // Client dispatch (dedicated-safe)
+    // ---------------------------
 
     private static void handleKnownPlayersOnClientProxy(@NotNull KnownPlayersPayload payload,
                                                         @NotNull IPayloadContext context) {
@@ -160,10 +133,6 @@ public final class FFNetwork {
         });
     }
 
-    /**
-     * Reflection dispatcher into client-only code.
-     * Keeps this class safe to load on dedicated servers.
-     */
     private static void dispatchToClientHandler(@NotNull String methodName,
                                                 @NotNull Object payload,
                                                 @NotNull IPayloadContext context) {
@@ -173,7 +142,6 @@ public final class FFNetwork {
             m.setAccessible(true);
             m.invoke(null, payload, context);
         } catch (ClassNotFoundException e) {
-            // Normal on dedicated server. On client, this would indicate a broken jar/layout.
             LOG.debug("[FFNetwork] Client handler class not present (expected on dedicated server): {}", CLIENT_HANDLER_CLASS);
         } catch (NoSuchMethodException e) {
             LOG.error("[FFNetwork] Client handler method not found: {}.{}({}, {})",
@@ -184,9 +152,40 @@ public final class FFNetwork {
         }
     }
 
-    // ---------------------------------------------------------------------
-    // WhistleForRavenPacket handler (C2S)
-    // ---------------------------------------------------------------------
+    // ---------------------------
+    // Server handlers
+    // ---------------------------
+
+    private static void handleRequestKnownPlayersOnServer(@NotNull RequestKnownPlayersPacket payload,
+                                                          @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                if (!(context.player() instanceof ServerPlayer serverPlayer)) {
+                    LOG.error("[FFNetwork] handleRequestKnownPlayersOnServer: context.player() is not a ServerPlayer");
+                    return;
+                }
+
+                var server = serverPlayer.server;
+                if (server == null) {
+                    LOG.error("[FFNetwork] handleRequestKnownPlayersOnServer: server is null for player={}",
+                            serverPlayer.getGameProfile().getName());
+                    return;
+                }
+
+                FFKnownPlayersData data = FFKnownPlayersData.get(server);
+                List<FFKnownPlayersData.KnownPlayer> players = data.getSortedPlayers();
+
+                sendKnownPlayersTo(serverPlayer, players);
+
+                LOG.debug("[FFNetwork] Served request_known_players to '{}' (count={})",
+                        serverPlayer.getGameProfile().getName(),
+                        players.size());
+
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] Failed to handle RequestKnownPlayersPacket on server", t);
+            }
+        });
+    }
 
     private static void handleWhistleForRavenOnServer(@NotNull WhistleForRavenPacket payload,
                                                       @NotNull IPayloadContext context) {
@@ -208,61 +207,6 @@ public final class FFNetwork {
         });
     }
 
-    // ---------------------------------------------------------------------
-    // RavenNameChosenPacket sender/handler (client -> server)
-    // ---------------------------------------------------------------------
-
-    public static void sendRavenNameChosenToServer(int ravenEntityId,
-                                                   @NotNull String name) {
-        try {
-            String safeName = name != null ? name : "";
-            RavenNameChosenPacket p = new RavenNameChosenPacket(ravenEntityId, safeName);
-            PacketDistributor.sendToServer(p);
-            LOG.debug("[FFNetwork] Sent RavenNameChosenPacket to server (ravenEntityId={}, nameLen={})",
-                    ravenEntityId, safeName.length());
-        } catch (Throwable t) {
-            LOG.error("[FFNetwork] sendRavenNameChosenToServer failed", t);
-        }
-    }
-
-    private static void handleRavenNameChosenOnServer(@NotNull RavenNameChosenPacket payload,
-                                                      @NotNull IPayloadContext context) {
-        context.enqueueWork(() -> {
-            try {
-                if (!(context.player() instanceof ServerPlayer serverPlayer)) {
-                    LOG.error("[FFNetwork] handleRavenNameChosenOnServer: context.player() is not a ServerPlayer");
-                    return;
-                }
-
-                // Delegate to packet's static handler
-                RavenNameChosenPacket.handle(payload, serverPlayer);
-
-            } catch (Throwable t) {
-                LOG.error("[FFNetwork] Failed to handle RavenNameChosenPacket on server", t);
-            }
-        });
-    }
-
-    // ---------------------------------------------------------------------
-    // KnownPlayers S2C sender
-    // ---------------------------------------------------------------------
-
-    public static void sendKnownPlayersTo(@NotNull ServerPlayer player,
-                                          @NotNull Collection<String> names) {
-        try {
-            List<String> copy = new ArrayList<>(names);
-            KnownPlayersPayload payload = new KnownPlayersPayload(copy);
-            PacketDistributor.sendToPlayer(player, payload);
-            LOG.debug("[FFNetwork] Sent {} known players to {}", copy.size(), player.getGameProfile().getName());
-        } catch (Throwable t) {
-            LOG.error("[FFNetwork] Failed to send KnownPlayersPayload to {}", player.getGameProfile().getName(), t);
-        }
-    }
-
-    // ---------------------------------------------------------------------
-    // SealStampCarveResult C2S
-    // ---------------------------------------------------------------------
-
     private static void handleSealStampCarveResultOnServer(@NotNull SealStampCarveResultPacket payload,
                                                            @NotNull IPayloadContext context) {
         context.enqueueWork(() -> {
@@ -279,9 +223,71 @@ public final class FFNetwork {
         });
     }
 
-    // ---------------------------------------------------------------------
-    // WaxSealPacket sender/handler (client -> server)
-    // ---------------------------------------------------------------------
+    private static void handleWaxSealOnServer(@NotNull WaxSealPacket payload,
+                                              @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                if (!(context.player() instanceof ServerPlayer serverPlayer)) {
+                    LOG.error("[FFNetwork] handleWaxSealOnServer: context.player() is not a ServerPlayer");
+                    return;
+                }
+
+                WaxSealPacket.handle(payload, serverPlayer);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] Failed to handle WaxSealPacket on server", t);
+            }
+        });
+    }
+
+    private static void handleBreakSealOnServer(@NotNull BreakSealPacket payload,
+                                                @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                if (!(context.player() instanceof ServerPlayer serverPlayer)) {
+                    LOG.error("[FFNetwork] handleBreakSealOnServer: context.player() is not a ServerPlayer");
+                    return;
+                }
+
+                BreakSealPacket.handle(payload, serverPlayer);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] Failed to handle BreakSealPacket on server", t);
+            }
+        });
+    }
+
+    private static void handleRavenNameChosenOnServer(@NotNull RavenNameChosenPacket payload,
+                                                      @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                if (!(context.player() instanceof ServerPlayer serverPlayer)) {
+                    LOG.error("[FFNetwork] handleRavenNameChosenOnServer: context.player() is not a ServerPlayer");
+                    return;
+                }
+
+                RavenNameChosenPacket.handle(payload, serverPlayer);
+
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] Failed to handle RavenNameChosenPacket on server", t);
+            }
+        });
+    }
+
+    // ---------------------------
+    // Send helpers
+    // ---------------------------
+
+    public static void sendRavenNameChosenToServer(int ravenEntityId,
+                                                   @NotNull String name) {
+        try {
+            String safeName = name != null ? name : "";
+            RavenNameChosenPacket p = new RavenNameChosenPacket(ravenEntityId, safeName);
+            PacketDistributor.sendToServer(p);
+            LOG.debug("[FFNetwork] Sent RavenNameChosenPacket to server (ravenEntityId={}, nameLen={})",
+                    ravenEntityId, safeName.length());
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendRavenNameChosenToServer failed", t);
+        }
+    }
 
     public static void sendWaxSealToServer(
             int stampSlot,
@@ -318,26 +324,6 @@ public final class FFNetwork {
         }
     }
 
-    private static void handleWaxSealOnServer(@NotNull WaxSealPacket payload,
-                                              @NotNull IPayloadContext context) {
-        context.enqueueWork(() -> {
-            try {
-                if (!(context.player() instanceof ServerPlayer serverPlayer)) {
-                    LOG.error("[FFNetwork] handleWaxSealOnServer: context.player() is not a ServerPlayer");
-                    return;
-                }
-
-                WaxSealPacket.handle(payload, serverPlayer);
-            } catch (Throwable t) {
-                LOG.error("[FFNetwork] Failed to handle WaxSealPacket on server", t);
-            }
-        });
-    }
-
-    // ---------------------------------------------------------------------
-    // BreakSealPacket sender/handler (client -> server)
-    // ---------------------------------------------------------------------
-
     public static void sendBreakSealToServer(int slotHint,
                                              long seed,
                                              @NotNull String recipientUUID,
@@ -358,26 +344,6 @@ public final class FFNetwork {
         }
     }
 
-    private static void handleBreakSealOnServer(@NotNull BreakSealPacket payload,
-                                                @NotNull IPayloadContext context) {
-        context.enqueueWork(() -> {
-            try {
-                if (!(context.player() instanceof ServerPlayer serverPlayer)) {
-                    LOG.error("[FFNetwork] handleBreakSealOnServer: context.player() is not a ServerPlayer");
-                    return;
-                }
-
-                BreakSealPacket.handle(payload, serverPlayer);
-            } catch (Throwable t) {
-                LOG.error("[FFNetwork] Failed to handle BreakSealPacket on server", t);
-            }
-        });
-    }
-
-    // ---------------------------------------------------------------------
-    // S2C: Open naming screen sender
-    // ---------------------------------------------------------------------
-
     public static void sendOpenRavenNamingScreen(@NotNull ServerPlayer player,
                                                  int ravenEntityId) {
         try {
@@ -386,15 +352,10 @@ public final class FFNetwork {
             LOG.debug("[FFNetwork] Sent OpenRavenNameScreenPayload to {} for ravenEntityId={}",
                     player.getGameProfile().getName(), ravenEntityId);
         } catch (Throwable t) {
-            // FIXED: was incorrectly chaining getGameProfile().getGameProfile()
             LOG.error("[FFNetwork] sendOpenRavenNamingScreen failed for player={}",
                     player.getGameProfile().getName(), t);
         }
     }
-
-    // ---------------------------------------------------------------------
-    // Whistle sending (client -> server)
-    // ---------------------------------------------------------------------
 
     public static void sendWhistleForRaven() {
         try {
@@ -406,9 +367,65 @@ public final class FFNetwork {
         }
     }
 
-    // ---------------------------------------------------------------------
-    // WhistleForRavenPacket (C2S, no fields)
-    // ---------------------------------------------------------------------
+    public static void sendRequestKnownPlayersToServer() {
+        try {
+            RequestKnownPlayersPacket p = new RequestKnownPlayersPacket();
+            PacketDistributor.sendToServer(p);
+            LOG.debug("[FFNetwork] Sent RequestKnownPlayersPacket to server");
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendRequestKnownPlayersToServer failed safely", t);
+        }
+    }
+
+    public static void sendKnownPlayersTo(@NotNull ServerPlayer player,
+                                          @NotNull Collection<FFKnownPlayersData.KnownPlayer> players) {
+        try {
+            List<KnownPlayerInfo> copy = new ArrayList<>();
+            for (FFKnownPlayersData.KnownPlayer kp : players) {
+                if (kp == null || kp.uuid() == null || kp.name() == null || kp.name().isBlank()) continue;
+                copy.add(new KnownPlayerInfo(kp.uuid(), kp.name()));
+            }
+            KnownPlayersPayload payload = new KnownPlayersPayload(copy);
+            PacketDistributor.sendToPlayer(player, payload);
+            LOG.debug("[FFNetwork] Sent {} known players to {}", copy.size(), player.getGameProfile().getName());
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] Failed to send KnownPlayersPayload to {}", player.getGameProfile().getName(), t);
+        }
+    }
+
+    // ---------------------------
+    // Payloads
+    // ---------------------------
+
+    public record RequestKnownPlayersPacket() implements CustomPacketPayload {
+        public static final Type<RequestKnownPlayersPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "request_known_players"));
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, RequestKnownPlayersPacket> STREAM_CODEC =
+                StreamCodec.of(RequestKnownPlayersPacket::encode, RequestKnownPlayersPacket::decode);
+
+        private static void encode(@NotNull RegistryFriendlyByteBuf buf, @NotNull RequestKnownPlayersPacket payload) {
+            try {
+                // no fields
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] RequestKnownPlayersPacket encode failed", t);
+            }
+        }
+
+        private static @NotNull RequestKnownPlayersPacket decode(@NotNull RegistryFriendlyByteBuf buf) {
+            try {
+                return new RequestKnownPlayersPacket();
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] RequestKnownPlayersPacket decode failed", t);
+                return new RequestKnownPlayersPacket();
+            }
+        }
+
+        @Override
+        public @NotNull Type<RequestKnownPlayersPacket> type() {
+            return TYPE;
+        }
+    }
 
     public record WhistleForRavenPacket() implements CustomPacketPayload {
 
@@ -421,7 +438,7 @@ public final class FFNetwork {
         private static void encode(@NotNull RegistryFriendlyByteBuf buf,
                                    @NotNull WhistleForRavenPacket payload) {
             try {
-                // No fields – nothing to write.
+                // no fields
             } catch (Throwable t) {
                 LOG.error("[FFNetwork] WhistleForRavenPacket encode failed", t);
             }
@@ -429,7 +446,6 @@ public final class FFNetwork {
 
         private static @NotNull WhistleForRavenPacket decode(@NotNull RegistryFriendlyByteBuf buf) {
             try {
-                // No fields – nothing to read.
                 return new WhistleForRavenPacket();
             } catch (Throwable t) {
                 LOG.error("[FFNetwork] WhistleForRavenPacket decode failed", t);
@@ -443,11 +459,10 @@ public final class FFNetwork {
         }
     }
 
-    // ---------------------------------------------------------------------
-    // KnownPlayersPayload (S2C)
-    // ---------------------------------------------------------------------
+    public record KnownPlayerInfo(@NotNull UUID uuid, @NotNull String name) {
+    }
 
-    public record KnownPlayersPayload(List<String> names) implements CustomPacketPayload {
+    public record KnownPlayersPayload(List<KnownPlayerInfo> players) implements CustomPacketPayload {
 
         public static final Type<KnownPlayersPayload> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "known_players"));
@@ -458,9 +473,18 @@ public final class FFNetwork {
         private static void encode(@NotNull RegistryFriendlyByteBuf buf,
                                    @NotNull KnownPlayersPayload payload) {
             try {
-                List<String> list = payload.names();
+                List<KnownPlayerInfo> list = payload.players();
                 buf.writeVarInt(list.size());
-                for (String name : list) buf.writeUtf(name, 1024);
+
+                for (KnownPlayerInfo info : list) {
+                    if (info == null || info.uuid() == null || info.name() == null) {
+                        buf.writeUUID(new UUID(0L, 0L));
+                        buf.writeUtf("", 1024);
+                        continue;
+                    }
+                    buf.writeUUID(info.uuid());
+                    buf.writeUtf(info.name(), 1024);
+                }
             } catch (Throwable t) {
                 LOG.error("[FFNetwork] KnownPlayersPayload encode failed", t);
             }
@@ -469,8 +493,27 @@ public final class FFNetwork {
         private static @NotNull KnownPlayersPayload decode(@NotNull RegistryFriendlyByteBuf buf) {
             try {
                 int size = buf.readVarInt();
-                List<String> list = new ArrayList<>(size);
-                for (int i = 0; i < size; i++) list.add(buf.readUtf(1024));
+                if (size < 0) size = 0;
+                if (size > 10000) {
+                    LOG.warn("[FFNetwork] KnownPlayersPayload decode: suspicious size={} (clamping to 10000)", size);
+                    size = 10000;
+                }
+
+                List<KnownPlayerInfo> list = new ArrayList<>(size);
+
+                for (int i = 0; i < size; i++) {
+                    UUID uuid = buf.readUUID();
+                    String name = buf.readUtf(1024);
+
+                    if (uuid == null) continue;
+                    if (name == null || name.isBlank()) continue;
+
+                    // Skip "all zero" uuid placeholders
+                    if (uuid.getMostSignificantBits() == 0L && uuid.getLeastSignificantBits() == 0L) continue;
+
+                    list.add(new KnownPlayerInfo(uuid, name));
+                }
+
                 return new KnownPlayersPayload(list);
             } catch (Throwable t) {
                 LOG.error("[FFNetwork] KnownPlayersPayload decode failed", t);
@@ -483,10 +526,6 @@ public final class FFNetwork {
             return TYPE;
         }
     }
-
-    // ---------------------------------------------------------------------
-    // OpenRavenNameScreenPayload (S2C)
-    // ---------------------------------------------------------------------
 
     public record OpenRavenNameScreenPayload(int ravenEntityId) implements CustomPacketPayload {
 

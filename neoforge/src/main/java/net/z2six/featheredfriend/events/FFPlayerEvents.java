@@ -1,12 +1,11 @@
+// neoforge/src/main/java/net/z2six/featheredfriend/events/FFPlayerEvents.java
 package net.z2six.featheredfriend.events;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.data.FFKnownPlayersData;
 import net.z2six.featheredfriend.network.FFNetwork;
 import org.slf4j.Logger;
@@ -14,47 +13,90 @@ import org.slf4j.Logger;
 import java.util.List;
 
 /**
- * // neoforge/src/main/java/net/z2six/featheredfriend/events/FFPlayerEvents.java
- *
  * FFPlayerEvents
  *
  * Game-level player event handlers.
- * - On PlayerLoggedInEvent:
- *     * Update FFKnownPlayersData with this player.
- *     * Send the fresh known-player list to all currently online players.
+ *
+ * Registration:
+ *  - Call FFPlayerEvents.register() from the main mod constructor.
+ *
+ * On login:
+ *  - Add/update player in persisted server SavedData (UUID->name)
+ *  - Broadcast full known-player list (UUID+name) to all online clients
  */
-@EventBusSubscriber(modid = Constants.MOD_ID, bus = EventBusSubscriber.Bus.GAME)
 public final class FFPlayerEvents {
 
     private static final Logger LOG = LogUtils.getLogger();
 
+    private static volatile boolean REGISTERED = false;
+
     private FFPlayerEvents() {
     }
 
-    @SubscribeEvent
-    public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+    public static void register() {
+        if (REGISTERED) {
+            LOG.debug("[FFPlayerEvents] register(): already registered, skipping");
+            return;
+        }
+
+        try {
+            NeoForge.EVENT_BUS.addListener(FFPlayerEvents::onPlayerLoggedIn);
+            REGISTERED = true;
+            LOG.info("[FFPlayerEvents] Registered PlayerLoggedInEvent listener on NeoForge.EVENT_BUS");
+        } catch (Throwable t) {
+            LOG.error("[FFPlayerEvents] register() failed safely", t);
+        }
+    }
+
+    private static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer serverPlayer)) {
             return;
         }
 
         try {
             MinecraftServer server = serverPlayer.server;
-            FFKnownPlayersData data = FFKnownPlayersData.get(server);
-
-            // Add/update this player in the SavedData
-            data.addOrUpdate(serverPlayer);
-
-            // Grab sorted list of all known names
-            List<String> names = data.getSortedNames();
-
-            // Broadcast to all currently connected players so everyone sees the fresh list
-            for (ServerPlayer online : server.getPlayerList().getPlayers()) {
-                FFNetwork.sendKnownPlayersTo(online, names);
+            if (server == null) {
+                LOG.error("[FFPlayerEvents] PlayerLoggedInEvent: server is null for {}",
+                        safeName(serverPlayer));
+                return;
             }
 
-            LOG.debug("[FFPlayerEvents] Updated known players due to login of {}", serverPlayer.getGameProfile().getName());
+            // Persist (UUID -> latest name)
+            FFKnownPlayersData data = FFKnownPlayersData.get(server);
+            data.addOrUpdate(serverPlayer);
+
+            // Build sorted UUID+name list
+            List<FFKnownPlayersData.KnownPlayer> players = data.getSortedPlayers();
+
+            // Broadcast to everyone online (including the one who just joined)
+            for (ServerPlayer online : server.getPlayerList().getPlayers()) {
+                try {
+                    FFNetwork.sendKnownPlayersTo(online, players);
+                } catch (Throwable sendErr) {
+                    LOG.warn("[FFPlayerEvents] Failed sending known players list to {}: {}",
+                            safeName(online), sendErr.toString());
+                }
+            }
+
+            LOG.info("[FFPlayerEvents] Login '{}' -> known players now {} (broadcasted to {} online)",
+                    safeName(serverPlayer),
+                    players.size(),
+                    server.getPlayerList().getPlayers().size());
+
         } catch (Throwable t) {
             LOG.error("[FFPlayerEvents] Failed to process PlayerLoggedInEvent", t);
+        }
+    }
+
+    private static String safeName(ServerPlayer p) {
+        try {
+            return p.getGameProfile().getName();
+        } catch (Throwable ignored) {
+            try {
+                return p.getName().getString();
+            } catch (Throwable ignored2) {
+                return "<unknown>";
+            }
         }
     }
 }
