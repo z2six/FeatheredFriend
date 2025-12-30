@@ -133,35 +133,32 @@ public final class FFKeyBindings {
 
     private static void handleWhistleKey(@NotNull Minecraft mc, @NotNull LocalPlayer player) {
         try {
-            // First: client-side check if the player is holding a sealed scroll.
-            if (!TamedRavenScrollWatcher.isHoldingSealedScroll(player)) {
-                try {
-                    player.displayClientMessage(
-                            Component.literal("[FeatheredFriend] Hold a sealed scroll to whistle for your raven."),
-                            true
-                    );
-                } catch (Throwable msgErr) {
-                    LOG.warn("[FFKeyBindings] Failed to show 'hold scroll' message to '{}': {}",
-                            player.getGameProfile().getName(), msgErr.toString());
-                }
-
-                LOG.info(
-                        "[FFKeyBindings] Whistle key ignored: player='{}' is not holding a sealed scroll.",
-                        player.getGameProfile().getName()
-                );
-                return;
+            // Client should NOT decide eligibility (holding scroll vs failed jobs).
+            // Always send request; server validates and will message player if denied.
+            boolean holdingClientSide = false;
+            try {
+                holdingClientSide = TamedRavenScrollWatcher.isHoldingSealedScroll(player);
+            } catch (Throwable t) {
+                LOG.warn("[FFKeyBindings] Whistle: failed to check isHoldingSealedScroll client-side for player='{}': {}",
+                        player.getGameProfile().getName(), t.toString());
             }
 
-            // If we *are* holding a sealed scroll: send a C2S request to the server.
-            // The server-side handler should call TamedRavenScrollWatcher.handleWhistleSummonRequest(...)
-            // for the requesting player.
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("[FFKeyBindings] Whistle key pressed: sending request to server (clientHoldingSealedScroll={}) player='{}'",
+                        holdingClientSide, player.getGameProfile().getName());
+            } else {
+                LOG.info("[FFKeyBindings] Whistle key pressed: sending request to server player='{}'",
+                        player.getGameProfile().getName());
+            }
+
             try {
                 FFNetwork.sendWhistleForRaven();
                 LOG.info("[FFKeyBindings] Sent whistle request packet for player='{}'",
                         player.getGameProfile().getName());
             } catch (Throwable netErr) {
-                LOG.error("[FFKeyBindings] Failed to send whistle packet for player='{}'",
-                        player.getGameProfile().getName(), netErr);
+                LOG.error("[FFKeyBindings] Failed to send whistle packet for player='{}' (safe): {}",
+                        player.getGameProfile().getName(), netErr.toString());
+
                 try {
                     player.displayClientMessage(
                             Component.literal("[FeatheredFriend] Failed to whistle for your raven (network error)."),

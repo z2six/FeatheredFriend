@@ -694,4 +694,116 @@ public class RavenCourierData extends SavedData {
             return null;
         }
     }
+
+    // Helper for TamedRavenScrollwatcher
+    // ------------------------------------
+
+    public boolean hasFailedJobsAsSender(@NotNull UUID senderUuid) {
+        try {
+            if (jobsByRecipient.isEmpty()) {
+                return false;
+            }
+
+            for (List<DeliveryJob> jobs : jobsByRecipient.values()) {
+                if (jobs == null || jobs.isEmpty()) {
+                    continue;
+                }
+                for (DeliveryJob job : jobs) {
+                    if (job == null) {
+                        continue;
+                    }
+                    if (senderUuid.equals(job.senderUuid) && job.failed) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+
+        } catch (Throwable t) {
+            LOG.error("[RavenCourierData] hasFailedJobsAsSender failed safely: {}", t.toString());
+            return false;
+        }
+    }
+
+    public boolean hasActiveNonFailedJobsAsSender(@NotNull UUID senderUuid) {
+        try {
+            if (jobsByRecipient.isEmpty()) {
+                return false;
+            }
+
+            for (List<DeliveryJob> jobs : jobsByRecipient.values()) {
+                if (jobs == null || jobs.isEmpty()) {
+                    continue;
+                }
+                for (DeliveryJob job : jobs) {
+                    if (job == null) {
+                        continue;
+                    }
+                    // "Active" here means: exists and not failed (regardless of inFlight)
+                    if (senderUuid.equals(job.senderUuid) && !job.failed) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+
+        } catch (Throwable t) {
+            LOG.error("[RavenCourierData] hasActiveNonFailedJobsAsSender failed safely: {}", t.toString());
+            return false;
+        }
+    }
+
+    @Nullable
+    public DeliveryJob getMostRecentFailedJobForSender(@NotNull UUID senderUuid) {
+        try {
+            DeliveryJob best = null;
+
+            if (jobsByRecipient.isEmpty()) {
+                return null;
+            }
+
+            for (List<DeliveryJob> jobs : jobsByRecipient.values()) {
+                if (jobs == null || jobs.isEmpty()) {
+                    continue;
+                }
+                for (DeliveryJob job : jobs) {
+                    if (job == null) {
+                        continue;
+                    }
+                    if (!senderUuid.equals(job.senderUuid)) {
+                        continue;
+                    }
+                    if (!job.failed) {
+                        continue;
+                    }
+
+                    if (best == null) {
+                        best = job;
+                        continue;
+                    }
+
+                    // Prefer the most recently failed; tie-breaker: higher failureCount; then higher jobId
+                    long a = Math.max(0L, job.lastFailureGameTime);
+                    long b = Math.max(0L, best.lastFailureGameTime);
+                    if (a > b) {
+                        best = job;
+                    } else if (a == b) {
+                        int fa = Math.max(0, job.failureCount);
+                        int fb = Math.max(0, best.failureCount);
+                        if (fa > fb) {
+                            best = job;
+                        } else if (fa == fb && job.jobId > best.jobId) {
+                            best = job;
+                        }
+                    }
+                }
+            }
+
+            return best;
+
+        } catch (Throwable t) {
+            LOG.error("[RavenCourierData] getMostRecentFailedJobForSender failed safely: {}", t.toString());
+            return null;
+        }
+    }
 }

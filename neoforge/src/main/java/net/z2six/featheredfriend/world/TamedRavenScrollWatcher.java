@@ -14,7 +14,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -29,7 +28,10 @@ import net.z2six.featheredfriend.entity.raven.modules.TamedRaven;
 import net.z2six.featheredfriend.entity.raven.modules.Teleportation;
 import net.z2six.featheredfriend.world.FeatheredFriendSettingsData;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.pathfinder.Path;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.entity.Entity;
 
 import net.z2six.featheredfriend.registry.FFNeoForgeEntities;
 import org.jetbrains.annotations.NotNull;
@@ -113,6 +115,11 @@ public final class TamedRavenScrollWatcher {
      */
     private static final long SCROLL_SUMMON_LIFETIME_TICKS = 60L * 20L;
 
+    private static final String NBT_RECALL_ACTIVE = "ScrollRecallActive";
+    private static final String NBT_RECALL_JOB_ID = "ScrollRecallJobId";
+    private static final String NBT_RECALL_RECIPIENT_UUID = "ScrollRecallRecipientUUID";
+    private static final String NBT_RECALL_SEALED_SCROLL = "ScrollRecallSealedScroll";
+
     private TamedRavenScrollWatcher() {
         // no-op
     }
@@ -124,9 +131,10 @@ public final class TamedRavenScrollWatcher {
     public static void register() {
         try {
             NeoForge.EVENT_BUS.addListener(TamedRavenScrollWatcher::onPlayerTick);
-            LOG.info("[TamedRavenScrollWatcher] Registered PlayerTickEvent.Post listener");
+            NeoForge.EVENT_BUS.addListener(TamedRavenScrollWatcher::onEntityInteract);
+            LOG.info("[TamedRavenScrollWatcher] Registered PlayerTickEvent.Post + EntityInteract listeners");
         } catch (Throwable t) {
-            LOG.error("[TamedRavenScrollWatcher] Failed to register PlayerTickEvent listener", t);
+            LOG.error("[TamedRavenScrollWatcher] Failed to register event listeners", t);
         }
     }
 
@@ -143,7 +151,6 @@ public final class TamedRavenScrollWatcher {
 
             Level level = player.level();
             if (!(level instanceof ServerLevel serverLevel) || level.isClientSide()) {
-                // Only run on logical server.
                 return;
             }
 
@@ -155,25 +162,20 @@ public final class TamedRavenScrollWatcher {
 
             boolean holdingNow = isHoldingSealedScroll(player);
 
-            // Edge detection: on a fresh player entity (tickCount == 0), we treat as if
-            // they were NOT holding last tick, regardless of previous map contents.
             boolean wasHoldingPrev = LAST_HOLDING_SEALED_SCROLL.getOrDefault(playerId, false);
             boolean wasHolding = (player.tickCount == 0) ? false : wasHoldingPrev;
 
             LAST_HOLDING_SEALED_SCROLL.put(playerId, holdingNow);
 
-            // Read tamed raven data from player persistent data.
             TamedRavenInfo info = readTamedRavenInfo(player);
             boolean hasTamedRaven = info != null && info.hasTamedRaven;
             String ravenName = (info != null && info.ravenName != null && !info.ravenName.isEmpty())
                     ? info.ravenName
                     : "Raven";
 
-            // Discover all scroll-summoned ravens for this player in the world via tag + owner UUID.
             List<RavenEntity> scrollRavens = findScrollSummonedRavensForPlayer(serverLevel, serverPlayer);
 
-            // Enforce lifetime: any scroll-summoned raven whose recorded despawn time
-            // has passed will be despawned here before any further logic.
+            // Lifetime expiry (unchanged)
             if (!scrollRavens.isEmpty()) {
                 long nowGameTime = serverLevel.getGameTime();
                 List<RavenEntity> expired = new ArrayList<>();
@@ -213,12 +215,7 @@ public final class TamedRavenScrollWatcher {
                 if (!expired.isEmpty()) {
                     for (RavenEntity r : expired) {
                         try {
-                            despawnOneScrollSummonedRaven(
-                                    serverLevel,
-                                    serverPlayer,
-                                    r,
-                                    "scroll lifetime expired (60s)"
-                            );
+                            despawnOneScrollSummonedRaven(serverLevel, serverPlayer, r, "scroll lifetime expired (60s)");
                         } catch (Throwable t) {
                             LOG.error(
                                     "[TamedRavenScrollWatcher] Failed safely while despawning expired scroll raven id={}: {}",
@@ -226,14 +223,11 @@ public final class TamedRavenScrollWatcher {
                                     t.toString()
                             );
                         }
-                        // Remove from the working list so the rest of the logic
-                        // (auto-summon, dedup, etc.) does not try to operate on it.
                         scrollRavens.remove(r);
                     }
                 }
             }
 
-            // If player is gone or dead, just clean up any scroll ravens and bail.
             if (!player.isAlive() || player.isRemoved()) {
                 if (!scrollRavens.isEmpty()) {
                     for (RavenEntity r : scrollRavens) {
@@ -244,8 +238,6 @@ public final class TamedRavenScrollWatcher {
                 return;
             }
 
-            // If the player does NOT have a tamed raven stored, they should never
-            // have a scroll-summoned one. Despawn any that exist.
             if (!hasTamedRaven) {
                 if (!scrollRavens.isEmpty()) {
                     for (RavenEntity r : scrollRavens) {
@@ -255,45 +247,62 @@ public final class TamedRavenScrollWatcher {
                 return;
             }
 
-            // If this player currently has any open courier jobs as SENDER, their raven
-            // is considered "busy" delivering a scroll. In that case we NEVER keep or
-            // spawn a scroll-summoned follower raven *while holding a sealed scroll*.
+            // Courier gating: distinguish ACTIVE vs FAILED
             RavenCourierData courierData = RavenCourierData.get(serverLevel);
-            boolean hasPendingAsSender = courierData.hasOpenJobsAsSender(playerId);
-            if (hasPendingAsSender && holdingNow) {
+            boolean hasActiveNonFailedAsSender = courierData.hasActiveNonFailedJobsAsSender(playerId);
+            boolean hasFailedAsSender = courierData.hasFailedJobsAsSender(playerId);
+
+            // OLD RULE still applies only for ACTIVE (non-failed) jobs:
+            // If you are holding a sealed scroll while you already have an active job, we disallow scroll-summon (prevents multi-send abuse).
+            if (hasActiveNonFailedAsSender && holdingNow) {
                 if (!scrollRavens.isEmpty()) {
                     for (RavenEntity r : scrollRavens) {
                         despawnOneScrollSummonedRaven(
                                 serverLevel,
                                 serverPlayer,
                                 r,
-                                "courier-dispatch: sender has pending delivery job"
+                                "courier-dispatch: sender has ACTIVE (non-failed) delivery job"
                         );
                     }
                 }
                 if (serverPlayer.tickCount % 80 == 0) {
                     LOG.info(
-                            "[TamedRavenScrollWatcher] Player '{}' has pending courier job(s); " +
-                                    "disabling scroll-summoned raven while sealed scroll is held.",
+                            "[TamedRavenScrollWatcher] Player '{}' has ACTIVE courier job(s); disabling scroll-summoned raven while sealed scroll is held.",
                             safePlayerName(player)
                     );
                 }
                 return;
             }
 
-            // If the player is NOT holding the sealed scroll, despawn all scroll-summoned ravens.
+            // If not holding a scroll:
+            // - If sender has FAILED jobs, allow scroll-summoned raven to exist (recall mode), but do not auto-spawn.
+            // - Otherwise keep old behavior: despawn and stop.
             if (!holdingNow) {
-                if (!scrollRavens.isEmpty()) {
-                    for (RavenEntity r : scrollRavens) {
-                        despawnOneScrollSummonedRaven(serverLevel, serverPlayer, r, "stopped holding sealed scroll");
+                if (!hasFailedAsSender) {
+                    if (!scrollRavens.isEmpty()) {
+                        for (RavenEntity r : scrollRavens) {
+                            despawnOneScrollSummonedRaven(serverLevel, serverPlayer, r, "stopped holding sealed scroll");
+                        }
+                    }
+                } else {
+                    // Failed jobs exist -> keep the raven alive if one exists; do nothing otherwise.
+                    if (!scrollRavens.isEmpty()) {
+                        if (scrollRavens.size() > 1) {
+                            RavenEntity primary = pickClosestRaven(scrollRavens, serverPlayer);
+                            for (RavenEntity r : scrollRavens) {
+                                if (r == primary) continue;
+                                despawnOneScrollSummonedRaven(serverLevel, serverPlayer, r, "deduplicate scroll ravens (failed-job recall)");
+                            }
+                            ensureRavenName(primary, ravenName);
+                        } else {
+                            ensureRavenName(scrollRavens.get(0), ravenName);
+                        }
                     }
                 }
                 return;
             }
 
-            // From here on: player is alive, has a stored tamed raven AND is holding the scroll.
-
-            // Check auto-summon setting (world-owned, typically controlled via the GUI).
+            // From here on: holdingNow == true (original auto-summon flow continues)
             boolean autoSummonEnabled = true;
             try {
                 FeatheredFriendSettingsData settingsData = FeatheredFriendSettingsData.get(serverLevel);
@@ -304,12 +313,8 @@ public final class TamedRavenScrollWatcher {
                 autoSummonEnabled = true;
             }
 
-            // If auto-summon is disabled:
-            //  - We do NOT spawn or respawn ravens just because the player is holding the scroll.
-            //  - We still keep any existing scroll ravens sane (dedup + correct name).
             if (!autoSummonEnabled) {
                 if (scrollRavens.isEmpty()) {
-                    // Holding scroll, but auto-summon disabled and no existing raven -> nothing to do.
                     return;
                 }
 
@@ -330,13 +335,10 @@ public final class TamedRavenScrollWatcher {
                     return;
                 }
 
-                // Exactly one scroll-raven exists; just ensure its name is correct.
                 ensureRavenName(scrollRavens.get(0), ravenName);
                 return;
             }
 
-            // CASE 1: "Start holding" edge (was not holding, now holding).
-            // We ALWAYS despawn any existing scroll ravens and spawn a fresh one.
             if (!wasHolding && holdingNow) {
                 if (!scrollRavens.isEmpty()) {
                     for (RavenEntity r : scrollRavens) {
@@ -352,10 +354,6 @@ public final class TamedRavenScrollWatcher {
                 return;
             }
 
-            // CASE 2: Continuous holding:
-            //   - If none exist -> respawn.
-            //   - If more than one exists -> keep closest, despawn rest.
-            //   - If exactly one -> ensure correct name, do nothing else.
             if (scrollRavens.isEmpty()) {
                 RavenEntity spawned = spawnSummonedRaven(serverLevel, serverPlayer, ravenName);
                 if (spawned != null && (serverPlayer.tickCount % 40 == 0)) {
@@ -366,7 +364,6 @@ public final class TamedRavenScrollWatcher {
             }
 
             if (scrollRavens.size() > 1) {
-                // Keep the closest raven as the "primary" one, despawn the rest.
                 RavenEntity primary = pickClosestRaven(scrollRavens, serverPlayer);
                 for (RavenEntity r : scrollRavens) {
                     if (r == primary) {
@@ -378,7 +375,6 @@ public final class TamedRavenScrollWatcher {
                 return;
             }
 
-            // Exactly one scroll-raven exists; just ensure its name is correct.
             ensureRavenName(scrollRavens.get(0), ravenName);
 
         } catch (Throwable t) {
@@ -478,17 +474,15 @@ public final class TamedRavenScrollWatcher {
                 return null;
             }
 
-            // IMPORTANT: find spawn using EXACT rules + simulated A* path test.
+            // Find spawn using your 6-step logic + simulated path test
             Vec3 spawnPos = findSafeSpawnAbovePlayer(level, owner, raven);
-
-            if (spawnPos != null) {
-                raven.moveTo(spawnPos.x, spawnPos.y, spawnPos.z, owner.getYRot(), 0.0F);
-            } else {
-                // If our rules say "don't spawn", we do not spawn at all.
+            if (spawnPos == null) {
                 LOG.warn("[TamedRavenScrollWatcher] spawnSummonedRaven: no valid spawn (or simulated path failed) for player='{}' -> not spawning.",
                         safePlayerName(owner));
                 return null;
             }
+
+            raven.moveTo(spawnPos.x, spawnPos.y, spawnPos.z, owner.getYRot(), 0.0F);
 
             try {
                 raven.setTame(true, true);
@@ -503,6 +497,37 @@ public final class TamedRavenScrollWatcher {
 
             ensureRavenName(raven, ravenName);
 
+            // If sender has FAILED jobs, arm this raven with recall payload (carry the failed scroll back).
+            try {
+                RavenCourierData courierData = RavenCourierData.get(level);
+                RavenCourierData.DeliveryJob failedJob = courierData.getMostRecentFailedJobForSender(owner.getUUID());
+
+                if (failedJob != null && failedJob.sealedScrollNbt != null && !failedJob.sealedScrollNbt.isEmpty()) {
+                    CompoundTag root = raven.getPersistentData();
+                    CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
+
+                    ffTag.putBoolean(NBT_RECALL_ACTIVE, true);
+                    ffTag.putLong(NBT_RECALL_JOB_ID, failedJob.jobId);
+                    ffTag.putString(NBT_RECALL_RECIPIENT_UUID, failedJob.recipientUuid.toString());
+                    ffTag.put(NBT_RECALL_SEALED_SCROLL, failedJob.sealedScrollNbt.copy());
+
+                    root.put(Constants.MOD_ID, ffTag);
+
+                    try {
+                        raven.setRavenVariant(net.z2six.featheredfriend.entity.raven.RavenVariant.SCROLL);
+                    } catch (Throwable t) {
+                        LOG.warn("[TamedRavenScrollWatcher] spawnSummonedRaven: setRavenVariant(SCROLL) failed safely: {}", t.toString());
+                    }
+
+                    LOG.info("[TamedRavenScrollWatcher] spawnSummonedRaven: recall armed for player='{}' jobId={} recipient={} (failed).",
+                            safePlayerName(owner), failedJob.jobId, failedJob.recipientUuid);
+                }
+            } catch (Throwable t) {
+                LOG.warn("[TamedRavenScrollWatcher] spawnSummonedRaven: failed-job recall arming failed safely for player='{}': {}",
+                        safePlayerName(owner), t.toString());
+            }
+
+            // Lifetime tag as before
             try {
                 CompoundTag root = raven.getPersistentData();
                 CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
@@ -516,12 +541,8 @@ public final class TamedRavenScrollWatcher {
 
                 root.put(Constants.MOD_ID, ffTag);
 
-                LOG.debug(
-                        "[TamedRavenScrollWatcher] spawnSummonedRaven: lifetime set for id={} now={} despawnAt={}",
-                        raven.getId(),
-                        now,
-                        despawnAt
-                );
+                LOG.debug("[TamedRavenScrollWatcher] spawnSummonedRaven: lifetime set for id={} now={} despawnAt={}",
+                        raven.getId(), now, despawnAt);
             } catch (Throwable t) {
                 LOG.warn("[TamedRavenScrollWatcher] spawnSummonedRaven: persistent ScrollSummoned tag failed safely: {}",
                         t.toString());
@@ -544,6 +565,268 @@ public final class TamedRavenScrollWatcher {
         } catch (Throwable t) {
             LOG.error("[TamedRavenScrollWatcher] spawnSummonedRaven failed safely", t);
             return null;
+        }
+    }
+
+    private static void onEntityInteract(@NotNull PlayerInteractEvent.EntityInteract event) {
+        try {
+            Level level = event.getLevel();
+            if (!(level instanceof ServerLevel serverLevel) || level.isClientSide()) {
+                return;
+            }
+
+            Entity target = event.getTarget();
+            if (!(target instanceof RavenEntity raven)) {
+                return;
+            }
+
+            Player player = event.getEntity();
+            if (!(player instanceof ServerPlayer serverPlayer)) {
+                return;
+            }
+
+            // Only handle scroll-summoned ravens owned by this player
+            if (!isScrollSummonedRaven(raven)) {
+                return;
+            }
+
+            boolean isOwner;
+            try {
+                isOwner = raven.isTame() && raven.isOwnedBy(serverPlayer);
+            } catch (Throwable t) {
+                LOG.warn("[TamedRavenScrollWatcher] onEntityInteract: owner check failed safely for raven id={}: {}",
+                        raven.getId(), t.toString());
+                return;
+            }
+
+            if (!isOwner) {
+                return;
+            }
+
+            InteractionHand hand = event.getHand();
+            InteractionResult result = handleScrollSummonedRavenInteract(serverLevel, serverPlayer, raven, hand);
+
+            if (result.consumesAction()) {
+                event.setCancellationResult(result);
+                event.setCanceled(true);
+            }
+
+        } catch (Throwable t) {
+            LOG.error("[TamedRavenScrollWatcher] onEntityInteract failed safely", t);
+        }
+    }
+
+    @NotNull
+    private static InteractionResult handleScrollSummonedRavenInteract(@NotNull ServerLevel level,
+                                                                       @NotNull ServerPlayer player,
+                                                                       @NotNull RavenEntity raven,
+                                                                       @NotNull InteractionHand hand) {
+        try {
+            // If raven is armed with a failed-job recall payload:
+            RecallPayload recall = readRecallPayload(raven);
+            if (recall != null) {
+                LOG.info("[TamedRavenScrollWatcher] RecallInteract: player='{}' ravenId={} jobId={} recipient={}",
+                        safePlayerName(player), raven.getId(), recall.jobId, recall.recipientUuidStr);
+
+                // 1) Give/drop the failed scroll back to player
+                ItemStack returned = buildSealedScrollFromNbt(recall.sealedScrollNbt);
+                if (!returned.isEmpty()) {
+                    giveOrDropFirstEmpty(player, returned);
+                } else {
+                    LOG.warn("[TamedRavenScrollWatcher] RecallInteract: failed to reconstruct sealed scroll item for jobId={} player='{}'",
+                            recall.jobId, safePlayerName(player));
+                }
+
+                // 2) Remove the failed job from world data (it is now "resolved")
+                try {
+                    RavenCourierData data = RavenCourierData.get(level);
+                    UUID recipientUuid = null;
+                    try {
+                        recipientUuid = UUID.fromString(recall.recipientUuidStr);
+                    } catch (Throwable ignored) {}
+
+                    if (recipientUuid != null) {
+                        data.removeJob(recall.jobId, recipientUuid);
+                        LOG.info("[TamedRavenScrollWatcher] RecallInteract: removed failed jobId={} recipient={} after return to sender='{}'",
+                                recall.jobId, recipientUuid, safePlayerName(player));
+                    } else {
+                        LOG.warn("[TamedRavenScrollWatcher] RecallInteract: could not parse recipient UUID '{}' for jobId={} (job not removed).",
+                                recall.recipientUuidStr, recall.jobId);
+                    }
+                } catch (Throwable t) {
+                    LOG.warn("[TamedRavenScrollWatcher] RecallInteract: removeJob failed safely for jobId={} player='{}': {}",
+                            recall.jobId, safePlayerName(player), t.toString());
+                }
+
+                // 3) If player is holding a NEW sealed scroll in-hand, create a new courier job and consume it.
+                ItemStack inHand = player.getItemInHand(hand);
+                boolean holdingNewSealedScroll = isSealedScrollStack(inHand);
+
+                if (holdingNewSealedScroll) {
+                    try {
+                        RavenCourierData courierData = RavenCourierData.get(level);
+                        RavenCourierData.DeliveryJob newJob = courierData.createJobFromSealedScroll(player, raven, inHand);
+
+                        if (newJob != null) {
+                            try {
+                                inHand.shrink(1);
+                            } catch (Throwable shrinkErr) {
+                                LOG.warn("[TamedRavenScrollWatcher] RecallInteract: shrink(1) failed safely for player='{}': {}",
+                                        safePlayerName(player), shrinkErr.toString());
+                            }
+
+                            LOG.info("[TamedRavenScrollWatcher] RecallInteract: created NEW courier jobId={} after recall return (player='{}')",
+                                    newJob.jobId, safePlayerName(player));
+                        } else {
+                            LOG.warn("[TamedRavenScrollWatcher] RecallInteract: failed to create NEW job from held sealed scroll for player='{}'",
+                                    safePlayerName(player));
+                        }
+                    } catch (Throwable t) {
+                        LOG.warn("[TamedRavenScrollWatcher] RecallInteract: createJobFromSealedScroll threw safely for player='{}': {}",
+                                safePlayerName(player), t.toString());
+                    }
+                }
+
+                // 4) Despawn the scroll-summoned raven (always) after recall interaction
+                try {
+                    despawnOneScrollSummonedRaven(level, player, raven, "recall-complete");
+                } catch (Throwable t) {
+                    LOG.warn("[TamedRavenScrollWatcher] RecallInteract: despawn failed safely for raven id={}: {}",
+                            raven.getId(), t.toString());
+                }
+
+                return InteractionResult.CONSUME;
+            }
+
+            // No recall payload -> fall back to original behavior:
+            // only accept interaction when player is actually using a sealed scroll on the raven.
+            ItemStack stack = player.getItemInHand(hand);
+            if (!isSealedScrollStack(stack)) {
+                return InteractionResult.PASS;
+            }
+
+            // Delegate to your existing "send scroll" logic:
+            return handleSealedScrollInteract(raven, player, hand);
+
+        } catch (Throwable t) {
+            LOG.error("[TamedRavenScrollWatcher] handleScrollSummonedRavenInteract failed safely", t);
+            return InteractionResult.PASS;
+        }
+    }
+
+    private static final class RecallPayload {
+        final long jobId;
+        final String recipientUuidStr;
+        final CompoundTag sealedScrollNbt;
+
+        private RecallPayload(long jobId, @NotNull String recipientUuidStr, @NotNull CompoundTag sealedScrollNbt) {
+            this.jobId = jobId;
+            this.recipientUuidStr = recipientUuidStr;
+            this.sealedScrollNbt = sealedScrollNbt;
+        }
+    }
+
+    @Nullable
+    private static RecallPayload readRecallPayload(@NotNull RavenEntity raven) {
+        try {
+            CompoundTag root = raven.getPersistentData();
+            if (root == null) {
+                return null;
+            }
+            CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
+            if (ffTag == null || ffTag.isEmpty()) {
+                return null;
+            }
+
+            if (!ffTag.getBoolean(NBT_RECALL_ACTIVE)) {
+                return null;
+            }
+
+            long jobId = ffTag.getLong(NBT_RECALL_JOB_ID);
+            String recipientUuidStr = ffTag.getString(NBT_RECALL_RECIPIENT_UUID);
+            CompoundTag sealed = ffTag.getCompound(NBT_RECALL_SEALED_SCROLL);
+
+            if (jobId <= 0L || recipientUuidStr == null || recipientUuidStr.isEmpty() || sealed == null || sealed.isEmpty()) {
+                LOG.warn("[TamedRavenScrollWatcher] readRecallPayload: malformed recall payload on raven id={} (jobId={} recipient='{}' sealedEmpty={})",
+                        raven.getId(), jobId, recipientUuidStr, (sealed == null || sealed.isEmpty()));
+                return null;
+            }
+
+            return new RecallPayload(jobId, recipientUuidStr, sealed.copy());
+
+        } catch (Throwable t) {
+            LOG.warn("[TamedRavenScrollWatcher] readRecallPayload failed safely for raven id={}: {}", raven.getId(), t.toString());
+            return null;
+        }
+    }
+
+    private static boolean isSealedScrollStack(@Nullable ItemStack stack) {
+        try {
+            if (stack == null || stack.isEmpty()) {
+                return false;
+            }
+            ResourceLocation key = BuiltInRegistries.ITEM.getKey(stack.getItem());
+            return key != null && SEALED_SCROLL_ID.equals(key);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    @NotNull
+    private static ItemStack buildSealedScrollFromNbt(@NotNull CompoundTag sealedScrollNbt) {
+        try {
+            Item item = BuiltInRegistries.ITEM.get(SEALED_SCROLL_ID);
+            if (item == null) {
+                LOG.warn("[TamedRavenScrollWatcher] buildSealedScrollFromNbt: sealed scroll item missing (id={})", SEALED_SCROLL_ID);
+                return ItemStack.EMPTY;
+            }
+
+            ItemStack stack = new ItemStack(item);
+
+            CompoundTag customRoot = new CompoundTag();
+            customRoot.put("SealedScroll", sealedScrollNbt.copy());
+
+            CustomData customData = CustomData.of(customRoot);
+            stack.set(net.minecraft.core.component.DataComponents.CUSTOM_DATA, customData);
+
+            return stack;
+
+        } catch (Throwable t) {
+            LOG.warn("[TamedRavenScrollWatcher] buildSealedScrollFromNbt failed safely: {}", t.toString());
+            return ItemStack.EMPTY;
+        }
+    }
+
+    private static void giveOrDropFirstEmpty(@NotNull ServerPlayer player, @NotNull ItemStack stack) {
+        try {
+            if (stack.isEmpty()) {
+                return;
+            }
+
+            int size = player.getInventory().getContainerSize();
+            for (int i = 0; i < size; i++) {
+                ItemStack existing = player.getInventory().getItem(i);
+                if (existing == null || existing.isEmpty()) {
+                    player.getInventory().setItem(i, stack);
+                    if (LOG.isDebugEnabled()) {
+                        LOG.debug("[TamedRavenScrollWatcher] giveOrDropFirstEmpty: placed returned scroll in slot {} for player='{}'",
+                                i, safePlayerName(player));
+                    }
+                    return;
+                }
+            }
+
+            // No empty slot -> drop
+            player.drop(stack, false);
+            LOG.info("[TamedRavenScrollWatcher] giveOrDropFirstEmpty: inventory full; dropped returned scroll for player='{}'",
+                    safePlayerName(player));
+
+        } catch (Throwable t) {
+            LOG.warn("[TamedRavenScrollWatcher] giveOrDropFirstEmpty failed safely for player='{}': {}",
+                    safePlayerName(player), t.toString());
+            try {
+                player.drop(stack, false);
+            } catch (Throwable ignored) {}
         }
     }
 
@@ -1274,18 +1557,22 @@ public final class TamedRavenScrollWatcher {
     public static void handleWhistleSummonRequest(@NotNull ServerPlayer serverPlayer) {
         try {
             ServerLevel serverLevel = serverPlayer.serverLevel();
+            UUID playerId = serverPlayer.getUUID();
 
-            // Safety: re-check scroll on the server, even if the client already checked.
-            if (!isHoldingSealedScroll(serverPlayer)) {
+            boolean holding = isHoldingSealedScroll(serverPlayer);
+
+            RavenCourierData courierData = RavenCourierData.get(serverLevel);
+            boolean hasFailedAsSender = courierData.hasFailedJobsAsSender(playerId);
+
+            if (!holding && !hasFailedAsSender) {
                 serverPlayer.sendSystemMessage(
                         Component.literal("[FeatheredFriend] You must hold a sealed scroll to whistle for your raven.")
                 );
-                LOG.info("[TamedRavenScrollWatcher] Whistle request denied: player='{}' not holding sealed scroll.",
+                LOG.info("[TamedRavenScrollWatcher] Whistle request denied: player='{}' not holding sealed scroll and no failed jobs.",
                         safePlayerName(serverPlayer));
                 return;
             }
 
-            // Read stored tamed raven info.
             TamedRavenInfo info = readTamedRavenInfo(serverPlayer);
             boolean hasTamedRaven = info != null && info.hasTamedRaven;
             String ravenName = (info != null && info.ravenName != null && !info.ravenName.isEmpty())
@@ -1301,11 +1588,9 @@ public final class TamedRavenScrollWatcher {
                 return;
             }
 
-            // Find current scroll-summoned ravens for this player.
             List<RavenEntity> scrollRavens = findScrollSummonedRavensForPlayer(serverLevel, serverPlayer);
 
             if (scrollRavens.isEmpty()) {
-                // None exist -> spawn a new one (ignores auto-summon toggle).
                 RavenEntity spawned = spawnSummonedRaven(serverLevel, serverPlayer, ravenName);
                 if (spawned != null) {
                     LOG.info("[TamedRavenScrollWatcher] Whistle: spawned scroll-raven id={} for player='{}' at {}",
@@ -1315,48 +1600,16 @@ public final class TamedRavenScrollWatcher {
             }
 
             if (scrollRavens.size() > 1) {
-                // Deduplicate: keep closest, despawn the rest, replay FX on survivor.
                 RavenEntity primary = pickClosestRaven(scrollRavens, serverPlayer);
                 for (RavenEntity r : scrollRavens) {
-                    if (r == primary) {
-                        continue;
-                    }
-                    despawnOneScrollSummonedRaven(
-                            serverLevel,
-                            serverPlayer,
-                            r,
-                            "whistle deduplicate"
-                    );
+                    if (r == primary) continue;
+                    despawnOneScrollSummonedRaven(serverLevel, serverPlayer, r, "deduplicate scroll ravens (whistle)");
                 }
-
                 ensureRavenName(primary, ravenName);
-
-                try {
-                    // Replay spawn FX so it feels like the raven "comes" when whistled.
-                    playScrollSummonSpawnFx(serverLevel, serverPlayer, primary);
-                } catch (Throwable fxErr) {
-                    LOG.warn("[TamedRavenScrollWatcher] Whistle: FX replay failed safely for id={}: {}",
-                            primary.getId(), fxErr.toString());
-                }
-
-                LOG.info("[TamedRavenScrollWatcher] Whistle: deduplicated to raven id={} for player='{}'",
-                        primary.getId(), safePlayerName(serverPlayer));
                 return;
             }
 
-            // Exactly one scroll-raven exists.
-            RavenEntity existing = scrollRavens.get(0);
-            ensureRavenName(existing, ravenName);
-
-            try {
-                playScrollSummonSpawnFx(serverLevel, serverPlayer, existing);
-            } catch (Throwable fxErr) {
-                LOG.warn("[TamedRavenScrollWatcher] Whistle: FX replay failed safely for id={}: {}",
-                        existing.getId(), fxErr.toString());
-            }
-
-            LOG.info("[TamedRavenScrollWatcher] Whistle: reused existing raven id={} for player='{}'",
-                    existing.getId(), safePlayerName(serverPlayer));
+            ensureRavenName(scrollRavens.get(0), ravenName);
 
         } catch (Throwable t) {
             LOG.error("[TamedRavenScrollWatcher] handleWhistleSummonRequest failed safely", t);

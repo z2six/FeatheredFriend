@@ -1,2 +1,2 @@
-1.2.0 = majorly revamped courier/tamed raven spawn logic. now also works in caves (unless very narrow)
+1.2.0 = majorly revamped courier/tamed raven spawn logic. now also works in caves (unless very narrow) & mark job as "failed" but don't remove when raven times out. death/retrieve still removes job.
 1.1.7 =
