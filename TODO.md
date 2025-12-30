@@ -63,3 +63,8 @@ A lightweight, in-game status/event log using the **same event stream** as the b
     - Misc. small audio feedback improvements
 
 ---
+
+### More stealing RP
+- When raven gets hit (and doesn't dodge), drop scroll and go into panick mode (playerAvoidance) or despawn
+
+---
