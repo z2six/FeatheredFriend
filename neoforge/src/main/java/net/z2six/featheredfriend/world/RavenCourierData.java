@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/world/RavenCourierData.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/world/RavenCourierData.java
 package net.z2six.featheredfriend.world;
 
 import com.mojang.logging.LogUtils;
@@ -27,29 +27,17 @@ import java.util.*;
  *
  * World-owned storage for all pending raven courier delivery jobs.
  *
- * Design notes:
- * - Lives on the SERVER, attached to the OVERWORLD's data storage.
- * - Jobs are keyed by recipient UUID and also have a unique jobId.
- * - We only store the SealedScroll sub-compound of the scroll's CustomData
- *   (plus sender/recipient info). The actual ItemStack can be reconstructed
- *   later when we spawn a courier raven for the recipient.
- *
- * This class is intentionally conservative:
- * - Any malformed data is logged and skipped.
- * - Public APIs never throw; they log and fail gracefully.
+ * Updated behavior (Dec 2025 changes):
+ *  - Jobs can be marked FAILED (persisted) if delivery fails for non-death reasons (e.g. timeout/stuck).
+ *  - Failed jobs are NOT removed automatically; sender must trigger retry later.
+ *  - inFlight is still runtime-only (reset on load).
  */
 public class RavenCourierData extends SavedData {
 
     private static final Logger LOG = LogUtils.getLogger();
 
-    /**
-     * Name of the saved data in the DimensionDataStorage.
-     */
     private static final String DATA_NAME = Constants.MOD_ID + "_raven_courier";
 
-    /**
-     * Registry name of the sealed scroll item.
-     */
     private static final ResourceLocation SEALED_SCROLL_ID =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "scroll_sealed");
 
@@ -57,22 +45,6 @@ public class RavenCourierData extends SavedData {
     // Internal job representation
     // ---------------------------------------------------------------------
 
-    /**
-     * One pending delivery job.
-     *
-     * For now:
-     * - jobId: monotonically increasing ID, unique per world.
-     * - senderUuid/senderName: who handed the scroll to their raven.
-     * - recipientUuid/recipientName: where the raven should ultimately deliver.
-     * - sealedScrollNbt: contents of the "SealedScroll" compound from the scroll's CustomData.
-     * - inFlight: whether a courier raven is currently spawned for this job
-     *   in THIS server session.
-     *
-     * IMPORTANT:
-     * - inFlight is treated as a runtime-only hint:
-     *   * It is saved for debugging/visibility.
-     *   * It is ALWAYS reset to false on world-load (see readFromNbt).
-     */
     public static final class DeliveryJob {
         public final long jobId;
         public final UUID senderUuid;
@@ -81,7 +53,23 @@ public class RavenCourierData extends SavedData {
         public final String recipientName;
         public final CompoundTag sealedScrollNbt;
         public final String ravenName;
+
+        /**
+         * Runtime-only: courier raven currently spawned for this job.
+         * Saved only for visibility; reset to false on load.
+         */
         public boolean inFlight;
+
+        /**
+         * Persisted failure state (NEW).
+         * Failed jobs do not auto-dispatch; sender must retry.
+         */
+        public boolean failed;
+
+        /** Persisted failure metadata (NEW). */
+        public int failureCount;
+        public long lastFailureGameTime;
+        public String lastFailureReason;
 
         public DeliveryJob(long jobId,
                            @NotNull UUID senderUuid,
@@ -90,7 +78,11 @@ public class RavenCourierData extends SavedData {
                            @NotNull String recipientName,
                            @NotNull CompoundTag sealedScrollNbt,
                            boolean inFlight,
-                           @NotNull String ravenName) {
+                           @NotNull String ravenName,
+                           boolean failed,
+                           int failureCount,
+                           long lastFailureGameTime,
+                           @NotNull String lastFailureReason) {
             this.jobId = jobId;
             this.senderUuid = senderUuid;
             this.senderName = senderName;
@@ -99,6 +91,11 @@ public class RavenCourierData extends SavedData {
             this.sealedScrollNbt = sealedScrollNbt;
             this.inFlight = inFlight;
             this.ravenName = ravenName;
+
+            this.failed = failed;
+            this.failureCount = failureCount;
+            this.lastFailureGameTime = lastFailureGameTime;
+            this.lastFailureReason = lastFailureReason;
         }
     }
 
@@ -106,14 +103,8 @@ public class RavenCourierData extends SavedData {
     // Fields
     // ---------------------------------------------------------------------
 
-    /**
-     * Monotonically increasing job ID counter.
-     */
     private long nextJobId = 1L;
 
-    /**
-     * Pending jobs, grouped by recipient UUID.
-     */
     private final Map<UUID, List<DeliveryJob>> jobsByRecipient = new HashMap<>();
 
     // ---------------------------------------------------------------------
@@ -124,25 +115,15 @@ public class RavenCourierData extends SavedData {
         // no-op
     }
 
-    /**
-     * Vanilla-style factory "create" method for SavedData.Factory.
-     */
     public static RavenCourierData create() {
         return new RavenCourierData();
     }
 
-    /**
-     * Load from NBT (1.21 style: gets HolderLookup.Provider as well).
-     */
     public static RavenCourierData load(CompoundTag tag, HolderLookup.Provider lookupProvider) {
         RavenCourierData data = new RavenCourierData();
         data.readFromNbt(tag);
         return data;
     }
-
-    // ---------------------------------------------------------------------
-    // SavedData overrides
-    // ---------------------------------------------------------------------
 
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
@@ -199,12 +180,19 @@ public class RavenCourierData extends SavedData {
 
                     CompoundTag sealedScrollNbt = jobTag.getCompound("SealedScroll");
 
-                    // Raven name as saved (may be empty for older saves).
                     String ravenName = jobTag.getString("RavenName");
+                    if (ravenName == null) {
+                        ravenName = "";
+                    }
 
-                    // We ignore any stored "InFlight" state on load.
-                    // All jobs become "not in flight" in a fresh server session.
+                    // Runtime-only: always reset to false on load.
                     boolean inFlight = false;
+
+                    // NEW persisted failure fields
+                    boolean failed = jobTag.getBoolean("Failed");
+                    int failureCount = jobTag.contains("FailureCount", Tag.TAG_INT) ? jobTag.getInt("FailureCount") : 0;
+                    long lastFailureGameTime = jobTag.contains("LastFailureGameTime", Tag.TAG_LONG) ? jobTag.getLong("LastFailureGameTime") : 0L;
+                    String lastFailureReason = jobTag.contains("LastFailureReason", Tag.TAG_STRING) ? jobTag.getString("LastFailureReason") : "";
 
                     if (senderUuid == null || recipientUuid == null || sealedScrollNbt.isEmpty()) {
                         LOG.warn("[RavenCourierData] Skipping malformed job entry at index {} (missing UUIDs or SealedScroll).", i);
@@ -214,17 +202,19 @@ public class RavenCourierData extends SavedData {
                     DeliveryJob job = new DeliveryJob(
                             jobId,
                             senderUuid,
-                            senderName,
+                            senderName == null ? "" : senderName,
                             recipientUuid,
-                            recipientName,
+                            recipientName == null ? "" : recipientName,
                             sealedScrollNbt.copy(),
                             inFlight,
-                            ravenName == null ? "" : ravenName
+                            ravenName,
+                            failed,
+                            Math.max(0, failureCount),
+                            Math.max(0L, lastFailureGameTime),
+                            lastFailureReason == null ? "" : lastFailureReason
                     );
 
-                    jobsByRecipient
-                            .computeIfAbsent(recipientUuid, k -> new ArrayList<>())
-                            .add(job);
+                    jobsByRecipient.computeIfAbsent(recipientUuid, k -> new ArrayList<>()).add(job);
 
                     if (jobId >= nextJobId) {
                         nextJobId = jobId + 1L;
@@ -259,6 +249,10 @@ public class RavenCourierData extends SavedData {
                 }
 
                 for (DeliveryJob job : jobs) {
+                    if (job == null) {
+                        continue;
+                    }
+
                     CompoundTag jobTag = new CompoundTag();
                     jobTag.putLong("JobId", job.jobId);
 
@@ -278,11 +272,16 @@ public class RavenCourierData extends SavedData {
                         jobTag.put("SealedScroll", job.sealedScrollNbt.copy());
                     }
 
-                    // Saved for debugging/visibility only; ignored on load.
+                    // Saved for visibility only; ignored on load.
                     jobTag.putBoolean("InFlight", job.inFlight);
 
-                    // Raven name at the time the job was created.
                     jobTag.putString("RavenName", job.ravenName == null ? "" : job.ravenName);
+
+                    // NEW persisted failure fields
+                    jobTag.putBoolean("Failed", job.failed);
+                    jobTag.putInt("FailureCount", Math.max(0, job.failureCount));
+                    jobTag.putLong("LastFailureGameTime", Math.max(0L, job.lastFailureGameTime));
+                    jobTag.putString("LastFailureReason", job.lastFailureReason == null ? "" : job.lastFailureReason);
 
                     jobsList.add(jobTag);
                 }
@@ -311,17 +310,11 @@ public class RavenCourierData extends SavedData {
     // Accessor for the saved data instance
     // ---------------------------------------------------------------------
 
-    /**
-     * Returns the global RavenCourierData instance, attached to the OVERWORLD's data storage.
-     *
-     * You can call this with any ServerLevel; it will internally resolve the overworld.
-     */
     @NotNull
     public static RavenCourierData get(@NotNull ServerLevel level) {
         try {
             ServerLevel overworld = level.getServer().overworld();
             if (overworld == null) {
-                // Fallback: use level itself (e.g., in singleplayer debug worlds).
                 overworld = level;
             }
 
@@ -333,7 +326,6 @@ public class RavenCourierData extends SavedData {
 
         } catch (Throwable t) {
             LOG.error("[RavenCourierData] get(...) failed safely, returning empty volatile instance: {}", t.toString());
-            // In case of disaster, return a non-saved instance so callers don't NPE.
             return new RavenCourierData();
         }
     }
@@ -342,17 +334,6 @@ public class RavenCourierData extends SavedData {
     // Public API: creation of jobs from Sealed Scrolls
     // ---------------------------------------------------------------------
 
-    /**
-     * Create and register a new courier delivery job based on a Sealed Scroll
-     * used on a tamed raven.
-     *
-     * This method is intended to be called from server-side interaction logic,
-     * e.g. TamedRavenScrollWatcher.handleSealedScrollInteract(...).
-     *
-     * Returns:
-     *  - The created DeliveryJob if successful.
-     *  - null if anything is invalid (not a sealed scroll, bad NBT, missing recipient, etc).
-     */
     @Nullable
     public DeliveryJob createJobFromSealedScroll(@NotNull ServerPlayer sender,
                                                  @NotNull RavenEntity raven,
@@ -416,7 +397,6 @@ public class RavenCourierData extends SavedData {
             UUID senderUuid = sender.getUUID();
             String senderName = sender.getGameProfile().getName();
 
-            // Capture the raven's current name so we can use it for the courier.
             String ravenName;
             try {
                 if (raven.getCustomName() != null) {
@@ -440,30 +420,24 @@ public class RavenCourierData extends SavedData {
             DeliveryJob job = new DeliveryJob(
                     jobId,
                     senderUuid,
-                    senderName,
+                    senderName == null ? "" : senderName,
                     recipientUuid,
                     recipientName,
                     sealed.copy(),
-                    false, // inFlight (runtime-only; never persisted across sessions)
-                    ravenName
+                    false,
+                    ravenName,
+                    false,     // failed
+                    0,         // failureCount
+                    0L,        // lastFailureGameTime
+                    ""         // lastFailureReason
             );
 
-            jobsByRecipient
-                    .computeIfAbsent(recipientUuid, k -> new ArrayList<>())
-                    .add(job);
+            jobsByRecipient.computeIfAbsent(recipientUuid, k -> new ArrayList<>()).add(job);
 
             setDirty();
 
-            LOG.info(
-                    "[RavenCourierData] Created delivery job id={} from sealed scroll (sender='{}' [{}], recipient='{}' [{}], ravenId={} ravenName='{}')",
-                    jobId,
-                    senderName,
-                    senderUuid,
-                    recipientName,
-                    recipientUuid,
-                    raven.getId(),
-                    ravenName
-            );
+            LOG.info("[RavenCourierData] Created delivery job id={} (sender='{}' [{}], recipient='{}' [{}], ravenId={} ravenName='{}')",
+                    jobId, senderName, senderUuid, recipientName, recipientUuid, raven.getId(), ravenName);
 
             return job;
 
@@ -474,13 +448,88 @@ public class RavenCourierData extends SavedData {
     }
 
     // ---------------------------------------------------------------------
-    // Query helpers
+    // Failure + retry helpers (NEW)
     // ---------------------------------------------------------------------
 
     /**
-     * Returns an immutable snapshot of all pending jobs for the given recipient UUID.
-     * Intended for use by your "batch job" or login handlers later.
+     * Mark a job as failed (persisted).
+     * Also clears inFlight so it doesn't remain locked.
      */
+    public boolean markJobFailed(long jobId, @NotNull UUID recipientUuid, @NotNull String reason, long gameTime) {
+        try {
+            DeliveryJob job = getJobById(jobId);
+            if (job == null) {
+                LOG.warn("[RavenCourierData] markJobFailed: jobId={} not found", jobId);
+                return false;
+            }
+            if (!recipientUuid.equals(job.recipientUuid)) {
+                LOG.warn("[RavenCourierData] markJobFailed: recipient mismatch for jobId={} expected={} got={}",
+                        jobId, job.recipientUuid, recipientUuid);
+                return false;
+            }
+
+            job.failed = true;
+            job.inFlight = false;
+            job.failureCount = Math.max(0, job.failureCount) + 1;
+            job.lastFailureGameTime = Math.max(0L, gameTime);
+            job.lastFailureReason = (reason == null) ? "" : reason;
+
+            setDirty();
+
+            LOG.info("[RavenCourierData] markJobFailed: jobId={} recipient={} reason='{}' failureCount={}",
+                    jobId, recipientUuid, job.lastFailureReason, job.failureCount);
+
+            return true;
+        } catch (Throwable t) {
+            LOG.error("[RavenCourierData] markJobFailed failed safely (jobId={}): {}", jobId, t.toString());
+            return false;
+        }
+    }
+
+    /**
+     * Clears failed state for a sender-triggered retry.
+     * Returns true only if job exists, sender matches, and job is currently failed and not inFlight.
+     */
+    public boolean clearFailedForRetry(long jobId, @NotNull UUID senderUuid) {
+        try {
+            DeliveryJob job = getJobById(jobId);
+            if (job == null) {
+                LOG.warn("[RavenCourierData] clearFailedForRetry: jobId={} not found", jobId);
+                return false;
+            }
+            if (job.senderUuid == null || !senderUuid.equals(job.senderUuid)) {
+                LOG.warn("[RavenCourierData] clearFailedForRetry: sender mismatch for jobId={} expected={} got={}",
+                        jobId, job.senderUuid, senderUuid);
+                return false;
+            }
+            if (!job.failed) {
+                LOG.warn("[RavenCourierData] clearFailedForRetry: jobId={} is not failed; nothing to retry", jobId);
+                return false;
+            }
+            if (job.inFlight) {
+                LOG.warn("[RavenCourierData] clearFailedForRetry: jobId={} is inFlight; cannot retry while active", jobId);
+                return false;
+            }
+
+            job.failed = false;
+            job.lastFailureReason = "";
+            job.lastFailureGameTime = 0L;
+
+            setDirty();
+
+            LOG.info("[RavenCourierData] clearFailedForRetry: cleared failed state for jobId={} sender={}", jobId, senderUuid);
+            return true;
+
+        } catch (Throwable t) {
+            LOG.error("[RavenCourierData] clearFailedForRetry failed safely (jobId={}): {}", jobId, t.toString());
+            return false;
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Query helpers
+    // ---------------------------------------------------------------------
+
     @NotNull
     public List<DeliveryJob> getJobsForRecipient(@NotNull UUID recipientUuid) {
         List<DeliveryJob> list = jobsByRecipient.get(recipientUuid);
@@ -490,9 +539,6 @@ public class RavenCourierData extends SavedData {
         return List.copyOf(list);
     }
 
-    /**
-     * Returns an immutable flat list of ALL pending jobs (across all recipients).
-     */
     @NotNull
     public List<DeliveryJob> getAllJobsFlat() {
         List<DeliveryJob> out = new ArrayList<>();
@@ -505,9 +551,6 @@ public class RavenCourierData extends SavedData {
         return List.copyOf(out);
     }
 
-    /**
-     * Returns an immutable list of jobs where the given UUID is either sender OR recipient.
-     */
     @NotNull
     public List<DeliveryJob> getJobsForPlayer(@NotNull UUID playerUuid) {
         List<DeliveryJob> out = new ArrayList<>();
@@ -527,9 +570,6 @@ public class RavenCourierData extends SavedData {
         return List.copyOf(out);
     }
 
-    /**
-     * Marks a specific job as removed (e.g. after successful delivery or failure).
-     */
     public void removeJob(long jobId, @NotNull UUID recipientUuid) {
         try {
             List<DeliveryJob> list = jobsByRecipient.get(recipientUuid);
@@ -537,7 +577,7 @@ public class RavenCourierData extends SavedData {
                 return;
             }
 
-            boolean removed = list.removeIf(job -> job.jobId == jobId);
+            boolean removed = list.removeIf(job -> job != null && job.jobId == jobId);
             if (removed) {
                 if (list.isEmpty()) {
                     jobsByRecipient.remove(recipientUuid);
@@ -550,12 +590,6 @@ public class RavenCourierData extends SavedData {
         }
     }
 
-    /**
-     * Returns true if this player currently has ANY open courier jobs as sender.
-     *
-     * Used to prevent the scroll-summoned "follower" raven from being spawned
-     * while the raven is busy delivering a scroll for that player.
-     */
     public boolean hasOpenJobsAsSender(@NotNull UUID senderUuid) {
         try {
             if (jobsByRecipient.isEmpty()) {
@@ -579,16 +613,10 @@ public class RavenCourierData extends SavedData {
             return false;
         } catch (Throwable t) {
             LOG.error("[RavenCourierData] hasOpenJobsAsSender failed safely: {}", t.toString());
-            // Fail-safe: don't block raven spawning if we couldn't check.
             return false;
         }
     }
 
-    /**
-     * Clears ALL courier jobs from the world.
-     *
-     * @return number of jobs removed.
-     */
     public int clearAllJobs() {
         try {
             int count = 0;
@@ -609,11 +637,6 @@ public class RavenCourierData extends SavedData {
         }
     }
 
-    /**
-     * Clears all courier jobs where the given player is either sender OR recipient.
-     *
-     * @return number of jobs removed.
-     */
     public int clearJobsForPlayer(@NotNull UUID playerUuid) {
         try {
             int removed = 0;
@@ -626,8 +649,7 @@ public class RavenCourierData extends SavedData {
                 }
 
                 int before = list.size();
-                list.removeIf(job ->
-                        job != null && (playerUuid.equals(job.senderUuid) || playerUuid.equals(job.recipientUuid)));
+                list.removeIf(job -> job != null && (playerUuid.equals(job.senderUuid) || playerUuid.equals(job.recipientUuid)));
                 int after = list.size();
 
                 removed += (before - after);
@@ -650,9 +672,6 @@ public class RavenCourierData extends SavedData {
         }
     }
 
-    /**
-     * Lookup helper for runtime: find a job by its jobId.
-     */
     @Nullable
     public DeliveryJob getJobById(long jobId) {
         try {

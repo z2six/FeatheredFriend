@@ -28,6 +28,8 @@ import net.z2six.featheredfriend.entity.raven.modules.RavenSoundEngine;
 import net.z2six.featheredfriend.entity.raven.modules.TamedRaven;
 import net.z2six.featheredfriend.entity.raven.modules.Teleportation;
 import net.z2six.featheredfriend.world.FeatheredFriendSettingsData;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.pathfinder.Path;
 
 import net.z2six.featheredfriend.registry.FFNeoForgeEntities;
 import org.jetbrains.annotations.NotNull;
@@ -476,40 +478,19 @@ public final class TamedRavenScrollWatcher {
                 return null;
             }
 
-            // Preferred: spawn ~15 blocks above the player in a 3x3x2 air column.
-            Vec3 spawnPos = findSafeSpawnAbovePlayer(level, owner);
+            // IMPORTANT: find spawn using EXACT rules + simulated A* path test.
+            Vec3 spawnPos = findSafeSpawnAbovePlayer(level, owner, raven);
+
             if (spawnPos != null) {
                 raven.moveTo(spawnPos.x, spawnPos.y, spawnPos.z, owner.getYRot(), 0.0F);
             } else {
-                // Fallback: slightly in front of the player's face.
-                Vec3 playerPos = owner.position();
-                Vec3 look = owner.getLookAngle();
-                double lx = look.x;
-                double lz = look.z;
-                double len = Math.sqrt(lx * lx + lz * lz);
-                if (len < 1.0E-4D) {
-                    lx = 1.0D;
-                    lz = 0.0D;
-                    len = 1.0D;
-                }
-                lx /= len;
-                lz /= len;
-
-                double distance = 1.25D;
-                double sx = playerPos.x + lx * distance;
-                double sz = playerPos.z + lz * distance;
-                double sy = owner.getEyeY() + 0.1D;
-
-                Vec3 fallback = new Vec3(sx, sy, sz);
-                raven.moveTo(fallback.x, fallback.y, fallback.z, owner.getYRot(), 0.0F);
-
-                LOG.warn("[TamedRavenScrollWatcher] spawnSummonedRaven: using fallback spawn={} for player='{}'",
-                        fallback, safePlayerName(owner));
+                // If our rules say "don't spawn", we do not spawn at all.
+                LOG.warn("[TamedRavenScrollWatcher] spawnSummonedRaven: no valid spawn (or simulated path failed) for player='{}' -> not spawning.",
+                        safePlayerName(owner));
+                return null;
             }
 
-            // Tame and bind to owner.
             try {
-                // 1.21 TamableAnimal#setTame(boolean tame, boolean broadcastEvent)
                 raven.setTame(true, true);
             } catch (Throwable t) {
                 LOG.warn("[TamedRavenScrollWatcher] spawnSummonedRaven: setTame(true, true) failed safely: {}", t.toString());
@@ -520,10 +501,8 @@ public final class TamedRavenScrollWatcher {
                 LOG.warn("[TamedRavenScrollWatcher] spawnSummonedRaven: setOwnerUUID failed safely: {}", t.toString());
             }
 
-            // Name & show name.
             ensureRavenName(raven, ravenName);
 
-            // Tag as scroll-summoned via persistent data.
             try {
                 CompoundTag root = raven.getPersistentData();
                 CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
@@ -548,19 +527,15 @@ public final class TamedRavenScrollWatcher {
                         t.toString());
             }
 
-            // Tag via scoreboard tag: primary detection mechanism.
             try {
                 raven.addTag(TAG_SCROLL_SUMMONED);
             } catch (Throwable t) {
                 LOG.warn("[TamedRavenScrollWatcher] spawnSummonedRaven: addTag({}) failed safely: {}", TAG_SCROLL_SUMMONED, t.toString());
             }
 
-            // Actually add to world.
             level.addFreshEntity(raven);
 
-            // Play spawn FX: portal (Enderpop-ish) + enderman teleport sound, NO feathers.
             playScrollSummonSpawnFx(level, owner, raven);
-
             LOG.info("[TamedRavenScrollWatcher] spawnSummonedRaven: spawned id={} name='{}' for player='{}' at {}",
                     raven.getId(), ravenName, safePlayerName(owner), raven.position());
 
@@ -738,73 +713,228 @@ public final class TamedRavenScrollWatcher {
     // ---------------------------------------------------------------------
 
     @Nullable
-    private static Vec3 findSafeSpawnAbovePlayer(@NotNull ServerLevel level, @NotNull ServerPlayer owner) {
+    private static Vec3 findSafeSpawnAbovePlayer(@NotNull ServerLevel level,
+                                                 @NotNull ServerPlayer owner,
+                                                 @NotNull RavenEntity simRaven) {
         try {
-            Vec3 playerPos = owner.position();
-            Vec3 look = owner.getLookAngle();
+            BlockPos feet = owner.blockPosition();
+            final int cx = feet.getX();
+            final int cz = feet.getZ();
+            final int feetY = feet.getY();
 
-            double lx = look.x;
-            double lz = look.z;
-            double len = Math.sqrt(lx * lx + lz * lz);
-            if (len < 1.0E-4D) {
-                lx = 1.0D;
-                lz = 0.0D;
-                len = 1.0D;
+            final int minY = level.getMinBuildHeight();
+            final int maxY = level.getMaxBuildHeight() - 1;
+
+            // 1) Ceiling scan within 15 blocks above player feet
+            int ceilingY = scanFirstCeilingYWithin15(level, owner, cx, feetY, cz, minY, maxY);
+
+            // 2) If ceiling found, scan for a safe 3x3 pocket BELOW ceiling.
+            //    IMPORTANT FIX: use baseY = ceilingY - 3 so our 3-high pocket has clearance under the ceiling.
+            if (ceilingY > 0) {
+                int baseYUnderCeiling = ceilingY - 3;
+
+                // Clamp so a 3-high pocket fits in world bounds
+                if (baseYUnderCeiling < minY) baseYUnderCeiling = minY;
+                if (baseYUnderCeiling > maxY - 2) baseYUnderCeiling = maxY - 2;
+
+                Vec3 pocketUnderCeiling = findFirst3x3x2PocketNear(level, owner, cx, baseYUnderCeiling, cz, minY, maxY);
+                if (pocketUnderCeiling != null) {
+                    LOG.info(
+                            "[TamedRavenScrollWatcher] findSafeSpawnAbovePlayer: CEILING FOUND at y={} -> pocketUnderCeiling={}",
+                            ceilingY,
+                            pocketUnderCeiling
+                    );
+
+                    // 5) Simulated A* check
+                    if (canSimulatePathToPlayer(level, owner, pocketUnderCeiling, simRaven)) {
+                        // 6) Spawn at pocket center
+                        return pocketUnderCeiling;
+                    }
+
+                    LOG.warn(
+                            "[TamedRavenScrollWatcher] findSafeSpawnAbovePlayer: simulated path FAILED -> not spawning. candidate={} player='{}'",
+                            pocketUnderCeiling,
+                            safePlayerName(owner)
+                    );
+                    return null;
+                }
+
+                // 4) If no pocket under ceiling, fall through to +15 fallback.
+                LOG.warn(
+                        "[TamedRavenScrollWatcher] findSafeSpawnAbovePlayer: CEILING FOUND at y={} but NO pocket-under-ceiling found (baseY={}) player='{}'",
+                        ceilingY,
+                        baseYUnderCeiling,
+                        safePlayerName(owner)
+                );
             }
-            lx /= len;
-            lz /= len;
 
-            // Horizontal offset in front of the player.
-            final double horizontalDistance = 1.25D;
-            double baseX = playerPos.x + lx * horizontalDistance;
-            double baseZ = playerPos.z + lz * horizontalDistance;
-
-            // Preferred vertical offset (~15 blocks above).
+            // 4) Fallback: safe pocket around +15 blocks above player
             final int preferredOffsetY = 15;
-            final int scanUp = 8;
-            final int scanDown = 8;
-
             int baseY = Mth.floor(owner.getY() + preferredOffsetY + 0.5D);
 
-            int minY = level.getMinBuildHeight() + 2;
-            int maxY = level.getMaxBuildHeight() - 2;
+            // Keep away from build limits; then also ensure 3-high pocket fits.
+            int clampMin = level.getMinBuildHeight() + 2;
+            int clampMax = level.getMaxBuildHeight() - 2;
+            baseY = Mth.clamp(baseY, clampMin, clampMax);
 
-            baseY = Mth.clamp(baseY, minY, maxY);
+            if (baseY < minY) baseY = minY;
+            if (baseY > maxY - 2) baseY = maxY - 2;
 
-            int cx = Mth.floor(baseX + 0.5D);
-            int cz = Mth.floor(baseZ + 0.5D);
+            Vec3 pocket = findFirst3x3x2PocketNear(level, owner, cx, baseY, cz, minY, maxY);
+            if (pocket != null) {
+                LOG.info("[TamedRavenScrollWatcher] findSafeSpawnAbovePlayer: fallback +15 pocket={}", pocket);
 
-            int maxDelta = Math.max(scanUp, scanDown);
-
-            for (int dy = 0; dy <= maxDelta; dy++) {
-                int[] candidates = (dy == 0)
-                        ? new int[]{baseY}
-                        : new int[]{baseY + dy, baseY - dy};
-
-                for (int y : candidates) {
-                    if (y < minY || y > maxY) {
-                        continue;
-                    }
-
-                    if (is3x3x2Air(level, cx, y, cz)) {
-                        double sy = y + 0.1D;
-                        Vec3 spawn = new Vec3(cx + 0.5D, sy, cz + 0.5D);
-
-                        LOG.info("[TamedRavenScrollWatcher] findSafeSpawnAbovePlayer: chosen spawn={} for player='{}' (baseY={}, dy={})",
-                                spawn, safePlayerName(owner), baseY, dy);
-
-                        return spawn;
-                    }
+                if (canSimulatePathToPlayer(level, owner, pocket, simRaven)) {
+                    return pocket;
                 }
+
+                LOG.warn(
+                        "[TamedRavenScrollWatcher] findSafeSpawnAbovePlayer: simulated path FAILED -> not spawning. candidate={} player='{}'",
+                        pocket,
+                        safePlayerName(owner)
+                );
+                return null;
             }
 
-            LOG.warn("[TamedRavenScrollWatcher] findSafeSpawnAbovePlayer: no 3x3x2 air column found near player='{}' (baseY={})",
-                    safePlayerName(owner), baseY);
-
+            LOG.warn(
+                    "[TamedRavenScrollWatcher] findSafeSpawnAbovePlayer: no pocket found (ceilingY={}, baseY={}) for player='{}' feet={}",
+                    ceilingY,
+                    baseY,
+                    safePlayerName(owner),
+                    feet
+            );
             return null;
 
         } catch (Throwable t) {
             LOG.error("[TamedRavenScrollWatcher] findSafeSpawnAbovePlayer failed safely", t);
+            return null;
+        }
+    }
+
+    private static int scanFirstCeilingYWithin15(@NotNull ServerLevel level,
+                                                 @NotNull ServerPlayer owner,
+                                                 int cx,
+                                                 int feetY,
+                                                 int cz,
+                                                 int minY,
+                                                 int maxY) {
+        try {
+            // Guarantee we are scanning the player's FEET column only (no offsets).
+            // Scan exactly 15 blocks above feet.
+            for (int dy = 1; dy <= 15; dy++) {
+                int y = feetY + dy;
+                if (y < minY || y > maxY) {
+                    break;
+                }
+
+                BlockPos probe = new BlockPos(cx, y, cz);
+
+                BlockState st;
+                try {
+                    st = level.getBlockState(probe);
+                } catch (Throwable t) {
+                    LOG.warn("[TamedRavenScrollWatcher] scanFirstCeilingYWithin15: getBlockState failed at {} for player='{}': {}",
+                            probe, safePlayerName(owner), t.toString());
+                    continue;
+                }
+
+                boolean isAir;
+                try {
+                    isAir = st.isAir();
+                } catch (Throwable t) {
+                    // If blockstate is weird, treat as non-air (safer for "ANY non-air" semantics).
+                    isAir = false;
+                    LOG.warn("[TamedRavenScrollWatcher] scanFirstCeilingYWithin15: st.isAir() threw at {} st={} player='{}': {}",
+                            probe, st, safePlayerName(owner), t.toString());
+                }
+
+                if (!isAir) {
+                    if (LOG.isInfoEnabled()) {
+                        String key = "unknown";
+                        try {
+                            key = String.valueOf(net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(st.getBlock()));
+                        } catch (Throwable ignored) {}
+                        LOG.info("[TamedRavenScrollWatcher] scanFirstCeilingYWithin15: HIT dy={} y={} block={} feetY={} player='{}'",
+                                dy, y, key, feetY, safePlayerName(owner));
+                    }
+                    return y;
+                }
+            }
+
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("[TamedRavenScrollWatcher] scanFirstCeilingYWithin15: NONE within 15 (feetY={}) player='{}'",
+                        feetY, safePlayerName(owner));
+            }
+            return -1;
+
+        } catch (Throwable t) {
+            LOG.error("[TamedRavenScrollWatcher] scanFirstCeilingYWithin15 failed safely", t);
+            return -1;
+        }
+    }
+
+    @Nullable
+    private static Vec3 findFirst3x3x2PocketNear(@NotNull ServerLevel level,
+                                                 @NotNull ServerPlayer owner,
+                                                 int cx,
+                                                 int baseY,
+                                                 int cz,
+                                                 int minY,
+                                                 int maxY) {
+        try {
+            // We require a 3x3x3 air pocket (not 3x3x2) so A* start nodes are valid under low ceilings.
+            if (baseY < minY || baseY > (maxY - 2)) {
+                LOG.warn(
+                        "[TamedRavenScrollWatcher] findFirst3x3x2PocketNear: baseY out of bounds for 3-high pocket. baseY={} minY={} maxY={} player='{}'",
+                        baseY,
+                        minY,
+                        maxY,
+                        safePlayerName(owner)
+                );
+                return null;
+            }
+
+            final int maxR = 4;
+
+            for (int r = 0; r <= maxR; r++) {
+                for (int dx = -r; dx <= r; dx++) {
+                    for (int dz = -r; dz <= r; dz++) {
+                        if (r > 0 && (Math.abs(dx) != r && Math.abs(dz) != r)) {
+                            continue;
+                        }
+
+                        int tx = cx + dx;
+                        int tz = cz + dz;
+
+                        if (is3x3x3Air(level, tx, baseY, tz)) {
+                            Vec3 pocket = new Vec3(tx + 0.5D, baseY + 0.1D, tz + 0.5D);
+
+                            LOG.info(
+                                    "[TamedRavenScrollWatcher] findFirst3x3x2PocketNear: FOUND pocket={} baseY={} off=({}, {}) player='{}'",
+                                    pocket,
+                                    baseY,
+                                    dx,
+                                    dz,
+                                    safePlayerName(owner)
+                            );
+                            return pocket;
+                        }
+                    }
+                }
+            }
+
+            LOG.info(
+                    "[TamedRavenScrollWatcher] findFirst3x3x2PocketNear: NONE baseY={} center=({}, {}) radius={} player='{}'",
+                    baseY,
+                    cx,
+                    cz,
+                    maxR,
+                    safePlayerName(owner)
+            );
+            return null;
+
+        } catch (Throwable t) {
+            LOG.error("[TamedRavenScrollWatcher] findFirst3x3x2PocketNear failed safely", t);
             return null;
         }
     }
@@ -825,6 +955,79 @@ public final class TamedRavenScrollWatcher {
             return true;
         } catch (Throwable t) {
             LOG.warn("[TamedRavenScrollWatcher] is3x3x2Air failed safely: {}", t.toString());
+            return false;
+        }
+    }
+
+    private static boolean is3x3x3Air(@NotNull ServerLevel level, int cx, int cy, int cz) {
+        try {
+            for (int dy = 0; dy <= 2; dy++) {
+                int y = cy + dy;
+                for (int dx = -1; dx <= 1; dx++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        BlockPos pos = new BlockPos(cx + dx, y, cz + dz);
+                        if (!level.isEmptyBlock(pos)) {
+                            return false;
+                        }
+                    }
+                }
+            }
+            return true;
+        } catch (Throwable t) {
+            LOG.warn("[TamedRavenScrollWatcher] is3x3x3Air failed safely: {}", t.toString());
+            return false;
+        }
+    }
+
+    private static boolean canSimulatePathToPlayer(@NotNull ServerLevel level,
+                                                   @NotNull ServerPlayer owner,
+                                                   @NotNull Vec3 spawnPos,
+                                                   @NotNull RavenEntity simRaven) {
+        try {
+            // Put the simulation raven at the candidate start position.
+            // This raven is NOT added to the world, so this stays purely "planning".
+            try {
+                simRaven.moveTo(spawnPos.x, spawnPos.y, spawnPos.z, owner.getYRot(), 0.0F);
+            } catch (Throwable t) {
+                LOG.warn("[TamedRavenScrollWatcher] canSimulatePathToPlayer: moveTo failed safely. player='{}' spawnPos={} err={}",
+                        safePlayerName(owner), spawnPos, t.toString());
+                return false;
+            }
+
+            Vec3 goal = owner.position();
+
+            long seed;
+            try {
+                seed =
+                        owner.getUUID().getMostSignificantBits()
+                                ^ owner.getUUID().getLeastSignificantBits()
+                                ^ (long) level.getGameTime()
+                                ^ 0x6D2B79F5A5A5A5A5L;
+            } catch (Throwable t) {
+                seed = (long) level.getGameTime() ^ 0x6D2B79F5A5A5A5A5L;
+            }
+
+            boolean ok;
+            try {
+                ok = simRaven.simulateAStarPathTo(goal, 6 * 20, seed, "scroll-summon simulated path");
+            } catch (Throwable t) {
+                ok = false;
+                LOG.warn("[TamedRavenScrollWatcher] canSimulatePathToPlayer: simulateAStarPathTo threw. player='{}' spawnPos={} goal={} err={}",
+                        safePlayerName(owner), spawnPos, goal, t.toString());
+            }
+
+            if (ok) {
+                LOG.info("[TamedRavenScrollWatcher] canSimulatePathToPlayer: A* simulation OK player='{}' spawnPos={} goal={}",
+                        safePlayerName(owner), spawnPos, goal);
+            } else {
+                LOG.info("[TamedRavenScrollWatcher] canSimulatePathToPlayer: A* simulation FAIL player='{}' spawnPos={} goal={}",
+                        safePlayerName(owner), spawnPos, goal);
+            }
+
+            return ok;
+
+        } catch (Throwable t) {
+            LOG.error("[TamedRavenScrollWatcher] canSimulatePathToPlayer failed safely", t);
             return false;
         }
     }

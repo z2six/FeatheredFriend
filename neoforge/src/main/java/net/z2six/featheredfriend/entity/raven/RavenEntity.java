@@ -43,6 +43,7 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionHand;
+import org.jetbrains.annotations.NotNull;
 
 // Debug particles
 import net.minecraft.network.chat.Component;
@@ -426,31 +427,99 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             RavenAIState prev = getAIState();
 
             // ----------------------------------------
-            // FOLLOW OVERRIDE GUARD:
-            //
-            // While followOverrideActive is true, FOLLOW_OWNER should "own" the AI.
-            // Older logic (idle/perch/normalisation) still tries to force IDLE_GROUND
-            // every tick, which causes:
-            //   FOLLOW_OWNER -> IDLE_GROUND -> FOLLOW_OWNER -> ...
-            //
-            // We block ONLY the downgrade FOLLOW_OWNER -> IDLE_GROUND here,
-            // so teleports / ROAM_FLY etc. still work.
-            // ----------------------------------------
-            boolean followOverride = (this.lureFollowTame != null && this.lureFollowTame.isFollowOverrideActive());
+// FOLLOW PROTECTION GUARD:
+//
+// When follow is "protected" (either the follow override is active OR
+// the scroll-summon follow-lock is active), FOLLOW_OWNER should not be
+// overridden by other AI planners in the same tick.
+//
+// Without this, you can get:
+//   FOLLOW_OWNER -> ROAM_FLY -> FOLLOW_OWNER -> ROAM_FLY ...
+// which matches the user's logs (and can freeze movement).
+//
+// Safety:
+// - We only enforce this if the owner is actually valid/present.
+// - If the owner is gone/offline, we allow transitions out of FOLLOW_OWNER.
+// ----------------------------------------
+            boolean followOverrideActive = false;
+            boolean scrollSummonFollowLock = false;
 
-            if (followOverride
+            try {
+                followOverrideActive = (this.lureFollowTame != null && this.lureFollowTame.isFollowOverrideActive());
+            } catch (Throwable t) {
+                if (this.tickCount % 80 == 0) {
+                    LOG.warn("[RavenEntity] setAIState: isFollowOverrideActive failed safely: {}", t.toString());
+                }
+            }
+
+            try {
+                // This already exists in your class (you call it from aiStep).
+                scrollSummonFollowLock = isScrollSummonFollowLockActive();
+            } catch (Throwable t) {
+                if (this.tickCount % 80 == 0) {
+                    LOG.warn("[RavenEntity] setAIState: isScrollSummonFollowLockActive failed safely: {}", t.toString());
+                }
+            }
+
+            boolean protectFollow = followOverrideActive || scrollSummonFollowLock;
+
+// Only protect FOLLOW_OWNER if the owner is actually present/valid.
+// (Prevents "stuck FOLLOW_OWNER forever" if owner disappears.)
+            boolean ownerValid = false;
+            try {
+                if (protectFollow && this.lureFollowTame != null) {
+                    Player ownerNow = this.lureFollowTame.getOwnerPlayerServerSafe();
+                    ownerValid = (ownerNow != null && ownerNow.isAlive() && ownerNow.level() == this.level());
+                }
+            } catch (Throwable t) {
+                if (this.tickCount % 80 == 0) {
+                    LOG.warn("[RavenEntity] setAIState: owner validity check failed safely: {}", t.toString());
+                }
+            }
+
+            if (protectFollow
+                    && ownerValid
                     && prev == RavenAIState.FOLLOW_OWNER
-                    && state == RavenAIState.IDLE_GROUND) {
+                    && state != RavenAIState.FOLLOW_OWNER) {
 
-                if (this.tickCount % 40 == 0) {
-                    LOG.debug(
-                            "[RavenEntity] setAIState: ignoring downgrade FOLLOW_OWNER -> IDLE_GROUND while followOverrideActive. " +
-                                    "pos={} flyTarget={} pathGoal={}",
+                // Rate-limited log so we can confirm what's trying to steal the state.
+                if (this.tickCount % 20 == 0) {
+                    LOG.info(
+                            "[RavenEntity] setAIState: BLOCKED transition {} -> {} while follow protected (override={}, scrollLock={}) " +
+                                    "pos={} flyTarget={} pathGoal={} followCd={}",
+                            prev,
+                            state,
+                            followOverrideActive,
+                            scrollSummonFollowLock,
                             this.position(),
                             flyTarget,
-                            pathGoal
+                            pathGoal,
+                            getFollowCooldownTicks()
                     );
                 }
+
+                // Optional: super-occasional stack trace to identify the caller.
+                // This is intentionally rare to avoid log spam.
+                if (LOG.isDebugEnabled() && (this.tickCount % 200 == 0)) {
+                    try {
+                        StackTraceElement[] st = Thread.currentThread().getStackTrace();
+                        StringBuilder sb = new StringBuilder();
+                        int shown = 0;
+                        for (int i = 2; i < st.length && shown < 10; i++) {
+                            // Skip noisy JVM internals
+                            String cn = st[i].getClassName();
+                            if (cn.startsWith("java.") || cn.startsWith("sun.") || cn.startsWith("jdk.")) {
+                                continue;
+                            }
+                            sb.append("\n  at ").append(st[i]);
+                            shown++;
+                        }
+                        LOG.debug("[RavenEntity] setAIState: caller trace for blocked transition:{}",
+                                sb.toString());
+                    } catch (Throwable ignored) {
+                    }
+                }
+
                 return; // do not change DATA_AI_STATE
             }
 
@@ -3988,6 +4057,216 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 LOG.warn("[RavenEntity] Animation controller failed: {}", t.toString());
             }
             return PlayState.CONTINUE;
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Pathing helpers
+    // ---------------------------------------------------------------------
+
+    public boolean simulateAStarPathTo(@NotNull Vec3 goal,
+                                       int maxPlanTicks,
+                                       long seed,
+                                       @NotNull String reason) {
+        try {
+            // -----------------------------------------------------------------
+            // Snapshot state (so this is a PURE simulation: no lasting side effects)
+            // -----------------------------------------------------------------
+            RavenAIState prevState;
+            try {
+                prevState = getAIStateForDebug();
+            } catch (Throwable t) {
+                prevState = RavenAIState.ROAM_FLY;
+            }
+
+            LandingPhase prevLandingPhase = this.landingPhase;
+            BlockPos prevLandingLeaf = (this.landing != null) ? this.landing.landingLeafPos : null;
+
+            int prevIdleLock = this.idleLockTicks;
+            int prevAvoidOverride = this.playerAvoidanceOverrideTicks;
+
+            int prevPathFailCd = this.pathFailCooldownTicks;
+            int prevPathReplanCd = this.pathReplanCooldownTicks;
+            int prevPathRetryCd = this.pathRetryCooldownTicks;
+            int prevPathRetryTicks = this.pathRetryTicks;
+
+            Vec3 prevFlyTarget = this.flyTarget;
+            int prevFlyTargetTtl = this.flyTargetTimeoutTicks;
+
+            Vec3 prevPathGoal = this.pathGoal;
+            Vec3 prevPathPending = this.pathPendingGoal;
+
+            List<Vec3> prevWaypoints = this.pathWaypoints;
+            int prevWaypointIdx = this.pathWaypointIndex;
+
+            int prevConsecutiveFails = this.consecutivePathPlanFails;
+
+            boolean prevNoGravity = this.isNoGravity();
+            RavenAnimMode prevAnim = this.getAnimMode();
+            Vec3 prevVel = this.getDeltaMovement();
+
+            // -----------------------------------------------------------------
+            // Force “planner-friendly” conditions for simulation (then restore)
+            // - IMPORTANT: we do NOT want cooldown gates or avoidance/landing to block.
+            // -----------------------------------------------------------------
+            try {
+                this.playerAvoidanceOverrideTicks = 0;
+            } catch (Throwable ignored) {}
+
+            try {
+                this.idleLockTicks = 0;
+            } catch (Throwable ignored) {}
+
+            try {
+                this.landingPhase = LandingPhase.NONE;
+            } catch (Throwable ignored) {}
+
+            try {
+                if (this.landing != null) {
+                    this.landing.landingLeafPos = null;
+                }
+            } catch (Throwable ignored) {}
+
+            try {
+                this.pathFailCooldownTicks = 0;
+                this.pathReplanCooldownTicks = 0;
+                this.pathRetryCooldownTicks = 0;
+                this.pathRetryTicks = 0;
+            } catch (Throwable ignored) {}
+
+            try {
+                this.consecutivePathPlanFails = 0;
+            } catch (Throwable ignored) {}
+
+            // Ensure we are in flight posture for A* flight planning.
+            try {
+                this.setNoGravity(true);
+            } catch (Throwable ignored) {}
+            try {
+                if (this.getAnimMode() != RavenAnimMode.IN_AIR) {
+                    this.setAnimMode(RavenAnimMode.IN_AIR);
+                }
+            } catch (Throwable ignored) {}
+
+            // Make sure no old intent affects planning
+            try {
+                clearFlyTarget();
+                this.flyTargetTimeoutTicks = 0;
+            } catch (Throwable ignored) {}
+            try {
+                clearPlannedPath("simulateAStarPathTo: pre-clear");
+                this.pathGoal = null;
+                this.pathPendingGoal = null;
+                this.pathWaypoints = null;
+                this.pathWaypointIndex = 0;
+            } catch (Throwable ignored) {}
+
+            // Ensure AI state is not something that blocks planning internally.
+            try {
+                this.setAIState(RavenAIState.ROAM_FLY);
+            } catch (Throwable ignored) {}
+
+            // -----------------------------------------------------------------
+            // Run the real A* planner (YOUR system)
+            // -----------------------------------------------------------------
+            boolean ok;
+            try {
+                ok = ensurePathTo(goal, maxPlanTicks, seed, "simulate: " + reason);
+            } catch (Throwable t) {
+                ok = false;
+                if (this.tickCount % 20 == 0) {
+                    LOG.warn("[RavenEntity] simulateAStarPathTo: ensurePathTo threw. goal={} reason={} err={}",
+                            goal, reason, t.toString());
+                }
+            }
+
+            // Optional: extra strictness — require at least 2 waypoints
+            // (You can remove this if you want “single-point” paths to count.)
+            if (ok) {
+                try {
+                    int pts = (this.pathWaypoints == null) ? 0 : this.pathWaypoints.size();
+                    if (pts <= 0) {
+                        ok = false;
+                        LOG.info("[RavenEntity] simulateAStarPathTo: ensurePathTo returned ok but waypoints empty -> treating as FAIL. goal={} reason={}",
+                                goal, reason);
+                    }
+                } catch (Throwable ignored) {}
+            }
+
+            if (LOG.isInfoEnabled()) {
+                int pts = 0;
+                try {
+                    pts = (this.pathWaypoints == null) ? 0 : this.pathWaypoints.size();
+                } catch (Throwable ignored) {}
+                LOG.info("[RavenEntity] simulateAStarPathTo: {} goal={} maxPlanTicks={} pts={} seed={} reason={}",
+                        (ok ? "OK" : "FAIL"), goal, maxPlanTicks, pts, seed, reason);
+            }
+
+            // -----------------------------------------------------------------
+            // Always clean up any planner output (this is simulation)
+            // -----------------------------------------------------------------
+            try {
+                clearFlyTarget();
+                this.flyTargetTimeoutTicks = 0;
+            } catch (Throwable ignored) {}
+            try {
+                clearPlannedPath("simulateAStarPathTo: post-clear");
+                this.pathGoal = null;
+                this.pathPendingGoal = null;
+                this.pathWaypoints = null;
+                this.pathWaypointIndex = 0;
+            } catch (Throwable ignored) {}
+
+            // -----------------------------------------------------------------
+            // Restore state exactly
+            // -----------------------------------------------------------------
+            try {
+                this.setAIState(prevState);
+            } catch (Throwable ignored) {}
+
+            this.landingPhase = prevLandingPhase;
+            try {
+                if (this.landing != null) {
+                    this.landing.landingLeafPos = prevLandingLeaf;
+                }
+            } catch (Throwable ignored) {}
+
+            this.idleLockTicks = prevIdleLock;
+            this.playerAvoidanceOverrideTicks = prevAvoidOverride;
+
+            this.pathFailCooldownTicks = prevPathFailCd;
+            this.pathReplanCooldownTicks = prevPathReplanCd;
+            this.pathRetryCooldownTicks = prevPathRetryCd;
+            this.pathRetryTicks = prevPathRetryTicks;
+
+            this.flyTarget = prevFlyTarget;
+            this.flyTargetTimeoutTicks = prevFlyTargetTtl;
+
+            this.pathGoal = prevPathGoal;
+            this.pathPendingGoal = prevPathPending;
+
+            this.pathWaypoints = prevWaypoints;
+            this.pathWaypointIndex = prevWaypointIdx;
+
+            this.consecutivePathPlanFails = prevConsecutiveFails;
+
+            try {
+                this.setNoGravity(prevNoGravity);
+            } catch (Throwable ignored) {}
+            try {
+                if (this.getAnimMode() != prevAnim) {
+                    this.setAnimMode(prevAnim);
+                }
+            } catch (Throwable ignored) {}
+            try {
+                this.setDeltaMovement(prevVel);
+            } catch (Throwable ignored) {}
+
+            return ok;
+
+        } catch (Throwable t) {
+            LOG.error("[RavenEntity] simulateAStarPathTo failed safely", t);
+            return false;
         }
     }
 
