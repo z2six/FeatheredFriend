@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Persisted, server-side known player cache.
  * Stores UUID -> last known name.
  *
- * Saved under: <world>/data/featheredfriend_known_players.dat
+ * Saved under: world/data/featheredfriend_known_players.dat
  */
 public final class FFKnownPlayersData extends SavedData {
 
