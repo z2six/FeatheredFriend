@@ -15,22 +15,20 @@ import java.util.List;
 /**
  * // neoforge/src/main/java/net/z2six/featheredfriend/config/FFCalendarConfig.java
  *
- * FFCalendarConfig
+ * NeoForge-side SERVER config for FeatheredFriend.
  *
- * NeoForge-side SERVER config for the custom calendar system.
+ * Sections:
+ * - [calendar]
+ *   * monthNames (8 entries)
+ *   * yearSuffix
+ *   * daysPerMonth (server-authoritative, synced to clients by your calendar sync)
  *
- * - Defines:
- *   * Month names (8 entries, ordered)
- *   * Year suffix (e.g. "A.N.")
- *   * Days per month (server-authoritative, synced to clients)
- *
- * - Server-authoritative:
- *   * Only the SERVER config is defined here.
- *   * Clients should always respect the server-provided values via sync,
- *     not their local config.
+ * - [settings]
+ *   * chatDisabledDefault (server default for world-owned SavedData when missing)
  *
  * NOTE:
- * - We intentionally do NOT make ticksPerDay configurable here per your requirement.
+ * - chatDisabled is still stored as world-owned SavedData (runtime mutable).
+ *   The config is used as the DEFAULT when no SavedData value exists yet.
  */
 public final class FFCalendarConfig {
 
@@ -68,23 +66,32 @@ public final class FFCalendarConfig {
      */
     public static final int TICKS_PER_DAY = 24000;
 
+    /**
+     * NEW: default for world-owned chat setting when SavedData is missing.
+     * Kept as "disabled by default" to preserve your existing intent.
+     */
+    public static final boolean DEFAULT_CHAT_DISABLED_DEFAULT = true;
+
     // ---------------------------------------------------------------------
     // Spec + entries
     // ---------------------------------------------------------------------
 
     public static final ModConfigSpec SERVER_SPEC;
 
+    // calendar
     public static final ModConfigSpec.ConfigValue<List<? extends String>> MONTH_NAMES;
     public static final ModConfigSpec.ConfigValue<String> YEAR_SUFFIX;
-
-    /**
-     * NEW: server-authoritative days per month (synced to clients).
-     */
     public static final ModConfigSpec.IntValue DAYS_PER_MONTH;
+
+    // settings
+    public static final ModConfigSpec.BooleanValue CHAT_DISABLED_DEFAULT;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
 
+        // -----------------------
+        // calendar
+        // -----------------------
         builder.push("calendar");
 
         MONTH_NAMES = builder
@@ -121,27 +128,30 @@ public final class FFCalendarConfig {
 
         builder.pop();
 
+        // -----------------------
+        // settings
+        // -----------------------
+        builder.push("settings");
+
+        CHAT_DISABLED_DEFAULT = builder
+                .comment(
+                        "Default for FeatheredFriend's world-owned chat flag when the world SavedData has no value yet.",
+                        "If true, chat is disabled by default until an admin enables it in-game (or via commands if you add those).",
+                        "This does NOT forcibly override the world value every boot; it is only used as a fallback default."
+                )
+                .define("chatDisabledDefault", DEFAULT_CHAT_DISABLED_DEFAULT);
+
+        builder.pop();
+
         SERVER_SPEC = builder.build();
 
-        LOG.debug("[FFCalendarConfig] Built SERVER config spec for calendar (monthNames/yearSuffix/daysPerMonth)");
+        LOG.debug("[FFCalendarConfig] Built SERVER config spec (calendar + settings)");
     }
 
     // ---------------------------------------------------------------------
     // Registration (NeoForge idiom)
     // ---------------------------------------------------------------------
 
-    /**
-     * Registers the SERVER config with the active mod container.
-     *
-     * Call this once from your NeoForge main mod class constructor, e.g.:
-     *
-     * <pre>
-     * public FeatheredFriend(IEventBus modBus) {
-     *     FFCalendarConfig.register();
-     *     ...
-     * }
-     * </pre>
-     */
     public static void register() {
         try {
             ModLoadingContext.get()
@@ -150,7 +160,6 @@ public final class FFCalendarConfig {
 
             LOG.debug("[FFCalendarConfig] Registered SERVER config with active ModContainer");
         } catch (Throwable t) {
-            // Never crash game on config registration failure.
             LOG.error("[FFCalendarConfig] Failed to register SERVER config", t);
         }
     }
@@ -159,11 +168,6 @@ public final class FFCalendarConfig {
     // Safe accessors (server-side use; client reads synced values)
     // ---------------------------------------------------------------------
 
-    /**
-     * Returns the configured month name for the given index (0–7).
-     * Falls back to built-in defaults and safe placeholders if the config
-     * is misconfigured.
-     */
     public static String getMonthName(int index) {
         try {
             if (index < 0 || index >= DEFAULT_MONTH_NAMES.length) {
@@ -196,10 +200,6 @@ public final class FFCalendarConfig {
         }
     }
 
-    /**
-     * Returns the configured year suffix (e.g. "A.N."), or the default if
-     * config is missing/blank.
-     */
     public static String getYearSuffix() {
         try {
             String suffix = YEAR_SUFFIX.get();
@@ -214,10 +214,6 @@ public final class FFCalendarConfig {
         }
     }
 
-    /**
-     * NEW: Returns server-authoritative days-per-month, synced to clients.
-     * Defensive: clamps to [1..365] and logs on invalid values.
-     */
     public static int getDaysPerMonth() {
         try {
             int v = DAYS_PER_MONTH.get();
@@ -236,14 +232,15 @@ public final class FFCalendarConfig {
         }
     }
 
-    /**
-     * Builds a CalendarDefinition using the server config values.
-     *
-     * This is what NeoForgePlatformHelper calls.
-     * Safe to call; falls back to defaults and logs.
-     *
-     * NOTE: ticksPerDay is intentionally constant (24000) in this task.
-     */
+    public static boolean getChatDisabledDefault() {
+        try {
+            return CHAT_DISABLED_DEFAULT.get();
+        } catch (Throwable t) {
+            LOG.error("[FFCalendarConfig] getChatDisabledDefault failed, using default {}", DEFAULT_CHAT_DISABLED_DEFAULT, t);
+            return DEFAULT_CHAT_DISABLED_DEFAULT;
+        }
+    }
+
     public static CalendarDefinition getCalendarDefinition() {
         try {
             List<String> monthNamesList = new ArrayList<>(MONTHS_PER_YEAR);
@@ -275,7 +272,6 @@ public final class FFCalendarConfig {
         } catch (Throwable t) {
             LOG.error("[FFCalendarConfig] getCalendarDefinition failed; falling back to hard-coded defaults", t);
 
-            // Absolute worst-case: hard-coded safe defaults.
             return new CalendarDefinition(
                     DEFAULT_MONTH_NAMES,
                     DEFAULT_YEAR_SUFFIX,

@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/network/FFNetwork.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/network/FFNetwork.java
 package net.z2six.featheredfriend.network;
 
 import com.mojang.logging.LogUtils;
@@ -20,6 +20,10 @@ import java.util.*;
 
 /**
  * Payload-based networking for FeatheredFriend.
+ *
+ * NOTE:
+ * - This file remains responsible for your legacy/gameplay payloads (known players, seal GUI, raven naming, whistle, etc.)
+ * - Server settings sync is handled separately in FFPayloads.java to avoid ID collisions and keep concerns isolated.
  */
 public final class FFNetwork {
 
@@ -508,9 +512,7 @@ public final class FFNetwork {
                     if (uuid == null) continue;
                     if (name == null || name.isBlank()) continue;
 
-                    // Skip "all zero" uuid placeholders
                     if (uuid.getMostSignificantBits() == 0L && uuid.getLeastSignificantBits() == 0L) continue;
-
                     list.add(new KnownPlayerInfo(uuid, name));
                 }
 

@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [1.3.3]
+- Fixed chat-enabling via settings screen (C2S2C)
+- Added auto/manual whistle to client config toml
+- Added chat enabling to server config toml
+- Added keybind ID's to lang.json
 
 ## [1.3.2]
 - Added multilanguage support by using Minecraft's default font as fallback.

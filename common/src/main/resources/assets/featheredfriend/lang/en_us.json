@@ -12,5 +12,8 @@
 
   "jei.featheredfriend.scroll_sealed.info": "Sealed Scrolls are created from Unsealed Scrolls inside the Scroll Sealing GUI.",
 
-  "entity.featheredfriend.raven": "Raven"
+  "entity.featheredfriend.raven": "Raven",
+
+  "key.featheredfriend.open_settings": "Feathered Friend settings menu",
+  "key.featheredfriend.whistle": "Whistle for Raven"
 }

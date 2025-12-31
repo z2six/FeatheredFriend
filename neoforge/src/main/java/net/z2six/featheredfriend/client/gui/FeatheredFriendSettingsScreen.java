@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/client/gui/FeatheredFriendSettingsScreen.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/client/gui/FeatheredFriendSettingsScreen.java
 package net.z2six.featheredfriend.client.gui;
 
 import com.mojang.logging.LogUtils;
@@ -7,37 +7,27 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.entity.player.Player;
-import net.z2six.featheredfriend.world.FeatheredFriendSettingsData;
+import net.neoforged.neoforge.network.PacketDistributor;
+import net.z2six.featheredfriend.config.FFClientConfig;
+import net.z2six.featheredfriend.network.FFPayloads;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/client/gui/FeatheredFriendSettingsScreen.java
- *
- * Simple settings menu for FeatheredFriend.
- *
- * Current options:
- *  - Auto-summon raven when holding sealed scroll (global, world-owned).
- *  - Disable global player chat (global, world-owned, only visible/editable
- *    to players with high permission level, e.g. server owner / OP).
- *
- * Notes:
- *  - Settings are stored via FeatheredFriendSettingsData (SavedData) on the
- *    OVERWORLD, so they persist with the world save.
- *  - In integrated singleplayer, this GUI can both view and edit settings.
- *  - On remote servers, reading/writing world-owned settings from the
- *    client is not yet implemented; this screen will best-effort log errors.
+ * Settings screen:
+ * - Auto-summon: client-only config (FFClientConfig).
+ * - Chat disabled: server-owned, synced via FFPayloads.ClientState.
+ * - Sends C2S payloads only when safe.
  */
 public class FeatheredFriendSettingsScreen extends Screen {
 
     private static final Logger LOG = LogUtils.getLogger();
 
-    private boolean autoSummon;
-    private boolean chatDisabled;
+    // client-only preference
+    private boolean autoSummonOnScroll;
 
+    // server-owned + synced
+    private boolean chatDisabled;
     private boolean hasServerSettings = false;
     private boolean canEditChat = false;
 
@@ -52,21 +42,26 @@ public class FeatheredFriendSettingsScreen extends Screen {
     protected void init() {
         super.init();
 
-        LOG.info("[FeatheredFriendSettingsScreen] Opening settings screen.");
+        LOG.info("[FeatheredFriendSettingsScreen] init()");
 
-        // Load settings from world if possible (integrated server case).
-        loadSettingsFromWorld();
+        loadFromCacheAndMaybeRequestSync();
 
         int centerX = this.width / 2;
         int y = this.height / 4;
 
-        // Auto-summon toggle (always visible)
         this.autoSummonButton = Button.builder(
                         textForAutoSummon(),
                         btn -> {
-                            autoSummon = !autoSummon;
+                            autoSummonOnScroll = !autoSummonOnScroll;
                             btn.setMessage(textForAutoSummon());
-                            LOG.info("[FeatheredFriendSettingsScreen] Toggled autoSummonOnScroll -> {}", autoSummon);
+
+                            try {
+                                FFClientConfig.setAutoSummonOnScroll(autoSummonOnScroll);
+                                FFClientConfig.save();
+                                LOG.info("[FeatheredFriendSettingsScreen] Updated client config autoSummonOnScroll -> {}", autoSummonOnScroll);
+                            } catch (Throwable t) {
+                                LOG.error("[FeatheredFriendSettingsScreen] Failed to update autoSummonOnScroll client config", t);
+                            }
                         })
                 .bounds(centerX - 100, y, 200, 20)
                 .build();
@@ -74,165 +69,186 @@ public class FeatheredFriendSettingsScreen extends Screen {
 
         y += 24;
 
-        // Chat disabled toggle: only show if player has permissions (OP / server owner).
         if (canEditChat) {
             this.chatDisabledButton = Button.builder(
                             textForChatDisabled(),
                             btn -> {
-                                chatDisabled = !chatDisabled;
+                                boolean newValue = !chatDisabled;
+                                chatDisabled = newValue;
                                 btn.setMessage(textForChatDisabled());
-                                LOG.info("[FeatheredFriendSettingsScreen] Toggled chatDisabled -> {}", chatDisabled);
+
+                                try {
+                                    if (!hasServerSettings) {
+                                        LOG.warn("[FeatheredFriendSettingsScreen] Chat toggled but server settings not synced yet; requesting sync instead");
+                                        requestServerSettings();
+                                        return;
+                                    }
+
+                                    if (!isConnectionReady()) {
+                                        LOG.warn("[FeatheredFriendSettingsScreen] Connection not ready; cannot send chat toggle right now");
+                                        return;
+                                    }
+
+                                    PacketDistributor.sendToServer(new FFPayloads.SetChatDisabledPayload(newValue));
+                                    LOG.info("[FeatheredFriendSettingsScreen] Sent SetChatDisabledPayload -> {}", newValue);
+                                } catch (Throwable t) {
+                                    LOG.error("[FeatheredFriendSettingsScreen] Failed to send chatDisabled toggle", t);
+                                }
                             })
                     .bounds(centerX - 100, y, 200, 20)
                     .build();
+
+            this.chatDisabledButton.active = hasServerSettings && isConnectionReady();
             this.addRenderableWidget(this.chatDisabledButton);
             y += 24;
         } else {
             this.chatDisabledButton = null;
         }
 
-        // Done button
-        Button done = Button.builder(
-                        Component.literal("Done"),
-                        btn -> {
-                            saveSettingsToWorld();
-                            onClose();
-                        })
+        Button done = Button.builder(Component.literal("Done"), btn -> onClose())
                 .bounds(centerX - 75, this.height - 40, 150, 20)
                 .build();
         this.addRenderableWidget(done);
     }
 
-    private Component textForAutoSummon() {
-        return Component.literal("Auto-summon raven on scroll: " + (autoSummon ? "ON" : "OFF"));
+    /**
+     * Call from wherever you receive the server settings payload (or if you have a polling refresh).
+     * Safe to call multiple times.
+     */
+    public void onServerSettingsUpdated() {
+        try {
+            LOG.info("[FeatheredFriendSettingsScreen] onServerSettingsUpdated()");
+
+            refreshFromCacheOnly();
+
+            if (this.autoSummonButton != null) {
+                this.autoSummonButton.setMessage(textForAutoSummon());
+            }
+
+            if (this.chatDisabledButton != null) {
+                this.chatDisabledButton.setMessage(textForChatDisabled());
+                this.chatDisabledButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
+            }
+
+            if (this.chatDisabledButton == null && this.canEditChat) {
+                LOG.info("[FeatheredFriendSettingsScreen] Chat button absent but perms now true; rebuilding widgets");
+                tryRebuildWidgets();
+            }
+
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriendSettingsScreen] onServerSettingsUpdated failed safely", t);
+        }
     }
 
-    private Component textForChatDisabled() {
-        return Component.literal("Disable global player chat: " + (chatDisabled ? "ON" : "OFF"));
+    private void tryRebuildWidgets() {
+        try {
+            this.clearWidgets();
+            this.init();
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriendSettingsScreen] tryRebuildWidgets failed safely", t);
+        }
     }
 
-    private void loadSettingsFromWorld() {
+    private boolean isConnectionReady() {
         try {
             Minecraft mc = Minecraft.getInstance();
-            if (mc == null) {
-                autoSummon = FeatheredFriendSettingsData.DEFAULT_AUTO_SUMMON;
-                chatDisabled = FeatheredFriendSettingsData.DEFAULT_CHAT_DISABLED;
-                hasServerSettings = false;
-                canEditChat = false;
-                LOG.warn("[FeatheredFriendSettingsScreen] Minecraft instance null; using defaults.");
+            if (mc == null) return false;
+            if (mc.player == null) return false;
+            if (mc.level == null) return false;
+            return mc.getConnection() != null;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private void requestServerSettings() {
+        try {
+            if (!isConnectionReady()) {
+                LOG.warn("[FeatheredFriendSettingsScreen] requestServerSettings skipped: connection not ready");
                 return;
             }
 
-            Player clientPlayer = mc.player;
+            PacketDistributor.sendToServer(new FFPayloads.RequestServerSettingsPayload());
+            LOG.info("[FeatheredFriendSettingsScreen] Requested server settings sync");
+        } catch (Throwable t) {
+            LOG.warn("[FeatheredFriendSettingsScreen] requestServerSettings failed safely: {}", t.toString());
+        }
+    }
 
-            // Integrated singleplayer server: we can read world-owned settings directly.
-            MinecraftServer server = mc.getSingleplayerServer();
-            if (server != null) {
-                ServerLevel overworld = server.overworld();
-                if (overworld != null) {
-                    FeatheredFriendSettingsData data = FeatheredFriendSettingsData.get(overworld);
-                    autoSummon = data.isAutoSummonOnScrollEnabled();
-                    chatDisabled = data.isChatDisabled();
-                    hasServerSettings = true;
+    private void refreshFromCacheOnly() {
+        try {
+            // client-only preference
+            autoSummonOnScroll = FFClientConfig.isAutoSummonOnScroll();
 
-                    boolean hasPerms = false;
-                    try {
-                        if (clientPlayer != null) {
-                            hasPerms = clientPlayer.hasPermissions(4);
-                        }
-                    } catch (Throwable ignored) {
-                    }
-                    canEditChat = hasPerms;
+            // server synced
+            this.hasServerSettings = FFPayloads.ClientState.hasSynced();
+            if (this.hasServerSettings) {
+                this.chatDisabled = FFPayloads.ClientState.isChatDisabled();
+                this.canEditChat = FFPayloads.ClientState.canEditChat();
+            } else {
+                // conservative while syncing: show disabled + no perms
+                this.chatDisabled = true;
+                this.canEditChat = false;
+            }
 
-                    LOG.info("[FeatheredFriendSettingsScreen] Loaded settings from world: autoSummon={} chatDisabled={} canEditChat={}",
-                            autoSummon, chatDisabled, canEditChat);
-                    return;
+            LOG.debug("[FeatheredFriendSettingsScreen] refreshFromCacheOnly: hasServerSettings={} autoSummon={} chatDisabled={} canEditChat={}",
+                    hasServerSettings, autoSummonOnScroll, chatDisabled, canEditChat);
+
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriendSettingsScreen] refreshFromCacheOnly failed safely", t);
+        }
+    }
+
+    private void loadFromCacheAndMaybeRequestSync() {
+        try {
+            refreshFromCacheOnly();
+
+            if (!hasServerSettings) {
+                // Request sync if we're actually in-world.
+                if (isConnectionReady()) {
+                    LOG.info("[FeatheredFriendSettingsScreen] No synced server settings yet; requesting sync");
+                    requestServerSettings();
+                } else {
+                    LOG.info("[FeatheredFriendSettingsScreen] No synced server settings yet; connection not ready (client tick will sync)");
                 }
             }
 
-            // Remote server / no accessible overworld.
-            autoSummon = FeatheredFriendSettingsData.DEFAULT_AUTO_SUMMON;
-            chatDisabled = FeatheredFriendSettingsData.DEFAULT_CHAT_DISABLED;
-            hasServerSettings = false;
-            canEditChat = false;
-
-            LOG.warn("[FeatheredFriendSettingsScreen] No accessible ServerLevel; using defaults (remote server or menu).");
-
         } catch (Throwable t) {
-            autoSummon = FeatheredFriendSettingsData.DEFAULT_AUTO_SUMMON;
-            chatDisabled = FeatheredFriendSettingsData.DEFAULT_CHAT_DISABLED;
             hasServerSettings = false;
             canEditChat = false;
-            LOG.error("[FeatheredFriendSettingsScreen] loadSettingsFromWorld failed safely", t);
+            chatDisabled = true;
+            autoSummonOnScroll = FFClientConfig.DEFAULT_AUTO_SUMMON_ON_SCROLL;
+            LOG.error("[FeatheredFriendSettingsScreen] loadFromCacheAndMaybeRequestSync failed safely", t);
         }
     }
 
-    private void saveSettingsToWorld() {
-        try {
-            if (!hasServerSettings) {
-                // Nothing we can save from the client side here yet.
-                LOG.warn("[FeatheredFriendSettingsScreen] No server settings available; skipping save.");
-                return;
-            }
+    private Component textForAutoSummon() {
+        return Component.literal("Auto-summon raven on scroll: " + (autoSummonOnScroll ? "ON" : "OFF"));
+    }
 
-            Minecraft mc = Minecraft.getInstance();
-            if (mc == null) {
-                return;
-            }
-
-            MinecraftServer server = mc.getSingleplayerServer();
-            if (server == null) {
-                LOG.warn("[FeatheredFriendSettingsScreen] saveSettingsToWorld: no singleplayer server; skipping save.");
-                return;
-            }
-
-            ServerLevel overworld = server.overworld();
-            if (overworld == null) {
-                LOG.warn("[FeatheredFriendSettingsScreen] saveSettingsToWorld: overworld null; skipping save.");
-                return;
-            }
-
-            FeatheredFriendSettingsData data = FeatheredFriendSettingsData.get(overworld);
-            data.setAutoSummonOnScrollEnabled(autoSummon);
-
-            if (canEditChat) {
-                data.setChatDisabled(chatDisabled);
-            }
-
-            LOG.info("[FeatheredFriendSettingsScreen] Saved settings to world: autoSummon={} chatDisabled={} (canEditChat={})",
-                    autoSummon, chatDisabled, canEditChat);
-
-        } catch (Throwable t) {
-            LOG.error("[FeatheredFriendSettingsScreen] saveSettingsToWorld failed safely", t);
+    private Component textForChatDisabled() {
+        if (!hasServerSettings) {
+            return Component.literal("Disable global player chat: (syncing...)");
         }
+        return Component.literal("Disable global player chat: " + (chatDisabled ? "ON" : "OFF"));
     }
 
     @Override
     public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        // Fill dim background
         this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
-
-        // Let super draw buttons, etc.
         super.render(guiGraphics, mouseX, mouseY, partialTick);
 
-        // Title at the top
-        guiGraphics.drawCenteredString(
-                this.font,
-                this.title,
-                this.width / 2,
-                20,
-                0xFFFFFF
-        );
-    }
+        guiGraphics.drawCenteredString(this.font, this.title, this.width / 2, 20, 0xFFFFFF);
 
-    @Override
-    public void onClose() {
-        super.onClose();
+        try {
+            String status = hasServerSettings ? "Server settings synced" : "Waiting for server settings...";
+            guiGraphics.drawCenteredString(this.font, Component.literal(status), this.width / 2, 44, 0xAAAAAA);
+        } catch (Throwable ignored) {
+        }
     }
 
     @Override
     public boolean isPauseScreen() {
-        // Let this pause the game in singleplayer (typical options screen behaviour).
         return true;
     }
 }
