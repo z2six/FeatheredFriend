@@ -54,6 +54,13 @@ A lightweight, in-game status/event log using the **same event stream** as the b
 
 ---
 
+### Taming overhaul
+Currently, you can just spam RMB while holding several nuggets. This is counteractive to the intent of the taming system, which is that the player has to stop, listen and think.
+- Introduce Iron Nuggets along with Golden Nuggets
+- Each raven (on spawn) has a random sequence of 3-6 nuggets
+- Nugget sequence includes Gold & Iron
+- Different sound cues for each type of nugget
+
 ## Minor
 
 ### Sound FX / Ambient Behavior
@@ -68,3 +75,6 @@ A lightweight, in-game status/event log using the **same event stream** as the b
 - When raven gets hit (and doesn't dodge), drop scroll and go into panick mode (playerAvoidance) or despawn
 
 ---
+
+### Dedicated client-sided "favourite" stamp storage
+- Currently, the favouriting of Seal Stamps is not stored therefore resets each client restart.
