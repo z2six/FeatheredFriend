@@ -78,3 +78,7 @@ Currently, you can just spam RMB while holding several nuggets. This is countera
 
 ### Dedicated client-sided "favourite" stamp storage
 - Currently, the favouriting of Seal Stamps is not stored therefore resets each client restart.
+
+---
+### Configurable months
+- Allow users to configure the amount of months per year
