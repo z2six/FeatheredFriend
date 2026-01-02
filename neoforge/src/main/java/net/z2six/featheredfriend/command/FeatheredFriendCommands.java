@@ -41,7 +41,7 @@ import java.util.*;
  *     /featheredfriend tamed_raven list
  *       -> scans server playerdata (online + offline) and lists all stored tamed ravens, owner + raven name.
  *
- *     /featheredfriend tamed_raven add <player> <name>
+ *     /featheredfriend tamed_raven add player name
  *       -> writes (online or offline) persistent tamed raven data for the given player with the given raven name.
  *
  * Dedicated server note:
