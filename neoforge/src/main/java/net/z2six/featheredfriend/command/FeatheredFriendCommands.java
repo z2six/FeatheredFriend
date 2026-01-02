@@ -3,6 +3,7 @@ package net.z2six.featheredfriend.command;
 
 import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.logging.LogUtils;
@@ -10,24 +11,66 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.GameProfileArgument;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtAccounter;
+import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.world.RavenCourierData;
 import org.slf4j.Logger;
 
-import java.util.Collection;
-import java.util.List;
-import java.util.UUID;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
 
+/**
+ * Server commands for FeatheredFriend.
+ *
+ * Changes in this revision:
+ * - Removed redundant alias "/ff_clear_tamed_raven" (kept only "/featheredfriend clear_tamed_raven").
+ * - Added:
+ *     /featheredfriend tamed_raven list
+ *       -> scans server playerdata (online + offline) and lists all stored tamed ravens, owner + raven name.
+ *
+ *     /featheredfriend tamed_raven add <player> <name>
+ *       -> writes (online or offline) persistent tamed raven data for the given player with the given raven name.
+ *
+ * Dedicated server note:
+ * - This is the *correct* environment for scanning playerdata .dat files; singleplayer vs dedicated doesn’t change
+ *   the NBT read APIs, but dedicated makes it more common to have many offline playerdata files.
+ */
 public final class FeatheredFriendCommands {
 
     private static final Logger LOG = LogUtils.getLogger();
+
+    private static final int MAX_RAVEN_NAME_CHARS = 26;
+
+    private static final String KEY_TAMED_RAVEN = "TamedRaven";
+    private static final String KEY_HAS_TAMED_RAVEN = "HasTamedRaven";
+    private static final String KEY_RAVEN_NAME = "RavenName";
+    private static final String KEY_OWNER_UUID = "OwnerUUID";
+    private static final String KEY_OWNER_DIMENSION = "OwnerDimension";
+
+    // In player .dat files, persistent data is typically under one of these roots.
+    private static final String ROOT_NEOFORGE_DATA = "NeoForgeData";
+    private static final String ROOT_FORGE_DATA = "ForgeData";
+
+    /**
+     * NBT read budget. Player .dat files are normally small.
+     * If you suspect very large persistent blobs, raise this.
+     *
+     * We use an explicit accounter so we don’t blow up memory on corrupted/hostile files.
+     */
+    private static final long PLAYERDAT_NBT_BUDGET_BYTES = 64L * 1024L * 1024L; // 64 MiB
 
     private FeatheredFriendCommands() {
         // no-op
@@ -40,8 +83,6 @@ public final class FeatheredFriendCommands {
      */
     public static void register() {
         try {
-            // Use an explicitly-typed lambda so the generic parameter T is inferred
-            // as RegisterCommandsEvent and not plain Event.
             NeoForge.EVENT_BUS.addListener(
                     (RegisterCommandsEvent event) -> FeatheredFriendCommands.onRegisterCommands(event)
             );
@@ -66,6 +107,23 @@ public final class FeatheredFriendCommands {
                                     .executes(FeatheredFriendCommands::executeClearTamedRavenSelf)
                             )
                             // -----------------------------------------------------------------
+                            // /featheredfriend tamed_raven ...
+                            // -----------------------------------------------------------------
+                            .then(Commands.literal("tamed_raven")
+                                    // /featheredfriend tamed_raven list
+                                    .then(Commands.literal("list")
+                                            .executes(FeatheredFriendCommands::executeTamedRavenListAll)
+                                    )
+                                    // /featheredfriend tamed_raven add <player> <name>
+                                    .then(Commands.literal("add")
+                                            .then(Commands.argument("player", GameProfileArgument.gameProfile())
+                                                    .then(Commands.argument("name", StringArgumentType.greedyString())
+                                                            .executes(FeatheredFriendCommands::executeTamedRavenAddForPlayer)
+                                                    )
+                                            )
+                                    )
+                            )
+                            // -----------------------------------------------------------------
                             // /featheredfriend courier ...
                             // -----------------------------------------------------------------
                             .then(Commands.literal("courier")
@@ -88,16 +146,12 @@ public final class FeatheredFriendCommands {
                             )
             );
 
-            // Short alias: /ff_clear_tamed_raven
-            dispatcher.register(
-                    Commands.literal("ff_clear_tamed_raven")
-                            .requires(src -> src.hasPermission(2))
-                            .executes(FeatheredFriendCommands::executeClearTamedRavenSelf)
-            );
+            // Removed redundant alias: /ff_clear_tamed_raven
 
             LOG.info("[FeatheredFriendCommands] Commands registered: " +
                     "/featheredfriend clear_tamed_raven, " +
-                    "/ff_clear_tamed_raven, " +
+                    "/featheredfriend tamed_raven list, " +
+                    "/featheredfriend tamed_raven add <player> <name>, " +
                     "/featheredfriend courier list [player], " +
                     "/featheredfriend courier clear [player]");
         } catch (Throwable t) {
@@ -112,7 +166,6 @@ public final class FeatheredFriendCommands {
     /**
      * Command handler:
      *   - /featheredfriend clear_tamed_raven
-     *   - /ff_clear_tamed_raven
      *
      * Clears the EXECUTING PLAYER's stored TamedRaven data from NeoForge persistent
      * player data (NeoForgeData.featheredfriend.TamedRaven.*).
@@ -124,7 +177,6 @@ public final class FeatheredFriendCommands {
         try {
             player = source.getPlayerOrException();
         } catch (CommandSyntaxException ex) {
-            // Not a player (e.g., console)
             LOG.warn("[FeatheredFriendCommands] clear_tamed_raven: source is not a player (name={})",
                     source.getTextName());
             source.sendFailure(Component.literal("[FeatheredFriend] This command must be run by a player."));
@@ -133,7 +185,8 @@ public final class FeatheredFriendCommands {
 
         MinecraftServer server = player.server;
         if (server == null) {
-            LOG.warn("[FeatheredFriendCommands] clear_tamed_raven: server is null for player={}", player.getGameProfile().getName());
+            LOG.warn("[FeatheredFriendCommands] clear_tamed_raven: server is null for player={}",
+                    player.getGameProfile().getName());
             source.sendFailure(Component.literal("[FeatheredFriend] Internal error: server is null."));
             return 0;
         }
@@ -155,7 +208,7 @@ public final class FeatheredFriendCommands {
     }
 
     /**
-     * Directly manipulates the player's persistent NeoForge data:
+     * Directly manipulates the player's persistent NeoForge data (in-memory for online players):
      *
      * NeoForgeData: {
      *   featheredfriend: {
@@ -186,7 +239,6 @@ public final class FeatheredFriendCommands {
                 return false;
             }
 
-            // This maps to the "featheredfriend" compound inside NeoForgeData in the NBT dump.
             if (!root.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)) {
                 LOG.info("[FeatheredFriendCommands] clearPlayerTamedRavenData: no '{}' tag for player={}",
                         Constants.MOD_ID, player.getGameProfile().getName());
@@ -194,51 +246,572 @@ public final class FeatheredFriendCommands {
             }
 
             CompoundTag modTag = root.getCompound(Constants.MOD_ID);
-            if (modTag == null || !modTag.contains("TamedRaven", Tag.TAG_COMPOUND)) {
-                LOG.info("[FeatheredFriendCommands] clearPlayerTamedRavenData: no TamedRaven compound for player={}",
-                        player.getGameProfile().getName());
+            if (modTag == null || !modTag.contains(KEY_TAMED_RAVEN, Tag.TAG_COMPOUND)) {
+                LOG.info("[FeatheredFriendCommands] clearPlayerTamedRavenData: no {} compound for player={}",
+                        KEY_TAMED_RAVEN, player.getGameProfile().getName());
                 return false;
             }
 
-            CompoundTag tamed = modTag.getCompound("TamedRaven");
+            CompoundTag tamed = modTag.getCompound(KEY_TAMED_RAVEN);
             if (tamed == null || tamed.isEmpty()) {
-                LOG.info("[FeatheredFriendCommands] clearPlayerTamedRavenData: empty TamedRaven compound for player={}",
-                        player.getGameProfile().getName());
+                LOG.info("[FeatheredFriendCommands] clearPlayerTamedRavenData: empty {} compound for player={}",
+                        KEY_TAMED_RAVEN, player.getGameProfile().getName());
                 return false;
             }
 
-            boolean had = tamed.getBoolean("HasTamedRaven");
+            boolean had = tamed.getBoolean(KEY_HAS_TAMED_RAVEN);
 
-            LOG.info("[FeatheredFriendCommands] clearPlayerTamedRavenData: BEFORE clear player={} tag={}",
-                    player.getGameProfile().getName(), tamed);
+            LOG.info("[FeatheredFriendCommands] clearPlayerTamedRavenData: BEFORE clear player={} uuid={} tag={}",
+                    player.getGameProfile().getName(), player.getUUID(), tamed);
 
-            // Hard-reset the fields we know about.
-            tamed.putBoolean("HasTamedRaven", false);
-            tamed.remove("RavenName");
-            tamed.remove("OwnerUUID");
-            tamed.remove("OwnerDimension");
+            tamed.putBoolean(KEY_HAS_TAMED_RAVEN, false);
+            tamed.remove(KEY_RAVEN_NAME);
+            tamed.remove(KEY_OWNER_UUID);
+            tamed.remove(KEY_OWNER_DIMENSION);
 
-            // If the compound is now empty, remove it entirely.
             if (tamed.isEmpty()) {
-                modTag.remove("TamedRaven");
+                modTag.remove(KEY_TAMED_RAVEN);
             } else {
-                modTag.put("TamedRaven", tamed);
+                modTag.put(KEY_TAMED_RAVEN, tamed);
             }
 
-            // If the mod compound is now empty, remove it entirely.
             if (modTag.isEmpty()) {
                 root.remove(Constants.MOD_ID);
             } else {
                 root.put(Constants.MOD_ID, modTag);
             }
 
-            LOG.info("[FeatheredFriendCommands] clearPlayerTamedRavenData: AFTER clear player={} had={} nowTag={}",
-                    player.getGameProfile().getName(), had, tamed);
+            LOG.info("[FeatheredFriendCommands] clearPlayerTamedRavenData: AFTER clear player={} uuid={} had={} nowTag={}",
+                    player.getGameProfile().getName(), player.getUUID(), had, tamed);
 
             return had;
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendCommands] clearPlayerTamedRavenData failed for player={}",
                     (player == null ? "null" : player.getGameProfile().getName()), t);
+            return false;
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // tamed_raven list / add
+    // ---------------------------------------------------------------------
+
+    /**
+     * /featheredfriend tamed_raven list
+     *
+     * Scans ALL server playerdata (.dat) files and lists players that have
+     * persistent FeatheredFriend TamedRaven data.
+     */
+    private static int executeTamedRavenListAll(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack source = ctx.getSource();
+        try {
+            MinecraftServer server = source.getServer();
+            if (server == null) {
+                source.sendFailure(Component.literal("[FeatheredFriend] Internal error: server is null."));
+                LOG.warn("[FeatheredFriendCommands] tamed_raven list: source.getServer() was null");
+                return 0;
+            }
+
+            Path playerDataDir = getPlayerDataDir(server);
+            if (playerDataDir == null) {
+                source.sendFailure(Component.literal("[FeatheredFriend] Could not locate playerdata directory (see server log)."));
+                return 0;
+            }
+
+            if (!Files.exists(playerDataDir) || !Files.isDirectory(playerDataDir)) {
+                source.sendFailure(Component.literal("[FeatheredFriend] playerdata directory not found: " + playerDataDir));
+                LOG.warn("[FeatheredFriendCommands] tamed_raven list: playerdata dir missing/not directory: {}", playerDataDir);
+                return 0;
+            }
+
+            Map<UUID, String> onlineNameByUuid = new HashMap<>();
+            try {
+                for (ServerPlayer sp : server.getPlayerList().getPlayers()) {
+                    if (sp == null) continue;
+                    onlineNameByUuid.put(sp.getUUID(), sp.getGameProfile().getName());
+                }
+            } catch (Throwable t) {
+                LOG.warn("[FeatheredFriendCommands] tamed_raven list: failed building online name map: {}", t.toString());
+            }
+
+            List<String> lines = new ArrayList<>();
+            int scanned = 0;
+
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(playerDataDir, "*.dat")) {
+                for (Path p : stream) {
+                    scanned++;
+                    UUID playerUuid = parseUuidFromPlayerDatName(p.getFileName().toString());
+                    if (playerUuid == null) {
+                        LOG.debug("[FeatheredFriendCommands] tamed_raven list: skipping non-uuid dat name={}", p.getFileName());
+                        continue;
+                    }
+
+                    CompoundTag playerRoot = readPlayerDatSafe(p);
+                    if (playerRoot == null || playerRoot.isEmpty()) {
+                        continue;
+                    }
+
+                    CompoundTag persistent = extractPersistentDataFromPlayerFile(playerRoot);
+                    if (persistent == null || persistent.isEmpty()) {
+                        continue;
+                    }
+
+                    CompoundTag modTag = persistent.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)
+                            ? persistent.getCompound(Constants.MOD_ID)
+                            : null;
+
+                    if (modTag == null || modTag.isEmpty()) {
+                        continue;
+                    }
+
+                    CompoundTag tamed = modTag.contains(KEY_TAMED_RAVEN, Tag.TAG_COMPOUND)
+                            ? modTag.getCompound(KEY_TAMED_RAVEN)
+                            : null;
+
+                    if (tamed == null || tamed.isEmpty()) {
+                        continue;
+                    }
+
+                    boolean has = tamed.getBoolean(KEY_HAS_TAMED_RAVEN);
+                    if (!has) {
+                        continue;
+                    }
+
+                    String ravenName = tamed.contains(KEY_RAVEN_NAME, Tag.TAG_STRING) ? tamed.getString(KEY_RAVEN_NAME) : "";
+                    if (ravenName == null) ravenName = "";
+                    if (ravenName.isBlank()) ravenName = "(unnamed)";
+
+                    String ownerName = onlineNameByUuid.get(playerUuid);
+                    if (ownerName == null || ownerName.isBlank()) {
+                        ownerName = safeGuessNameFromPlayerRoot(playerRoot);
+                    }
+                    if (ownerName == null || ownerName.isBlank()) {
+                        ownerName = "(unknown)";
+                    }
+
+                    String ownerDim = tamed.contains(KEY_OWNER_DIMENSION, Tag.TAG_STRING) ? tamed.getString(KEY_OWNER_DIMENSION) : "";
+                    if (ownerDim == null) ownerDim = "";
+
+                    lines.add(String.format(" - owner='%s' [%s] ravenName='%s' ownerDim='%s'",
+                            ownerName, playerUuid, ravenName, ownerDim));
+                }
+            } catch (Throwable t) {
+                LOG.error("[FeatheredFriendCommands] tamed_raven list: directory scan failed for dir={}", playerDataDir, t);
+                source.sendFailure(Component.literal("[FeatheredFriend] Error scanning playerdata directory; see log."));
+                return 0;
+            }
+
+            if (lines.isEmpty()) {
+                final int scannedFinal = scanned;
+                source.sendSuccess(
+                        () -> Component.literal("[FeatheredFriend] No stored tamed ravens found (scanned " + scannedFinal + " playerdata files)."),
+                        false
+                );
+                LOG.info("[FeatheredFriendCommands] tamed_raven list: none found (scanned={} dir={})", scannedFinal, playerDataDir);
+                return 0;
+            }
+
+            final int scannedFinal = scanned;
+            final int foundFinal = lines.size();
+
+            source.sendSuccess(
+                    () -> Component.literal("[FeatheredFriend] Stored tamed ravens: " + foundFinal + " (scanned " + scannedFinal + " playerdata files)"),
+                    false
+            );
+
+            for (String line : lines) {
+                final String out = line;
+                source.sendSuccess(() -> Component.literal(out), false);
+            }
+
+            LOG.info("[FeatheredFriendCommands] tamed_raven list: found={} scanned={} dir={}", foundFinal, scannedFinal, playerDataDir);
+            return foundFinal;
+
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriendCommands] executeTamedRavenListAll failed", t);
+            source.sendFailure(Component.literal("[FeatheredFriend] Error while listing stored tamed ravens; see log."));
+            return 0;
+        }
+    }
+
+    /**
+     * /featheredfriend tamed_raven add <player> <name>
+     *
+     * Writes persistent TamedRaven info for a specific player.
+     * - If player is online: edits in-memory persistent data (safe + immediate).
+     * - If offline: edits their playerdata .dat file on disk.
+     */
+    private static int executeTamedRavenAddForPlayer(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        CommandSourceStack source = ctx.getSource();
+
+        MinecraftServer server = source.getServer();
+        if (server == null) {
+            source.sendFailure(Component.literal("[FeatheredFriend] Internal error: server is null."));
+            LOG.warn("[FeatheredFriendCommands] tamed_raven add: source.getServer() was null");
+            return 0;
+        }
+
+        Collection<GameProfile> profiles = GameProfileArgument.getGameProfiles(ctx, "player");
+        if (profiles == null || profiles.isEmpty()) {
+            source.sendFailure(Component.literal("[FeatheredFriend] No matching player found."));
+            return 0;
+        }
+
+        GameProfile profile = profiles.iterator().next();
+        UUID targetUuid = profile.getId();
+        String targetName = profile.getName();
+        if (targetUuid == null) {
+            source.sendFailure(Component.literal("[FeatheredFriend] Target player's UUID is null (cannot proceed)."));
+            LOG.warn("[FeatheredFriendCommands] tamed_raven add: profile had null UUID (name={})", targetName);
+            return 0;
+        }
+
+        String rawName = "";
+        try {
+            rawName = StringArgumentType.getString(ctx, "name");
+        } catch (Throwable ignored) {
+        }
+        String ravenName = sanitizeRavenName(rawName);
+
+        LOG.info("[FeatheredFriendCommands] tamed_raven add: request targetName='{}' uuid={} ravenName='{}' (raw='{}')",
+                targetName, targetUuid, ravenName, rawName);
+
+        // 1) If online, update directly.
+        ServerPlayer online = server.getPlayerList().getPlayer(targetUuid);
+        if (online != null) {
+            boolean ok = setTamedRavenPersistentDataOnline(online, ravenName);
+            if (ok) {
+                source.sendSuccess(() -> Component.literal("[FeatheredFriend] Set tamed raven for online player '" + online.getGameProfile().getName() + "' to '" + ravenName + "'."), true);
+                return 1;
+            } else {
+                source.sendFailure(Component.literal("[FeatheredFriend] Failed to set tamed raven for online player; see log."));
+                return 0;
+            }
+        }
+
+        // 2) Offline: edit playerdata file on disk.
+        Path playerDataDir = getPlayerDataDir(server);
+        if (playerDataDir == null) {
+            source.sendFailure(Component.literal("[FeatheredFriend] Could not locate playerdata directory (see server log)."));
+            return 0;
+        }
+
+        Path playerDat = playerDataDir.resolve(targetUuid.toString() + ".dat");
+        if (!Files.exists(playerDat)) {
+            source.sendFailure(Component.literal("[FeatheredFriend] Playerdata file not found for " + (targetName != null ? targetName : targetUuid) + " (" + playerDat + ")."));
+            LOG.warn("[FeatheredFriendCommands] tamed_raven add: offline playerdat missing: {}", playerDat);
+            return 0;
+        }
+
+        boolean wrote = setTamedRavenPersistentDataOffline(playerDat, targetUuid, ravenName);
+        if (wrote) {
+            String display = (targetName == null || targetName.isBlank()) ? targetUuid.toString() : targetName;
+            source.sendSuccess(() -> Component.literal("[FeatheredFriend] Set tamed raven for offline player '" + display + "' to '" + ravenName + "'."), true);
+            return 1;
+        } else {
+            source.sendFailure(Component.literal("[FeatheredFriend] Failed to set tamed raven for offline player; see log."));
+            return 0;
+        }
+    }
+
+    private static boolean setTamedRavenPersistentDataOnline(ServerPlayer player, String ravenName) {
+        try {
+            if (player == null) return false;
+
+            CompoundTag root = player.getPersistentData();
+            if (root == null) {
+                LOG.warn("[FeatheredFriendCommands] setTamedRavenPersistentDataOnline: persistentData null for player={}", safeName(player));
+                return false;
+            }
+
+            CompoundTag modTag;
+            if (root.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)) {
+                modTag = root.getCompound(Constants.MOD_ID);
+            } else {
+                modTag = new CompoundTag();
+            }
+
+            CompoundTag tamed;
+            if (modTag.contains(KEY_TAMED_RAVEN, Tag.TAG_COMPOUND)) {
+                tamed = modTag.getCompound(KEY_TAMED_RAVEN);
+            } else {
+                tamed = new CompoundTag();
+            }
+
+            tamed.putBoolean(KEY_HAS_TAMED_RAVEN, true);
+            tamed.putString(KEY_RAVEN_NAME, ravenName);
+
+            // Store a couple of helpful fields (your clear command already removes these).
+            try {
+                tamed.putString(KEY_OWNER_UUID, player.getUUID().toString());
+            } catch (Throwable ignored) {
+            }
+            try {
+                String dim = player.level() != null && player.level().dimension() != null
+                        ? player.level().dimension().location().toString()
+                        : "minecraft:overworld";
+                tamed.putString(KEY_OWNER_DIMENSION, dim);
+            } catch (Throwable ignored) {
+                tamed.putString(KEY_OWNER_DIMENSION, "minecraft:overworld");
+            }
+
+            modTag.put(KEY_TAMED_RAVEN, tamed);
+            root.put(Constants.MOD_ID, modTag);
+
+            LOG.info("[FeatheredFriendCommands] setTamedRavenPersistentDataOnline: player={} uuid={} ravenName='{}' tagNow={}",
+                    safeName(player), player.getUUID(), ravenName, tamed);
+
+            return true;
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriendCommands] setTamedRavenPersistentDataOnline failed for player={}", safeName(player), t);
+            return false;
+        }
+    }
+
+    private static boolean setTamedRavenPersistentDataOffline(Path playerDat, UUID playerUuid, String ravenName) {
+        try {
+            if (playerDat == null || playerUuid == null) return false;
+
+            CompoundTag playerRoot = readPlayerDatSafe(playerDat);
+            if (playerRoot == null) {
+                LOG.warn("[FeatheredFriendCommands] setTamedRavenPersistentDataOffline: readPlayerDatSafe returned null for {}", playerDat);
+                return false;
+            }
+
+            // Ensure persistent root exists under NeoForgeData (preferred) or ForgeData.
+            String chosenRootKey;
+            CompoundTag persistent;
+
+            if (playerRoot.contains(ROOT_NEOFORGE_DATA, Tag.TAG_COMPOUND)) {
+                chosenRootKey = ROOT_NEOFORGE_DATA;
+                persistent = playerRoot.getCompound(ROOT_NEOFORGE_DATA);
+            } else if (playerRoot.contains(ROOT_FORGE_DATA, Tag.TAG_COMPOUND)) {
+                chosenRootKey = ROOT_FORGE_DATA;
+                persistent = playerRoot.getCompound(ROOT_FORGE_DATA);
+            } else {
+                // Create NeoForgeData if neither exists.
+                chosenRootKey = ROOT_NEOFORGE_DATA;
+                persistent = new CompoundTag();
+            }
+
+            CompoundTag modTag;
+            if (persistent.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)) {
+                modTag = persistent.getCompound(Constants.MOD_ID);
+            } else {
+                modTag = new CompoundTag();
+            }
+
+            CompoundTag tamed;
+            if (modTag.contains(KEY_TAMED_RAVEN, Tag.TAG_COMPOUND)) {
+                tamed = modTag.getCompound(KEY_TAMED_RAVEN);
+            } else {
+                tamed = new CompoundTag();
+            }
+
+            tamed.putBoolean(KEY_HAS_TAMED_RAVEN, true);
+            tamed.putString(KEY_RAVEN_NAME, ravenName);
+            tamed.putString(KEY_OWNER_UUID, playerUuid.toString());
+
+            // Owner dimension is unknown offline; default to overworld.
+            if (!tamed.contains(KEY_OWNER_DIMENSION, Tag.TAG_STRING) || tamed.getString(KEY_OWNER_DIMENSION).isBlank()) {
+                tamed.putString(KEY_OWNER_DIMENSION, "minecraft:overworld");
+            }
+
+            modTag.put(KEY_TAMED_RAVEN, tamed);
+            persistent.put(Constants.MOD_ID, modTag);
+            playerRoot.put(chosenRootKey, persistent);
+
+            boolean wrote = writePlayerDatSafe(playerDat, playerRoot);
+            if (!wrote) {
+                LOG.error("[FeatheredFriendCommands] setTamedRavenPersistentDataOffline: writePlayerDatSafe failed for {}", playerDat);
+                return false;
+            }
+
+            LOG.info("[FeatheredFriendCommands] setTamedRavenPersistentDataOffline: wrote {} uuid={} ravenName='{}' rootKey={} tagNow={}",
+                    playerDat, playerUuid, ravenName, chosenRootKey, tamed);
+
+            return true;
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriendCommands] setTamedRavenPersistentDataOffline failed for file={}", playerDat, t);
+            return false;
+        }
+    }
+
+    private static String sanitizeRavenName(String raw) {
+        try {
+            String s = raw == null ? "" : raw.trim();
+            if (s.isEmpty()) s = "Raven";
+            if (s.length() > MAX_RAVEN_NAME_CHARS) {
+                s = s.substring(0, MAX_RAVEN_NAME_CHARS);
+            }
+            return s;
+        } catch (Throwable t) {
+            LOG.warn("[FeatheredFriendCommands] sanitizeRavenName failed safely: {}", t.toString());
+            return "Raven";
+        }
+    }
+
+    private static Path getPlayerDataDir(MinecraftServer server) {
+        try {
+            if (server == null) return null;
+            Path p = server.getWorldPath(LevelResource.PLAYER_DATA_DIR);
+            if (p == null) {
+                LOG.warn("[FeatheredFriendCommands] getPlayerDataDir: server.getWorldPath(LevelResource.PLAYER_DATA_DIR) returned null");
+                return null;
+            }
+            return p;
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriendCommands] getPlayerDataDir failed", t);
+            return null;
+        }
+    }
+
+    private static UUID parseUuidFromPlayerDatName(String filename) {
+        try {
+            if (filename == null) return null;
+            String base = filename;
+            if (base.endsWith(".dat")) base = base.substring(0, base.length() - 4);
+            return UUID.fromString(base);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static CompoundTag extractPersistentDataFromPlayerFile(CompoundTag playerRoot) {
+        try {
+            if (playerRoot == null) return null;
+
+            // Prefer NeoForgeData; fallback ForgeData; fallback direct (rare).
+            if (playerRoot.contains(ROOT_NEOFORGE_DATA, Tag.TAG_COMPOUND)) {
+                return playerRoot.getCompound(ROOT_NEOFORGE_DATA);
+            }
+            if (playerRoot.contains(ROOT_FORGE_DATA, Tag.TAG_COMPOUND)) {
+                return playerRoot.getCompound(ROOT_FORGE_DATA);
+            }
+
+            // Some environments/mods may store persistent data under the modid directly at player root.
+            // This is not typical, but we allow it as a fallback.
+            if (playerRoot.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)) {
+                return playerRoot;
+            }
+
+            return null;
+        } catch (Throwable t) {
+            LOG.warn("[FeatheredFriendCommands] extractPersistentDataFromPlayerFile failed safely: {}", t.toString());
+            return null;
+        }
+    }
+
+    private static String safeGuessNameFromPlayerRoot(CompoundTag playerRoot) {
+        try {
+            if (playerRoot == null) return "";
+            // Vanilla often stores LastKnownName (not guaranteed).
+            if (playerRoot.contains("LastKnownName", Tag.TAG_STRING)) {
+                String s = playerRoot.getString("LastKnownName");
+                return s == null ? "" : s;
+            }
+            if (playerRoot.contains("lastKnownName", Tag.TAG_STRING)) {
+                String s = playerRoot.getString("lastKnownName");
+                return s == null ? "" : s;
+            }
+            if (playerRoot.contains("Name", Tag.TAG_STRING)) {
+                String s = playerRoot.getString("Name");
+                return s == null ? "" : s;
+            }
+            return "";
+        } catch (Throwable t) {
+            LOG.debug("[FeatheredFriendCommands] safeGuessNameFromPlayerRoot failed safely: {}", t.toString());
+            return "";
+        }
+    }
+
+    private static String safeName(ServerPlayer p) {
+        try {
+            if (p == null) return "null";
+            String n = p.getGameProfile() != null ? p.getGameProfile().getName() : null;
+            return (n == null || n.isBlank()) ? "unknown" : n;
+        } catch (Throwable ignored) {
+            return "unknown";
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Playerdat NBT IO helpers (1.21.x requires NbtAccounter)
+    // ---------------------------------------------------------------------
+
+    private static CompoundTag readPlayerDatSafe(Path path) {
+        try {
+            if (path == null) return null;
+            if (!Files.exists(path)) {
+                LOG.debug("[FeatheredFriendCommands] readPlayerDatSafe: file does not exist: {}", path);
+                return null;
+            }
+
+            // 1.21.x signature requires an accounter.
+            // Use a reasonable budget; player .dat should never be huge.
+            NbtAccounter accounter = NbtAccounter.create(PLAYERDAT_NBT_BUDGET_BYTES);
+
+            try {
+                // Prefer Path overload if present.
+                CompoundTag tag = NbtIo.readCompressed(path, accounter);
+                return tag == null ? new CompoundTag() : tag;
+            } catch (Throwable pathOverloadErr) {
+                // Fallback to InputStream overload if needed (futureproof / loader differences).
+                LOG.debug("[FeatheredFriendCommands] readPlayerDatSafe: Path overload failed for {}: {} (trying InputStream)",
+                        path, pathOverloadErr.toString());
+                try (InputStream in = Files.newInputStream(path)) {
+                    CompoundTag tag = NbtIo.readCompressed(in, accounter);
+                    return tag == null ? new CompoundTag() : tag;
+                }
+            }
+        } catch (Throwable t) {
+            LOG.warn("[FeatheredFriendCommands] readPlayerDatSafe failed for {}: {}", path, t.toString());
+            return null;
+        }
+    }
+
+    private static boolean writePlayerDatSafe(Path path, CompoundTag tag) {
+        try {
+            if (path == null) return false;
+            if (tag == null) tag = new CompoundTag();
+
+            // Avoid partial writes: write to temp then move.
+            Path tmp = path.resolveSibling(path.getFileName().toString() + ".tmp_ff");
+
+            try (OutputStream out = Files.newOutputStream(tmp)) {
+                NbtIo.writeCompressed(tag, out);
+            } catch (Throwable writeErr) {
+                LOG.error("[FeatheredFriendCommands] writePlayerDatSafe: writeCompressed failed for tmp={} target={}: {}",
+                        tmp, path, writeErr.toString());
+                try {
+                    Files.deleteIfExists(tmp);
+                } catch (Throwable ignored) {
+                }
+                return false;
+            }
+
+            try {
+                // Replace existing.
+                Files.move(tmp, path, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            } catch (Throwable moveErr) {
+                // ATOMIC_MOVE may fail on some FS; retry without it.
+                LOG.debug("[FeatheredFriendCommands] writePlayerDatSafe: atomic move failed for {} -> {}: {} (retrying non-atomic)",
+                        tmp, path, moveErr.toString());
+                try {
+                    Files.move(tmp, path, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } catch (Throwable moveErr2) {
+                    LOG.error("[FeatheredFriendCommands] writePlayerDatSafe: move failed for {} -> {}: {}", tmp, path, moveErr2.toString());
+                    try {
+                        Files.deleteIfExists(tmp);
+                    } catch (Throwable ignored) {
+                    }
+                    return false;
+                }
+            }
+
+            return true;
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriendCommands] writePlayerDatSafe failed for {}: {}", path, t.toString());
             return false;
         }
     }
@@ -273,18 +846,20 @@ public final class FeatheredFriendCommands {
             );
 
             for (RavenCourierData.DeliveryJob job : jobs) {
-                if (job == null) {
-                    continue;
-                }
+                if (job == null) continue;
+
                 final String line = String.format(
-                        " - id=%d sender='%s' [%s] -> recipient='%s' [%s] inFlight=%s sealedScroll=%s",
+                        " - id=%d sender='%s' [%s] -> recipient='%s' [%s] inFlight=%s failed=%s failureCount=%d lastFailTime=%d lastFailReason='%s'",
                         job.jobId,
                         job.senderName,
                         job.senderUuid,
                         job.recipientName,
                         job.recipientUuid,
                         job.inFlight,
-                        job.sealedScrollNbt // full SealedScroll compound
+                        job.failed,
+                        job.failureCount,
+                        job.lastFailureGameTime,
+                        (job.lastFailureReason == null ? "" : job.lastFailureReason)
                 );
                 source.sendSuccess(() -> Component.literal(line), false);
             }
@@ -315,6 +890,11 @@ public final class FeatheredFriendCommands {
             UUID targetUuid = profile.getId();
             String targetName = profile.getName();
 
+            if (targetUuid == null) {
+                source.sendFailure(Component.literal("[FeatheredFriend] Target player UUID is null."));
+                return 0;
+            }
+
             ServerLevel level = source.getLevel();
             RavenCourierData data = RavenCourierData.get(level);
 
@@ -333,18 +913,17 @@ public final class FeatheredFriendCommands {
             );
 
             for (RavenCourierData.DeliveryJob job : jobs) {
-                if (job == null) {
-                    continue;
-                }
+                if (job == null) continue;
+
                 final String line = String.format(
-                        " - id=%d sender='%s' [%s] -> recipient='%s' [%s] inFlight=%s",
+                        " - id=%d sender='%s' [%s] -> recipient='%s' [%s] inFlight=%s failed=%s",
                         job.jobId,
                         job.senderName,
                         job.senderUuid,
                         job.recipientName,
                         job.recipientUuid,
                         job.inFlight,
-                        job.sealedScrollNbt // full SealedScroll compound
+                        job.failed
                 );
                 source.sendSuccess(() -> Component.literal(line), false);
             }
@@ -398,6 +977,11 @@ public final class FeatheredFriendCommands {
             GameProfile profile = profiles.iterator().next();
             UUID targetUuid = profile.getId();
             String targetName = profile.getName();
+
+            if (targetUuid == null) {
+                source.sendFailure(Component.literal("[FeatheredFriend] Target player UUID is null."));
+                return 0;
+            }
 
             ServerLevel level = source.getLevel();
             RavenCourierData data = RavenCourierData.get(level);

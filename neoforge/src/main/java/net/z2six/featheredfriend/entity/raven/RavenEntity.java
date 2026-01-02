@@ -448,7 +448,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 followOverrideActive = (this.lureFollowTame != null && this.lureFollowTame.isFollowOverrideActive());
             } catch (Throwable t) {
                 if (this.tickCount % 80 == 0) {
-                    LOG.warn("[RavenEntity] setAIState: isFollowOverrideActive failed safely: {}", t.toString());
+                    //LOG.warn("[RavenEntity] setAIState: isFollowOverrideActive failed safely: {}", t.toString());
                 }
             }
 
@@ -457,7 +457,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 scrollSummonFollowLock = isScrollSummonFollowLockActive();
             } catch (Throwable t) {
                 if (this.tickCount % 80 == 0) {
-                    LOG.warn("[RavenEntity] setAIState: isScrollSummonFollowLockActive failed safely: {}", t.toString());
+                    //LOG.warn("[RavenEntity] setAIState: isScrollSummonFollowLockActive failed safely: {}", t.toString());
                 }
             }
 
@@ -473,7 +473,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 }
             } catch (Throwable t) {
                 if (this.tickCount % 80 == 0) {
-                    LOG.warn("[RavenEntity] setAIState: owner validity check failed safely: {}", t.toString());
+                    //LOG.warn("[RavenEntity] setAIState: owner validity check failed safely: {}", t.toString());
                 }
             }
 
@@ -484,7 +484,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
                 // Rate-limited log so we can confirm what's trying to steal the state.
                 if (this.tickCount % 20 == 0) {
-                    LOG.info(
+                    /* LOG.info(
                             "[RavenEntity] setAIState: BLOCKED transition {} -> {} while follow protected (override={}, scrollLock={}) " +
                                     "pos={} flyTarget={} pathGoal={} followCd={}",
                             prev,
@@ -496,6 +496,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                             pathGoal,
                             getFollowCooldownTicks()
                     );
+                     */
                 }
 
                 // Optional: super-occasional stack trace to identify the caller.
@@ -514,8 +515,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                             sb.append("\n  at ").append(st[i]);
                             shown++;
                         }
-                        LOG.debug("[RavenEntity] setAIState: caller trace for blocked transition:{}",
+                        /* LOG.debug("[RavenEntity] setAIState: caller trace for blocked transition:{}",
                                 sb.toString());
+                         */
                     } catch (Throwable ignored) {
                     }
                 }
@@ -531,7 +533,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         idleSettlingActive = true;
 
                         if (this.tickCount % 40 == 0) {
-                            LOG.debug(
+                            /* LOG.debug(
                                     "[RavenEntity] Armed one-time idle settle (prev={}, next={}) pos={} bbMinY={} vel={}",
                                     prev,
                                     state,
@@ -539,17 +541,18 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                                     this.getBoundingBox().minY,
                                     this.getDeltaMovement()
                             );
+                             */
                         }
                     }
                 }
             } catch (Throwable t) {
-                LOG.warn("[RavenEntity] setAIState arm-settle failed: {}", t.toString());
+                //LOG.warn("[RavenEntity] setAIState arm-settle failed: {}", t.toString());
             }
 
             // If same-state spam happens, log occasionally so you can see it.
             if (prev == state) {
                 if (this.tickCount % 80 == 0) {
-                    LOG.info(
+                    /* LOG.info(
                             "[RavenEntity] setAIState(same): {} pos={} landingPhase={} landingLeafPos={} " +
                                     "idleTicksRemaining={} idleCommitTicks={} roamTicksRemaining={} " +
                                     "flyTarget={} flyTtl={} pathGoal={} pendingGoal={} pathPts={} pathIdx={}",
@@ -567,10 +570,11 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                             (pathWaypoints == null ? 0 : pathWaypoints.size()),
                             pathWaypointIndex
                     );
+                     */
                 }
             } else {
                 // Real transition: log every time.
-                LOG.info(
+                /* LOG.info(
                         "[RavenEntity] AI STATE CHANGE: {} -> {} pos={} vel={} noGravity={} onGround={} " +
                                 "landingPhase={} landingLeafPos={} landingTicks={} " +
                                 "idlePerchCorner={} idleTicksRemaining={} idleCommitTicks={} idleLeafLossTicks={} idleLockTicks={} " +
@@ -597,10 +601,11 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         (pathWaypoints == null ? 0 : pathWaypoints.size()),
                         pathWaypointIndex
                 );
+                 */
             }
 
         } catch (Throwable t) {
-            LOG.warn("[RavenEntity] setAIState logging failed safely: {}", t.toString());
+            //LOG.warn("[RavenEntity] setAIState logging failed safely: {}", t.toString());
         }
 
         // Final authoritative write
@@ -616,7 +621,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             RavenAIState st = getAIStateForDebug();
 
-            LOG.info("[RavenEntity] HEARTBEAT({}): ai={} pos={} vel={} noGravity={} onGround={} hColl={} vColl={} landingPhase={} landingLeafPos={} landingTicks={} idlePerchCorner={} idleTicksRemaining={} idleCommitTicks={} idleLeafLossTicks={} idleLockTicks={} roamTicksRemaining={} flyTarget={} flyTtl={} pathGoal={} pendingGoal={} pathPts={} pathIdx={}",
+            /* LOG.info("[RavenEntity] HEARTBEAT({}): ai={} pos={} vel={} noGravity={} onGround={} hColl={} vColl={} landingPhase={} landingLeafPos={} landingTicks={} idlePerchCorner={} idleTicksRemaining={} idleCommitTicks={} idleLeafLossTicks={} idleLockTicks={} roamTicksRemaining={} flyTarget={} flyTtl={} pathGoal={} pendingGoal={} pathPts={} pathIdx={}",
                     where,
                     st,
                     this.position(),
@@ -641,9 +646,10 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     (pathWaypoints == null ? 0 : pathWaypoints.size()),
                     pathWaypointIndex
             );
+            */
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] debugAiHeartbeat failed safely: {}", t.toString());
+                // LOG.warn("[RavenEntity] debugAiHeartbeat failed safely: {}", t.toString());
             }
         }
     }
@@ -659,7 +665,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         homeInitialized = true;
         homePos = this.blockPosition();
         if (this.tickCount % 20 == 0) {
-            LOG.info("[RavenEntity] Home initialized at {}", homePos);
+            // LOG.info("[RavenEntity] Home initialized at {}", homePos);
         }
     }
 
@@ -678,7 +684,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         } catch (Throwable t) {
             // If something goes wrong, fall through to the old behavior rather than crashing.
             if (this.tickCount % 200 == 0) {
-                LOG.warn("[RavenEntity] clampTargetToHomeBounds: FOLLOW_OWNER guard failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] clampTargetToHomeBounds: FOLLOW_OWNER guard failed safely: {}", t.toString());
             }
         }
 
@@ -760,8 +766,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
 
             if ((hadWaypoints || pathGoal != null || pathPendingGoal != null) && (this.tickCount % DEBUG_LOG_INTERVAL_TICKS == 0)) {
-                LOG.debug("[RavenEntity] clearPlannedPath(reason={}) goal={} pending={} waypoints={} idx={}",
+                /*LOG.debug("[RavenEntity] clearPlannedPath(reason={}) goal={} pending={} waypoints={} idx={}",
                         reason, pathGoal, pathPendingGoal, wpSize, pathWaypointIndex);
+                 */
             }
 
             pathGoal = null;
@@ -778,7 +785,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             consecutivePathPlanFails = 0;
             consecutiveStartSampleAdjustments = 0;
         } catch (Throwable t) {
-            LOG.warn("[RavenEntity] clearPlannedPath failed safely: reason={} err={}", reason, t.toString());
+            //LOG.warn("[RavenEntity] clearPlannedPath failed safely: reason={} err={}", reason, t.toString());
             // Fail-safe hard clear
             try {
                 pathGoal = null;
@@ -850,6 +857,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         if (changedXZ || changedY) {
                             consecutiveStartSampleAdjustments++;
                             if (this.tickCount % 20 == 0) {
+                                /*
                                 LOG.info("[RavenEntity] Path start sample adjusted: rawStart={} -> chosenStart={} (up={} snapXZ={} clearance={}x{} allowLeaves={} allowReplaceables={} adjCount={})",
                                         rawStart,
                                         cand,
@@ -860,6 +868,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                                         cfg.allowLeaves,
                                         cfg.allowReplaceables,
                                         consecutiveStartSampleAdjustments);
+                                */
                             }
                         }
                     }
@@ -870,8 +879,10 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
         Vec3 fallback = new Vec3(snapX, rawStart.y + 0.25D, snapZ);
         if (PATH_START_SAMPLE_LOGS && this.tickCount % 40 == 0) {
+            /*
             LOG.warn("[RavenEntity] Path start sample probe found no locally-passable candidate; using fallback={} (rawStart={}, clearance={}x{})",
                     fallback, rawStart, clearanceXZ, clearanceH);
+             */
         }
         return fallback;
     }
@@ -900,7 +911,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         } catch (Throwable t) {
             // Safety fallback: never crash AI on a path sample helper.
             if (this.tickCount % 40 == 0) {
-                LOG.warn("[RavenEntity] computeStablePathStart failed: {}", t.toString());
+                //LOG.warn("[RavenEntity] computeStablePathStart failed: {}", t.toString());
             }
             return this.position();
         }
@@ -955,8 +966,10 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         } catch (Throwable t) {
                             // If we can't even query emptiness, be conservative: treat as blocked.
                             if (this.tickCount % 200 == 0) {
-                                LOG.warn("[RavenEntity] looksLocallyPassableForClearance: isEmptyBlock failed at {} ({})",
+                                /* LOG.warn("[RavenEntity] looksLocallyPassableForClearance: isEmptyBlock failed at {} ({})",
                                         p, t.toString());
+
+                                 */
                             }
                             return false;
                         }
@@ -970,8 +983,10 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                             st = this.level().getBlockState(p);
                         } catch (Throwable t) {
                             if (this.tickCount % 200 == 0) {
-                                LOG.warn("[RavenEntity] looksLocallyPassableForClearance: getBlockState failed at {} ({})",
+                                /* LOG.warn("[RavenEntity] looksLocallyPassableForClearance: getBlockState failed at {} ({})",
                                         p, t.toString());
+
+                                 */
                             }
                             return false;
                         }
@@ -998,7 +1013,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             return true;
         } catch (Throwable t) {
             if (this.tickCount % 200 == 0) {
-                LOG.warn("[RavenEntity] looksLocallyPassableForClearance failed: {}", t.toString());
+                //LOG.warn("[RavenEntity] looksLocallyPassableForClearance failed: {}", t.toString());
             }
             return false;
         }
@@ -1061,7 +1076,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
         if (goal == null) {
             if (this.tickCount % 40 == 0) {
-                LOG.debug("[RavenEntity] ensurePathTo(core): goal=null, skipping (reason={})", reason);
+                //LOG.debug("[RavenEntity] ensurePathTo(core): goal=null, skipping (reason={})", reason);
             }
             return false;
         }
@@ -1075,8 +1090,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // If we are in fail cooldown and not high priority, don't spam A*.
             if (!highPriority && pathFailCooldownTicks > 0) {
                 if (PATH_RETRY_LOGS && this.tickCount % 40 == 0) {
-                    LOG.debug("[RavenEntity] ensurePathTo(core): blocked by failCooldown={} (reason={}) goal={}",
+                    /* LOG.debug("[RavenEntity] ensurePathTo(core): blocked by failCooldown={} (reason={}) goal={}",
                             pathFailCooldownTicks, reason, goal);
+                     */
                 }
                 return false;
             }
@@ -1103,8 +1119,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         return true;
                     } else {
                         if (this.tickCount % 40 == 0) {
-                            LOG.debug("[RavenEntity] ensurePathTo(core): goal close but no usable path/flyTarget -> replanning (reason={}) goal={}",
+                            /*LOG.debug("[RavenEntity] ensurePathTo(core): goal close but no usable path/flyTarget -> replanning (reason={}) goal={}",
                                     reason, goal);
+                             */
                         }
                         // fall through and plan
                     }
@@ -1116,8 +1133,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 long dt = (long) this.tickCount - lastPathPlanAttemptTick;
                 if (dt >= 0 && dt < PATH_REPLAN_MIN_INTERVAL_TICKS) {
                     if (PATH_RETRY_LOGS && this.tickCount % 60 == 0) {
-                        LOG.debug("[RavenEntity] ensurePathTo(core): min-interval gate dt={} < {} (reason={})",
+                        /* LOG.debug("[RavenEntity] ensurePathTo(core): min-interval gate dt={} < {} (reason={})",
                                 dt, PATH_REPLAN_MIN_INTERVAL_TICKS, reason);
+                         */
                     }
                     return false;
                 }
@@ -1164,8 +1182,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 double dy = safeStart.y - rawStart.y;
                 double dz = safeStart.z - rawStart.z;
                 if ((dx * dx + dy * dy + dz * dz) > 0.0001D) {
-                    LOG.info("[RavenEntity] ensurePathTo(core): start adjusted raw={} safe={} (reason={})",
+                    /* LOG.info("[RavenEntity] ensurePathTo(core): start adjusted raw={} safe={} (reason={})",
                             rawStart, safeStart, reason);
+                     */
                 }
             }
 
@@ -1177,8 +1196,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             if (this.tickCount % 20 == 0) {
                 double dg2 = safeGoal.distanceToSqr(rawGoal);
                 if (dg2 > 1.0E-6D) {
-                    LOG.info("[RavenEntity] ensurePathTo(core): goal adjusted rawGoal={} safeGoal={} d2={} (reason={})",
+                    /* LOG.info("[RavenEntity] ensurePathTo(core): goal adjusted rawGoal={} safeGoal={} d2={} (reason={})",
                             rawGoal, safeGoal, String.format("%.3f", dg2), reason);
+                     */
                 }
             }
 
@@ -1187,8 +1207,8 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             try {
                 pts = RavenAStarPathing.findPath(this.level(), safeStart, safeGoal, bounds, cfg);
             } catch (Throwable t) {
-                LOG.error("[RavenEntity] ensurePathTo(core): RavenAStarPathing.findPath crashed safely (reason={}) start={} goal={} bounds={}",
-                        reason, safeStart, safeGoal, bounds, t);
+                /* LOG.error("[RavenEntity] ensurePathTo(core): RavenAStarPathing.findPath crashed safely (reason={}) start={} goal={} bounds={}",
+                        reason, safeStart, safeGoal, bounds, t); */
                 pts = Collections.emptyList();
             }
 
@@ -1231,8 +1251,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             pathFailCooldownTicks = 0;
 
             if (this.tickCount % 20 == 0) {
-                LOG.info("[RavenEntity] ensurePathTo(core): A* OK pts={} reason={} start={} rawGoal={} safeGoal={} pos={}",
+                /* LOG.info("[RavenEntity] ensurePathTo(core): A* OK pts={} reason={} start={} rawGoal={} safeGoal={} pos={}",
                         pts.size(), reason, safeStart, rawGoal, safeGoal, this.position());
+                 */
             }
 
             // Prime movement immediately
@@ -1241,8 +1262,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             return true;
 
         } catch (Throwable t) {
-            LOG.error("[RavenEntity] ensurePathTo(core) failed safely (reason={}) goal={} pos={}",
+            /* LOG.error("[RavenEntity] ensurePathTo(core) failed safely (reason={}) goal={} pos={}",
                     reason, goal, this.position(), t);
+             */
             return false;
         }
     }
@@ -1321,12 +1343,13 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         this.pathWaypointIndex = 0;
 
                         if (this.tickCount % 20 == 0) {
-                            LOG.info("[RavenEntity] advanceWaypointIfNeeded: path exhausted but not arrived -> flyDirectToGoal. reason={} goal={} dGoal={} pos={} flyTarget={}",
+                            /* LOG.info("[RavenEntity] advanceWaypointIfNeeded: path exhausted but not arrived -> flyDirectToGoal. reason={} goal={} dGoal={} pos={} flyTarget={}",
                                     reason,
                                     goal,
                                     String.format("%.3f", dGoal),
                                     pos,
                                     this.flyTarget);
+                             */
                         }
 
                         return;
@@ -1338,8 +1361,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 clearPlannedPath("path completed: " + reason);
 
                 if (this.tickCount % DEBUG_LOG_INTERVAL_TICKS == 0) {
-                    LOG.debug("[RavenEntity] Path completed -> cleared (reason={}) lastGoal={} pos={}",
+                    /* LOG.debug("[RavenEntity] Path completed -> cleared (reason={}) lastGoal={} pos={}",
                             reason, pathGoal, pos);
+                     */
                 }
                 return;
             }
@@ -1350,28 +1374,29 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 setFlyTarget(next, timeoutTicks);
 
                 if (this.tickCount % 60 == 0) {
-                    LOG.debug("[RavenEntity] advanceWaypointIfNeeded: setFlyTarget to waypoint idx={}/{} reason={} wp={} pos={}",
+                    /* LOG.debug("[RavenEntity] advanceWaypointIfNeeded: setFlyTarget to waypoint idx={}/{} reason={} wp={} pos={}",
                             pathWaypointIndex, pathWaypoints.size(), reason, next, pos);
+                     */
                 }
             } else {
                 pathWaypointIndex++;
                 if (this.tickCount % 40 == 0) {
-                    LOG.warn("[RavenEntity] Null waypoint encountered -> skipping (idx now {}) reason={}", pathWaypointIndex, reason);
+                    //LOG.warn("[RavenEntity] Null waypoint encountered -> skipping (idx now {}) reason={}", pathWaypointIndex, reason);
                 }
             }
 
         } catch (Throwable t) {
-            LOG.error("[RavenEntity] advanceWaypointIfNeeded failed (reason={})", reason, t);
+            //LOG.error("[RavenEntity] advanceWaypointIfNeeded failed (reason={})", reason, t);
         }
     }
 
     public boolean commandMoveTo(BlockPos pos, double speed) {
         if (pos == null) {
-            LOG.warn("[RavenEntity] commandMoveTo called with null pos");
+            //LOG.warn("[RavenEntity] commandMoveTo called with null pos");
             return false;
         }
         if (speed <= 0.0D) {
-            LOG.warn("[RavenEntity] commandMoveTo called with non-positive speed: {}", speed);
+            //LOG.warn("[RavenEntity] commandMoveTo called with non-positive speed: {}", speed);
             return false;
         }
 
@@ -1392,7 +1417,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             return true;
         } catch (Throwable t) {
-            LOG.error("[RavenEntity] commandMoveTo failed for {} @ {}", pos, speed, t);
+            //LOG.error("[RavenEntity] commandMoveTo failed for {} @ {}", pos, speed, t);
             return false;
         }
     }
@@ -1426,7 +1451,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     @Override
     public @Nullable AgeableMob getBreedOffspring(ServerLevel level, AgeableMob otherParent) {
         if (this.tickCount % 200 == 0) {
-            LOG.debug("[RavenEntity] getBreedOffspring called but breeding is not implemented (returning null).");
+            //LOG.debug("[RavenEntity] getBreedOffspring called but breeding is not implemented (returning null).");
         }
         return null;
     }
@@ -1445,7 +1470,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             super.checkInsideBlocks();
         } catch (Throwable t) {
             if (this.tickCount % 200 == 0) {
-                LOG.warn("[RavenEntity] checkInsideBlocks failed: {}", t.toString());
+                //LOG.warn("[RavenEntity] checkInsideBlocks failed: {}", t.toString());
             }
         }
     }
@@ -1467,7 +1492,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             out = super.finalizeSpawn(level, difficulty, spawnType, spawnGroupData);
         } catch (Throwable t) {
             // Fail-safe: if vanilla spawn init ever changes or throws, we still want the raven to exist.
-            LOG.warn("[RavenEntity] finalizeSpawn: super.finalizeSpawn failed safely: {}", t.toString());
+            //LOG.warn("[RavenEntity] finalizeSpawn: super.finalizeSpawn failed safely: {}", t.toString());
             out = spawnGroupData;
         }
 
@@ -1479,13 +1504,14 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             initGoldenNuggetsRequiredToTameIfNeeded("finalizeSpawn:" + spawnType);
 
             if (this.tickCount % 20 == 0) {
-                LOG.debug("[RavenEntity] finalizeSpawn: nuggetsRequiredToTame={} spawnType={} pos={}",
+                /* LOG.debug("[RavenEntity] finalizeSpawn: nuggetsRequiredToTame={} spawnType={} pos={}",
                         this.getGoldenNuggetsRequiredToTame(),
                         spawnType,
                         this.position());
+                 */
             }
         } catch (Throwable t) {
-            LOG.warn("[RavenEntity] finalizeSpawn: tame-cost init failed safely: {}", t.toString());
+            //LOG.warn("[RavenEntity] finalizeSpawn: tame-cost init failed safely: {}", t.toString());
         }
 
         return out;
@@ -1522,17 +1548,18 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 tag.putInt(LureFollowTame.NBT_TAME_NUGGETS_REQUIRED, v);
 
                 if (this.tickCount % 200 == 0) {
-                    LOG.debug("[RavenEntity] Saved tame-cost: {}={}",
+                    /* LOG.debug("[RavenEntity] Saved tame-cost: {}={}",
                             LureFollowTame.NBT_TAME_NUGGETS_REQUIRED, v);
+                     */
                 }
             } catch (Throwable t2) {
                 if (this.tickCount % 200 == 0) {
-                    LOG.warn("[RavenEntity] Failed writing tame-cost NBT safely: {}", t2.toString());
+                    //LOG.warn("[RavenEntity] Failed writing tame-cost NBT safely: {}", t2.toString());
                 }
             }
 
         } catch (Throwable t) {
-            LOG.error("[RavenEntity] Failed writing NBT", t);
+            //LOG.error("[RavenEntity] Failed writing NBT", t);
         }
     }
 
@@ -1583,8 +1610,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     this.setGoldenNuggetsRequiredToTame(v);
 
                     if (this.tickCount % 200 == 0) {
-                        LOG.debug("[RavenEntity] Loaded tame-cost: {}={}",
+                        /* LOG.debug("[RavenEntity] Loaded tame-cost: {}={}",
                                 LureFollowTame.NBT_TAME_NUGGETS_REQUIRED, v);
+                         */
                     }
                 } else {
                     // Older saves: initialize safely (server side).
@@ -1592,13 +1620,13 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 }
             } catch (Throwable t2) {
                 if (this.tickCount % 200 == 0) {
-                    LOG.warn("[RavenEntity] Failed reading tame-cost NBT safely: {}", t2.toString());
+                    //LOG.warn("[RavenEntity] Failed reading tame-cost NBT safely: {}", t2.toString());
                 }
                 this.setGoldenNuggetsRequiredToTame(4);
             }
 
         } catch (Throwable t) {
-            LOG.error("[RavenEntity] Failed reading NBT", t);
+            //LOG.error("[RavenEntity] Failed reading NBT", t);
         }
     }
 
@@ -1639,7 +1667,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 }
             } catch (Throwable t) {
                 if (this.tickCount % 80 == 0) {
-                    LOG.error("[RavenEntity] aiStep: TamedRaven.tickServer failed safely", t);
+                    //LOG.error("[RavenEntity] aiStep: TamedRaven.tickServer failed safely", t);
                 }
             }
 
@@ -1696,7 +1724,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                                             ^ (long) this.tickCount
                                             ^ 0xA5A5A5A5L;
 
-                            LOG.info(
+                            /* LOG.info(
                                     "[RavenEntity] A* retry tick: retryGoal={} pos={} vel={} collH={} collV={} fails={}",
                                     retryGoal,
                                     this.position(),
@@ -1705,21 +1733,24 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                                     this.verticalCollision,
                                     consecutivePathPlanFails
                             );
+                             */
 
                             boolean ok = ensurePathTo(retryGoal, 6 * 20, seed, "retry-loop");
 
                             if (ok) {
-                                LOG.info(
+                                /* LOG.info(
                                         "[RavenEntity] A* retry SUCCESS -> pts={} idx={} flyTarget={}",
                                         (pathWaypoints == null ? 0 : pathWaypoints.size()),
                                         pathWaypointIndex,
                                         flyTarget
                                 );
+                                 */
                             } else {
-                                LOG.info(
+                                /* LOG.info(
                                         "[RavenEntity] A* retry FAILED -> nextRetryIn={}t",
                                         PATH_RETRY_INTERVAL_TICKS
                                 );
+                                 */
                             }
                         }
                     } else {
@@ -1737,7 +1768,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     && getAIState() != RavenAIState.FOLLOW_OWNER
                     && isOutOfHomeBounds(this.position())) {
                 if (this.tickCount % 40 == 0) {
-                    LOG.debug("[RavenEntity] Out of bounds, commanding return to home bounds");
+                    //LOG.debug("[RavenEntity] Out of bounds, commanding return to home bounds");
                 }
 
                 setAIState(RavenAIState.ROAM_FLY);
@@ -1850,7 +1881,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     }
                 } catch (Throwable t) {
                     if (this.tickCount % 80 == 0) {
-                        LOG.warn("[RavenEntity] aiStep: stuck-teleport guard failed safely: {}", t.toString());
+                        //LOG.warn("[RavenEntity] aiStep: stuck-teleport guard failed safely: {}", t.toString());
                     }
                 }
             }
@@ -1858,17 +1889,18 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             if (!skipStuckTeleport) {
                 teleportation.tickTeleportRecoverySampler(this);
             } else if (this.tickCount % 40 == 0) {
-                LOG.debug(
+                /* LOG.debug(
                         "[RavenEntity] Skipping teleportRecoverySampler while parked near follow target. pos={} aiState={}",
                         this.position(),
                         getAIState()
                 );
+                 */
             }
 
             teleportation.tickTeleportFxServer(this);
 
         } catch (Throwable t) {
-            LOG.error("[RavenEntity] aiStep failed", t);
+            //LOG.error("[RavenEntity] aiStep failed", t);
         }
     }
 
@@ -1885,13 +1917,13 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
                 if (getAIState() != RavenAIState.IDLE_GROUND) {
                     if (this.tickCount % 20 == 0) {
-                        LOG.info("[RavenEntity] tickIdleGround: player avoidance switched AI state -> {} (yielding idle tick)", getAIState());
+                        //LOG.info("[RavenEntity] tickIdleGround: player avoidance switched AI state -> {} (yielding idle tick)", getAIState());
                     }
                     return;
                 }
             } catch (Throwable t) {
                 if (this.tickCount % 40 == 0) {
-                    LOG.warn("[RavenEntity] PlayerAvoidance failed safely (idle): {}", t.toString());
+                    //LOG.warn("[RavenEntity] PlayerAvoidance failed safely (idle): {}", t.toString());
                 }
             }
 
@@ -1911,12 +1943,13 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             if (hasUnexpectedIntent) {
                 if (this.tickCount % 20 == 0) {
-                    LOG.warn("[RavenEntity] IDLE: unexpected intent detected -> clearing. pos={} flyTarget={} goal={} pending={} pathPts={}",
+                    /* LOG.warn("[RavenEntity] IDLE: unexpected intent detected -> clearing. pos={} flyTarget={} goal={} pending={} pathPts={}",
                             this.position(),
                             flyTarget,
                             pathGoal,
                             pathPendingGoal,
                             (pathWaypoints == null ? 0 : pathWaypoints.size()));
+                     */
                 }
                 clearFlyTarget();
                 flyTargetTimeoutTicks = 0;
@@ -1956,7 +1989,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 idleLeafLossTicks++;
 
                 if (this.tickCount % 20 == 0) {
-                    LOG.info("[RavenEntity] IDLE: perch invalid sample {}/{} pos={} idlePerchCorner={} bbMinY={} onGround={} vColl={} commitTicks={} idleTicksRemaining={}",
+                    /* LOG.info("[RavenEntity] IDLE: perch invalid sample {}/{} pos={} idlePerchCorner={} bbMinY={} onGround={} vColl={} commitTicks={} idleTicksRemaining={}",
                             idleLeafLossTicks,
                             IDLE_LEAF_LOSS_GRACE_TICKS,
                             this.position(),
@@ -1967,6 +2000,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                             idleCommitTicks,
                             idleTicksRemaining
                     );
+                     */
                 }
 
                 // Only bail once it persists beyond your grace period.
@@ -1974,8 +2008,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     // Hard reason: perch truly lost.
                     String leaveReason = "idle perch invalid for " + idleLeafLossTicks + " ticks";
                     if (this.tickCount % 20 == 0) {
-                        LOG.info("[RavenEntity] IDLE -> ROAM_FLY (reason={}) pos={} idlePerchCorner={}",
+                        /* LOG.info("[RavenEntity] IDLE -> ROAM_FLY (reason={}) pos={} idlePerchCorner={}",
                                 leaveReason, this.position(), landing.idlePerchCorner);
+                         */
                     }
 
                     // Start a roam flight window (or your preferred takeoff logic)
@@ -1992,8 +2027,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             } else {
                 // Reset loss counter if we are valid again.
                 if (idleLeafLossTicks > 0 && this.tickCount % 40 == 0) {
-                    LOG.debug("[RavenEntity] IDLE: perch validity restored. pos={} idlePerchCorner={} lossTicksResetFrom={}",
+                    /* LOG.debug("[RavenEntity] IDLE: perch validity restored. pos={} idlePerchCorner={} lossTicksResetFrom={}",
                             this.position(), landing.idlePerchCorner, idleLeafLossTicks);
+                     */
                 }
                 idleLeafLossTicks = 0;
             }
@@ -2025,14 +2061,16 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 if (idleCommitTicks > 0) {
                     // Commit overrides "timer done" in the first few seconds after landing.
                     if (this.tickCount % 40 == 0) {
-                        LOG.debug("[RavenEntity] IDLE: timer expired but commit active -> holding. commitTicks={} pos={}",
+                        /* LOG.debug("[RavenEntity] IDLE: timer expired but commit active -> holding. commitTicks={} pos={}",
                                 idleCommitTicks, this.position());
+                         */
                     }
                 } else {
                     String leaveReason = "idle timer expired";
                     if (this.tickCount % 20 == 0) {
-                        LOG.info("[RavenEntity] IDLE -> ROAM_FLY (reason={}) pos={} idlePerchCorner={}",
+                        /* LOG.info("[RavenEntity] IDLE -> ROAM_FLY (reason={}) pos={} idlePerchCorner={}",
                                 leaveReason, this.position(), landing.idlePerchCorner);
+                         */
                     }
 
                     setAIState(RavenAIState.ROAM_FLY);
@@ -2052,12 +2090,13 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             // Optional: super-light periodic idle heartbeat log (rare).
             if (this.tickCount % 200 == 0) {
-                LOG.debug("[RavenEntity] IDLE tick: pos={} idlePerchCorner={} idleTicksRemaining={} commitTicks={} leafLossTicks={}",
+                /* LOG.debug("[RavenEntity] IDLE tick: pos={} idlePerchCorner={} idleTicksRemaining={} commitTicks={} leafLossTicks={}",
                         this.position(), landing.idlePerchCorner, idleTicksRemaining, idleCommitTicks, idleLeafLossTicks);
+                 */
             }
 
         } catch (Throwable t) {
-            LOG.error("[RavenEntity] tickIdleGround failed", t);
+            //LOG.error("[RavenEntity] tickIdleGround failed", t);
         }
     }
 
@@ -2100,7 +2139,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 PlayerAvoidance.tryTriggerPlayerAvoidance(this);
             } catch (Throwable t) {
                 if (this.tickCount % 40 == 0) {
-                    LOG.warn("[RavenEntity] PlayerAvoidance failed safely: {}", t.toString());
+                    //LOG.warn("[RavenEntity] PlayerAvoidance failed safely: {}", t.toString());
                 }
             }
 
@@ -2141,14 +2180,15 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                             stillOverriding = false;
 
                             if (this.tickCount % 40 == 0) {
-                                LOG.info("[RavenEntity] PlayerAvoidance: arrived near flee target -> clearing override. pos={} targetDist={}",
+                                /* LOG.info("[RavenEntity] PlayerAvoidance: arrived near flee target -> clearing override. pos={} targetDist={}",
                                         pos, String.format("%.3f", Math.sqrt(d2)));
+                                 */
                             }
                         }
                     }
                 } catch (Throwable t) {
                     if (this.tickCount % 40 == 0) {
-                        LOG.warn("[RavenEntity] PlayerAvoidance arrival check failed safely: {}", t.toString());
+                        //LOG.warn("[RavenEntity] PlayerAvoidance arrival check failed safely: {}", t.toString());
                     }
                 }
 
@@ -2186,7 +2226,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         }
                     } catch (Throwable t) {
                         if (this.tickCount % 40 == 0) {
-                            LOG.warn("[RavenEntity] playerAvoidance override: flyTowardTarget failed safely: {}", t.toString());
+                            //LOG.warn("[RavenEntity] playerAvoidance override: flyTowardTarget failed safely: {}", t.toString());
                         }
                     }
 
@@ -2198,7 +2238,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         }
                     } catch (Throwable t) {
                         if (this.tickCount % 40 == 0) {
-                            LOG.warn("[RavenEntity] playerAvoidance override: advanceWaypointIfNeeded failed safely: {}", t.toString());
+                            //LOG.warn("[RavenEntity] playerAvoidance override: advanceWaypointIfNeeded failed safely: {}", t.toString());
                         }
                     }
 
@@ -2207,12 +2247,12 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         teleportation.tickRandomFlightTeleportBlink(this);
                     } catch (Throwable t) {
                         if (this.tickCount % 40 == 0) {
-                            LOG.warn("[RavenEntity] tickRandomFlightTeleportBlink failed safely (avoidanceOverride): {}", t.toString());
+                            //LOG.warn("[RavenEntity] tickRandomFlightTeleportBlink failed safely (avoidanceOverride): {}", t.toString());
                         }
                     }
 
                     if (this.tickCount % 40 == 0) {
-                        LOG.info("[RavenEntity] PlayerAvoidance override active: ticksLeft={} pos={} vel={} flyTarget={} flyTtl={} pathGoal={} pts={} idx={}",
+                        /* LOG.info("[RavenEntity] PlayerAvoidance override active: ticksLeft={} pos={} vel={} flyTarget={} flyTtl={} pathGoal={} pts={} idx={}",
                                 playerAvoidanceOverrideTicks,
                                 this.position(),
                                 this.getDeltaMovement(),
@@ -2221,6 +2261,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                                 pathGoal,
                                 (pathWaypoints == null ? 0 : pathWaypoints.size()),
                                 pathWaypointIndex);
+                         */
                     }
 
                     return;
@@ -2286,14 +2327,15 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     teleportation.tickRandomFlightTeleportBlink(this);
                 } catch (Throwable t) {
                     if (this.tickCount % 40 == 0) {
-                        LOG.warn("[RavenEntity] tickRandomFlightTeleportBlink failed safely (takeoffLock): {}", t.toString());
+                        //LOG.warn("[RavenEntity] tickRandomFlightTeleportBlink failed safely (takeoffLock): {}", t.toString());
                     }
                 }
 
                 if (this.tickCount % 120 == 0) {
-                    LOG.debug("[RavenEntity] ROAM_FLY takeoff lock active (remaining={}) pos={} vel={} pathPts={} pathIdx={}",
+                    /* LOG.debug("[RavenEntity] ROAM_FLY takeoff lock active (remaining={}) pos={} vel={} pathPts={} pathIdx={}",
                             idleLockTicks, this.position(), this.getDeltaMovement(),
                             (pathWaypoints == null ? 0 : pathWaypoints.size()), pathWaypointIndex);
+                     */
                 }
                 return;
             }
@@ -2304,8 +2346,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // which is true during DROP / actual landing / resting.
             if (!this.isNoGravity() && landing.isOnValidPerchNow(this)) {
                 if (this.tickCount % 40 == 0) {
-                    LOG.debug("[RavenEntity] ROAM_FLY -> IDLE shortcut (not flying): pos={} vel={} landingPhase={} leafPos={}",
+                    /* LOG.debug("[RavenEntity] ROAM_FLY -> IDLE shortcut (not flying): pos={} vel={} landingPhase={} leafPos={}",
                             this.position(), this.getDeltaMovement(), landingPhase, landing.landingLeafPos);
+                     */
                 }
                 landing.enterIdleFromLanding("ROAM_FLY: centered on valid 2x2 perch (not flying)", this);
                 return;
@@ -2315,8 +2358,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 landingTicks++;
                 if (landingTicks > landing.LANDING_MAX_TOTAL_TICKS) {
                     if (this.tickCount % 80 == 0) {
-                        LOG.debug("[RavenEntity] Landing timed out (phase={}, ticks={}) -> resetting landing and restarting landing (no roam interrupt)",
+                        /* LOG.debug("[RavenEntity] Landing timed out (phase={}, ticks={}) -> resetting landing and restarting landing (no roam interrupt)",
                                 landingPhase, landingTicks);
+                         */
                     }
                     landing.resetLandingState("landing timeout", this);
                     clearPlannedPath("landing timeout");
@@ -2327,7 +2371,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             if (landing.landingLeafPos != null && !landing.isStillValidLandingLeaf(landing.landingLeafPos, this)) {
                 if (this.tickCount % 80 == 0) {
-                    LOG.debug("[RavenEntity] Landing leaf became invalid -> resetting landing leaf at {}", landing.landingLeafPos);
+                    //LOG.debug("[RavenEntity] Landing leaf became invalid -> resetting landing leaf at {}", landing.landingLeafPos);
                 }
                 landing.resetLandingState("invalid leaf", this);
                 clearPlannedPath("invalid landing leaf");
@@ -2374,7 +2418,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     teleportation.tickRandomFlightTeleportBlink(this);
                 } catch (Throwable t) {
                     if (this.tickCount % 40 == 0) {
-                        LOG.warn("[RavenEntity] tickRandomFlightTeleportBlink failed safely (roamWindow): {}", t.toString());
+                        //LOG.warn("[RavenEntity] tickRandomFlightTeleportBlink failed safely (roamWindow): {}", t.toString());
                     }
                 }
 
@@ -2418,12 +2462,12 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     teleportation.tickRandomFlightTeleportBlink(this);
                 } catch (Throwable t) {
                     if (this.tickCount % 40 == 0) {
-                        LOG.warn("[RavenEntity] tickRandomFlightTeleportBlink failed safely (noLeafRoam): {}", t.toString());
+                        //LOG.warn("[RavenEntity] tickRandomFlightTeleportBlink failed safely (noLeafRoam): {}", t.toString());
                     }
                 }
 
                 if (this.tickCount % DEBUG_LOG_INTERVAL_TICKS == 0) {
-                    LOG.debug("[RavenEntity] Landing allowed but no valid leaf found -> roaming {} ticks then retry", extra);
+                    //LOG.debug("[RavenEntity] Landing allowed but no valid leaf found -> roaming {} ticks then retry", extra);
                 }
                 return;
             }
@@ -2449,12 +2493,13 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
 
             if (this.tickCount % DEBUG_LOG_INTERVAL_TICKS == 0) {
-                LOG.debug("[RavenEntity] Landing start (post-roam): leaf={} overhead={} (airAbove={}, canopyNeighbors>={}) pathOk={}",
+                /* LOG.debug("[RavenEntity] Landing start (post-roam): leaf={} overhead={} (airAbove={}, canopyNeighbors>={}) pathOk={}",
                         leaf, overhead, landing.LAND_REQUIRED_AIR_ABOVE, landing.CANOPY_NEIGHBOR_LEAVES_REQUIRED, ok);
+                 */
             }
 
         } catch (Throwable t) {
-            LOG.error("[RavenEntity] tickRoamFly failed", t);
+            //LOG.error("[RavenEntity] tickRoamFly failed", t);
         }
     }
 
@@ -2491,12 +2536,13 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
 
             if (this.tickCount % DEBUG_LOG_INTERVAL_TICKS == 0) {
-                LOG.debug("[RavenEntity] beginRoamFlightWindow(reason={}) -> roamTicksRemaining={} takeoffLock={} pathPts={} flyTarget={}",
+                /* LOG.debug("[RavenEntity] beginRoamFlightWindow(reason={}) -> roamTicksRemaining={} takeoffLock={} pathPts={} flyTarget={}",
                         reason, roamTicksRemaining, idleLockTicks,
                         (pathWaypoints == null ? 0 : pathWaypoints.size()), flyTarget);
+                 */
             }
         } catch (Throwable t) {
-            LOG.error("[RavenEntity] beginRoamFlightWindow failed (reason={})", reason, t);
+            //LOG.error("[RavenEntity] beginRoamFlightWindow failed (reason={})", reason, t);
             roamTicksRemaining = Math.max(1, ROAM_MIN_TICKS);
 
             if (idleLockTicks <= 0) {
@@ -2512,11 +2558,12 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     public InteractionResult mobInteract(Player player, InteractionHand hand) {
         try {
             // Unthrottled debug so we KNOW if this ever fires
-            LOG.info("[RavenEntity] mobInteract ENTER: player={} hand={} pos={} side={}",
+            /* LOG.info("[RavenEntity] mobInteract ENTER: player={} hand={} pos={} side={}",
                     (player == null ? "null" : player.getName().getString()),
                     hand,
                     this.position(),
                     this.level() == null ? "null" : (this.level().isClientSide ? "CLIENT" : "SERVER"));
+             */
 
             if (player == null) {
                 return InteractionResult.PASS;
@@ -2536,17 +2583,18 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         TamedRavenScrollWatcher.handleSealedScrollInteract(this, player, hand);
 
                 if (scrollResult.consumesAction()) {
-                    LOG.info(
+                    /* LOG.info(
                             "[RavenEntity] mobInteract: sealed-scroll handler consumed interaction: result={} side={}",
                             scrollResult,
                             this.level() == null
                                     ? "null"
                                     : (this.level().isClientSide ? "CLIENT" : "SERVER")
                     );
+                     */
                     return scrollResult;
                 }
             } catch (Throwable t) {
-                LOG.warn("[RavenEntity] mobInteract scroll handler failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] mobInteract scroll handler failed safely: {}", t.toString());
             }
 
             // ----------------------------------------------------------------------
@@ -2557,12 +2605,13 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 if (this.lureFollowTame != null) {
                     InteractionResult lureResult = this.lureFollowTame.handleTamingInteract(player, hand);
 
-                    LOG.info(
+                    /* LOG.info(
                             "[RavenEntity] mobInteract: handleTamingInteract returned {} (item={}, side={})",
                             lureResult,
                             (stack == null ? "null" : stack.toString()),
                             this.level().isClientSide ? "CLIENT" : "SERVER"
                     );
+                     */
 
                     // If the taming logic handled the interaction (consume / success),
                     // we’re done and let it own this RMB.
@@ -2570,23 +2619,24 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         return lureResult;
                     }
                 } else {
-                    LOG.info("[RavenEntity] mobInteract: lureFollowTame == null, skipping taming hook");
+                    //LOG.info("[RavenEntity] mobInteract: lureFollowTame == null, skipping taming hook");
                 }
             } catch (Throwable t) {
-                LOG.warn("[RavenEntity] mobInteract lure/tame hook failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] mobInteract lure/tame hook failed safely: {}", t.toString());
             }
 
             // ----------------------------------------------------------------------
             // If neither scroll logic nor LureFollowTame cared, fall back to vanilla.
             // ----------------------------------------------------------------------
             InteractionResult base = super.mobInteract(player, hand);
-            LOG.info("[RavenEntity] mobInteract: super.mobInteract result={} side={}",
+            /* LOG.info("[RavenEntity] mobInteract: super.mobInteract result={} side={}",
                     base,
                     this.level() != null && this.level().isClientSide ? "CLIENT" : "SERVER");
+             */
             return base;
 
         } catch (Throwable t) {
-            LOG.error("[RavenEntity] mobInteract failed safely", t);
+            //LOG.error("[RavenEntity] mobInteract failed safely", t);
             // Fail-safe: don’t break all interactions if something goes wrong.
             return InteractionResult.PASS;
         }
@@ -2615,7 +2665,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             return clampTargetToHomeBounds(target);
         } catch (Throwable t) {
             if (this.tickCount % 200 == 0) {
-                LOG.warn("[RavenEntity] pickRoamFallbackTarget failed: {}", t.toString());
+                //LOG.warn("[RavenEntity] pickRoamFallbackTarget failed: {}", t.toString());
             }
             return null;
         }
@@ -2684,7 +2734,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         boolean pathBlocked = rayBlocked || collisionPersistent;
 
         if (collisionPersistent && this.tickCount % 20 == 0) {
-            LOG.info(
+            /* LOG.info(
                     "[RavenEntity] Persistent collision: pos={} vel={} flyTarget={} dist={} stuckTicks={} collH={} collV={} rayBlocked={}",
                     pos, vel, flyTarget,
                     String.format("%.3f", dist),
@@ -2693,6 +2743,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     this.verticalCollision,
                     rayBlocked
             );
+             */
         }
 
         // -----------------------------
@@ -2715,7 +2766,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 stuckTicks = 0;
 
                 if (this.tickCount % 20 == 0) {
-                    LOG.info("[RavenEntity] Replan succeeded after collision: goal={} pos={}", pathGoal, pos);
+                    //LOG.info("[RavenEntity] Replan succeeded after collision: goal={} pos={}", pathGoal, pos);
                 }
                 return;
             }
@@ -2733,7 +2784,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 stuckTicks = 0;
 
                 if (this.tickCount % 20 == 0) {
-                    LOG.info("[RavenEntity] Avoidance waypoint issued: {}", avoidance);
+                    //LOG.info("[RavenEntity] Avoidance waypoint issued: {}", avoidance);
                 }
                 return;
             }
@@ -2747,7 +2798,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             this.setDeltaMovement(Vec3.ZERO);
 
             if (this.tickCount % 20 == 0) {
-                LOG.warn("[RavenEntity] Stuck hard-stop to prevent buzzing: pos={} goal={}", pos, pathGoal);
+                //LOG.warn("[RavenEntity] Stuck hard-stop to prevent buzzing: pos={} goal={}", pos, pathGoal);
             }
         }
     }
@@ -2781,8 +2832,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 if (ok) {
                     advanceWaypointIfNeeded(4 * 20, "landing approach replan");
                     if (this.tickCount % DEBUG_LOG_INTERVAL_TICKS == 0) {
-                        LOG.debug("[RavenEntity] Landing-approach avoidance -> replanned path to goal={} (blocked={}, stuckTicks={})",
+                        /* LOG.debug("[RavenEntity] Landing-approach avoidance -> replanned path to goal={} (blocked={}, stuckTicks={})",
                                 pathGoal, pathBlocked, stuckTicks);
+                         */
                     }
                     return;
                 }
@@ -2792,14 +2844,15 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             if (avoidance != null) {
                 setFlyTarget(avoidance, 3 * 20);
                 if (this.tickCount % DEBUG_LOG_INTERVAL_TICKS == 0) {
-                    LOG.debug("[RavenEntity] Landing-approach avoidance (blocked={}, stuckTicks={}) -> {}", pathBlocked, stuckTicks, avoidance);
+                    // LOG.debug("[RavenEntity] Landing-approach avoidance (blocked={}, stuckTicks={}) -> {}", pathBlocked, stuckTicks, avoidance);
                 }
                 return;
             }
 
             if (this.tickCount % DEBUG_LOG_INTERVAL_TICKS == 0) {
-                LOG.debug("[RavenEntity] Landing-approach avoidance failed (blocked={}, stuckTicks={}), continuing without retarget",
+                /* LOG.debug("[RavenEntity] Landing-approach avoidance failed (blocked={}, stuckTicks={}), continuing without retarget",
                         pathBlocked, stuckTicks);
+                 */
             }
         }
     }
@@ -2815,7 +2868,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             return hitDistSqr < targetDistSqr - 0.25D;
         } catch (Throwable t) {
             if (this.tickCount % 200 == 0) {
-                LOG.warn("[RavenEntity] isDirectPathBlocked failed: {}", t.toString());
+                //LOG.warn("[RavenEntity] isDirectPathBlocked failed: {}", t.toString());
             }
             return false;
         }
@@ -2852,7 +2905,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             return waypoint;
         } catch (Throwable t) {
             if (this.tickCount % 200 == 0) {
-                LOG.warn("[RavenEntity] computeAvoidanceWaypoint failed: {}", t.toString());
+                //LOG.warn("[RavenEntity] computeAvoidanceWaypoint failed: {}", t.toString());
             }
             return null;
         }
@@ -2923,8 +2976,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 );
 
                 if (this.tickCount % 40 == 0) {
-                    LOG.debug("[RavenEntity] flyTowardTarget: collision-nudge applied (collH={}, collV={}) pos={} target={} vel={}",
+                    /* LOG.debug("[RavenEntity] flyTowardTarget: collision-nudge applied (collH={}, collV={}) pos={} target={} vel={}",
                             collH, collV, pos, actualTarget, newVel);
+                     */
                 }
             }
 
@@ -2936,18 +2990,19 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             this.yBodyRot = yaw;
 
             if (this.tickCount % 40 == 0) {
-                LOG.debug(
+                /* LOG.debug(
                         "[RavenEntity] flyTowardTarget: heading toward waypointIdx={} of {} target={} dist={}",
                         (pathWaypoints == null ? -1 : pathWaypointIndex),
                         (pathWaypoints == null ? 0 : pathWaypoints.size()),
                         actualTarget,
                         String.format("%.3f", dist)
                 );
+                 */
             }
 
         } catch (Throwable t) {
             if (this.tickCount % 40 == 0) {
-                LOG.warn("[RavenEntity] flyTowardTarget failed: {}", t.toString());
+                //LOG.warn("[RavenEntity] flyTowardTarget failed: {}", t.toString());
             }
         }
     }
@@ -2961,7 +3016,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         } catch (Throwable t) {
             // Fail-safe: if we can’t reason about it, treat as exhausted so we can replan.
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] isPathExhausted failed: {}", t.toString());
+                //LOG.warn("[RavenEntity] isPathExhausted failed: {}", t.toString());
             }
             return true;
         }
@@ -2972,7 +3027,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             return this.homePos;
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] getHomePosPublic failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] getHomePosPublic failed safely: {}", t.toString());
             }
             return this.blockPosition();
         }
@@ -2983,7 +3038,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             return HOME_RADIUS_BLOCKS;
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] getHomeRadiusBlocksPublic failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] getHomeRadiusBlocksPublic failed safely: {}", t.toString());
             }
             return 50;
         }
@@ -3047,7 +3102,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             } catch (Throwable t) {
                 okPrimary = false;
                 if (this.tickCount % 40 == 0) {
-                    LOG.warn("[RavenEntity] forceRoamFlightFromThreat: primary A* threw (ignored): {}", t.toString());
+                    //LOG.warn("[RavenEntity] forceRoamFlightFromThreat: primary A* threw (ignored): {}", t.toString());
                 }
             }
 
@@ -3084,7 +3139,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     } catch (Throwable t) {
                         okFallback = false;
                         if (this.tickCount % 40 == 0) {
-                            LOG.warn("[RavenEntity] forceRoamFlightFromThreat: fallback A* threw (ignored): {}", t.toString());
+                            //LOG.warn("[RavenEntity] forceRoamFlightFromThreat: fallback A* threw (ignored): {}", t.toString());
                         }
                     }
 
@@ -3092,26 +3147,29 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         usedGoal = fallbackGoal;
 
                         if (this.tickCount % 20 == 0) {
-                            LOG.info(
+                            /* LOG.info(
                                     "[RavenEntity] forceRoamFlightFromThreat: primary A* failed; using fallback path. fromPos={} playerPos={} primaryGoal={} fallbackGoal={}",
                                     ravenPos,
                                     playerPos,
                                     fleeTarget,
                                     fallbackGoal
                             );
+                             */
                         }
                     } else if (this.tickCount % 40 == 0) {
-                        LOG.info(
+                        /* LOG.info(
                                 "[RavenEntity] forceRoamFlightFromThreat: primary+fallback A* both failed. primaryGoal={} fallbackGoal={}",
                                 fleeTarget,
                                 fallbackGoal
                         );
+                         */
                     }
                 } else if (this.tickCount % 40 == 0) {
-                    LOG.info(
+                    /* LOG.info(
                             "[RavenEntity] forceRoamFlightFromThreat: no homeCenter; primary A* failed. goal={}",
                             fleeTarget
                     );
+                     */
                 }
             }
 
@@ -3124,27 +3182,29 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // ------------------------------------------------------------------
             if (ok) {
                 if (this.tickCount % 20 == 0) {
-                    LOG.info(
+                    /* LOG.info(
                             "[RavenEntity] forceRoamFlightFromThreat: path armed to goal={} fromPos={} playerPos={}",
                             usedGoal,
                             ravenPos,
                             playerPos
                     );
+                     */
                 }
             } else if (this.tickCount % 40 == 0) {
-                LOG.warn(
+                /* LOG.warn(
                         "[RavenEntity] forceRoamFlightFromThreat: no avoidance path found; leaving raven without new path. fromPos={} playerPos={} attemptedGoal={}",
                         ravenPos,
                         playerPos,
                         fleeTarget
                 );
+                 */
             }
 
             // Prevent immediate re-trigger of calm behaviors (landing etc.)
             idleCommitTicks = 40;
 
         } catch (Throwable t) {
-            LOG.error("[RavenEntity] forceRoamFlightFromThreat failed", t);
+            //LOG.error("[RavenEntity] forceRoamFlightFromThreat failed", t);
         }
     }
 
@@ -3172,7 +3232,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 dodge = net.z2six.featheredfriend.entity.raven.modules.DamageDodge.handleHurt(this, source, amount);
             } catch (Throwable t) {
                 if (this.tickCount % 80 == 0) {
-                    LOG.warn("[RavenEntity] hurt: DamageDodge failed safely: {}", t.toString());
+                    //LOG.warn("[RavenEntity] hurt: DamageDodge failed safely: {}", t.toString());
                 }
                 dodge = false;
             }
@@ -3180,10 +3240,11 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             if (dodge) {
                 // Dodged: no damage applied.
                 if (this.tickCount % 20 == 0) {
-                    LOG.info("[RavenEntity] hurt: DODGED damage. amount={} src={} pos={}",
+                    /* LOG.info("[RavenEntity] hurt: DODGED damage. amount={} src={} pos={}",
                             amount,
                             (source == null ? "null" : source.toString()),
                             this.position());
+                     */
                 }
                 return false;
             }
@@ -3192,12 +3253,13 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             boolean result = super.hurt(source, amount);
 
             if (this.tickCount % 20 == 0) {
-                LOG.info("[RavenEntity] hurt: took damage. applied={} amount={} src={} hpNow={} pos={}",
+                /* LOG.info("[RavenEntity] hurt: took damage. applied={} amount={} src={} hpNow={} pos={}",
                         result,
                         amount,
                         (source == null ? "null" : source.toString()),
                         this.getHealth(),
                         this.position());
+                 */
             }
 
             // Only spawn feather FX if damage was actually applied and we're still alive.
@@ -3221,13 +3283,14 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         );
 
                         if (this.tickCount % 40 == 0) {
-                            LOG.info("[RavenEntity] hurt: spawned FEATHER hit FX at pos={} count={}", pos, count);
+                            //LOG.info("[RavenEntity] hurt: spawned FEATHER hit FX at pos={} count={}", pos, count);
                         }
                     }
                 } catch (Throwable tFx) {
                     if (this.tickCount % 80 == 0) {
-                        LOG.warn("[RavenEntity] hurt: FEATHER hit FX failed safely: {}",
+                        /* LOG.warn("[RavenEntity] hurt: FEATHER hit FX failed safely: {}",
                                 tFx.toString());
+                         */
                     }
                 }
             }
@@ -3237,15 +3300,16 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         } catch (Throwable t) {
             // Fail-safe: never crash in hurt. Apply vanilla behavior if we can.
             if (this.tickCount % 40 == 0) {
-                LOG.error("[RavenEntity] hurt failed; falling back to super.hurt. src={} amt={}",
+                /* LOG.error("[RavenEntity] hurt failed; falling back to super.hurt. src={} amt={}",
                         (source == null ? "null" : source.toString()), amount, t);
+                 */
             }
             try {
                 return super.hurt(source, amount);
             } catch (Throwable t2) {
                 // Absolute fail-safe: do not crash server.
                 if (this.tickCount % 40 == 0) {
-                    LOG.error("[RavenEntity] super.hurt also failed; suppressing to prevent crash. {}", t2.toString());
+                    //LOG.error("[RavenEntity] super.hurt also failed; suppressing to prevent crash. {}", t2.toString());
                 }
                 return false;
             }
@@ -3258,8 +3322,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             super.die(source);
         } catch (Throwable t) {
             if (this.tickCount % 40 == 0) {
-                LOG.error("[RavenEntity] die: super.die failed; suppressing to prevent crash. src={}",
+                /* LOG.error("[RavenEntity] die: super.die failed; suppressing to prevent crash. src={}",
                         (source == null ? "null" : source.toString()), t);
+                 */
             }
         }
 
@@ -3270,7 +3335,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
         } catch (Throwable t) {
             if (this.tickCount % 40 == 0) {
-                LOG.error("[RavenEntity] die: TamedRavenDeathHandler failed safely: {}", t.toString());
+                //LOG.error("[RavenEntity] die: TamedRavenDeathHandler failed safely: {}", t.toString());
             }
         }
     }
@@ -3289,7 +3354,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             return getAIState();
         } catch (Throwable t) {
             if (this.tickCount % 200 == 0) {
-                LOG.warn("[RavenEntity] getAIStateForDebug failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] getAIStateForDebug failed safely: {}", t.toString());
             }
             // Fall back to the raw state to avoid NPEs in logs.
             return getAIState();
@@ -3365,11 +3430,13 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                                 if (this.tickCount % 20 == 0) {
                                     boolean changed = cand.distanceToSqr(rawGoal) > 1.0E-6D;
                                     if (changed) {
-                                        LOG.info("[RavenEntity] Goal adjusted near target: rawGoal={} -> chosenGoal={} (dx={}, dy={}, dz={}, clearance={}x{} safety=({} r, +{} -{}))",
+                                        /* LOG.info("[RavenEntity] Goal adjusted near target: rawGoal={} -> chosenGoal={} (dx={}, dy={}, dz={}, clearance={}x{} safety=({} r, +{} -{}))",
                                                 rawGoal, cand, dx, dy, dz, clearanceXZ, clearanceH, safetyR, safetyUp, safetyDown);
+                                         */
                                     } else {
-                                        LOG.debug("[RavenEntity] Goal accepted without adjustment: goal={} (clearance={}x{} safety=({} r, +{} -{}))",
+                                        /* LOG.debug("[RavenEntity] Goal accepted without adjustment: goal={} (clearance={}x{} safety=({} r, +{} -{}))",
                                                 cand, clearanceXZ, clearanceH, safetyR, safetyUp, safetyDown);
+                                         */
                                     }
                                 }
 
@@ -3382,14 +3449,15 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             // No nearby safe goal found; return original (caller will likely fail-path and retry later).
             if (this.tickCount % 40 == 0) {
-                LOG.warn("[RavenEntity] No nearby safe goal found. Using rawGoal={} (clearance={}x{}, allowLeaves={}, allowReplaceables={})",
+                /* LOG.warn("[RavenEntity] No nearby safe goal found. Using rawGoal={} (clearance={}x{}, allowLeaves={}, allowReplaceables={})",
                         rawGoal, clearanceXZ, clearanceH, cfg.allowLeaves, cfg.allowReplaceables);
+                 */
             }
             return rawGoal;
 
         } catch (Throwable t) {
             if (this.tickCount % 40 == 0) {
-                LOG.warn("[RavenEntity] computeSafePathingGoal failed: {}", t.toString());
+                //LOG.warn("[RavenEntity] computeSafePathingGoal failed: {}", t.toString());
             }
             return rawGoal;
         }
@@ -3559,7 +3627,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] debugClearOldPathMarkers failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] debugClearOldPathMarkers failed safely: {}", t.toString());
             }
         }
     }
@@ -3589,13 +3657,14 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             if (this.tickCount % 80 == 0) {
                 try {
                     String name = owner.getGameProfile().getName();
-                    LOG.debug(
+                    /* LOG.debug(
                             "[RavenEntity] Scroll-summon follow lock active for owner='{}' pos={} aiState={} followCd={}",
                             name,
                             this.position(),
                             getAIStateForDebug(),
                             getFollowCooldownTicks()
                     );
+                     */
                 } catch (Throwable ignored) {
                     // Ignore name / log formatting issues.
                 }
@@ -3605,8 +3674,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] isScrollSummonFollowLockActive failed safely for id={}: {}",
+                /* LOG.warn("[RavenEntity] isScrollSummonFollowLockActive failed safely for id={}: {}",
                         this.getId(), t.toString());
+                 */
             }
             return false;
         }
@@ -3665,7 +3735,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             } catch (Throwable tCfg) {
                 if (this.tickCount % 200 == 0) {
-                    LOG.warn("[RavenEntity] debugSpawnWaypointMarker: marker-flag reflection failed safely: {}", tCfg.toString());
+                    //LOG.warn("[RavenEntity] debugSpawnWaypointMarker: marker-flag reflection failed safely: {}", tCfg.toString());
                 }
             }
 
@@ -3695,7 +3765,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] debugSpawnWaypointMarker failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] debugSpawnWaypointMarker failed safely: {}", t.toString());
             }
         }
     }
@@ -3721,7 +3791,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] debugSpawnLineGizmos failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] debugSpawnLineGizmos failed safely: {}", t.toString());
             }
         }
     }
@@ -3746,7 +3816,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] debugSpawnCircleGizmos failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] debugSpawnCircleGizmos failed safely: {}", t.toString());
             }
         }
     }
@@ -3865,7 +3935,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 Vec3 nextWp = (idx + 1 >= 0 && idx + 1 < total) ? this.pathWaypoints.get(idx + 1) : null;
                 Vec3 lastWp = this.pathWaypoints.get(total - 1);
 
-                LOG.info(
+                /* LOG.info(
                         "[RavenEntity] DEBUG path gizmos ({}): pos={} flyTarget={} pathGoal={} pendingGoal={} wpIdx={}/{} curWp={} nextWp={} lastWp={}",
                         callerTag,
                         pos,
@@ -3878,12 +3948,13 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         nextWp,
                         lastWp
                 );
+                 */
             }
 
         } catch (Throwable t) {
             // Debug should NEVER crash the raven; just log + continue.
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] debugDrawPathGizmos failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] debugDrawPathGizmos failed safely: {}", t.toString());
             }
         }
     }
@@ -3945,7 +4016,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             if (SOUND_RAVEN_CAWING_NORMAL_ID == null) {
                 if (this.tickCount % 200 == 0) {
-                    LOG.warn("[RavenEntity] tickAmbientCawing: SOUND_RAVEN_CAWING_NORMAL_ID is null");
+                    //LOG.warn("[RavenEntity] tickAmbientCawing: SOUND_RAVEN_CAWING_NORMAL_ID is null");
                 }
                 return;
             }
@@ -3967,13 +4038,14 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             );
 
             if (this.tickCount % 200 == 0) {
-                LOG.debug("[RavenEntity] tickAmbientCawing: played ambient caw st={} nextDelay={}t pos={}",
+                /* LOG.debug("[RavenEntity] tickAmbientCawing: played ambient caw st={} nextDelay={}t pos={}",
                         st, ambientCawCooldownTicks, this.position());
+                 */
             }
 
         } catch (Throwable t) {
             if (this.tickCount % 200 == 0) {
-                LOG.warn("[RavenEntity] tickAmbientCawing failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] tickAmbientCawing failed safely: {}", t.toString());
             }
         }
     }
@@ -3989,7 +4061,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             if (SOUND_RAVEN_CAW_WHISTLE_ID == null) {
                 if (this.tickCount % 200 == 0) {
-                    LOG.warn("[RavenEntity] playRavenArriveSound: SOUND_RAVEN_CAW_WHISTLE_ID is null");
+                    //LOG.warn("[RavenEntity] playRavenArriveSound: SOUND_RAVEN_CAW_WHISTLE_ID is null");
                 }
                 return;
             }
@@ -4012,12 +4084,12 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             );
 
             if (this.tickCount % 200 == 0) {
-                LOG.debug("[RavenEntity] playRavenArriveSound: played arrive sound at pos={}", this.position());
+                //LOG.debug("[RavenEntity] playRavenArriveSound: played arrive sound at pos={}", this.position());
             }
 
         } catch (Throwable t) {
             if (this.tickCount % 200 == 0) {
-                LOG.warn("[RavenEntity] playRavenArriveSound failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] playRavenArriveSound failed safely: {}", t.toString());
             }
         }
     }
@@ -4054,7 +4126,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
         } catch (Throwable t) {
             if (this.tickCount % 200 == 0) {
-                LOG.warn("[RavenEntity] Animation controller failed: {}", t.toString());
+                //LOG.warn("[RavenEntity] Animation controller failed: {}", t.toString());
             }
             return PlayState.CONTINUE;
         }
@@ -4175,8 +4247,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             } catch (Throwable t) {
                 ok = false;
                 if (this.tickCount % 20 == 0) {
-                    LOG.warn("[RavenEntity] simulateAStarPathTo: ensurePathTo threw. goal={} reason={} err={}",
+                    /* LOG.warn("[RavenEntity] simulateAStarPathTo: ensurePathTo threw. goal={} reason={} err={}",
                             goal, reason, t.toString());
+                     */
                 }
             }
 
@@ -4198,8 +4271,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 try {
                     pts = (this.pathWaypoints == null) ? 0 : this.pathWaypoints.size();
                 } catch (Throwable ignored) {}
-                LOG.info("[RavenEntity] simulateAStarPathTo: {} goal={} maxPlanTicks={} pts={} seed={} reason={}",
+                /* LOG.info("[RavenEntity] simulateAStarPathTo: {} goal={} maxPlanTicks={} pts={} seed={} reason={}",
                         (ok ? "OK" : "FAIL"), goal, maxPlanTicks, pts, seed, reason);
+                 */
             }
 
             // -----------------------------------------------------------------
@@ -4265,7 +4339,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             return ok;
 
         } catch (Throwable t) {
-            LOG.error("[RavenEntity] simulateAStarPathTo failed safely", t);
+            //LOG.error("[RavenEntity] simulateAStarPathTo failed safely", t);
             return false;
         }
     }
@@ -4280,7 +4354,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             return RavenVariant.fromId(raw);
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] getVariant failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] getVariant failed safely: {}", t.toString());
             }
             return RavenVariant.NORMAL;
         }
@@ -4294,7 +4368,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             this.entityData.set(DATA_VARIANT, variant.id());
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] setVariant failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] setVariant failed safely: {}", t.toString());
             }
         }
     }
@@ -4496,7 +4570,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             return this.ensurePathTo(goal, ttlTicks, seed, caller);
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] landingEnsurePathTo failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] landingEnsurePathTo failed safely: {}", t.toString());
             }
             return false;
         }
@@ -4507,7 +4581,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             this.setFlyTarget(goal, ttlTicks);
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] landingSetFlyTarget failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] landingSetFlyTarget failed safely: {}", t.toString());
             }
         }
     }
@@ -4517,7 +4591,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             this.maybeAvoidOrRetargetDuringFlightApproachOnly(rnd);
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] landingMaybeAvoidOrRetargetDuringFlightApproachOnly failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] landingMaybeAvoidOrRetargetDuringFlightApproachOnly failed safely: {}", t.toString());
             }
         }
     }
@@ -4527,7 +4601,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             this.flyTowardTarget(speed);
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] landingFlyTowardTarget failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] landingFlyTowardTarget failed safely: {}", t.toString());
             }
         }
     }
@@ -4537,7 +4611,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             this.advanceWaypointIfNeeded(ttlTicks, caller);
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] landingAdvanceWaypointIfNeeded failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] landingAdvanceWaypointIfNeeded failed safely: {}", t.toString());
             }
         }
     }
@@ -4553,7 +4627,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 // If expired, clear (match your usual semantics).
                 if (this.flyTargetTimeoutTicks <= 0) {
                     if (this.tickCount % 40 == 0) {
-                        LOG.debug("[RavenEntity] landingTickFlyTargetTimeout: expired -> clearFlyTarget (why={}) target={}", why, this.flyTarget);
+                        //LOG.debug("[RavenEntity] landingTickFlyTargetTimeout: expired -> clearFlyTarget (why={}) target={}", why, this.flyTarget);
                     }
                     this.clearFlyTarget();
                     this.flyTargetTimeoutTicks = 0;
@@ -4561,7 +4635,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] landingTickFlyTargetTimeout failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] landingTickFlyTargetTimeout failed safely: {}", t.toString());
             }
         }
     }
@@ -4574,7 +4648,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         try {
             return this.playerAvoidanceOverrideTicks > 0;
         } catch (Throwable t) {
-            LOG.warn("[RavenEntity] isPlayerAvoidanceOverrideActive failed safely: {}", t.toString());
+            //LOG.warn("[RavenEntity] isPlayerAvoidanceOverrideActive failed safely: {}", t.toString());
             return false;
         }
     }
@@ -4590,7 +4664,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // Best-effort safety: avoid crashing logic that calls this.
             // Returning null is acceptable because callers already handle null pockets etc.
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] getTeleportation failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] getTeleportation failed safely: {}", t.toString());
             }
             return null;
         }
@@ -4608,7 +4682,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] resetLandingState(reason={}) failed safely: {}", reason, t.toString());
+                //LOG.warn("[RavenEntity] resetLandingState(reason={}) failed safely: {}", reason, t.toString());
             }
         }
     }
@@ -4620,7 +4694,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] requestLureFollowPlayer wrapper failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] requestLureFollowPlayer wrapper failed safely: {}", t.toString());
             }
         }
     }
@@ -4630,7 +4704,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             return lureFollowTame != null && lureFollowTame.isLureFollowActive();
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] isLureFollowActive wrapper failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] isLureFollowActive wrapper failed safely: {}", t.toString());
             }
             return false;
         }
@@ -4641,7 +4715,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             return (lureFollowTame != null) ? lureFollowTame.getFollowCooldownTicks() : 0;
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] getFollowCooldownTicks wrapper failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] getFollowCooldownTicks wrapper failed safely: {}", t.toString());
             }
             return 0;
         }
@@ -4654,7 +4728,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] setFollowCooldownTicks wrapper failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] setFollowCooldownTicks wrapper failed safely: {}", t.toString());
             }
         }
     }
@@ -4664,7 +4738,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             return lureFollowTame != null && lureFollowTame.isFollowOverrideActive();
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] isFollowOverrideActive wrapper failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] isFollowOverrideActive wrapper failed safely: {}", t.toString());
             }
             return false;
         }
@@ -4675,7 +4749,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             return (lureFollowTame != null) ? lureFollowTame.getGoldenNuggetsRequiredToTame() : 0;
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] getGoldenNuggetsRequiredToTame wrapper failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] getGoldenNuggetsRequiredToTame wrapper failed safely: {}", t.toString());
             }
             return 0;
         }
@@ -4688,7 +4762,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] setGoldenNuggetsRequiredToTame wrapper failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] setGoldenNuggetsRequiredToTame wrapper failed safely: {}", t.toString());
             }
         }
     }
@@ -4700,7 +4774,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
         } catch (Throwable t) {
             if (this.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] initGoldenNuggetsRequiredToTameIfNeeded wrapper failed safely: {}", t.toString());
+                //LOG.warn("[RavenEntity] initGoldenNuggetsRequiredToTameIfNeeded wrapper failed safely: {}", t.toString());
             }
         }
     }

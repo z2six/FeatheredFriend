@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [1.3.4]
+- More logging removed from Raven entity
+- Removed/added commands regarding tamed ravens
+
 ## [1.3.3]
 - Fixed chat-enabling via settings screen (C2S2C)
 - Added auto/manual whistle to client config toml
