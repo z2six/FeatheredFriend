@@ -6,15 +6,13 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.world.item.component.CustomData;
-import net.minecraft.nbt.CompoundTag;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.ClientCalendarEvents;
 import net.z2six.featheredfriend.client.gui.widget.MultiLineScrollTextWidget;
@@ -25,7 +23,6 @@ import net.z2six.featheredfriend.item.SealStampItem;
 import net.z2six.featheredfriend.neoforge.menu.ScrollSealingMenu;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator.SigilPattern;
-import org.jetbrains.annotations.NotNull;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 
@@ -277,9 +274,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     // Player overlay (uses vanilla font)
     private RecipientOverlay recipientOverlay;
 
-    public ScrollSealingScreen(@NotNull ScrollSealingMenu menu,
-                               @NotNull Inventory playerInventory,
-                               @NotNull Component title) {
+    public ScrollSealingScreen(ScrollSealingMenu menu,
+                               Inventory playerInventory,
+                               Component title) {
         super(menu, playerInventory, title);
         this.imageWidth = GUI_WIDTH;
         this.imageHeight = GUI_HEIGHT;
@@ -421,7 +418,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 stampOverlayHeight,
                 new SealStampSelectionOverlay.SelectionCallback() {
                     @Override
-                    public void onStampSelected(int slotIndex, @NotNull ItemStack stack) {
+                    public void onStampSelected(int slotIndex, ItemStack stack) {
                         LOG.debug("[ScrollSealingScreen] Seal stamp selected: slotIndex={} stack={}", slotIndex, stack);
                         sealStampSlotIndex = slotIndex;
                         sealStampStackForRender = stack.copy();
@@ -481,7 +478,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     // Renders the sigil in the ZOOM gizmo, using the independent zoom radius.
 // Call this ONLY in your zoomed branch, e.g. when you are already using
 // scroll_closing_zoom.png and hovering inside the zoom gizmo.
-    private void renderZoomWaxSeal(@NotNull GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+    private void renderZoomWaxSeal(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         try {
             // Only during sealed phase; don't interfere during intro/outro.
             if (this.uiPhase != UiPhase.SEALED) {
@@ -555,7 +552,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     // Unified entry point used by renderBg:
     //  - zoomView = false -> render small sigil in the small gizmo
     //  - zoomView = true  -> render large sigil in the zoom gizmo
-    private void renderWaxSeal(@NotNull GuiGraphics g,
+    private void renderWaxSeal(GuiGraphics g,
                                int mouseX,
                                int mouseY,
                                float partialTick,
@@ -573,7 +570,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
 
     // Renders the small in-place sigil inside the small wax gizmo box.
 // This is used when NOT zoomed (zoomView == false).
-    private void renderSmallWaxSeal(@NotNull GuiGraphics g,
+    private void renderSmallWaxSeal(GuiGraphics g,
                                     int mouseX,
                                     int mouseY,
                                     float partialTick) {
@@ -649,28 +646,26 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     }
 
     // Builds a sigil pattern for the SMALL gizmo, radius derived from the
-// WAX_BOX size + WAX_SIGIL_RADIUS_SCALE. This keeps the old tiny
-// impression behaviour.
-    private SigilPattern buildPatternFromStamp(@NotNull ItemStack stampStack) {
+    // WAX_BOX size + WAX_SIGIL_RADIUS_SCALE. This keeps the old tiny
+    // impression behaviour.
+    private SigilPattern buildPatternFromStamp(ItemStack stampStack) {
         try {
             if (stampStack == null || stampStack.isEmpty() || !(stampStack.getItem() instanceof SealStampItem)) {
                 LOG.debug("[ScrollSealingScreen] buildPatternFromStamp: not a SealStampItem");
                 return null;
             }
 
-            CustomData data = stampStack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
-            CompoundTag root = data.copyTag();
+            CompoundTag root = stampStack.getTag();
             if (root == null || !root.contains("SealStamp")) {
                 LOG.debug("[ScrollSealingScreen] buildPatternFromStamp: missing SealStamp tag");
                 return null;
             }
 
             CompoundTag seal = root.getCompound("SealStamp");
-            long seed   = seal.getLong("Seed");
-            int  slices = seal.getInt("Slices");
-            int  style  = seal.getInt("ShapeSet");
+            long seed = seal.getLong("Seed");
+            int slices = seal.getInt("Slices");
+            int style = seal.getInt("ShapeSet");
 
-            // Radius for the small gizmo: derived from its box size.
             final int radiusPx = Math.max(
                     6,
                     (int) (Math.min(WAX_BOX_WIDTH, WAX_BOX_HEIGHT) * 0.5f * WAX_SIGIL_RADIUS_SCALE)
@@ -800,28 +795,25 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     // ---------------------------------------------------------------------
 
     // Builds a sigil pattern specifically for the ZOOM view, using an
-// independent radius knob: ZOOM_SIGIL_RADIUS_PIXELS.
-    private SigilPattern buildZoomPatternFromStamp(@NotNull ItemStack stampStack) {
+    // independent radius knob: ZOOM_SIGIL_RADIUS_PIXELS.
+    private SigilPattern buildZoomPatternFromStamp(ItemStack stampStack) {
         try {
             if (stampStack == null || stampStack.isEmpty() || !(stampStack.getItem() instanceof SealStampItem)) {
                 LOG.debug("[ScrollSealingScreen] buildZoomPatternFromStamp: not a SealStampItem");
                 return null;
             }
 
-            CustomData data = stampStack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
-            CompoundTag root = data.copyTag();
+            CompoundTag root = stampStack.getTag();
             if (root == null || !root.contains("SealStamp")) {
                 LOG.debug("[ScrollSealingScreen] buildZoomPatternFromStamp: missing SealStamp tag");
                 return null;
             }
 
             CompoundTag seal = root.getCompound("SealStamp");
-            long seed   = seal.getLong("Seed");
-            int  slices = seal.getInt("Slices");
-            int  style  = seal.getInt("ShapeSet");
+            long seed = seal.getLong("Seed");
+            int slices = seal.getInt("Slices");
+            int style = seal.getInt("ShapeSet");
 
-            // 🔧 This radius is *only* for the zoom view and is independent
-            // from the small gizmo radius and from any box size.
             int radiusPx = Math.max(6, ZOOM_SIGIL_RADIUS_PIXELS);
 
             SigilPattern pattern = SealSigilGenerator.generateFromSeed(seed, radiusPx, slices, style);
@@ -1197,7 +1189,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     // ---------------------------------------------------------------------
 
     @Override
-    protected void renderBg(@NotNull GuiGraphics guiGraphics,
+    protected void renderBg(GuiGraphics guiGraphics,
                             float partialTick,
                             int mouseX,
                             int mouseY) {
@@ -1471,7 +1463,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     // ---------------------------------------------------------------------
 
     @Override
-    public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         try {
             this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
             super.render(guiGraphics, mouseX, mouseY, partialTick);
@@ -1520,7 +1512,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     }
 
     @Override
-    protected void renderLabels(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY) {
+    protected void renderLabels(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         // No default labels.
     }
 
@@ -1530,7 +1522,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     }
 
     @Override
-    protected void renderTooltip(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY) {
+    protected void renderTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         this.hoveredSlot = null;
         super.renderTooltip(guiGraphics, mouseX, mouseY);
     }
@@ -1617,13 +1609,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                             int style = 0;
 
                             try {
-                                CustomData cd = actualStamp.getOrDefault(
-                                        DataComponents.CUSTOM_DATA,
-                                        CustomData.EMPTY
-                                );
-                                CompoundTag root = cd.copyTag();
+                                CompoundTag root = actualStamp.getTag();
                                 if (root == null || !root.contains("SealStamp")) {
-                                    LOG.error("[ScrollSealingScreen] SealStamp CustomData missing on etched stamp; aborting");
+                                    LOG.error("[ScrollSealingScreen] SealStamp NBT missing on etched stamp; aborting");
                                     return true;
                                 }
                                 CompoundTag seal = root.getCompound("SealStamp");

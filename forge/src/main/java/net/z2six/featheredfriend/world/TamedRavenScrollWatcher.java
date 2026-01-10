@@ -34,7 +34,7 @@ import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.entity.Entity;
 
 import net.z2six.featheredfriend.registry.FFNeoForgeEntities;
-import org.jetbrains.annotations.NotNull;
+
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import net.minecraft.world.InteractionHand;
@@ -142,7 +142,7 @@ public final class TamedRavenScrollWatcher {
     // Tick handler
     // ---------------------------------------------------------------------
 
-    private static void onPlayerTick(@NotNull PlayerTickEvent.Post event) {
+    private static void onPlayerTick(PlayerTickEvent.Post event) {
         try {
             Player player = event.getEntity();
             if (player == null) {
@@ -391,8 +391,8 @@ public final class TamedRavenScrollWatcher {
      *  - Have scoreboard tag TAG_SCROLL_SUMMONED, AND
      *  - Are tamed by this player (owner UUID matches).
      */
-    private static List<RavenEntity> findScrollSummonedRavensForPlayer(@NotNull ServerLevel level,
-                                                                       @NotNull ServerPlayer owner) {
+    private static List<RavenEntity> findScrollSummonedRavensForPlayer(ServerLevel level,
+                                                                       ServerPlayer owner) {
         List<RavenEntity> out = new ArrayList<>();
         try {
             UUID ownerId = owner.getUUID();
@@ -444,7 +444,7 @@ public final class TamedRavenScrollWatcher {
     }
 
     @Nullable
-    private static RavenEntity pickClosestRaven(@NotNull List<RavenEntity> ravens, @NotNull ServerPlayer owner) {
+    private static RavenEntity pickClosestRaven(List<RavenEntity> ravens, ServerPlayer owner) {
         if (ravens.isEmpty()) {
             return null;
         }
@@ -464,9 +464,9 @@ public final class TamedRavenScrollWatcher {
     // ---------------------------------------------------------------------
 
     @Nullable
-    private static RavenEntity spawnSummonedRaven(@NotNull ServerLevel level,
-                                                  @NotNull ServerPlayer owner,
-                                                  @NotNull String ravenName) {
+    private static RavenEntity spawnSummonedRaven(ServerLevel level,
+                                                  ServerPlayer owner,
+                                                  String ravenName) {
         try {
             RavenEntity raven = FFNeoForgeEntities.RAVEN.get().create(level);
             if (raven == null) {
@@ -568,7 +568,7 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    private static void onEntityInteract(@NotNull PlayerInteractEvent.EntityInteract event) {
+    private static void onEntityInteract(PlayerInteractEvent.EntityInteract event) {
         try {
             Level level = event.getLevel();
             if (!(level instanceof ServerLevel serverLevel) || level.isClientSide()) {
@@ -617,10 +617,10 @@ public final class TamedRavenScrollWatcher {
     }
 
     @NotNull
-    private static InteractionResult handleScrollSummonedRavenInteract(@NotNull ServerLevel level,
-                                                                       @NotNull ServerPlayer player,
-                                                                       @NotNull RavenEntity raven,
-                                                                       @NotNull InteractionHand hand) {
+    private static InteractionResult handleScrollSummonedRavenInteract(ServerLevel level,
+                                                                       ServerPlayer player,
+                                                                       RavenEntity raven,
+                                                                       InteractionHand hand) {
         try {
             // If raven is armed with a failed-job recall payload:
             RecallPayload recall = readRecallPayload(raven);
@@ -719,7 +719,7 @@ public final class TamedRavenScrollWatcher {
         final String recipientUuidStr;
         final CompoundTag sealedScrollNbt;
 
-        private RecallPayload(long jobId, @NotNull String recipientUuidStr, @NotNull CompoundTag sealedScrollNbt) {
+        private RecallPayload(long jobId, String recipientUuidStr, CompoundTag sealedScrollNbt) {
             this.jobId = jobId;
             this.recipientUuidStr = recipientUuidStr;
             this.sealedScrollNbt = sealedScrollNbt;
@@ -727,7 +727,7 @@ public final class TamedRavenScrollWatcher {
     }
 
     @Nullable
-    private static RecallPayload readRecallPayload(@NotNull RavenEntity raven) {
+    private static RecallPayload readRecallPayload(RavenEntity raven) {
         try {
             CompoundTag root = raven.getPersistentData();
             if (root == null) {
@@ -773,7 +773,7 @@ public final class TamedRavenScrollWatcher {
     }
 
     @NotNull
-    private static ItemStack buildSealedScrollFromNbt(@NotNull CompoundTag sealedScrollNbt) {
+    private static ItemStack buildSealedScrollFromNbt(CompoundTag sealedScrollNbt) {
         try {
             Item item = BuiltInRegistries.ITEM.get(SEALED_SCROLL_ID);
             if (item == null) {
@@ -797,7 +797,7 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    private static void giveOrDropFirstEmpty(@NotNull ServerPlayer player, @NotNull ItemStack stack) {
+    private static void giveOrDropFirstEmpty(ServerPlayer player, ItemStack stack) {
         try {
             if (stack.isEmpty()) {
                 return;
@@ -837,9 +837,9 @@ public final class TamedRavenScrollWatcher {
      *  - Raven wing woosh at the raven.
      *  - Player whistle at the *player's* position.
      */
-    private static void playScrollSummonSpawnFx(@NotNull ServerLevel level,
-                                                @NotNull ServerPlayer owner,
-                                                @NotNull RavenEntity raven) {
+    private static void playScrollSummonSpawnFx(ServerLevel level,
+                                                ServerPlayer owner,
+                                                RavenEntity raven) {
         try {
             Vec3 ravenPos = raven.position();
             Vec3 playerPos = owner.position();
@@ -894,10 +894,10 @@ public final class TamedRavenScrollWatcher {
      *      * The NBT flags ScrollSummoned / ScrollSummonedOwner.
      *    This prevents repeated despawn calls while the fade-out is still running.
      */
-    private static void despawnOneScrollSummonedRaven(@NotNull ServerLevel level,
-                                                      @NotNull ServerPlayer owner,
-                                                      @NotNull RavenEntity raven,
-                                                      @NotNull String reason) {
+    private static void despawnOneScrollSummonedRaven(ServerLevel level,
+                                                      ServerPlayer owner,
+                                                      RavenEntity raven,
+                                                      String reason) {
         try {
             TamedRaven tamedModule = null;
             try {
@@ -996,9 +996,9 @@ public final class TamedRavenScrollWatcher {
     // ---------------------------------------------------------------------
 
     @Nullable
-    private static Vec3 findSafeSpawnAbovePlayer(@NotNull ServerLevel level,
-                                                 @NotNull ServerPlayer owner,
-                                                 @NotNull RavenEntity simRaven) {
+    private static Vec3 findSafeSpawnAbovePlayer(ServerLevel level,
+                                                 ServerPlayer owner,
+                                                 RavenEntity simRaven) {
         try {
             BlockPos feet = owner.blockPosition();
             final int cx = feet.getX();
@@ -1094,8 +1094,8 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    private static int scanFirstCeilingYWithin15(@NotNull ServerLevel level,
-                                                 @NotNull ServerPlayer owner,
+    private static int scanFirstCeilingYWithin15(ServerLevel level,
+                                                 ServerPlayer owner,
                                                  int cx,
                                                  int feetY,
                                                  int cz,
@@ -1157,8 +1157,8 @@ public final class TamedRavenScrollWatcher {
     }
 
     @Nullable
-    private static Vec3 findFirst3x3x2PocketNear(@NotNull ServerLevel level,
-                                                 @NotNull ServerPlayer owner,
+    private static Vec3 findFirst3x3x2PocketNear(ServerLevel level,
+                                                 ServerPlayer owner,
                                                  int cx,
                                                  int baseY,
                                                  int cz,
@@ -1222,7 +1222,7 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    private static boolean is3x3x2Air(@NotNull ServerLevel level, int cx, int cy, int cz) {
+    private static boolean is3x3x2Air(ServerLevel level, int cx, int cy, int cz) {
         try {
             for (int dy = 0; dy <= 1; dy++) {
                 int y = cy + dy;
@@ -1242,7 +1242,7 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    private static boolean is3x3x3Air(@NotNull ServerLevel level, int cx, int cy, int cz) {
+    private static boolean is3x3x3Air(ServerLevel level, int cx, int cy, int cz) {
         try {
             for (int dy = 0; dy <= 2; dy++) {
                 int y = cy + dy;
@@ -1262,10 +1262,10 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    private static boolean canSimulatePathToPlayer(@NotNull ServerLevel level,
-                                                   @NotNull ServerPlayer owner,
-                                                   @NotNull Vec3 spawnPos,
-                                                   @NotNull RavenEntity simRaven) {
+    private static boolean canSimulatePathToPlayer(ServerLevel level,
+                                                   ServerPlayer owner,
+                                                   Vec3 spawnPos,
+                                                   RavenEntity simRaven) {
         try {
             // Put the simulation raven at the candidate start position.
             // This raven is NOT added to the world, so this stays purely "planning".
@@ -1339,7 +1339,7 @@ public final class TamedRavenScrollWatcher {
      *     - RavenName     : string
      */
     @Nullable
-    private static TamedRavenInfo readTamedRavenInfo(@NotNull Player player) {
+    private static TamedRavenInfo readTamedRavenInfo(Player player) {
         try {
             CompoundTag root = player.getPersistentData();
             if (root == null) {
@@ -1382,9 +1382,9 @@ public final class TamedRavenScrollWatcher {
      *   - PASS    -> scroll interaction not handled here; let other logic run.
      *   - SUCCESS / CONSUME / sidedSuccess(...) -> interaction consumed by scroll logic.
      */
-    public static InteractionResult handleSealedScrollInteract(@NotNull RavenEntity raven,
-                                                               @NotNull Player player,
-                                                               @NotNull InteractionHand hand) {
+    public static InteractionResult handleSealedScrollInteract(RavenEntity raven,
+                                                               Player player,
+                                                               InteractionHand hand) {
         try {
             Level level = raven.level();
             if (level == null) {
@@ -1554,7 +1554,7 @@ public final class TamedRavenScrollWatcher {
      *
      * This path ignores the "auto-summon on scroll" setting; it is a manual override.
      */
-    public static void handleWhistleSummonRequest(@NotNull ServerPlayer serverPlayer) {
+    public static void handleWhistleSummonRequest(ServerPlayer serverPlayer) {
         try {
             ServerLevel serverLevel = serverPlayer.serverLevel();
             UUID playerId = serverPlayer.getUUID();
@@ -1616,7 +1616,7 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    private static void ensureRavenName(@NotNull RavenEntity raven, @NotNull String ravenName) {
+    private static void ensureRavenName(RavenEntity raven, String ravenName) {
         try {
             Component cur = raven.getCustomName();
             String curStr = (cur == null) ? "" : cur.getString();
@@ -1633,7 +1633,7 @@ public final class TamedRavenScrollWatcher {
     /**
      * Returns true if the player's main hand item is the sealed scroll.
      */
-    public static boolean isHoldingSealedScroll(@NotNull Player player) { // ← was private
+    public static boolean isHoldingSealedScroll(Player player) { // ← was private
         try {
             ItemStack main = player.getMainHandItem();
             if (main == null || main.isEmpty()) {
@@ -1657,7 +1657,7 @@ public final class TamedRavenScrollWatcher {
      * Returns true if this raven is currently marked as a scroll-summoned raven
      * via the TAG_SCROLL_SUMMONED scoreboard tag.
      */
-    public static boolean isScrollSummonedRaven(@NotNull RavenEntity raven) {
+    public static boolean isScrollSummonedRaven(RavenEntity raven) {
         try {
             return raven.getTags().contains(TAG_SCROLL_SUMMONED);
         } catch (Throwable t) {
@@ -1678,8 +1678,8 @@ public final class TamedRavenScrollWatcher {
      * Otherwise returns null.
      */
     @Nullable
-    public static ServerPlayer getScrollSummonOwnerIfHoldingScroll(@NotNull ServerLevel level,
-                                                                   @NotNull RavenEntity raven) {
+    public static ServerPlayer getScrollSummonOwnerIfHoldingScroll(ServerLevel level,
+                                                                   RavenEntity raven) {
         try {
             // Must be tagged as scroll-summoned.
             if (!isScrollSummonedRaven(raven)) {
@@ -1726,7 +1726,7 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    private static String safePlayerName(@NotNull Player player) {
+    private static String safePlayerName(Player player) {
         try {
             return player.getGameProfile().getName();
         } catch (Throwable ignored) {

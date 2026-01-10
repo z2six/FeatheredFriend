@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/client/ClientCalendarEvents.java
+// ClientCalendarEvents.java
 package net.z2six.featheredfriend.client;
 
 import com.mojang.logging.LogUtils;
@@ -9,18 +9,17 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.client.event.RenderGuiEvent;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.RenderGuiEvent;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.config.FFCalendarConfig;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/client/ClientCalendarEvents.java
+ * forge/src/main/java/net/z2six/featheredfriend/client/ClientCalendarEvents.java
  *
  * Client-side handler that:
  * - Detects when a new Minecraft day starts (based on world time).
@@ -28,10 +27,8 @@ import org.slf4j.Logger;
  * - Shows a centered popup at the top of the screen with a fade-in/hold/fade-out.
  *
  * Uses the custom Gothic font (assets/featheredfriend/font/gothic12.json).
- *
- * This class is wired via @EventBusSubscriber on the GAME bus, client side only.
  */
-@EventBusSubscriber(modid = Constants.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.GAME)
+@Mod.EventBusSubscriber(modid = Constants.MOD_ID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class ClientCalendarEvents {
     private static final Logger LOG = LogUtils.getLogger();
 
@@ -51,21 +48,21 @@ public final class ClientCalendarEvents {
 
     // IMPORTANT: currently using featheredfriend:gothic12
     private static final ResourceLocation GOTHIC_FONT_ID =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12");
+            new ResourceLocation(Constants.MOD_ID, "gothic12");
 
     private ClientCalendarEvents() {
         // no-op
     }
 
-    // -------------------------------------------------------------------------
-    // Event hooks (registered automatically via @EventBusSubscriber)
-    // -------------------------------------------------------------------------
-
     /**
-     * Called every client tick (POST).
+     * Called every client tick (END phase matches Neo's Post semantics).
      */
     @SubscribeEvent
-    public static void onClientTick(@NotNull ClientTickEvent.Post event) {
+    public static void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) {
+            return;
+        }
+
         try {
             Minecraft mc = Minecraft.getInstance();
             if (mc == null || mc.level == null || mc.player == null) {
@@ -74,8 +71,6 @@ public final class ClientCalendarEvents {
 
             long dayTime = mc.level.getDayTime(); // absolute time in ticks
 
-            // ticksPerDay is intentionally NOT configurable in this task.
-            // We keep using the constant, but still validate to be ultra-safe.
             long ticksPerDay = FFCalendarConfig.TICKS_PER_DAY;
             if (ticksPerDay <= 0L) {
                 LOG.warn("[ClientCalendarEvents] FFCalendarConfig.TICKS_PER_DAY <= 0 ({}), using 24000 fallback", ticksPerDay);
@@ -114,7 +109,7 @@ public final class ClientCalendarEvents {
      * Called each frame after GUI is rendered; we draw our popup on top.
      */
     @SubscribeEvent
-    public static void onRenderGui(@NotNull RenderGuiEvent.Post event) {
+    public static void onRenderGui(RenderGuiEvent.Post event) {
         try {
             if (!popupActive || currentMessage == null) {
                 return;
@@ -126,7 +121,6 @@ public final class ClientCalendarEvents {
             }
 
             if (mc.options.hideGui) {
-                // Respect F1 "hide GUI"
                 return;
             }
 
@@ -138,7 +132,6 @@ public final class ClientCalendarEvents {
             GuiGraphics g = event.getGuiGraphics();
             Font font = mc.font;
 
-            // Apply gothic font style to the message
             MutableComponent styled = currentMessage.copy()
                     .setStyle(Style.EMPTY.withFont(GOTHIC_FONT_ID));
 
@@ -147,17 +140,14 @@ public final class ClientCalendarEvents {
             int textHeight = font.lineHeight;
 
             int x = (screenWidth - textWidth) / 2;
-            int y = 24; // near top, but below boss bar / title
+            int y = 24;
 
-            // Color: white with computed alpha
             int argb = (alpha << 24) | 0x00FFFFFF;
 
-            // Simple drop shadow
             int shadowArgb = (alpha << 24) | 0x00101010;
             g.drawString(font, styled, x + 1, y + 1, shadowArgb, false);
             g.drawString(font, styled, x, y, argb, false);
 
-            // Draw custom decorative ornament around the text (bars + small "diamond")
             drawDecorativeOrnament(g, x, y, textWidth, textHeight, alpha);
 
         } catch (Throwable t) {
@@ -169,7 +159,7 @@ public final class ClientCalendarEvents {
     // Popup helpers
     // -------------------------------------------------------------------------
 
-    private static void startPopup(@NotNull Component message) {
+    private static void startPopup(Component message) {
         try {
             currentMessage = message;
             popupAgeTicks = 0;
@@ -180,9 +170,6 @@ public final class ClientCalendarEvents {
         }
     }
 
-    /**
-     * Compute current alpha (0–255) based on popupAgeTicks.
-     */
     private static int computeCurrentAlpha() {
         try {
             if (!popupActive) {
@@ -195,18 +182,15 @@ public final class ClientCalendarEvents {
             }
 
             if (t < FADE_IN_TICKS) {
-                // Fade in 0 -> 255
                 float f = (float) t / (float) FADE_IN_TICKS;
                 int alpha = (int) (f * 255.0f);
                 return Math.max(0, Math.min(255, alpha));
             }
 
             if (t < FADE_IN_TICKS + HOLD_TICKS) {
-                // Hold at full opacity
                 return 255;
             }
 
-            // Fade out
             int outT = t - FADE_IN_TICKS - HOLD_TICKS;
             float f = 1.0f - ((float) outT / (float) FADE_OUT_TICKS);
             int alpha = (int) (f * 255.0f);
@@ -214,26 +198,12 @@ public final class ClientCalendarEvents {
 
         } catch (Throwable t) {
             LOG.error("[ClientCalendarEvents] computeCurrentAlpha failed", t);
-            // Fail-safe: no popup instead of broken visuals
             return 0;
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Custom ornament drawing
-    // -------------------------------------------------------------------------
-
-    /**
-     * Draws a small “calligraphy-ish” ornament:
-     *
-     *   [====\     Day X of Month, Year Suffix     /====]
-     *                      ◊
-     *
-     * Bars are drawn using rectangles; the little “diamond” is a tiny cross of pixels.
-     * All tinted by the same alpha as the main text.
-     */
     private static void drawDecorativeOrnament(
-            @NotNull GuiGraphics g,
+            GuiGraphics g,
             int textX,
             int textY,
             int textWidth,
@@ -245,50 +215,35 @@ public final class ClientCalendarEvents {
                 return;
             }
 
-            // Slightly dimmer than the text itself.
-            // Use same alpha channel, but a warmer-ish RGB (soft beige).
             int ornamentColor = (alpha << 24) | 0x00E0D0B0;
 
-            // Geometry:
-            // - Bars are horizontally aligned with the vertical center of the text.
-            // - A gap between text and bar to avoid touching.
             int centerY = textY + textHeight / 2;
 
-            int gap = 6;          // distance from text to start of bar
-            int barLength = 40;   // length of each side bar
-            int barThickness = 2; // vertical thickness of the bar
+            int gap = 6;
+            int barLength = 40;
+            int barThickness = 2;
 
-            // Left bar: [====\
             int leftBarEndX = textX - gap;
             int leftBarStartX = leftBarEndX - barLength;
 
-            // Right bar: /====]
             int rightBarStartX = textX + textWidth + gap;
             int rightBarEndX = rightBarStartX + barLength;
 
             int barTop = centerY - barThickness / 2;
             int barBottom = barTop + barThickness;
 
-            // Draw straight bars
             g.fill(leftBarStartX, barTop, leftBarEndX, barBottom, ornamentColor);
             g.fill(rightBarStartX, barTop, rightBarEndX, barBottom, ornamentColor);
 
-            // Add a subtle “taper” at the inner ends of each bar using 1-pixel steps
-            // to fake a little angled flourish.
-            // Left inner tip
             g.fill(leftBarEndX, barTop - 1, leftBarEndX + 1, barTop, ornamentColor);
             g.fill(leftBarEndX, barBottom, leftBarEndX + 1, barBottom + 1, ornamentColor);
 
-            // Right inner tip
             g.fill(rightBarStartX - 1, barTop - 1, rightBarStartX, barTop, ornamentColor);
             g.fill(rightBarStartX - 1, barBottom, rightBarStartX, barBottom + 1, ornamentColor);
 
-            // Small “diamond” under the center of the text: a tiny cross / plus shape.
             int centerX = textX + textWidth / 2;
-            int diamondY = textY + textHeight + 3; // just below the baseline
-            // Vertical stroke
+            int diamondY = textY + textHeight + 3;
             g.fill(centerX, diamondY - 1, centerX + 1, diamondY + 2, ornamentColor);
-            // Horizontal stroke
             g.fill(centerX - 1, diamondY, centerX + 2, diamondY + 1, ornamentColor);
 
         } catch (Throwable t) {
@@ -300,17 +255,8 @@ public final class ClientCalendarEvents {
     // Calendar math
     // -------------------------------------------------------------------------
 
-    /**
-     * Builds the display string for a given day index using the SERVER-synced config values.
-     *
-     * Day index 0 -> "Day 1 of Dawnroot, 1 A.N." (with defaults).
-     *
-     * Made public so other client-side UI (e.g. ScrollSealingScreen) can reuse
-     * the exact same calendar formatting.
-     */
-    public static @NotNull Component buildDateMessage(long dayIndex) {
+    public static Component buildDateMessage(long dayIndex) {
         try {
-            // IMPORTANT: daysPerMonth is now server-authoritative + synced.
             int daysPerMonth = FFCalendarConfig.getDaysPerMonth();
             int monthsPerYear = FFCalendarConfig.MONTHS_PER_YEAR;
 
@@ -329,20 +275,18 @@ public final class ClientCalendarEvents {
                 totalDaysPerYear = (long) daysPerMonth * 8L;
             }
 
-            // Ensure non-negative
             if (dayIndex < 0L) {
                 LOG.warn("[ClientCalendarEvents] buildDateMessage: dayIndex < 0 ({}), clamping to 0", dayIndex);
                 dayIndex = 0L;
             }
 
-            long yearIndex = dayIndex / totalDaysPerYear; // 0-based
-            int yearNumber = (int) (yearIndex + 1);       // 1-based display (preserved behavior)
+            long yearIndex = dayIndex / totalDaysPerYear;
+            int yearNumber = (int) (yearIndex + 1);
 
-            int dayOfYear = (int) (dayIndex % totalDaysPerYear); // 0..(totalDaysPerYear-1)
-            int monthIndex = dayOfYear / daysPerMonth;           // 0..monthsPerYear-1
-            int dayOfMonth = (dayOfYear % daysPerMonth) + 1;     // 1..daysPerMonth
+            int dayOfYear = (int) (dayIndex % totalDaysPerYear);
+            int monthIndex = dayOfYear / daysPerMonth;
+            int dayOfMonth = (dayOfYear % daysPerMonth) + 1;
 
-            // Clamp month index just in case
             if (monthIndex < 0) {
                 monthIndex = 0;
             } else if (monthIndex >= monthsPerYear) {

@@ -8,7 +8,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.resources.ResourceLocation;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator.SigilPattern;
-import org.jetbrains.annotations.NotNull;
+
 import org.slf4j.Logger;
 
 /**
@@ -180,7 +180,7 @@ public final class WaxSealVisualizer {
      * @param waxScale      scale factor for the wax seal texture (e.g., 3.0f)
      * @param pattern       SigilPattern (disc + shape masks) from generator
      */
-    public void render(@NotNull GuiGraphics gg,
+    public void render(GuiGraphics gg,
                        int centerX,
                        int centerY,
                        int previewX,
@@ -189,7 +189,7 @@ public final class WaxSealVisualizer {
                        int previewHeight,
                        int sigilRadius,
                        float waxScale,
-                       @NotNull SigilPattern pattern) {
+                       SigilPattern pattern) {
         try {
             // 1) Draw wax seal behind glyph (optional)
             if (waxEnabled) {
@@ -208,7 +208,7 @@ public final class WaxSealVisualizer {
      * the wax seal background. Used by ScrollSealingScreen, while SealStampScreen
      * continues to use {@link #render} which draws wax + glyph.
      */
-    public void renderShapesOnly(@NotNull GuiGraphics gg,
+    public void renderShapesOnly(GuiGraphics gg,
                                  int centerX,
                                  int centerY,
                                  int previewX,
@@ -217,7 +217,7 @@ public final class WaxSealVisualizer {
                                  int previewHeight,
                                  int sigilRadius,
                                  float unusedScale,
-                                 @NotNull SigilPattern pattern) {
+                                 SigilPattern pattern) {
         try {
             // Only draw the glyph; ignore the wax texture entirely.
             renderSigilGlyph(
@@ -240,7 +240,7 @@ public final class WaxSealVisualizer {
     // Wax seal (texture or fallback)
     // ---------------------------------------------------------------------
 
-    private void renderWaxSeal(@NotNull GuiGraphics gg, int centerX, int centerY, float scale) {
+    private void renderWaxSeal(GuiGraphics gg, int centerX, int centerY, float scale) {
         try {
             int sealWidth = Math.round(WAX_SEAL_TEXTURE_WIDTH * scale);
             int sealHeight = Math.round(WAX_SEAL_TEXTURE_HEIGHT * scale);
@@ -297,7 +297,7 @@ public final class WaxSealVisualizer {
     // Sigil glyph (shape fill + highlight/shadow)
     // ---------------------------------------------------------------------
 
-    private void renderSigilGlyph(@NotNull GuiGraphics gg,
+    private void renderSigilGlyph(GuiGraphics gg,
                                   int centerX,
                                   int centerY,
                                   int previewX,
@@ -305,7 +305,7 @@ public final class WaxSealVisualizer {
                                   int previewWidth,
                                   int previewHeight,
                                   int sigilRadius,
-                                  @NotNull SigilPattern pattern) {
+                                  SigilPattern pattern) {
         try {
             int size = pattern.getSize();
             if (size <= 0) {

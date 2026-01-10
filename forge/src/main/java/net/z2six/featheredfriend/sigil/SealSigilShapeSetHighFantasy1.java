@@ -3,7 +3,7 @@ package net.z2six.featheredfriend.sigil;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.util.RandomSource;
-import org.jetbrains.annotations.NotNull;
+
 import org.slf4j.Logger;
 
 /**
@@ -59,7 +59,7 @@ public final class SealSigilShapeSetHighFantasy1 implements SealSigilShapeSet {
                                    double radiusSq,
                                    int slices,
                                    int sliceIndex,
-                                   @NotNull RandomSource rng) {
+                                   RandomSource rng) {
         try {
             if (pixels == null || pixels.length == 0) {
                 LOG.warn("[SealSigilShapeSetHighFantasy1] applyShapesInSlice called with null/empty pixels");
@@ -148,7 +148,7 @@ public final class SealSigilShapeSetHighFantasy1 implements SealSigilShapeSet {
                                          double radiusSq,
                                          double sliceStart,
                                          double sliceEnd,
-                                         @NotNull RandomSource rng) {
+                                         RandomSource rng) {
         try {
             // Only place one starburst in slice 0, but because we generate only sliceIndex 0
             // in the generator, this naturally becomes a full radial motif.
@@ -213,7 +213,7 @@ public final class SealSigilShapeSetHighFantasy1 implements SealSigilShapeSet {
                                            double radiusSq,
                                            double sliceStart,
                                            double sliceEnd,
-                                           @NotNull RandomSource rng) {
+                                           RandomSource rng) {
         try {
             double baseR = radius * BAND_MID_FRACTION * (0.95 + rng.nextDouble() * 0.05);
             int innerR = Math.max(4, (int) Math.round(baseR - radius * 0.025));
@@ -237,7 +237,7 @@ public final class SealSigilShapeSetHighFantasy1 implements SealSigilShapeSet {
                                          double ringR,
                                          double sliceStart,
                                          double sliceEnd,
-                                         @NotNull RandomSource rng) {
+                                         RandomSource rng) {
         try {
             int sigilCount = 2 + rng.nextInt(3); // 2–4 sigils per slice
             double span = sliceEnd - sliceStart;
@@ -267,7 +267,7 @@ public final class SealSigilShapeSetHighFantasy1 implements SealSigilShapeSet {
                                 int radius,
                                 double radiusSq,
                                 double angle,
-                                @NotNull RandomSource rng) {
+                                RandomSource rng) {
         try {
             int style = rng.nextInt(3);
             double scale = radius * 0.04;
@@ -308,7 +308,7 @@ public final class SealSigilShapeSetHighFantasy1 implements SealSigilShapeSet {
                                      double radiusSq,
                                      double sliceStart,
                                      double sliceEnd,
-                                     @NotNull RandomSource rng,
+                                     RandomSource rng,
                                      int passIndex) {
         try {
             double span = sliceEnd - sliceStart;
@@ -383,7 +383,7 @@ public final class SealSigilShapeSetHighFantasy1 implements SealSigilShapeSet {
                                  double radiusSq,
                                  double headR,
                                  double headAngle,
-                                 @NotNull RandomSource rng) {
+                                 RandomSource rng) {
         try {
             int hx = cx + (int) Math.round(Math.cos(headAngle) * headR);
             int hy = cy + (int) Math.round(Math.sin(headAngle) * headR);
@@ -428,7 +428,7 @@ public final class SealSigilShapeSetHighFantasy1 implements SealSigilShapeSet {
                                        double thickness,
                                        double angleStart,
                                        double angleEnd,
-                                       @NotNull RandomSource rng) {
+                                       RandomSource rng) {
         try {
             int spikeCount = 3 + rng.nextInt(3); // 3–5
             double span = angleEnd - angleStart;
@@ -463,7 +463,7 @@ public final class SealSigilShapeSetHighFantasy1 implements SealSigilShapeSet {
                                  double radiusSq,
                                  double sliceStart,
                                  double sliceEnd,
-                                 @NotNull RandomSource rng,
+                                 RandomSource rng,
                                  int passIndex) {
         try {
             double baseR = radius * BAND_OUTER_FRACTION * (0.92 + rng.nextDouble() * 0.06);
@@ -488,7 +488,7 @@ public final class SealSigilShapeSetHighFantasy1 implements SealSigilShapeSet {
                                   double radiusSq,
                                   double baseR,
                                   double angle,
-                                  @NotNull RandomSource rng) {
+                                  RandomSource rng) {
         try {
             double length = radius * (0.08 + rng.nextDouble() * 0.06);
             double halfWidth = radius * (0.02 + rng.nextDouble() * 0.01);
@@ -527,7 +527,7 @@ public final class SealSigilShapeSetHighFantasy1 implements SealSigilShapeSet {
                                     double radiusSq,
                                     double sliceStart,
                                     double sliceEnd,
-                                    @NotNull RandomSource rng,
+                                    RandomSource rng,
                                     int passIndex) {
         try {
             int meteorCount = 1 + rng.nextInt(2); // 1–2
@@ -555,7 +555,7 @@ public final class SealSigilShapeSetHighFantasy1 implements SealSigilShapeSet {
                              double innerR,
                              double outerR,
                              double baseAngle,
-                             @NotNull RandomSource rng) {
+                             RandomSource rng) {
         try {
             double angle = baseAngle + (rng.nextDouble() - 0.5) * Math.toRadians(10.0);
 
@@ -597,7 +597,7 @@ public final class SealSigilShapeSetHighFantasy1 implements SealSigilShapeSet {
                                      double radiusSq,
                                      double sliceStart,
                                      double sliceEnd,
-                                     @NotNull RandomSource rng,
+                                     RandomSource rng,
                                      int passIndex) {
         try {
             int orbitCount = 1 + rng.nextInt(2); // 1–2 orbits
@@ -625,7 +625,7 @@ public final class SealSigilShapeSetHighFantasy1 implements SealSigilShapeSet {
                                double innerR,
                                double outerR,
                                double midAngle,
-                               @NotNull RandomSource rng) {
+                               RandomSource rng) {
         try {
             int samples = 9;
             int[] xs = new int[samples];
@@ -666,7 +666,7 @@ public final class SealSigilShapeSetHighFantasy1 implements SealSigilShapeSet {
                                    double radiusSq,
                                    double sliceStart,
                                    double sliceEnd,
-                                   @NotNull RandomSource rng) {
+                                   RandomSource rng) {
         try {
             int sparkleCount = 3 + rng.nextInt(4); // 3–6
             double span = sliceEnd - sliceStart;

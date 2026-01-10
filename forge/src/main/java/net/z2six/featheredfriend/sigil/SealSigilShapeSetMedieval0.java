@@ -3,7 +3,7 @@ package net.z2six.featheredfriend.sigil;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.util.RandomSource;
-import org.jetbrains.annotations.NotNull;
+
 import org.slf4j.Logger;
 
 /**
@@ -90,7 +90,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                    double radiusSq,
                                    int slices,
                                    int sliceIndex,
-                                   @NotNull RandomSource rng) {
+                                   RandomSource rng) {
         try {
             if (pixels == null || pixels.length == 0) {
                 LOG.warn("[SealSigilShapeSetMedieval0] applyShapesInSlice called with null/empty pixels");
@@ -181,7 +181,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                            double radiusSq,
                                            double sliceStart,
                                            double sliceEnd,
-                                           @NotNull RandomSource rng) {
+                                           RandomSource rng) {
         try {
             double sliceMid = (sliceStart + sliceEnd) * 0.5;
             // Slightly more stable placement, less jitter.
@@ -223,7 +223,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                 int cx,
                                 int cy,
                                 double radiusSq,
-                                @NotNull RandomSource rng) {
+                                RandomSource rng) {
         try {
             int armLength = Math.max(4, globalRadius / 7);
             int armWidth  = Math.max(2, globalRadius / 14);
@@ -248,7 +248,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                   int cx,
                                   int cy,
                                   double radiusSq,
-                                  @NotNull RandomSource rng) {
+                                  RandomSource rng) {
         try {
             int armLength = Math.max(5, globalRadius / 6);
             int armWidth = Math.max(3, globalRadius / 14);
@@ -272,7 +272,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                  int cx,
                                  int cy,
                                  double radiusSq,
-                                 @NotNull RandomSource rng) {
+                                 RandomSource rng) {
         try {
             int ringOuter = Math.max(5, globalRadius / 4);
             int ringInner = Math.max(2, ringOuter - 3);
@@ -307,7 +307,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                         double radiusSq,
                                         double sliceStart,
                                         double sliceEnd,
-                                        @NotNull RandomSource rng) {
+                                        RandomSource rng) {
         try {
             double bandInnerNorm = BAND_MID_FRACTION;
             double bandOuterNorm = BAND_OUTER_FRACTION * 0.9;
@@ -348,7 +348,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                  int cx,
                                  int cy,
                                  double radiusSq,
-                                 @NotNull RandomSource rng) {
+                                 RandomSource rng) {
         try {
             int h = Math.max(8, globalRadius / 3);
             int w = Math.max(6, globalRadius / 5);
@@ -385,7 +385,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                    int cx,
                                    int cy,
                                    double radiusSq,
-                                   @NotNull RandomSource rng) {
+                                   RandomSource rng) {
         try {
             int h = Math.max(7, globalRadius / 4);
             int w = Math.max(7, globalRadius / 4);
@@ -425,7 +425,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                           double radiusSq,
                                           double sliceStart,
                                           double sliceEnd,
-                                          @NotNull RandomSource rng,
+                                          RandomSource rng,
                                           int passIndex) {
         try {
             double bandRNorm = BAND_OUTER_FRACTION * (0.86 + rng.nextDouble() * 0.05);
@@ -457,7 +457,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                              double halfAngularWidth,
                              int radius,
                              double radiusSq,
-                             @NotNull RandomSource rng) {
+                             RandomSource rng) {
         try {
             double innerR = ringRadius - radius * 0.04;
             double outerR = ringRadius + radius * 0.035;
@@ -492,7 +492,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                              double sliceStart,
                                              double sliceEnd,
                                              double baseRingR,
-                                             @NotNull RandomSource rng) {
+                                             RandomSource rng) {
         try {
             int slitCount = 1 + rng.nextInt(2); // 1–2
             double span = sliceEnd - sliceStart;
@@ -513,7 +513,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                 double radiusSq,
                                 double angle,
                                 double baseRingR,
-                                @NotNull RandomSource rng) {
+                                RandomSource rng) {
         try {
             double inner = baseRingR - radius * 0.12;
             double outer = baseRingR + radius * 0.015;
@@ -551,7 +551,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                           double radiusSq,
                                           double sliceStart,
                                           double sliceEnd,
-                                          @NotNull RandomSource rng,
+                                          RandomSource rng,
                                           int passIndex) {
         try {
             int windowCount = 1; // always 1 big window per slice at most
@@ -578,7 +578,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                     double midAngle,
                                     double rInner,
                                     double rOuter,
-                                    @NotNull RandomSource rng) {
+                                    RandomSource rng) {
         try {
             double halfSpan = (Math.PI / 18.0) * (0.9 + rng.nextDouble() * 0.4);
 
@@ -616,7 +616,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                      double midAngle,
                                      double rInner,
                                      double rOuter,
-                                     @NotNull RandomSource rng) {
+                                     RandomSource rng) {
         try {
             int mullions = 2 + rng.nextInt(2); // 2–3
             double spread = Math.min(Math.PI / 12.0, (rOuter - rInner) / (double) radius);
@@ -648,7 +648,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                           double radiusSq,
                                           double sliceStart,
                                           double sliceEnd,
-                                          @NotNull RandomSource rng,
+                                          RandomSource rng,
                                           int passIndex) {
         try {
             int motifCount = 1 + (rng.nextInt(100) < 50 ? 1 : 0); // 1–2
@@ -683,7 +683,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                             int radius,
                             double radiusSq,
                             double directionAngle,
-                            @NotNull RandomSource rng) {
+                            RandomSource rng) {
         try {
             double bladeLen = radius * (0.2 + rng.nextDouble() * 0.1);
             double hiltLen  = bladeLen * 0.22;
@@ -727,7 +727,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                             int radius,
                             double radiusSq,
                             double directionAngle,
-                            @NotNull RandomSource rng) {
+                            RandomSource rng) {
         try {
             double shaftLen = radius * (0.22 + rng.nextDouble() * 0.12);
             int tipX = baseX + (int) Math.round(Math.cos(directionAngle) * shaftLen);
@@ -784,7 +784,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                      double radiusSq,
                                      double sliceStart,
                                      double sliceEnd,
-                                     @NotNull RandomSource rng,
+                                     RandomSource rng,
                                      int passIndex) {
         try {
             double bandRNorm = BAND_INNER_FRACTION * (1.2 + rng.nextDouble() * 0.1);
@@ -818,7 +818,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                  int radius,
                                  double radiusSq,
                                  double baseAngle,
-                                 @NotNull RandomSource rng) {
+                                 RandomSource rng) {
         try {
             double scale = radius * 0.06 * (0.9 + rng.nextDouble() * 0.2);
             int style = rng.nextInt(4);
@@ -973,7 +973,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                       double radiusSq,
                                       double sliceStart,
                                       double sliceEnd,
-                                      @NotNull RandomSource rng,
+                                      RandomSource rng,
                                       int passIndex) {
         try {
             double innerR = radius * (BAND_MID_FRACTION * 0.86);
@@ -1002,7 +1002,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                      double outerR,
                                      double angleStart,
                                      double angleEnd,
-                                     @NotNull RandomSource rng) {
+                                     RandomSource rng) {
         try {
             int samples = 8;
             int[] xsA = new int[samples];
@@ -1055,7 +1055,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                           double radiusSq,
                                           double sliceStart,
                                           double sliceEnd,
-                                          @NotNull RandomSource rng,
+                                          RandomSource rng,
                                           int passIndex) {
         try {
             double baseR = radius * (BAND_OUTER_FRACTION * 0.94);
@@ -1082,7 +1082,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                             double radiusSq,
                             double baseR,
                             double angle,
-                            @NotNull RandomSource rng) {
+                            RandomSource rng) {
         try {
             double length = radius * (0.11 + rng.nextDouble() * 0.04);
             double baseWidth = radius * 0.035;
@@ -1116,7 +1116,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                double chainR,
                                double sliceStart,
                                double sliceEnd,
-                               @NotNull RandomSource rng) {
+                               RandomSource rng) {
         try {
             int linkCount = 3 + rng.nextInt(3); // 3–5 links
             double span = sliceEnd - sliceStart;
@@ -1151,7 +1151,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                            double radiusSq,
                                            double sliceStart,
                                            double sliceEnd,
-                                           @NotNull RandomSource rng) {
+                                           RandomSource rng) {
         try {
             int rivetCount = 3 + rng.nextInt(4); // 3–6
             double span = sliceEnd - sliceStart;
@@ -1194,7 +1194,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                  int radius,
                                  double radiusSq,
                                  double tangentAngle,
-                                 @NotNull RandomSource rng) {
+                                 RandomSource rng) {
         try {
             double nickDepth = radius * 0.035;
             double nickWidth = radius * 0.03;
@@ -1486,7 +1486,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
                                 int cx,
                                 int cy,
                                 double radiusSq,
-                                @NotNull RandomSource rng) {
+                                RandomSource rng) {
         try {
             int innerWidth = Math.max(1, width / 2);
             int outerWidth = Math.max(innerWidth + 1, (int) (innerWidth * 1.8));

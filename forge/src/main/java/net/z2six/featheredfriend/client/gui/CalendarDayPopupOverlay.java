@@ -1,14 +1,11 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/client/gui/CalendarDayPopupOverlay.java
 package net.z2six.featheredfriend.client.gui;
 
 import com.mojang.logging.LogUtils;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.z2six.featheredfriend.client.gui.widget.MultiLineScrollTextWidget;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 /**
@@ -39,16 +36,16 @@ public class CalendarDayPopupOverlay {
     private boolean finished = false;
 
     public CalendarDayPopupOverlay(
-            @NotNull Font font,
-            @NotNull ResourceLocation gothicFontId,
-            @NotNull String text,
+            Font font,
+            ResourceLocation gothicFontId,
+            String text,
             int screenWidth,
             int screenHeight
     ) {
         this.totalLifetimeTicks = FADE_IN_TICKS + HOLD_TICKS + FADE_OUT_TICKS;
 
         // Safety: avoid crashing on empty text, but don't show anything.
-        if (text.isEmpty()) {
+        if (text == null || text.isEmpty()) {
             LOG.warn("[CalendarDayPopupOverlay] Created with empty text; overlay will immediately finish");
             this.widget = null;
             this.finished = true;
@@ -118,7 +115,7 @@ public class CalendarDayPopupOverlay {
         }
     }
 
-    public void render(@NotNull GuiGraphics guiGraphics, float partialTick) {
+    public void render(GuiGraphics guiGraphics, float partialTick) {
         if (finished || widget == null) {
             return;
         }

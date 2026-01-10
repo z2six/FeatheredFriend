@@ -1,45 +1,49 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/network/FFPayloads.java
 package net.z2six.featheredfriend.network;
 
 import com.mojang.logging.LogUtils;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.ByteBufCodecs;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.neoforge.network.PacketDistributor;
-import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
-import net.neoforged.neoforge.network.handling.IPayloadContext;
-import net.neoforged.neoforge.network.registration.PayloadRegistrar;
+import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.minecraftforge.network.NetworkDirection;
+import net.minecraftforge.network.NetworkEvent;
+import net.minecraftforge.network.NetworkRegistry;
+import net.minecraftforge.network.PacketDistributor;
+import net.minecraftforge.network.simple.SimpleChannel;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.world.FeatheredFriendSettingsData;
 import org.slf4j.Logger;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 /**
- * Settings sync payloads for FeatheredFriend.
+ * Settings sync networking for Forge 1.20.1 (SimpleChannel).
  *
- * CRITICAL:
- * - Exactly ONE payload type per ResourceLocation ID.
- * - This file is the single source of truth for settings networking.
- *
- * What we sync (server-owned, must be consistent for all clients):
+ * What we sync (server-owned):
  * - chatDisabled (global)
  * - canEditChat (per-player permission check, computed server-side)
- *
- * Client-only preference "autoSummonOnScroll" is handled by FFClientConfig (not server-owned).
  */
 public final class FFPayloads {
 
     private static final Logger LOG = LogUtils.getLogger();
 
     /**
-     * Bump if you change payload shapes. Must match client + server.
+     * Bump if you change message shapes. Must match client + server.
      */
     private static final String PROTOCOL_VERSION = "1";
+
+    private static final SimpleChannel CHANNEL = NetworkRegistry.ChannelBuilder
+            .named(new net.minecraft.resources.ResourceLocation(Constants.MOD_ID, "settings"))
+            .networkProtocolVersion(() -> PROTOCOL_VERSION)
+            .clientAcceptedVersions(PROTOCOL_VERSION::equals)
+            .serverAcceptedVersions(PROTOCOL_VERSION::equals)
+            .simpleChannel();
+
+    private static final AtomicBoolean REGISTERED = new AtomicBoolean(false);
 
     private FFPayloads() {
         // no-op
@@ -50,39 +54,42 @@ public final class FFPayloads {
     // ---------------------------------------------------------------------
 
     public static void register(IEventBus modBus) {
-        try {
-            modBus.addListener(FFPayloads::onRegisterPayloadHandlers);
-            LOG.info("[FFPayloads] Hooked RegisterPayloadHandlersEvent listener");
-        } catch (Throwable t) {
-            LOG.error("[FFPayloads] register() failed safely", t);
-        }
+        modBus.addListener(FFPayloads::onCommonSetup);
     }
 
-    private static void onRegisterPayloadHandlers(RegisterPayloadHandlersEvent event) {
+    private static void onCommonSetup(final FMLCommonSetupEvent event) {
+        event.enqueueWork(FFPayloads::registerMessagesOnce);
+    }
+
+    private static void registerMessagesOnce() {
+        if (!REGISTERED.compareAndSet(false, true)) {
+            return;
+        }
+
         try {
-            PayloadRegistrar registrar = event.registrar(Constants.MOD_ID).versioned(PROTOCOL_VERSION);
+            AtomicInteger id = new AtomicInteger(0);
 
-            registrar.playToServer(
-                    RequestServerSettingsPayload.TYPE,
-                    RequestServerSettingsPayload.STREAM_CODEC,
-                    FFPayloads::handleRequestServerSettings
-            );
+            CHANNEL.messageBuilder(RequestServerSettingsPayload.class, id.getAndIncrement(), NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(RequestServerSettingsPayload::encode)
+                    .decoder(RequestServerSettingsPayload::decode)
+                    .consumerMainThread(FFPayloads::handleRequestServerSettings)
+                    .add();
 
-            registrar.playToClient(
-                    ServerSettingsPayload.TYPE,
-                    ServerSettingsPayload.STREAM_CODEC,
-                    FFPayloads::handleServerSettingsSync
-            );
+            CHANNEL.messageBuilder(ServerSettingsPayload.class, id.getAndIncrement(), NetworkDirection.PLAY_TO_CLIENT)
+                    .encoder(ServerSettingsPayload::encode)
+                    .decoder(ServerSettingsPayload::decode)
+                    .consumerMainThread(FFPayloads::handleServerSettingsSync)
+                    .add();
 
-            registrar.playToServer(
-                    SetChatDisabledPayload.TYPE,
-                    SetChatDisabledPayload.STREAM_CODEC,
-                    FFPayloads::handleSetChatDisabled
-            );
+            CHANNEL.messageBuilder(SetChatDisabledPayload.class, id.getAndIncrement(), NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(SetChatDisabledPayload::encode)
+                    .decoder(SetChatDisabledPayload::decode)
+                    .consumerMainThread(FFPayloads::handleSetChatDisabled)
+                    .add();
 
-            LOG.info("[FFPayloads] Registered settings payloads OK (protocol={})", PROTOCOL_VERSION);
+            LOG.info("[FFPayloads] Registered settings messages OK (protocol={})", PROTOCOL_VERSION);
         } catch (Throwable t) {
-            LOG.error("[FFPayloads] onRegisterPayloadHandlers failed safely", t);
+            LOG.error("[FFPayloads] Failed to register settings messages", t);
         }
     }
 
@@ -95,21 +102,11 @@ public final class FFPayloads {
         private static volatile boolean chatDisabled = true;
         private static volatile boolean canEditChat = false;
 
-        private ClientState() {
-            // no-op
-        }
+        private ClientState() {}
 
-        public static boolean hasSynced() {
-            return hasSynced;
-        }
-
-        public static boolean isChatDisabled() {
-            return chatDisabled;
-        }
-
-        public static boolean canEditChat() {
-            return canEditChat;
-        }
+        public static boolean hasSynced() { return hasSynced; }
+        public static boolean isChatDisabled() { return chatDisabled; }
+        public static boolean canEditChat() { return canEditChat; }
 
         private static void applyFromServer(boolean newChatDisabled, boolean newCanEditChat) {
             chatDisabled = newChatDisabled;
@@ -129,72 +126,56 @@ public final class FFPayloads {
     }
 
     // ---------------------------------------------------------------------
-    // Payload definitions (ONLY ONCE PER ID!)
+    // Message types
     // ---------------------------------------------------------------------
 
-    /**
-     * Client -> Server: request current server settings.
-     */
-    public record RequestServerSettingsPayload() implements net.minecraft.network.protocol.common.custom.CustomPacketPayload {
-
-        public static final ResourceLocation ID =
-                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "request_server_settings_v1");
-
-        public static final Type<RequestServerSettingsPayload> TYPE = new Type<>(ID);
-
-        public static final StreamCodec<RegistryFriendlyByteBuf, RequestServerSettingsPayload> STREAM_CODEC =
-                StreamCodec.unit(new RequestServerSettingsPayload());
-
-        @Override
-        public Type<? extends net.minecraft.network.protocol.common.custom.CustomPacketPayload> type() {
-            return TYPE;
+    public record RequestServerSettingsPayload() {
+        static void encode(RequestServerSettingsPayload msg, FriendlyByteBuf buf) {
+            // no fields
+        }
+        static RequestServerSettingsPayload decode(FriendlyByteBuf buf) {
+            return new RequestServerSettingsPayload();
         }
     }
 
-    /**
-     * Server -> Client: settings snapshot.
-     */
-    public record ServerSettingsPayload(boolean chatDisabled, boolean canEditChat)
-            implements net.minecraft.network.protocol.common.custom.CustomPacketPayload {
-
-        public static final ResourceLocation ID =
-                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "server_settings_v1");
-
-        public static final Type<ServerSettingsPayload> TYPE = new Type<>(ID);
-
-        public static final StreamCodec<RegistryFriendlyByteBuf, ServerSettingsPayload> STREAM_CODEC =
-                StreamCodec.composite(
-                        ByteBufCodecs.BOOL, ServerSettingsPayload::chatDisabled,
-                        ByteBufCodecs.BOOL, ServerSettingsPayload::canEditChat,
-                        ServerSettingsPayload::new
-                );
-
-        @Override
-        public Type<? extends net.minecraft.network.protocol.common.custom.CustomPacketPayload> type() {
-            return TYPE;
+    public record ServerSettingsPayload(boolean chatDisabled, boolean canEditChat) {
+        static void encode(ServerSettingsPayload msg, FriendlyByteBuf buf) {
+            buf.writeBoolean(msg.chatDisabled);
+            buf.writeBoolean(msg.canEditChat);
+        }
+        static ServerSettingsPayload decode(FriendlyByteBuf buf) {
+            boolean cd = buf.readBoolean();
+            boolean ce = buf.readBoolean();
+            return new ServerSettingsPayload(cd, ce);
         }
     }
 
-    /**
-     * Client -> Server: set chat disabled flag. Requires permission on server.
-     */
-    public record SetChatDisabledPayload(boolean chatDisabled)
-            implements net.minecraft.network.protocol.common.custom.CustomPacketPayload {
+    public record SetChatDisabledPayload(boolean chatDisabled) {
+        static void encode(SetChatDisabledPayload msg, FriendlyByteBuf buf) {
+            buf.writeBoolean(msg.chatDisabled);
+        }
+        static SetChatDisabledPayload decode(FriendlyByteBuf buf) {
+            return new SetChatDisabledPayload(buf.readBoolean());
+        }
+    }
 
-        public static final ResourceLocation ID =
-                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "set_chat_disabled_v1");
+    // ---------------------------------------------------------------------
+    // Client send helpers
+    // ---------------------------------------------------------------------
 
-        public static final Type<SetChatDisabledPayload> TYPE = new Type<>(ID);
+    public static void sendRequestServerSettingsToServer() {
+        try {
+            CHANNEL.sendToServer(new RequestServerSettingsPayload());
+        } catch (Throwable t) {
+            LOG.error("[FFPayloads] sendRequestServerSettingsToServer failed", t);
+        }
+    }
 
-        public static final StreamCodec<RegistryFriendlyByteBuf, SetChatDisabledPayload> STREAM_CODEC =
-                StreamCodec.composite(
-                        ByteBufCodecs.BOOL, SetChatDisabledPayload::chatDisabled,
-                        SetChatDisabledPayload::new
-                );
-
-        @Override
-        public Type<? extends net.minecraft.network.protocol.common.custom.CustomPacketPayload> type() {
-            return TYPE;
+    public static void sendSetChatDisabledToServer(boolean chatDisabled) {
+        try {
+            CHANNEL.sendToServer(new SetChatDisabledPayload(chatDisabled));
+        } catch (Throwable t) {
+            LOG.error("[FFPayloads] sendSetChatDisabledToServer failed", t);
         }
     }
 
@@ -220,7 +201,7 @@ public final class FFPayloads {
             }
 
             ServerSettingsPayload msg = new ServerSettingsPayload(chatDisabledValue, canEditChatValue);
-            PacketDistributor.sendToPlayer(player, msg);
+            CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), msg);
 
             LOG.info("[FFPayloads] Sent settings to {}: chatDisabled={} canEditChat={}",
                     player.getGameProfile().getName(), chatDisabledValue, canEditChatValue);
@@ -255,55 +236,56 @@ public final class FFPayloads {
     // Handlers
     // ---------------------------------------------------------------------
 
-    private static void handleRequestServerSettings(RequestServerSettingsPayload payload, IPayloadContext context) {
+    private static void handleRequestServerSettings(RequestServerSettingsPayload payload, Supplier<NetworkEvent.Context> ctxSup) {
+        NetworkEvent.Context ctx = ctxSup.get();
         try {
-            context.enqueueWork(() -> {
-                try {
-                    if (!(context.player() instanceof ServerPlayer sp)) {
-                        LOG.warn("[FFPayloads] RequestServerSettings from non-ServerPlayer; ignoring");
-                        return;
-                    }
+            ServerPlayer sp = ctx.getSender();
+            if (sp == null) {
+                return;
+            }
 
+            ctx.enqueueWork(() -> {
+                try {
                     ServerLevel level = sp.serverLevel();
                     if (level == null) {
                         LOG.warn("[FFPayloads] RequestServerSettings: serverLevel null; ignoring");
                         return;
                     }
-
                     sendSettingsToPlayer(level, sp);
-
                 } catch (Throwable t) {
                     LOG.error("[FFPayloads] handleRequestServerSettings work failed safely", t);
                 }
             });
-        } catch (Throwable t) {
-            LOG.error("[FFPayloads] handleRequestServerSettings failed safely", t);
+        } finally {
+            ctx.setPacketHandled(true);
         }
     }
 
-    private static void handleServerSettingsSync(ServerSettingsPayload payload, IPayloadContext context) {
+    private static void handleServerSettingsSync(ServerSettingsPayload payload, Supplier<NetworkEvent.Context> ctxSup) {
+        NetworkEvent.Context ctx = ctxSup.get();
         try {
-            context.enqueueWork(() -> {
+            ctx.enqueueWork(() -> {
                 try {
                     ClientState.applyFromServer(payload.chatDisabled(), payload.canEditChat());
                 } catch (Throwable t) {
                     LOG.error("[FFPayloads] handleServerSettingsSync work failed safely", t);
                 }
             });
-        } catch (Throwable t) {
-            LOG.error("[FFPayloads] handleServerSettingsSync failed safely", t);
+        } finally {
+            ctx.setPacketHandled(true);
         }
     }
 
-    private static void handleSetChatDisabled(SetChatDisabledPayload payload, IPayloadContext context) {
+    private static void handleSetChatDisabled(SetChatDisabledPayload payload, Supplier<NetworkEvent.Context> ctxSup) {
+        NetworkEvent.Context ctx = ctxSup.get();
         try {
-            context.enqueueWork(() -> {
-                try {
-                    if (!(context.player() instanceof ServerPlayer sp)) {
-                        LOG.warn("[FFPayloads] SetChatDisabled from non-ServerPlayer; ignoring");
-                        return;
-                    }
+            ServerPlayer sp = ctx.getSender();
+            if (sp == null) {
+                return;
+            }
 
+            ctx.enqueueWork(() -> {
+                try {
                     ServerLevel level = sp.serverLevel();
                     if (level == null) {
                         LOG.warn("[FFPayloads] SetChatDisabled: serverLevel null; ignoring");
@@ -336,8 +318,9 @@ public final class FFPayloads {
                     LOG.error("[FFPayloads] handleSetChatDisabled work failed safely", t);
                 }
             });
-        } catch (Throwable t) {
-            LOG.error("[FFPayloads] handleSetChatDisabled failed safely", t);
+
+        } finally {
+            ctx.setPacketHandled(true);
         }
     }
 }

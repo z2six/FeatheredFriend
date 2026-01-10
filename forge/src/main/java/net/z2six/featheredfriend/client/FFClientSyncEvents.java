@@ -1,14 +1,12 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/client/FFClientSyncEvents.java
 package net.z2six.featheredfriend.client;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Player;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.network.PacketDistributor;
+import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.z2six.featheredfriend.network.FFPayloads;
 import org.slf4j.Logger;
 
@@ -33,9 +31,9 @@ public final class FFClientSyncEvents {
                 LOG.debug("[FFClientSyncEvents] already registered; skipping");
                 return;
             }
-            NeoForge.EVENT_BUS.register(FFClientSyncEvents.class);
+            MinecraftForge.EVENT_BUS.register(FFClientSyncEvents.class);
             REGISTERED = true;
-            LOG.info("[FFClientSyncEvents] Registered on NeoForge EVENT_BUS");
+            LOG.info("[FFClientSyncEvents] Registered on MinecraftForge EVENT_BUS");
         } catch (Throwable t) {
             LOG.error("[FFClientSyncEvents] registerGameBus failed safely", t);
         }
@@ -76,7 +74,11 @@ public final class FFClientSyncEvents {
     }
 
     @SubscribeEvent
-    public static void onClientTick(ClientTickEvent.Post event) {
+    public static void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) {
+            return;
+        }
+
         try {
             if (!REQUEST_PENDING || REQUEST_SENT_THIS_SESSION) {
                 return;
@@ -90,7 +92,8 @@ public final class FFClientSyncEvents {
             if (mc.level == null) return;
             if (mc.getConnection() == null) return;
 
-            PacketDistributor.sendToServer(new FFPayloads.RequestServerSettingsPayload());
+            // Forge 1.20.1: send via SimpleChannel
+            FFPayloads.sendRequestServerSettingsToServer();
 
             REQUEST_SENT_THIS_SESSION = true;
             REQUEST_PENDING = false;

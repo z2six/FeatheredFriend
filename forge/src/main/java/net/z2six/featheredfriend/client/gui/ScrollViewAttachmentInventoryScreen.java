@@ -11,7 +11,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.neoforge.menu.ScrollViewMenu;
-import org.jetbrains.annotations.NotNull;
+
 import org.slf4j.Logger;
 import org.lwjgl.glfw.GLFW;
 
@@ -58,10 +58,10 @@ public class ScrollViewAttachmentInventoryScreen extends AbstractContainerScreen
     /**
      * Primary constructor: use this when opening from ScrollViewScreen, so we can return to it.
      */
-    public ScrollViewAttachmentInventoryScreen(@NotNull ScrollViewMenu menu,
-                                               @NotNull Inventory playerInventory,
-                                               @NotNull Component title,
-                                               @NotNull ScrollViewScreen parent) {
+    public ScrollViewAttachmentInventoryScreen(ScrollViewMenu menu,
+                                               Inventory playerInventory,
+                                               Component title,
+                                               ScrollViewScreen parent) {
         super(menu, playerInventory, title);
         this.parent = parent;
         configureDimensions();
@@ -73,9 +73,9 @@ public class ScrollViewAttachmentInventoryScreen extends AbstractContainerScreen
      * Fallback constructor: parent is not available.
      * This exists mainly so accidental calls do not break compilation (and to support the static helper).
      */
-    public ScrollViewAttachmentInventoryScreen(@NotNull ScrollViewMenu menu,
-                                               @NotNull Inventory playerInventory,
-                                               @NotNull Component title) {
+    public ScrollViewAttachmentInventoryScreen(ScrollViewMenu menu,
+                                               Inventory playerInventory,
+                                               Component title) {
         super(menu, playerInventory, title);
         this.parent = null;
         configureDimensions();
@@ -112,7 +112,7 @@ public class ScrollViewAttachmentInventoryScreen extends AbstractContainerScreen
      * If the current screen is a ScrollViewScreen, we use it as parent so we can return without
      * restarting animation.
      */
-    public static void handlePearlClicked(@NotNull Minecraft mc) {
+    public static void handlePearlClicked(Minecraft mc) {
         try {
             if (mc.player == null) {
                 LOG.warn("[ScrollViewAttachmentInventoryScreen] handlePearlClicked: player null");
@@ -196,7 +196,7 @@ public class ScrollViewAttachmentInventoryScreen extends AbstractContainerScreen
         }
     }
 
-    private void startClosing(@NotNull String reason) {
+    private void startClosing(String reason) {
         try {
             if (this.closing) {
                 LOG.debug("[ScrollViewAttachmentInventoryScreen] startClosing ignored (already closing) reason={}", reason);
@@ -214,7 +214,7 @@ public class ScrollViewAttachmentInventoryScreen extends AbstractContainerScreen
     // ---------------------------------------------------------------------
 
     @Override
-    protected void renderBg(@NotNull GuiGraphics guiGraphics, float partialTick, int mouseX, int mouseY) {
+    protected void renderBg(GuiGraphics guiGraphics, float partialTick, int mouseX, int mouseY) {
         try {
             guiGraphics.blit(
                     INVENTORY_TEXTURE,
@@ -234,7 +234,7 @@ public class ScrollViewAttachmentInventoryScreen extends AbstractContainerScreen
     }
 
     @Override
-    public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         try {
             this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
             super.render(guiGraphics, mouseX, mouseY, partialTick);
@@ -263,7 +263,7 @@ public class ScrollViewAttachmentInventoryScreen extends AbstractContainerScreen
     }
 
     @Override
-    protected void renderLabels(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY) {
+    protected void renderLabels(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         // no labels
     }
 

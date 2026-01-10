@@ -7,10 +7,10 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
@@ -20,14 +20,12 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.component.CustomData;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.widget.MultiLineScrollTextWidget;
 import net.z2six.featheredfriend.neoforge.menu.ScrollViewMenu;
 import net.z2six.featheredfriend.network.FFNetwork;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator.SigilPattern;
-import org.jetbrains.annotations.NotNull;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 
@@ -226,9 +224,9 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     private String sealedDateText = "";
     private String sealedSenderName = "";
 
-    public ScrollViewScreen(@NotNull ScrollViewMenu menu,
-                            @NotNull Inventory playerInventory,
-                            @NotNull Component title) {
+    public ScrollViewScreen(ScrollViewMenu menu,
+                            Inventory playerInventory,
+                            Component title) {
         super(menu, playerInventory, title);
         this.imageWidth = GUI_WIDTH;
         this.imageHeight = GUI_HEIGHT;
@@ -356,9 +354,8 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             LOG.debug("[ScrollViewScreen] Using scroll stack from hand: item={} count={}",
                     BuiltInRegistries.ITEM.getKey(sealedScrollStack.getItem()), sealedScrollStack.getCount());
 
-            CustomData customData = hand.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
-            CompoundTag root = customData.copyTag();
-            if (root == null || !root.contains("SealedScroll")) {
+            CompoundTag root = hand.getTag();
+            if (root == null || !root.contains("SealedScroll", Tag.TAG_COMPOUND)) {
                 LOG.warn("[ScrollViewScreen] SealedScroll NBT compound missing on held item");
                 return;
             }
@@ -396,8 +393,8 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                 this.sealedSenderName = "";
             }
 
-            if (seal.contains("Attachments", ListTag.TAG_LIST)) {
-                ListTag attachments = seal.getList("Attachments", CompoundTag.TAG_COMPOUND);
+            if (seal.contains("Attachments", Tag.TAG_LIST)) {
+                ListTag attachments = seal.getList("Attachments", Tag.TAG_COMPOUND);
                 this.hasAttachments = attachments != null && !attachments.isEmpty();
             } else {
                 this.hasAttachments = false;
@@ -439,8 +436,9 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         }
     }
 
-    private static String safeTagString(@NotNull CompoundTag tag, @NotNull String key) {
+    private static String safeTagString(CompoundTag tag, String key) {
         try {
+            if (tag == null || key == null) return "";
             if (!tag.contains(key)) {
                 return "";
             }
@@ -611,10 +609,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     // ---------------------------------------------------------------------
 
     @Override
-    protected void renderBg(@NotNull GuiGraphics guiGraphics,
-                            float partialTick,
-                            int mouseX,
-                            int mouseY) {
+    protected void renderBg(GuiGraphics guiGraphics, float partialTick, int mouseX, int mouseY) {
         try {
             boolean inSmallWax = isMouseInWaxAreaSmall(mouseX, mouseY);
             boolean inZoomWax = isMouseInWaxAreaZoom(mouseX, mouseY);
@@ -704,7 +699,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         }
     }
 
-    private void renderAnimatedScroll(@NotNull GuiGraphics guiGraphics, boolean zoomed) {
+    private void renderAnimatedScroll(GuiGraphics guiGraphics, boolean zoomed) {
         ResourceLocation texture;
         int frameIndex;
 
@@ -766,7 +761,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     // Wax seal rendering
     // ---------------------------------------------------------------------
 
-    private void renderWaxSeal(@NotNull GuiGraphics g,
+    private void renderWaxSeal(GuiGraphics g,
                                int mouseX,
                                int mouseY,
                                float partialTick,
@@ -792,7 +787,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         }
     }
 
-    private void renderSmallWaxSeal(@NotNull GuiGraphics g) {
+    private void renderSmallWaxSeal(GuiGraphics g) {
         try {
             if (this.smallSigilPattern == null) {
                 return;
@@ -828,7 +823,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         }
     }
 
-    private void renderZoomWaxSeal(@NotNull GuiGraphics g) {
+    private void renderZoomWaxSeal(GuiGraphics g) {
         try {
             if (this.zoomSigilPattern == null) {
                 return;
@@ -866,7 +861,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     // ---------------------------------------------------------------------
 
     @Override
-    public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         try {
             this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
             super.render(guiGraphics, mouseX, mouseY, partialTick);
@@ -880,7 +875,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         }
     }
 
-    private void renderAttachmentsPearlIcon(@NotNull GuiGraphics g, int mouseX, int mouseY) {
+    private void renderAttachmentsPearlIcon(GuiGraphics g, int mouseX, int mouseY) {
         try {
             // Only show pearl when scroll is open (read view)
             if (this.viewPhase != ViewPhase.OPEN_IDLE) {
@@ -949,7 +944,8 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     }
 
     @Override
-    protected void renderLabels(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY) {
+    protected void renderLabels(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+
     }
 
     @Override
@@ -958,7 +954,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     }
 
     @Override
-    protected void renderTooltip(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY) {
+    protected void renderTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         this.hoveredSlot = null;
         super.renderTooltip(guiGraphics, mouseX, mouseY);
 
@@ -976,7 +972,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     // Proper close handling
     // ---------------------------------------------------------------------
 
-    private void requestProperClose(@NotNull String reason) {
+    private void requestProperClose(String reason) {
         try {
             if (requestedClose) {
                 LOG.debug("[ScrollViewScreen] requestProperClose: already requested; ignoring (reason={})", reason);
@@ -1041,7 +1037,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
      * Important: we avoid re-creating this ScrollViewScreen later by passing "this" as parent
      * if the attachment screen supports it. If it doesn't, we still open it with best-effort.
      */
-    private boolean openAttachmentInventoryScreen(@NotNull String reason) {
+    private boolean openAttachmentInventoryScreen(String reason) {
         try {
             Minecraft mc = this.minecraft;
             if (mc == null) {
@@ -1107,7 +1103,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
     // Pearl inv render helpers
 
-    private boolean isOpenedScrollStack(@NotNull ItemStack stack) {
+    private boolean isOpenedScrollStack(ItemStack stack) {
         try {
             if (stack.isEmpty()) {
                 return false;
@@ -1129,7 +1125,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         }
     }
 
-    private boolean isSealedScrollStack(@NotNull ItemStack stack) {
+    private boolean isSealedScrollStack(ItemStack stack) {
         try {
             if (stack.isEmpty()) {
                 return false;
@@ -1158,10 +1154,10 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
      *
      * This avoids you having to match an exact signature here. If none match, we log and return null.
      */
-    private static Screen createAttachmentScreenReflective(@NotNull ScrollViewMenu menu,
-                                                           @NotNull Inventory inv,
-                                                           @NotNull Component title,
-                                                           @NotNull ScrollViewScreen parent) {
+    private static Screen createAttachmentScreenReflective(ScrollViewMenu menu,
+                                                           Inventory inv,
+                                                           Component title,
+                                                           ScrollViewScreen parent) {
         try {
             Class<?> cls = Class.forName("net.z2six.featheredfriend.client.gui.ScrollViewAttachmentInventoryScreen");
 
@@ -1371,10 +1367,8 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             if (a.isEmpty() || b.isEmpty()) return false;
             if (a.getItem() != b.getItem()) return false;
 
-            CustomData acd = a.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
-            CustomData bcd = b.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
-            CompoundTag at = acd.copyTag();
-            CompoundTag bt = bcd.copyTag();
+            CompoundTag at = a.getTag();
+            CompoundTag bt = b.getTag();
 
             if (at == null && bt == null) return true;
             if (at == null || bt == null) return false;
@@ -1481,7 +1475,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         }
     }
 
-    private TargetSlot findClientTargetSealedScrollByHintOrScan(@NotNull Minecraft mc, @NotNull Item sealedItem, int slotHint) {
+    private TargetSlot findClientTargetSealedScrollByHintOrScan(Minecraft mc, Item sealedItem, int slotHint) {
         try {
             // Hint first
             TargetSlot hinted = getClientStackByHint(mc, slotHint);
@@ -1514,7 +1508,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         }
     }
 
-    private TargetSlot getClientStackByHint(@NotNull Minecraft mc, int slotHint) {
+    private TargetSlot getClientStackByHint(Minecraft mc, int slotHint) {
         try {
             if (slotHint == 36) {
                 return new TargetSlot(TargetLocation.MAIN_HAND, -1, mc.player.getMainHandItem(), "MAIN_HAND(36)");
@@ -1532,12 +1526,11 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         }
     }
 
-    private boolean matchesFingerprintClient(@NotNull ItemStack stack) {
+    private boolean matchesFingerprintClient(ItemStack stack) {
         try {
-            CustomData cd = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
-            CompoundTag root = cd.copyTag();
+            CompoundTag root = stack.getTag();
             if (root == null || root.isEmpty()) return false;
-            if (!root.contains("SealedScroll", CompoundTag.TAG_COMPOUND)) return false;
+            if (!root.contains("SealedScroll", Tag.TAG_COMPOUND)) return false;
 
             CompoundTag seal = root.getCompound("SealedScroll");
 
@@ -1592,15 +1585,13 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         }
     }
 
-    private static boolean copySealedScrollDataWithoutAttachmentsClient(@NotNull ItemStack sealed,
-                                                                        @NotNull ItemStack opened) {
+    private static boolean copySealedScrollDataWithoutAttachmentsClient(ItemStack sealed, ItemStack opened) {
         try {
-            CustomData sealedCd = sealed.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
-            CompoundTag sealedRoot = sealedCd.copyTag();
+            CompoundTag sealedRoot = sealed.getTag();
             if (sealedRoot == null || sealedRoot.isEmpty()) {
                 return false;
             }
-            if (!sealedRoot.contains("SealedScroll", CompoundTag.TAG_COMPOUND)) {
+            if (!sealedRoot.contains("SealedScroll", Tag.TAG_COMPOUND)) {
                 return false;
             }
 
@@ -1620,7 +1611,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             }
 
             openedRoot.put("SealedScroll", openedSeal);
-            opened.set(DataComponents.CUSTOM_DATA, CustomData.of(openedRoot));
+            opened.setTag(openedRoot);
             return true;
         } catch (Throwable t) {
             LOG.error("[ScrollViewScreen] copySealedScrollDataWithoutAttachmentsClient failed", t);
@@ -1628,7 +1619,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         }
     }
 
-    private static Item resolveItemByPath(@NotNull String path) {
+    private static Item resolveItemByPath(String path) {
         try {
             ResourceLocation id = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, path);
             Item item = BuiltInRegistries.ITEM.get(id);

@@ -2,7 +2,7 @@
 package net.z2six.featheredfriend.sigil;
 
 import net.minecraft.util.RandomSource;
-import org.jetbrains.annotations.NotNull;
+
 
 /**
  * neoforge/src/main/java/net/z2six/featheredfriend/sigil/SealSigilShapeSet.java
@@ -53,5 +53,5 @@ public interface SealSigilShapeSet {
                             double radiusSq,
                             int slices,
                             int sliceIndex,
-                            @NotNull RandomSource rng);
+                            RandomSource rng);
 }

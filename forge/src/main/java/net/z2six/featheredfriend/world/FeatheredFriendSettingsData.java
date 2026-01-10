@@ -9,7 +9,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.saveddata.SavedData;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.config.FFCalendarConfig;
-import org.jetbrains.annotations.NotNull;
+
 import org.slf4j.Logger;
 
 /**
@@ -76,7 +76,7 @@ public class FeatheredFriendSettingsData extends SavedData {
         return tag;
     }
 
-    private void readFromNbt(@NotNull CompoundTag tag) {
+    private void readFromNbt(CompoundTag tag) {
         try {
             // Backward compatibility only.
             if (tag.contains(KEY_AUTO_SUMMON, Tag.TAG_BYTE)) {
@@ -107,7 +107,7 @@ public class FeatheredFriendSettingsData extends SavedData {
         }
     }
 
-    private void writeToNbt(@NotNull CompoundTag tag) {
+    private void writeToNbt(CompoundTag tag) {
         try {
             // Backward compatibility only.
             tag.putBoolean(KEY_AUTO_SUMMON, autoSummonOnScroll);
@@ -119,7 +119,7 @@ public class FeatheredFriendSettingsData extends SavedData {
     }
 
     @NotNull
-    public static FeatheredFriendSettingsData get(@NotNull ServerLevel level) {
+    public static FeatheredFriendSettingsData get(ServerLevel level) {
         try {
             ServerLevel overworld = level.getServer().overworld();
             if (overworld == null) {

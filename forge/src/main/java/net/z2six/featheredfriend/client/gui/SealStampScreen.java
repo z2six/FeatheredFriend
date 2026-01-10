@@ -22,7 +22,7 @@ import net.z2six.featheredfriend.neoforge.menu.SealStampMenu;
 import net.z2six.featheredfriend.network.SealStampCarveResultPacket;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator.SigilPattern;
-import org.jetbrains.annotations.NotNull;
+
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 
@@ -239,9 +239,9 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             .setShapeHighlightDirection(SHAPE_HIGHLIGHT_DIRECTION)
             .setShapeShadowDirection(SHAPE_SHADOW_DIRECTION);
 
-    public SealStampScreen(@NotNull SealStampMenu menu,
-                           @NotNull Inventory playerInventory,
-                           @NotNull Component title) {
+    public SealStampScreen(SealStampMenu menu,
+                           Inventory playerInventory,
+                           Component title) {
         super(menu, playerInventory, title);
         this.imageWidth = GUI_WIDTH;
         this.imageHeight = GUI_HEIGHT;
@@ -705,7 +705,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 // ---------------------------------------------------------------------
 
     @Override
-    protected void renderBg(@NotNull GuiGraphics guiGraphics,
+    protected void renderBg(GuiGraphics guiGraphics,
                             float partialTick,
                             int mouseX,
                             int mouseY) {
@@ -735,7 +735,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 // ---------------------------------------------------------------------
 
     @Override
-    public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         try {
             this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
             super.render(guiGraphics, mouseX, mouseY, partialTick);
@@ -761,11 +761,11 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     }
 
     @Override
-    protected void renderLabels(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY) {
+    protected void renderLabels(GuiGraphics guiGraphics, int mouseX, int mouseY) {
 // Intentionally empty.
     }
 
-    private void renderPreviewArea(@NotNull GuiGraphics guiGraphics) {
+    private void renderPreviewArea(GuiGraphics guiGraphics) {
         try {
             int previewX = this.leftPos + this.imageWidth - PREVIEW_RIGHT_MARGIN - PREVIEW_WIDTH;
             int previewY = this.topPos + PREVIEW_TOP_Y;
@@ -843,7 +843,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
     }
 
-    private void renderParticles(@NotNull GuiGraphics guiGraphics, float partialTick) {
+    private void renderParticles(GuiGraphics guiGraphics, float partialTick) {
         try {
             if (this.particles.isEmpty()) {
                 return;

@@ -12,7 +12,7 @@ import net.z2six.featheredfriend.client.gui.EnderPearlInventoryScreen;
 import net.z2six.featheredfriend.client.gui.ScrollSealingScreen;
 import net.z2six.featheredfriend.client.gui.SealStampScreen;
 import net.z2six.featheredfriend.client.gui.ScrollViewScreen;
-import org.jetbrains.annotations.NotNull;
+
 import org.slf4j.Logger;
 
 import java.lang.reflect.Method;
@@ -68,7 +68,7 @@ public final class JeiOverlayHider {
     /**
      * Called from FeatheredFriendJeiPlugin.onRuntimeAvailable(IJeiRuntime).
      */
-    public static void setRuntime(@NotNull Object runtime) {
+    public static void setRuntime(Object runtime) {
         try {
             jeiRuntime = runtime;
             loggedMissingRuntime = false;
@@ -85,7 +85,7 @@ public final class JeiOverlayHider {
      *  - Otherwise, restore the overlay if we previously hid it.
      */
     @SubscribeEvent
-    public static void onClientTick(@NotNull ClientTickEvent.Post event) {
+    public static void onClientTick(ClientTickEvent.Post event) {
         try {
             if (jeiRuntime == null) {
                 if (!loggedMissingRuntime) {
@@ -205,7 +205,7 @@ public final class JeiOverlayHider {
     /**
      * Reflectively calls runtime.getIngredientListOverlay().
      */
-    private static Object getIngredientOverlay(@NotNull Object runtime) {
+    private static Object getIngredientOverlay(Object runtime) {
         try {
             Class<?> runtimeClass = runtime.getClass();
             Method getOverlay;
@@ -247,7 +247,7 @@ public final class JeiOverlayHider {
     /**
      * Try to find suitable visibility getter/setter methods on the overlay object.
      */
-    private static VisibilityMethods findVisibilityMethods(@NotNull Object overlay) {
+    private static VisibilityMethods findVisibilityMethods(Object overlay) {
         Class<?> clazz = overlay.getClass();
         Method bestSetter = null;
         Method bestGetter = null;

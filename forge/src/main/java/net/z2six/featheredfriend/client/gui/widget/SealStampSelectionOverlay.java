@@ -1,26 +1,20 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/client/gui/widget/SealStampSelectionOverlay.java
 package net.z2six.featheredfriend.client.gui.widget;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.CustomData;
 import net.z2six.featheredfriend.item.SealStampItem;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/client/gui/widget/SealStampSelectionOverlay.java
- *
  * SealStampSelectionOverlay
  *
  * Lightweight client-side overlay that:
@@ -28,18 +22,7 @@ import java.util.List;
  *  - Shows up to 9 item icons in a 3x3 grid.
  *  - Supports selecting a stamp (left-click) and favouriting one stamp (right-click).
  *  - Remembers the favourite stamp client-side using a simple key derived from
- *    the stamp's SealStamp custom-data component (Owner + Seed + Slices + ShapeSet).
- *
- * Behaviour:
- *  - When opened, rebuilds its entry list from the player's inventory.
- *  - If a global favourite exists and is present in the entries, auto-selects it
- *    and fires the SelectionCallback immediately.
- *  - When the user left-clicks a slot, that stamp becomes selected and the
- *    SelectionCallback is invoked.
- *  - When the user right-clicks a slot, that stamp becomes the sole favourite.
- *    Right-clicking the current favourite again clears the favourite.
- *
- * This overlay is purely client-side; it never mutates inventory contents.
+ *    the stamp's NBT ("SealStamp" compound).
  */
 public final class SealStampSelectionOverlay {
 
@@ -51,19 +34,13 @@ public final class SealStampSelectionOverlay {
 
     public interface SelectionCallback {
         /**
-         * Called when the user selects a stamp (either via auto-select of the favourite
-         * or via left-click on a slot).
-         *
          * @param slotIndex logical slot index:
          *                  0..35 = player inventory
-         *                  37    = offhand (for now; main-hand is addressed via 0..35)
+         *                  37    = offhand
          * @param stack     snapshot of the selected stamp stack
          */
-        void onStampSelected(int slotIndex, @NotNull ItemStack stack);
+        void onStampSelected(int slotIndex, ItemStack stack);
 
-        /**
-         * Called when the overlay is closed without a selection.
-         */
         default void onOverlayClosedWithoutSelection() {
         }
     }
@@ -129,7 +106,7 @@ public final class SealStampSelectionOverlay {
         final int slotIndex; // 0..35 inventory, 37 offhand
         final ItemStack stack;
 
-        Entry(int slotIndex, @NotNull ItemStack stack) {
+        Entry(int slotIndex, ItemStack stack) {
             this.slotIndex = slotIndex;
             this.stack = stack;
         }
@@ -156,13 +133,13 @@ public final class SealStampSelectionOverlay {
     private static final int LABEL_HEIGHT = 12;
     private static final int LABEL_MARGIN_BOTTOM = 2;
 
-    public SealStampSelectionOverlay(@NotNull Minecraft minecraft,
-                                     @NotNull Font font,
+    public SealStampSelectionOverlay(Minecraft minecraft,
+                                     Font font,
                                      int x,
                                      int y,
                                      int width,
                                      int height,
-                                     @NotNull SelectionCallback callback) {
+                                     SelectionCallback callback) {
         this.minecraft = minecraft;
         this.font = font;
         this.x = x;
@@ -201,8 +178,6 @@ public final class SealStampSelectionOverlay {
 
     /**
      * Rebuilds the list of SealStampItem entries from the local player's inventory.
-     * Called whenever the overlay is (re)opened.
-     *
      * Also auto-selects the global favourite stamp if present and invokes the callback.
      */
     public void rebuildEntriesAndAutoSelectFavorite() {
@@ -223,12 +198,8 @@ public final class SealStampSelectionOverlay {
             int added = 0;
             for (int slot = 0; slot < inv.items.size() && added < 9; slot++) {
                 ItemStack stack = inv.items.get(slot);
-                if (stack == null || stack.isEmpty()) {
-                    continue;
-                }
-                if (!(stack.getItem() instanceof SealStampItem)) {
-                    continue;
-                }
+                if (stack == null || stack.isEmpty()) continue;
+                if (!(stack.getItem() instanceof SealStampItem)) continue;
 
                 entries.add(new Entry(slot, stack.copy()));
                 added++;
@@ -273,10 +244,8 @@ public final class SealStampSelectionOverlay {
         // Currently stateless; kept for parity with RecipientOverlay.
     }
 
-    public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        if (!active) {
-            return;
-        }
+    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        if (!active) return;
 
         try {
             int x0 = this.x;
@@ -319,15 +288,13 @@ public final class SealStampSelectionOverlay {
                 int slotY1 = sy + 16;
 
                 boolean hovered = (mouseX >= sx && mouseX < slotX1 && mouseY >= sy && mouseY < slotY1);
-                if (hovered) {
-                    hoverIndex = i;
-                }
+                if (hovered) hoverIndex = i;
 
                 // Slot background
                 int bgColor = hovered ? 0x80FFFFFF : 0x40000000;
                 guiGraphics.fill(sx - 1, sy - 1, sx + 17, sy + 17, bgColor);
 
-                // Simple inner dark fill
+                // Inner dark fill
                 guiGraphics.fill(sx, sy, sx + 16, sy + 16, 0xFF202020);
 
                 // Render item icon
@@ -357,9 +324,7 @@ public final class SealStampSelectionOverlay {
      * Handles mouse clicks. Returns true if the click was consumed.
      */
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (!active) {
-            return false;
-        }
+        if (!active) return false;
 
         try {
             int x0 = this.x;
@@ -367,12 +332,12 @@ public final class SealStampSelectionOverlay {
             int x1 = x0 + this.width;
             int y1 = y0 + this.height;
 
-            // If click is outside panel: we let the underlying GUI handle it.
+            // Outside panel -> let underlying GUI handle it.
             if (mouseX < x0 || mouseX >= x1 || mouseY < y0 || mouseY >= y1) {
                 return false;
             }
 
-            // Inside overlay → we consume the click.
+            // Inside overlay -> consume.
             int gridLeft = x0 + GRID_PADDING;
             int gridTop = y0 + LABEL_HEIGHT + LABEL_MARGIN_BOTTOM + GRID_PADDING;
 
@@ -388,17 +353,15 @@ public final class SealStampSelectionOverlay {
 
                 if (mouseX >= sx && mouseX < slotX1 && mouseY >= sy && mouseY < slotY1) {
                     if (button == 0) {
-                        // Left-click -> select stamp
+                        // Left-click -> select
                         selectedIndex = i;
                         LOG.debug("[SealStampSelectionOverlay] Slot {} selected (logical slotIndex={})", i, e.slotIndex);
-                        if (callback != null) {
-                            callback.onStampSelected(e.slotIndex, e.stack.copy());
-                        }
+                        if (callback != null) callback.onStampSelected(e.slotIndex, e.stack.copy());
                     } else if (button == 1) {
                         // Right-click -> toggle favourite
                         FavoriteStampKey key = extractFavoriteKey(e.stack);
                         if (key == null) {
-                            LOG.warn("[SealStampSelectionOverlay] Right-click favourite toggle: stamp has no SealStamp data");
+                            LOG.warn("[SealStampSelectionOverlay] Right-click favourite toggle: stamp has no SealStamp NBT");
                         } else {
                             if (GLOBAL_FAVORITE != null && GLOBAL_FAVORITE.equals(key)) {
                                 LOG.debug("[SealStampSelectionOverlay] Favourite cleared: {}", key);
@@ -424,30 +387,23 @@ public final class SealStampSelectionOverlay {
     // Helpers
     // ---------------------------------------------------------------------
 
-    private boolean isFavoriteEntry(@NotNull Entry entry) {
-        if (GLOBAL_FAVORITE == null) {
-            return false;
-        }
+    private boolean isFavoriteEntry(Entry entry) {
+        if (GLOBAL_FAVORITE == null) return false;
         FavoriteStampKey key = extractFavoriteKey(entry.stack);
         return key != null && key.equals(GLOBAL_FAVORITE);
     }
 
-    private FavoriteStampKey extractFavoriteKey(@NotNull ItemStack stack) {
+    private FavoriteStampKey extractFavoriteKey(ItemStack stack) {
         try {
-            if (stack.isEmpty() || !(stack.getItem() instanceof SealStampItem)) {
+            if (stack == null || stack.isEmpty() || !(stack.getItem() instanceof SealStampItem)) {
                 return null;
             }
 
-            CustomData data = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
-            CompoundTag root = data.copyTag();
-            if (root == null) {
-                return null;
-            }
+            CompoundTag root = stack.getTag();
+            if (root == null) return null;
 
             CompoundTag seal = root.getCompound("SealStamp");
-            if (seal == null || seal.isEmpty()) {
-                return null;
-            }
+            if (seal == null || seal.isEmpty()) return null;
 
             String owner = seal.getString("Owner");
             long seed = seal.getLong("Seed");

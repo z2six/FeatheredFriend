@@ -7,7 +7,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.z2six.featheredfriend.client.knownplayers.KnownPlayersClientCache;
-import org.jetbrains.annotations.NotNull;
+
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 
@@ -48,13 +48,13 @@ public final class RecipientOverlay {
     private List<KnownPlayersClientCache.KnownPlayerEntry> allPlayers = new ArrayList<>();
     private List<KnownPlayersClientCache.KnownPlayerEntry> visiblePlayers = new ArrayList<>();
 
-    public RecipientOverlay(@NotNull Minecraft minecraft,
-                            @NotNull Font font,
+    public RecipientOverlay(Minecraft minecraft,
+                            Font font,
                             int x,
                             int y,
                             int width,
                             int height,
-                            @NotNull SelectionCallback callback) {
+                            SelectionCallback callback) {
         this.minecraft = minecraft;
         this.font = font;
         this.callback = callback;
@@ -234,7 +234,7 @@ public final class RecipientOverlay {
         }
     }
 
-    public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         if (!active) return;
 
         try {
@@ -320,8 +320,8 @@ public final class RecipientOverlay {
         }
     }
 
-    private void renderEntry(@NotNull GuiGraphics g,
-                             @NotNull KnownPlayersClientCache.KnownPlayerEntry entry,
+    private void renderEntry(GuiGraphics g,
+                             KnownPlayersClientCache.KnownPlayerEntry entry,
                              int yTop) {
         int xLeft = x + PADDING;
         int xRight = x + width - PADDING;

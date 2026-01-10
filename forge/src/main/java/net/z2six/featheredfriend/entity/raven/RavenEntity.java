@@ -43,7 +43,7 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionHand;
-import org.jetbrains.annotations.NotNull;
+
 
 // Debug particles
 import net.minecraft.network.chat.Component;
@@ -4136,10 +4136,10 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     // Pathing helpers
     // ---------------------------------------------------------------------
 
-    public boolean simulateAStarPathTo(@NotNull Vec3 goal,
+    public boolean simulateAStarPathTo(Vec3 goal,
                                        int maxPlanTicks,
                                        long seed,
-                                       @NotNull String reason) {
+                                       String reason) {
         try {
             // -----------------------------------------------------------------
             // Snapshot state (so this is a PURE simulation: no lasting side effects)

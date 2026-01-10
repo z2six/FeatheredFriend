@@ -3,7 +3,7 @@ package net.z2six.featheredfriend.sigil;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.util.RandomSource;
-import org.jetbrains.annotations.NotNull;
+
 import org.slf4j.Logger;
 
 import java.nio.ByteBuffer;
@@ -101,8 +101,8 @@ public final class SealSigilGenerator {
      * NOTE: This path still uses the UUID+secret-based seed (legacy behavior).
      * For secret-only / RP-friendly behavior, prefer computeSeedFromSecretOnly().
      */
-    public static @NotNull SigilPattern generateForPlayer(@NotNull UUID playerUuid,
-                                                          @NotNull String secret) {
+    public static SigilPattern generateForPlayer(UUID playerUuid,
+                                                          String secret) {
         long seed = computeSeed(playerUuid, secret);
         int slices = 4;
         int shapeSetIndex = 0;
@@ -112,7 +112,7 @@ public final class SealSigilGenerator {
     /**
      * Legacy: compute a deterministic 64-bit seed from (UUID + secret[0..128]) using SHA-256.
      */
-    public static long computeSeed(@NotNull UUID playerUuid, @NotNull String secret) {
+    public static long computeSeed(UUID playerUuid, String secret) {
         String trimmedSecret = secret;
         if (trimmedSecret.length() > MAX_SECRET_LENGTH) {
             trimmedSecret = trimmedSecret.substring(0, MAX_SECRET_LENGTH);
@@ -147,7 +147,7 @@ public final class SealSigilGenerator {
     // Secret -> SHA256 -> Seed
     // No slices, no shapeSetIndex used in hashing.
     // -------------------------------------------------------------------------
-    public static long computeSeedFromSecretOnly(@NotNull String secret) {
+    public static long computeSeedFromSecretOnly(String secret) {
         String trimmed = secret;
         if (trimmed.length() > MAX_SECRET_LENGTH) {
             trimmed = trimmed.substring(0, MAX_SECRET_LENGTH);
@@ -180,7 +180,7 @@ public final class SealSigilGenerator {
      * @param slices        number of symmetry slices (2–8)
      * @param shapeSetIndex index of shape set (0 => Medieval0, 1 => HighFantasy1, 2 => Floral2)
      */
-    public static @NotNull SigilPattern generateFromSeed(long seed,
+    public static SigilPattern generateFromSeed(long seed,
                                                          int radius,
                                                          int slices,
                                                          int shapeSetIndex) {
@@ -274,7 +274,7 @@ public final class SealSigilGenerator {
     // Shape set resolution
     // -------------------------------------------------------------------------
 
-    private static @NotNull SealSigilShapeSet resolveShapeSet(int shapeSetIndex) {
+    private static SealSigilShapeSet resolveShapeSet(int shapeSetIndex) {
         try {
             return switch (shapeSetIndex) {
                 case 0 -> {
@@ -308,7 +308,7 @@ public final class SealSigilGenerator {
                                          int cx,
                                          int cy,
                                          int radius,
-                                         @NotNull RandomSource rng) {
+                                         RandomSource rng) {
         try {
             int size = mask.length;
 

@@ -10,7 +10,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.neoforge.menu.ScrollSealingMenu;
-import org.jetbrains.annotations.NotNull;
+
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 
@@ -57,9 +57,9 @@ public class EnderPearlInventoryScreen extends AbstractContainerScreen<ScrollSea
     // Guard to ensure we only perform the close action once.
     private boolean closeActionPerformed = false;
 
-    public EnderPearlInventoryScreen(@NotNull ScrollSealingMenu menu,
-                                     @NotNull Inventory playerInventory,
-                                     @NotNull Component title) {
+    public EnderPearlInventoryScreen(ScrollSealingMenu menu,
+                                     Inventory playerInventory,
+                                     Component title) {
         super(menu, playerInventory, title);
         this.imageWidth = 176;
         this.imageHeight = 128;
@@ -183,7 +183,7 @@ public class EnderPearlInventoryScreen extends AbstractContainerScreen<ScrollSea
     // ---------------------------------------------------------------------
 
     @Override
-    protected void renderBg(@NotNull GuiGraphics guiGraphics,
+    protected void renderBg(GuiGraphics guiGraphics,
                             float partialTick,
                             int mouseX,
                             int mouseY) {
@@ -212,7 +212,7 @@ public class EnderPearlInventoryScreen extends AbstractContainerScreen<ScrollSea
     }
 
     @Override
-    public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         try {
             // 1) Normal container background (dim world, etc.)
             this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
@@ -346,7 +346,7 @@ public class EnderPearlInventoryScreen extends AbstractContainerScreen<ScrollSea
     }
 
     @Override
-    protected void renderLabels(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY) {
+    protected void renderLabels(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         // Intentionally empty: no "Scroll Attachments" / "Inventory" labels.
     }
 }

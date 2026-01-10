@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/chat/ChatDisabler.java
+// ChatDisabler.java
 package net.z2six.featheredfriend.chat;
 
 import com.mojang.logging.LogUtils;
@@ -7,19 +7,18 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.fml.loading.FMLEnvironment;
-import net.neoforged.neoforge.client.event.ClientChatEvent;
-import net.neoforged.neoforge.client.event.ClientChatReceivedEvent;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.ServerChatEvent;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.ClientChatEvent;
+import net.minecraftforge.client.event.ClientChatReceivedEvent;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.ServerChatEvent;
+import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.z2six.featheredfriend.network.FFPayloads;
 import net.z2six.featheredfriend.world.FeatheredFriendSettingsData;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 /**
- * NeoForge-only chat disabler.
+ * Forge chat disabler.
  *
  * Behavior:
  *  - SERVER:
@@ -44,12 +43,12 @@ public final class ChatDisabler {
 
     public static void register() {
         try {
-            NeoForge.EVENT_BUS.addListener(ChatDisabler::onServerChat);
+            MinecraftForge.EVENT_BUS.addListener(ChatDisabler::onServerChat);
             LOG.info("[ChatDisabler] Registered ServerChatEvent listener.");
 
             if (FMLEnvironment.dist == Dist.CLIENT) {
-                NeoForge.EVENT_BUS.addListener(ChatDisabler::onClientSendChat);
-                NeoForge.EVENT_BUS.addListener(ChatDisabler::onClientReceiveChat);
+                MinecraftForge.EVENT_BUS.addListener(ChatDisabler::onClientSendChat);
+                MinecraftForge.EVENT_BUS.addListener(ChatDisabler::onClientReceiveChat);
                 LOG.info("[ChatDisabler] Registered ClientChatEvent + ClientChatReceivedEvent listeners.");
             }
         } catch (Throwable t) {
@@ -61,7 +60,7 @@ public final class ChatDisabler {
     // SERVER
     // ---------------------------------------------------------------------
 
-    private static void onServerChat(@NotNull ServerChatEvent event) {
+    private static void onServerChat(ServerChatEvent event) {
         try {
             ServerPlayer sender = event.getPlayer();
             if (sender == null) return;
@@ -72,7 +71,17 @@ public final class ChatDisabler {
                 return;
             }
 
-            String raw = event.getRawText();
+            String raw;
+            try {
+                // Forge 1.20.1: keep the same intent; raw text is used only for logging.
+                raw = event.getRawText();
+            } catch (Throwable ignored) {
+                try {
+                    raw = event.getMessage().getString();
+                } catch (Throwable ignored2) {
+                    raw = "<unknown>";
+                }
+            }
 
             LOG.info("[ChatDisabler] Blocking server chat from '{}' (raw='{}')",
                     safePlayerName(sender), raw);
@@ -97,7 +106,7 @@ public final class ChatDisabler {
     // CLIENT: outgoing
     // ---------------------------------------------------------------------
 
-    private static void onClientSendChat(@NotNull ClientChatEvent event) {
+    private static void onClientSendChat(ClientChatEvent event) {
         try {
             if (!isChatDisabledClient()) return;
 
@@ -132,13 +141,14 @@ public final class ChatDisabler {
     // CLIENT: incoming
     // ---------------------------------------------------------------------
 
-    private static void onClientReceiveChat(@NotNull ClientChatReceivedEvent event) {
+    private static void onClientReceiveChat(ClientChatReceivedEvent event) {
         try {
             if (!isChatDisabledClient()) return;
 
             Component msg = event.getMessage();
             String msgStr = (msg == null) ? "<null>" : msg.getString();
 
+            // Forge 1.20.1 still uses these nested types (Player/System).
             if (event instanceof ClientChatReceivedEvent.Player) {
                 LOG.debug("[ChatDisabler] Blocking incoming PLAYER chat message: '{}'", msgStr);
                 event.setCanceled(true);
@@ -204,7 +214,7 @@ public final class ChatDisabler {
         }
     }
 
-    private static String safePlayerName(@NotNull Player player) {
+    private static String safePlayerName(Player player) {
         try {
             return player.getGameProfile().getName();
         } catch (Throwable ignored) {

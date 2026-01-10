@@ -11,7 +11,7 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.z2six.featheredfriend.menu.ScrollAttachmentProvider;
 import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
-import org.jetbrains.annotations.NotNull;
+
 import org.slf4j.Logger;
 
 /**
@@ -279,7 +279,7 @@ public class ScrollSealingMenu extends AbstractContainerMenu implements ScrollAt
     }
 
     @Override
-    public @NotNull ItemStack getAttachmentStack(int index) {
+    public ItemStack getAttachmentStack(int index) {
         try {
             if (index < 0 || index >= ATTACHMENT_SLOT_COUNT) {
                 LOG.warn("[ScrollSealingMenu] getAttachmentStack: index {} out of range 0..{}", index, ATTACHMENT_SLOT_COUNT - 1);

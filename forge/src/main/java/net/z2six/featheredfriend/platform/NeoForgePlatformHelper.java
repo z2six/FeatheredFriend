@@ -16,7 +16,7 @@ import net.z2six.featheredfriend.neoforge.menu.ScrollSealingMenu;
 import net.z2six.featheredfriend.neoforge.menu.SealStampMenu;
 import net.z2six.featheredfriend.neoforge.menu.ScrollViewMenu;
 import net.z2six.featheredfriend.platform.services.IPlatformHelper;
-import org.jetbrains.annotations.NotNull;
+
 import org.slf4j.Logger;
 
 public class NeoForgePlatformHelper implements IPlatformHelper {
@@ -53,7 +53,7 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
-    public void openScrollSealingScreen(@NotNull ServerPlayer player) {
+    public void openScrollSealingScreen(ServerPlayer player) {
         try {
             player.openMenu(new SimpleMenuProvider(
                     (int containerId, Inventory inv, Player p) ->
@@ -66,7 +66,7 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
-    public void openSealStampScreen(@NotNull ServerPlayer player) {
+    public void openSealStampScreen(ServerPlayer player) {
         try {
             int slot = player.getMainHandItem().isEmpty() ? 37 : 36;
 
@@ -81,7 +81,7 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
-    public void openScrollViewScreen(@NotNull ServerPlayer player) {
+    public void openScrollViewScreen(ServerPlayer player) {
         try {
             player.openMenu(new SimpleMenuProvider(
                     (int containerId, Inventory inv, Player p) ->

@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/client/FFKeyBindings.java
+// FFKeyBindings.java
 package net.z2six.featheredfriend.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
@@ -6,34 +6,22 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.sounds.SoundEvent;
-import net.minecraft.sounds.SoundSource;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
-import net.neoforged.neoforge.common.NeoForge;
+import net.minecraft.network.chat.Component;
+import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.eventbus.api.IEventBus;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.FeatheredFriendSettingsScreen;
-import org.jetbrains.annotations.NotNull;
+import net.z2six.featheredfriend.network.FFNetwork;
+import net.z2six.featheredfriend.world.TamedRavenScrollWatcher;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 
-import net.minecraft.network.chat.Component;
-import net.z2six.featheredfriend.world.TamedRavenScrollWatcher;
-import net.z2six.featheredfriend.network.FFNetwork;
-
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/client/FFKeyBindings.java
- *
  * Client-only keybindings:
  *  - Open FeatheredFriend settings GUI.
- *  - Manual raven whistle (currently just plays the whistle sound locally).
- *
- * Registration:
- *  - Call FFKeyBindings.register(modEventBus) from the NeoForge side of your main mod class,
- *    inside the Dist.CLIENT branch.
+ *  - Manual raven whistle (sends server request; server validates).
  */
 public final class FFKeyBindings {
 
@@ -46,10 +34,10 @@ public final class FFKeyBindings {
         // no-op
     }
 
-    public static void register(@NotNull IEventBus modEventBus) {
+    public static void register(IEventBus modEventBus) {
         try {
             modEventBus.addListener(FFKeyBindings::onRegisterKeyMappings);
-            NeoForge.EVENT_BUS.addListener(FFKeyBindings::onClientTick);
+            MinecraftForge.EVENT_BUS.addListener(FFKeyBindings::onClientTick);
             LOG.info("[FFKeyBindings] Registered key mapping + client tick listeners.");
         } catch (Throwable t) {
             LOG.error("[FFKeyBindings] register() failed safely", t);
@@ -60,12 +48,10 @@ public final class FFKeyBindings {
     // Key mapping registration
     // ---------------------------------------------------------------------
 
-    private static void onRegisterKeyMappings(@NotNull RegisterKeyMappingsEvent event) {
+    private static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
         try {
-            // Key category for all FeatheredFriend keybinds.
             final String category = "key.categories." + Constants.MOD_ID;
 
-            // Settings menu: default unbound (use UNKNOWN), player can bind manually.
             OPEN_SETTINGS_KEY = new KeyMapping(
                     "key." + Constants.MOD_ID + ".open_settings",
                     InputConstants.Type.KEYSYM,
@@ -73,7 +59,6 @@ public final class FFKeyBindings {
                     category
             );
 
-            // Manual whistle: default key 'K' (arbitrary but easy to reach).
             WHISTLE_KEY = new KeyMapping(
                     "key." + Constants.MOD_ID + ".whistle",
                     InputConstants.Type.KEYSYM,
@@ -95,7 +80,11 @@ public final class FFKeyBindings {
     // Client tick: handle key presses
     // ---------------------------------------------------------------------
 
-    private static void onClientTick(@NotNull ClientTickEvent.Post event) {
+    private static void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) {
+            return;
+        }
+
         try {
             Minecraft mc = Minecraft.getInstance();
             if (mc == null) {
@@ -131,10 +120,8 @@ public final class FFKeyBindings {
         }
     }
 
-    private static void handleWhistleKey(@NotNull Minecraft mc, @NotNull LocalPlayer player) {
+    private static void handleWhistleKey(Minecraft mc, LocalPlayer player) {
         try {
-            // Client should NOT decide eligibility (holding scroll vs failed jobs).
-            // Always send request; server validates and will message player if denied.
             boolean holdingClientSide = false;
             try {
                 holdingClientSide = TamedRavenScrollWatcher.isHoldingSealedScroll(player);

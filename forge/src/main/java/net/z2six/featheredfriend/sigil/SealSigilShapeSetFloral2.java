@@ -3,7 +3,7 @@ package net.z2six.featheredfriend.sigil;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.util.RandomSource;
-import org.jetbrains.annotations.NotNull;
+
 import org.slf4j.Logger;
 
 /**
@@ -63,7 +63,7 @@ public final class SealSigilShapeSetFloral2 implements SealSigilShapeSet {
                                    double radiusSq,
                                    int slices,
                                    int sliceIndex,
-                                   @NotNull RandomSource rng) {
+                                   RandomSource rng) {
         try {
             if (pixels == null || pixels.length == 0) {
                 LOG.warn("[SealSigilShapeSetFloral2] applyShapesInSlice called with null/empty pixels");
@@ -149,7 +149,7 @@ public final class SealSigilShapeSetFloral2 implements SealSigilShapeSet {
                                      int cy,
                                      int radius,
                                      double radiusSq,
-                                     @NotNull RandomSource rng) {
+                                     RandomSource rng) {
         try {
             // Larger baseScale => big central flower.
             double baseScale = BAND_INNER_FRACTION * (1.10 + rng.nextDouble() * 0.40); // ~0.37–0.65 of radius
@@ -269,7 +269,7 @@ public final class SealSigilShapeSetFloral2 implements SealSigilShapeSet {
                                      double radiusSq,
                                      double sliceStart,
                                      double sliceEnd,
-                                     @NotNull RandomSource rng) {
+                                     RandomSource rng) {
         try {
             double span = sliceEnd - sliceStart;
 
@@ -306,7 +306,7 @@ public final class SealSigilShapeSetFloral2 implements SealSigilShapeSet {
                                      double radiusSq,
                                      double sliceStart,
                                      double sliceEnd,
-                                     @NotNull RandomSource rng,
+                                     RandomSource rng,
                                      int passIndex) {
         try {
             double span = sliceEnd - sliceStart;
@@ -376,7 +376,7 @@ public final class SealSigilShapeSetFloral2 implements SealSigilShapeSet {
                                  double thickness,
                                  double angleStart,
                                  double angleEnd,
-                                 @NotNull RandomSource rng) {
+                                 RandomSource rng) {
         try {
             int leafCount = 3 + rng.nextInt(3); // 3–5
             double span = angleEnd - angleStart;
@@ -411,7 +411,7 @@ public final class SealSigilShapeSetFloral2 implements SealSigilShapeSet {
                                       double radiusSq,
                                       double sliceStart,
                                       double sliceEnd,
-                                      @NotNull RandomSource rng,
+                                      RandomSource rng,
                                       int passIndex) {
         try {
             double span = sliceEnd - sliceStart;
@@ -451,7 +451,7 @@ public final class SealSigilShapeSetFloral2 implements SealSigilShapeSet {
                                        double radiusSq,
                                        double sliceStart,
                                        double sliceEnd,
-                                       @NotNull RandomSource rng,
+                                       RandomSource rng,
                                        int passIndex) {
         try {
             double span = sliceEnd - sliceStart;
@@ -481,7 +481,7 @@ public final class SealSigilShapeSetFloral2 implements SealSigilShapeSet {
                                   int radius,
                                   double radiusSq,
                                   double baseAngle,
-                                  @NotNull RandomSource rng,
+                                  RandomSource rng,
                                   int cx,
                                   int cy) {
         try {
@@ -515,7 +515,7 @@ public final class SealSigilShapeSetFloral2 implements SealSigilShapeSet {
                                double radiusSq,
                                double sliceStart,
                                double sliceEnd,
-                               @NotNull RandomSource rng) {
+                               RandomSource rng) {
         try {
             int budCount = 3 + rng.nextInt(3); // 3–5, keep it light
             double span = sliceEnd - sliceStart;

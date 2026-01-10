@@ -1,12 +1,9 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/client/knownplayers/KnownPlayersClientCache.java
 package net.z2six.featheredfriend.client.knownplayers;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.z2six.featheredfriend.network.FFNetwork;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.util.*;
@@ -21,17 +18,17 @@ public final class KnownPlayersClientCache {
         private final String name;
         private final boolean online;
 
-        public KnownPlayerEntry(@NotNull UUID uuid, @NotNull String name, boolean online) {
+        public KnownPlayerEntry(UUID uuid, String name, boolean online) {
             this.uuid = uuid;
             this.name = name;
             this.online = online;
         }
 
-        public @NotNull UUID getUuid() {
+        public UUID getUuid() {
             return uuid;
         }
 
-        public @NotNull String getName() {
+        public String getName() {
             return name;
         }
 
@@ -53,11 +50,7 @@ public final class KnownPlayersClientCache {
         LOG.debug("[KnownPlayersClientCache] Singleton created");
     }
 
-    /**
-     * Replace the entire known list from the server (UUID + name).
-     * Online status is computed locally from the client connection.
-     */
-    public synchronized void replaceAllFromServer(@NotNull Collection<FFNetwork.KnownPlayerInfo> newEntries) {
+    public synchronized void replaceAllFromServer(Collection<FFNetwork.KnownPlayerInfo> newEntries) {
         try {
             knownNames.clear();
 
@@ -74,18 +67,13 @@ public final class KnownPlayersClientCache {
             }
 
             LOG.info("[KnownPlayersClientCache] replaceAllFromServer: now tracking {} known players", kept);
-
-            // Immediately refresh online flags view
             refreshOnlineNow();
         } catch (Throwable t) {
             LOG.error("[KnownPlayersClientCache] replaceAllFromServer failed", t);
         }
     }
 
-    /**
-     * Upsert from any source (defensive).
-     */
-    public synchronized void upsert(@Nullable UUID uuid, @Nullable String name) {
+    public synchronized void upsert(UUID uuid, String name) {
         if (uuid == null) return;
         if (name == null || name.isBlank()) return;
         try {
@@ -95,10 +83,6 @@ public final class KnownPlayersClientCache {
         }
     }
 
-    /**
-     * Ask the server to resend known players.
-     * Useful when opening UI early, reconnect race, missed broadcast, etc.
-     */
     public void requestRefreshFromServer() {
         try {
             FFNetwork.sendRequestKnownPlayersToServer();
@@ -107,11 +91,7 @@ public final class KnownPlayersClientCache {
         }
     }
 
-    /**
-     * Returns sorted view with online status computed from current connection.
-     * Also periodically refreshes online list (cheap).
-     */
-    public synchronized @NotNull List<KnownPlayerEntry> getAllPlayersSorted() {
+    public synchronized List<KnownPlayerEntry> getAllPlayersSorted() {
         try {
             refreshOnlinePeriodically();
 
@@ -135,10 +115,6 @@ public final class KnownPlayersClientCache {
         }
     }
 
-    /**
-     * Adds all currently online players to known list (defensive),
-     * and also refreshes online flag timing.
-     */
     public synchronized void refreshFromClientConnection() {
         try {
             Minecraft mc = Minecraft.getInstance();
@@ -182,13 +158,11 @@ public final class KnownPlayersClientCache {
 
             long tick = mc.player.tickCount;
 
-            // refresh at most once per 10 ticks
             if (lastOnlineRefreshClientTick >= 0 && (tick - lastOnlineRefreshClientTick) < 10) {
                 return;
             }
             lastOnlineRefreshClientTick = tick;
 
-            // Pulling online UUIDs is cheap; we just do it to keep log timing consistent.
             Set<UUID> online = getOnlineUuidsFromConnection();
             LOG.debug("[KnownPlayersClientCache] refreshOnlinePeriodically: onlineCount={} knownCount={}",
                     online.size(), knownNames.size());
@@ -208,7 +182,7 @@ public final class KnownPlayersClientCache {
         }
     }
 
-    private @NotNull Set<UUID> getOnlineUuidsFromConnection() {
+    private Set<UUID> getOnlineUuidsFromConnection() {
         try {
             Minecraft mc = Minecraft.getInstance();
             if (mc == null || mc.getConnection() == null) {

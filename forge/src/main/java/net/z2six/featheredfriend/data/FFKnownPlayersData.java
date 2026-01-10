@@ -1,4 +1,3 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/data/FFKnownPlayersData.java
 package net.z2six.featheredfriend.data;
 
 import com.mojang.logging.LogUtils;
@@ -8,11 +7,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.saveddata.SavedData;
-import net.minecraft.world.level.saveddata.SavedData.Factory;
 import net.minecraft.world.level.storage.DimensionDataStorage;
-import net.minecraft.util.datafix.DataFixTypes;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.util.*;
@@ -39,37 +34,33 @@ public final class FFKnownPlayersData extends SavedData {
         LOG.debug("[FFKnownPlayersData] Constructed new instance (empty)");
     }
 
-    public static @NotNull FFKnownPlayersData get(@NotNull MinecraftServer server) {
+    public static FFKnownPlayersData get(MinecraftServer server) {
         try {
-            if (server.overworld() == null) {
-                LOG.warn("[FFKnownPlayersData] get(): server.overworld() is null; returning non-persisting instance");
+            if (server == null || server.overworld() == null) {
+                LOG.warn("[FFKnownPlayersData] get(): server/overworld null; returning non-persisting instance");
                 return new FFKnownPlayersData();
             }
 
             DimensionDataStorage storage = server.overworld().getDataStorage();
 
-            Factory<FFKnownPlayersData> factory = new Factory<>(
-                    FFKnownPlayersData::new,
+            // Forge/Mojang 1.20.1 signature: computeIfAbsent(loadFn, newFn, id)
+            FFKnownPlayersData data = storage.computeIfAbsent(
                     FFKnownPlayersData::load,
-                    DataFixTypes.LEVEL
+                    FFKnownPlayersData::new,
+                    SAVE_ID
             );
 
-            FFKnownPlayersData data = storage.computeIfAbsent(factory, SAVE_ID);
-            if (data == null) {
-                LOG.error("[FFKnownPlayersData] get(): computeIfAbsent returned null; returning non-persisting instance");
-                return new FFKnownPlayersData();
-            }
-            return data;
+            return data != null ? data : new FFKnownPlayersData();
         } catch (Throwable t) {
             LOG.error("[FFKnownPlayersData] get() failed safely; returning non-persisting instance", t);
             return new FFKnownPlayersData();
         }
     }
 
-    private static @NotNull FFKnownPlayersData load(@NotNull CompoundTag tag, @NotNull net.minecraft.core.HolderLookup.Provider lookup) {
+    private static FFKnownPlayersData load(CompoundTag tag) {
         FFKnownPlayersData data = new FFKnownPlayersData();
         try {
-            if (tag.contains(NBT_PLAYERS, Tag.TAG_LIST)) {
+            if (tag != null && tag.contains(NBT_PLAYERS, Tag.TAG_LIST)) {
                 ListTag list = tag.getList(NBT_PLAYERS, Tag.TAG_COMPOUND);
                 int loaded = 0;
 
@@ -102,7 +93,7 @@ public final class FFKnownPlayersData extends SavedData {
     }
 
     @Override
-    public @NotNull CompoundTag save(@NotNull CompoundTag tag, @NotNull net.minecraft.core.HolderLookup.Provider lookup) {
+    public CompoundTag save(CompoundTag tag) {
         try {
             ListTag list = new ListTag();
 
@@ -128,8 +119,10 @@ public final class FFKnownPlayersData extends SavedData {
         return tag;
     }
 
-    public void addOrUpdate(@NotNull ServerPlayer player) {
+    public void addOrUpdate(ServerPlayer player) {
         try {
+            if (player == null) return;
+
             UUID uuid = player.getUUID();
             String name = player.getGameProfile().getName();
 
@@ -153,7 +146,7 @@ public final class FFKnownPlayersData extends SavedData {
         }
     }
 
-    public @NotNull List<KnownPlayer> getSortedPlayers() {
+    public List<KnownPlayer> getSortedPlayers() {
         try {
             List<KnownPlayer> out = new ArrayList<>();
             for (Map.Entry<UUID, String> e : known.entrySet()) {
@@ -170,7 +163,7 @@ public final class FFKnownPlayersData extends SavedData {
         }
     }
 
-    public @NotNull List<String> getSortedNames() {
+    public List<String> getSortedNames() {
         try {
             List<String> names = new ArrayList<>();
             for (KnownPlayer kp : getSortedPlayers()) {
@@ -183,6 +176,6 @@ public final class FFKnownPlayersData extends SavedData {
         }
     }
 
-    public record KnownPlayer(@NotNull UUID uuid, @NotNull String name) {
+    public record KnownPlayer(UUID uuid, String name) {
     }
 }

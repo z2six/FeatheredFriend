@@ -1,11 +1,12 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/FeatheredFriend.java
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/FeatheredFriend.java
 package net.z2six.featheredfriend;
 
 import com.mojang.logging.LogUtils;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.IEventBus;
-import net.neoforged.fml.common.Mod;
-import net.neoforged.fml.loading.FMLEnvironment;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.z2six.featheredfriend.chat.ChatDisabler;
 import net.z2six.featheredfriend.client.FFClientSyncEvents;
 import net.z2six.featheredfriend.client.FFKeyBindings;
@@ -34,8 +35,10 @@ public class FeatheredFriend {
 
     private static final Logger LOG = LogUtils.getLogger();
 
-    public FeatheredFriend(IEventBus modEventBus) {
-        LOG.info("[FeatheredFriend] Initializing NeoForge side");
+    public FeatheredFriend() {
+        LOG.info("[FeatheredFriend] Initializing Forge side");
+
+        IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
 
         // ---------------------------------------------------------------------
         // Common init
@@ -75,16 +78,16 @@ public class FeatheredFriend {
 
             FFNeoForgeParticles.register(modEventBus);
 
-            LOG.info("[FeatheredFriend] Registered NeoForge registries (items/tabs/menus/particles)");
+            LOG.info("[FeatheredFriend] Registered registries (items/tabs/menus/particles)");
         } catch (Throwable t) {
-            LOG.error("[FeatheredFriend] Failed to register NeoForge registries", t);
+            LOG.error("[FeatheredFriend] Failed to register registries", t);
         }
 
         try {
             FFNeoForgeEntities.register(modEventBus);
-            LOG.info("[FeatheredFriend] Registered NeoForge entity registries");
+            LOG.info("[FeatheredFriend] Registered entity registries");
         } catch (Throwable t) {
-            LOG.error("[FeatheredFriend] Failed to register NeoForge entities", t);
+            LOG.error("[FeatheredFriend] Failed to register entities", t);
         }
 
         // ---------------------------------------------------------------------
@@ -213,6 +216,6 @@ public class FeatheredFriend {
             LOG.error("[FeatheredFriend] Failed to register FeatheredFriendCommands", t);
         }
 
-        LOG.info("[FeatheredFriend] NeoForge initialization complete");
+        LOG.info("[FeatheredFriend] Forge initialization complete");
     }
 }

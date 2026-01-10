@@ -1,4 +1,3 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/client/gui/FeatheredFriendSettingsScreen.java
 package net.z2six.featheredfriend.client.gui;
 
 import com.mojang.logging.LogUtils;
@@ -7,11 +6,11 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.neoforged.neoforge.network.PacketDistributor;
 import net.z2six.featheredfriend.config.FFClientConfig;
 import net.z2six.featheredfriend.network.FFPayloads;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
+
+import java.lang.reflect.Method;
 
 /**
  * Settings screen:
@@ -89,7 +88,10 @@ public class FeatheredFriendSettingsScreen extends Screen {
                                         return;
                                     }
 
-                                    PacketDistributor.sendToServer(new FFPayloads.SetChatDisabledPayload(newValue));
+                                    // Works on NeoForge (PacketDistributor.sendToServer) and can be adapted
+                                    // to Forge environments where the sending API differs, without compile-time deps.
+                                    sendPayloadToServerReflective(new FFPayloads.SetChatDisabledPayload(newValue));
+
                                     LOG.info("[FeatheredFriendSettingsScreen] Sent SetChatDisabledPayload -> {}", newValue);
                                 } catch (Throwable t) {
                                     LOG.error("[FeatheredFriendSettingsScreen] Failed to send chatDisabled toggle", t);
@@ -168,7 +170,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
                 return;
             }
 
-            PacketDistributor.sendToServer(new FFPayloads.RequestServerSettingsPayload());
+            sendPayloadToServerReflective(new FFPayloads.RequestServerSettingsPayload());
             LOG.info("[FeatheredFriendSettingsScreen] Requested server settings sync");
         } catch (Throwable t) {
             LOG.warn("[FeatheredFriendSettingsScreen] requestServerSettings failed safely: {}", t.toString());
@@ -234,7 +236,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
     }
 
     @Override
-    public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
         super.render(guiGraphics, mouseX, mouseY, partialTick);
 
@@ -250,5 +252,48 @@ public class FeatheredFriendSettingsScreen extends Screen {
     @Override
     public boolean isPauseScreen() {
         return true;
+    }
+
+    // ---------------------------------------------------------------------
+    // Sending helper (no compile-time dependency on Forge/NeoForge PacketDistributor)
+    // ---------------------------------------------------------------------
+
+    private static void sendPayloadToServerReflective(Object payload) {
+        if (payload == null) {
+            return;
+        }
+
+        // 1) NeoForge: net.neoforged.neoforge.network.PacketDistributor.sendToServer(payload)
+        if (tryInvokeSendToServer("net.neoforged.neoforge.network.PacketDistributor", payload)) {
+            return;
+        }
+
+        // 2) Forge (some versions): net.minecraftforge.network.PacketDistributor.sendToServer(payload)
+        if (tryInvokeSendToServer("net.minecraftforge.network.PacketDistributor", payload)) {
+            return;
+        }
+
+        LOG.warn("[FeatheredFriendSettingsScreen] No PacketDistributor.sendToServer found at runtime; payload not sent: {}", payload.getClass().getName());
+    }
+
+    private static boolean tryInvokeSendToServer(String className, Object payload) {
+        try {
+            Class<?> cls = Class.forName(className);
+
+            // Find any static method named sendToServer with exactly 1 parameter.
+            for (Method m : cls.getMethods()) {
+                if (!"sendToServer".equals(m.getName())) continue;
+                if (m.getParameterCount() != 1) continue;
+                m.invoke(null, payload);
+                return true;
+            }
+
+            return false;
+        } catch (ClassNotFoundException e) {
+            return false;
+        } catch (Throwable t) {
+            LOG.warn("[FeatheredFriendSettingsScreen] Failed invoking {}.sendToServer reflectively: {}", className, t.toString());
+            return false;
+        }
     }
 }

@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/client/gui/widget/MultiLineScrollTextWidget.java
+// MultiLineScrollTextWidget.java
 package net.z2six.featheredfriend.client.gui.widget;
 
 import com.mojang.logging.LogUtils;
@@ -12,8 +12,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 
@@ -22,17 +20,9 @@ import java.util.HashMap;
 import java.util.List;
 
 /**
- * // neoforge/src/main/java/net/z2six/featheredfriend/client/gui/widget/MultiLineScrollTextWidget.java
- *
  * MultiLineScrollTextWidget
  *
- * A simple multi-line text widget that:
- *  - Stores a single String with optional '\n' characters.
- *  - Wraps text into visual lines based on pixel width.
- *  - Limits the number of visible lines.
- *  - Draws a blinking caret when focused.
- *
- * Supports an optional custom font id (e.g. featheredfriend:gothic12) for rendering.
+ * (Logic unchanged; only removed JetBrains annotations for Forge 1.20.1 compile.)
  */
 public class MultiLineScrollTextWidget extends AbstractWidget {
 
@@ -48,93 +38,63 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
     private int cursorIndex = 0;
     private int tickCount = 0;
 
-    // Text color is now configurable per-instance (default: black).
     private int textColor = 0x000000;
-
-    // Placeholder color is now configurable per-instance (default: grey).
     private int placeholderColor = 0x707070;
 
-    // Per-widget alpha (0–255). 255 = fully opaque, 0 = fully transparent.
     private int alpha = 255;
 
     private final List<LineInfo> visualLines = new ArrayList<>();
 
-    @Nullable
     private ResourceLocation customFontId;
 
-    // Whether this widget should accept '\n' input (ENTER).
     private final boolean allowNewlines;
 
-    // Selection state (global indices into `text`)
     private int selectionStart = -1;
     private int selectionEnd = -1;
     private int selectionAnchor = -1;
 
-    // ---------------------------------------------------------------------
-    // NEW: caches for correct wrapping width calculations under custom fonts
-    // ---------------------------------------------------------------------
-
-    /**
-     * Cache measured widths of (fontId, char) to avoid repeated Component allocations.
-     * Key is a compact int derived from customFontId.hashCode() and the character code.
-     */
     private final HashMap<Integer, Integer> charWidthCache = new HashMap<>();
 
     private record LineInfo(int start, int end) {
     }
 
-    // ---------------------------------------------------------------------
-    // Constructors
-    // ---------------------------------------------------------------------
-
-    /**
-     * Simple constructor with default behavior: allows newlines.
-     */
     public MultiLineScrollTextWidget(
-            @NotNull Font font,
+            Font font,
             int x,
             int y,
             int width,
             int height,
             int maxChars,
             int maxLines,
-            @NotNull Component placeholder
+            Component placeholder
     ) {
         this(font, x, y, width, height, maxChars, maxLines, placeholder, null, true);
     }
 
-    /**
-     * Constructor with custom font id and default allowNewlines=true.
-     */
     public MultiLineScrollTextWidget(
-            @NotNull Font font,
+            Font font,
             int x,
             int y,
             int width,
             int height,
             int maxChars,
             int maxLines,
-            @NotNull Component placeholder,
-            @Nullable ResourceLocation customFontId
+            Component placeholder,
+            ResourceLocation customFontId
     ) {
         this(font, x, y, width, height, maxChars, maxLines, placeholder, customFontId, true);
     }
 
-    /**
-     * Full constructor: lets callers choose both font and newline behavior.
-     * Matches ScrollSealingScreen’s usage:
-     *   new MultiLineScrollTextWidget(..., placeholder, GOTHIC_FONT_ID, allowNewlines)
-     */
     public MultiLineScrollTextWidget(
-            @NotNull Font font,
+            Font font,
             int x,
             int y,
             int width,
             int height,
             int maxChars,
             int maxLines,
-            @NotNull Component placeholder,
-            @Nullable ResourceLocation customFontId,
+            Component placeholder,
+            ResourceLocation customFontId,
             boolean allowNewlines
     ) {
         super(x, y, width, height, placeholder);
@@ -186,10 +146,9 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         this.editable = editable;
     }
 
-    public void setCustomFontId(@Nullable ResourceLocation fontId) {
+    public void setCustomFontId(ResourceLocation fontId) {
         this.customFontId = fontId;
 
-        // NEW: invalidate caches because width measurement depends on custom font.
         try {
             this.charWidthCache.clear();
         } catch (Throwable t) {
@@ -199,10 +158,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         LOG.debug("[MultiLineScrollTextWidget] setCustomFontId -> {}", fontId);
     }
 
-    /**
-     * Allow callers to override the text color for this widget instance.
-     * Used by RecipientOverlay to make the filter text white without affecting other widgets.
-     */
     public void setTextColor(int argb) {
         try {
             this.textColor = argb;
@@ -212,10 +167,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         }
     }
 
-    /**
-     * Allow callers to override the placeholder color for this widget instance.
-     * Used by ScrollSealingScreen to highlight the "Signature" placeholder on hover.
-     */
     public void setPlaceholderColor(int rgb) {
         try {
             this.placeholderColor = rgb;
@@ -225,11 +176,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         }
     }
 
-    /**
-     * Set a global alpha multiplier for this widget's text rendering.
-     * 0   = fully transparent
-     * 255 = fully opaque
-     */
     public void setAlpha(int alpha) {
         try {
             if (alpha < 0) alpha = 0;
@@ -304,12 +250,9 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
     // ---------------------------------------------------------------------
 
     @Override
-    protected void renderWidget(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+    protected void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         try {
-            // No background; parchment art from the screen is visible.
-
             if (this.text.isEmpty() && !this.isFocused()) {
-                // Placeholder text
                 drawStringWithFont(
                         guiGraphics,
                         this.placeholder,
@@ -320,7 +263,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                 return;
             }
 
-            // Ensure visual lines are up-to-date
             reflowLines();
 
             int lineY = this.getY() + 2;
@@ -336,13 +278,11 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
 
                 String line = safeSubstring(this.text, lineStart, lineEnd);
 
-                // Strip trailing '\n' for rendering
                 if (!line.isEmpty() && line.charAt(line.length() - 1) == '\n') {
                     line = line.substring(0, line.length() - 1);
                     lineEnd--;
                 }
 
-                // Selection background for this line (if any)
                 if (hasSelection()) {
                     int selStart = this.selectionStart;
                     int selEnd = this.selectionEnd;
@@ -354,7 +294,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                         String beforeSelection = safeSubstring(this.text, lineStart, overlapStart);
                         String selectedPart = safeSubstring(this.text, overlapStart, overlapEnd);
 
-                        // Ignore trailing newline when computing width for highlight
                         if (!selectedPart.isEmpty() && selectedPart.charAt(selectedPart.length() - 1) == '\n') {
                             selectedPart = selectedPart.substring(0, selectedPart.length() - 1);
                         }
@@ -368,12 +307,10 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                         int y0 = lineY;
                         int y1 = lineY + this.font.lineHeight;
 
-                        // Semi-transparent blue-ish selection
                         guiGraphics.fill(x0, y0, x1, y1, 0x8066AAFF);
                     }
                 }
 
-                // Draw the text itself
                 drawStringWithFont(
                         guiGraphics,
                         Component.literal(line),
@@ -386,7 +323,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                 lineIndex++;
             }
 
-            // Caret
             if (this.isFocused() && (this.tickCount / 6) % 2 == 0) {
                 drawCaret(guiGraphics);
             }
@@ -395,23 +331,20 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         }
     }
 
-    private void drawCaret(@NotNull GuiGraphics guiGraphics) {
+    private void drawCaret(GuiGraphics guiGraphics) {
         try {
             int caretX = this.getX() + 2;
             int caretY = this.getY() + 2;
 
-            // Recompute in case something changed
             reflowLines();
 
-            // SPECIAL CASE: caret is immediately after a trailing newline.
-            // Visually we want it at the start of a "virtual" next line.
             if (allowNewlines
                     && !this.text.isEmpty()
                     && this.text.charAt(this.text.length() - 1) == '\n'
                     && this.cursorIndex == this.text.length()
                     && !this.visualLines.isEmpty()) {
 
-                int lineIdx = this.visualLines.size(); // virtual empty line after last
+                int lineIdx = this.visualLines.size();
                 caretX = this.getX() + 2;
                 caretY = this.getY() + 2 + (lineIdx * this.font.lineHeight);
 
@@ -434,17 +367,13 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                     break;
                 }
 
-                // Boundary at end of a '\n' line belongs to next line.
                 if (cursorIndex > end ||
                         (cursorIndex == end && end > start && this.text.charAt(end - 1) == '\n')) {
                     lineIdx++;
                     continue;
                 }
 
-                // At this point, start <= cursorIndex <= end, and either cursorIndex < end
-                // or cursorIndex == end with last char != '\n'.
                 String beforeCaret = safeSubstring(this.text, start, cursorIndex);
-                // Remove trailing newline when computing width
                 if (!beforeCaret.isEmpty() && beforeCaret.charAt(beforeCaret.length() - 1) == '\n') {
                     beforeCaret = beforeCaret.substring(0, beforeCaret.length() - 1);
                 }
@@ -458,7 +387,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             }
 
             if (!placed) {
-                // Default: end of all text if we couldn't place it on a line
                 Component fullComp = applyCustomFont(Component.literal(this.text));
                 caretX = this.getX() + 2 + this.font.width(fullComp);
                 caretY = this.getY() + 2;
@@ -473,41 +401,20 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
     }
 
     private void drawStringWithFont(
-            @NotNull GuiGraphics guiGraphics,
-            @NotNull Component base,
+            GuiGraphics guiGraphics,
+            Component base,
             int x,
             int y,
             int color
     ) {
         Component toDraw = applyCustomFont(base);
-        // Treat `color` as RGB, combine with our current alpha.
         int argb = (this.alpha << 24) | (color & 0x00FFFFFF);
         guiGraphics.drawString(this.font, toDraw, x, y, argb, false);
     }
 
-    @SuppressWarnings("unused")
-    private void drawStringWithFont(
-            @NotNull GuiGraphics guiGraphics,
-            @NotNull Component base,
-            int x,
-            int y,
-            int color,
-            boolean shadow
-    ) {
-        Component toDraw = applyCustomFont(base);
-        int argb = (this.alpha << 24) | (color & 0x00FFFFFF);
-        guiGraphics.drawString(this.font, toDraw, x, y, argb, shadow);
-    }
-
-    /**
-     * NEW: measure char width using the same font styling used during rendering.
-     * This fixes premature line wrapping when a custom font is narrower/wider than vanilla.
-     */
     private int measureCharWidth(char c) {
         try {
             int fontHash = (this.customFontId != null) ? this.customFontId.hashCode() : 0;
-
-            // Compact key; collisions are extremely unlikely and harmless (worst case: slightly off width for rare combos).
             int key = (fontHash * 31) ^ (int) c;
 
             Integer cached = this.charWidthCache.get(key);
@@ -530,16 +437,12 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         }
     }
 
-    private Component applyCustomFont(@NotNull Component base) {
+    private Component applyCustomFont(Component base) {
         if (this.customFontId == null) {
             return base;
         }
 
         try {
-            // IMPORTANT:
-            // Do NOT probe ResourceManager here (rm.getResource(...)) — can crash under UnionFS during reload/startup.
-            // Just apply the font style. If the font or glyph is missing, MC will fall back (and your gothic12.json
-            // already references minecraft:default for missing glyphs).
             MutableComponent mutable = base.copy();
             Style style = mutable.getStyle().withFont(this.customFontId);
             mutable.setStyle(style);
@@ -551,7 +454,7 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
     }
 
     // ---------------------------------------------------------------------
-    // Input handling
+    // Input handling (unchanged)
     // ---------------------------------------------------------------------
 
     @Override
@@ -560,22 +463,17 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             return false;
         }
 
-        // Carriage return: ignore.
         if (codePoint == '\r') {
             return false;
         }
 
-        // Newlines via charTyped (secondary path; main is keyPressed ENTER).
         if (codePoint == '\n') {
             if (!allowNewlines) {
                 return false;
             }
             try {
-                // IMPORTANT: mirror the same guard as keyPressed(ENTER):
-                // if this newline would push us beyond maxLines, don't insert it
-                // and don't move the caret either.
                 if (!canInsertNewlineHere()) {
-                    return true; // consume, but do nothing
+                    return true;
                 }
                 insertText("\n");
                 return true;
@@ -585,14 +483,12 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             }
         }
 
-        // Simple "allowed character" check: no control chars except space
         if (!isAllowedCharacter(codePoint)) {
             return false;
         }
 
         try {
             if (this.text.length() >= maxChars) {
-                // Consume input but don't add any more characters.
                 return true;
             }
 
@@ -615,13 +511,9 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
 
         try {
             return switch (keyCode) {
-                // ENTER / keypad ENTER -> newline (when allowed)
                 case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> {
                     if (allowNewlines) {
-                        // NEW: don't move caret / insert newline if it would create a "virtual" line
-                        // beyond our maxLines (caret at end of text and already full).
                         if (!canInsertNewlineHere()) {
-                            // Consume the key so it doesn't bubble, but do nothing visually.
                             yield true;
                         }
                         insertText("\n");
@@ -630,7 +522,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                     yield false;
                 }
 
-                // Deletion
                 case GLFW.GLFW_KEY_BACKSPACE -> {
                     if (ctrl) {
                         deletePreviousWord();
@@ -648,7 +539,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                     yield true;
                 }
 
-                // Left / Right arrows (with Ctrl / Shift support)
                 case GLFW.GLFW_KEY_LEFT -> {
                     moveCursorByWordOrChar(-1, ctrl, shift);
                     yield true;
@@ -658,7 +548,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                     yield true;
                 }
 
-                // Up / Down arrows: move caret between lines, but DO NOT change focus.
                 case GLFW.GLFW_KEY_UP -> {
                     moveCaretVertically(-1);
                     yield true;
@@ -668,18 +557,15 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                     yield true;
                 }
 
-                // HOME: start of current visual line (not whole text)
                 case GLFW.GLFW_KEY_HOME -> {
                     moveCursorToStart(shift);
                     yield true;
                 }
-                // END: end of full text
                 case GLFW.GLFW_KEY_END -> {
                     moveCursorToEnd(shift);
                     yield true;
                 }
 
-                // Ctrl+A: select all
                 case GLFW.GLFW_KEY_A -> {
                     if (ctrl) {
                         selectAll();
@@ -688,7 +574,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                     yield false;
                 }
 
-                // Clipboard
                 case GLFW.GLFW_KEY_C -> {
                     if (ctrl) {
                         copySelectionToClipboard();
@@ -740,7 +625,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         try {
             this.setFocused(true);
 
-            // Place caret at click position instead of just "end of text"
             int indexAtClick = getIndexAtPosition(mouseX, mouseY);
             this.cursorIndex = Math.max(0, Math.min(indexAtClick, this.text.length()));
             clearSelection();
@@ -754,36 +638,21 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
     }
 
     // ---------------------------------------------------------------------
-    // Internal helpers
+    // Internal helpers (unchanged)
     // ---------------------------------------------------------------------
 
     private static boolean isAllowedCharacter(char c) {
-        // Roughly: printable ASCII + whatever else the user types, minus control chars.
         return c >= 32 && c != 127;
     }
 
-    /**
-     * Decide whether we should allow inserting a newline at the current caret position.
-     *
-     * Special case we care about:
-     *  - If the caret is at the *end of the text*
-     *  - AND reflowed text already uses all maxLines
-     *  -> then inserting a newline would only create a "virtual" extra line where the caret
-     *     moves below the visible box, with no room for any characters.
-     *  In that case we return false (block ENTER).
-     */
     private boolean canInsertNewlineHere() {
         try {
-            // If we don't even have text, always allow (first newline just starts a line).
             if (this.text.isEmpty()) {
                 return true;
             }
 
             reflowLines();
 
-            // Only care about the edge case when:
-            //  - caret is exactly at the end of the text
-            //  - we already have maxLines visible lines
             if (this.cursorIndex == this.text.length() && this.visualLines.size() >= this.maxLines) {
                 LOG.debug("[MultiLineScrollTextWidget] Blocking newline: caret at end and maxLines already used");
                 return false;
@@ -792,14 +661,10 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             return true;
         } catch (Throwable t) {
             LOG.error("[MultiLineScrollTextWidget] canInsertNewlineHere failed, allowing newline by default", t);
-            // Fail-safe: don't unexpectedly block typing if something goes wrong.
             return true;
         }
     }
 
-    /**
-     * Computes the global text index closest to the given mouse position.
-     */
     private int getIndexAtPosition(double mouseX, double mouseY) {
         if (this.text.isEmpty() || this.visualLines.isEmpty()) {
             return this.text.length();
@@ -830,7 +695,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
 
         String line = safeSubstring(this.text, lineStart, lineEnd);
 
-        // Strip any trailing newline when computing width positions
         if (!line.isEmpty() && line.charAt(line.length() - 1) == '\n') {
             line = line.substring(0, line.length() - 1);
             lineEnd--;
@@ -849,7 +713,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             Component comp = applyCustomFont(Component.literal(String.valueOf(c)));
             int w = this.font.width(comp);
 
-            // If click is in the left half of this char, snap before it.
             if (relX < currentX + w / 2) {
                 return lineStart + i;
             }
@@ -858,13 +721,9 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             lastIndex = lineStart + i + 1;
         }
 
-        // Click is past end of line -> place at line end (before newline if present)
         return lastIndex;
     }
 
-    /**
-     * Compute caret movement to previous/next line, without changing widget focus.
-     */
     private void moveCaretVertically(int direction) {
         try {
             reflowLines();
@@ -872,19 +731,17 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                 return;
             }
 
-            // SPECIAL CASE: caret is after trailing newline -> treat as virtual line after last.
             if (allowNewlines
                     && !this.text.isEmpty()
                     && this.text.charAt(this.text.length() - 1) == '\n'
                     && this.cursorIndex == this.text.length()
                     && !this.visualLines.isEmpty()) {
 
-                int currentLineIdx = this.visualLines.size(); // virtual line index
-                int columnX = 0; // start of line
+                int currentLineIdx = this.visualLines.size();
+                int columnX = 0;
 
                 int targetLineIdx = currentLineIdx + direction;
                 if (targetLineIdx < 0 || targetLineIdx >= this.visualLines.size()) {
-                    // No valid target line
                     return;
                 }
 
@@ -919,7 +776,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                 return;
             }
 
-            // Normal vertical movement path.
             int currentLineIdx = 0;
             int columnX = 0;
             boolean found = false;
@@ -933,7 +789,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                     break;
                 }
 
-                // Boundary at end of a '\n' line belongs to next line.
                 if (cursorIndex > end ||
                         (cursorIndex == end && end > start && this.text.charAt(end - 1) == '\n')) {
                     continue;
@@ -952,7 +807,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             }
 
             if (!found) {
-                // Fallback: assume last line.
                 int lastIdx = visualLines.size() - 1;
                 LineInfo info = visualLines.get(lastIdx);
                 String beforeCaret = safeSubstring(this.text, info.start(), this.cursorIndex);
@@ -966,17 +820,14 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
 
             int targetLineIdx = currentLineIdx + direction;
             if (targetLineIdx < 0 || targetLineIdx >= visualLines.size()) {
-                // No line above/below -> do nothing.
                 return;
             }
 
-            // Place caret in target line at position whose x is closest to columnX.
             LineInfo targetInfo = visualLines.get(targetLineIdx);
             int lineStart = targetInfo.start();
             int lineEnd = targetInfo.end();
             String lineText = safeSubstring(this.text, lineStart, lineEnd);
 
-            // Strip visual newline for measuring positions, but keep indices consistent.
             boolean endsWithNewline = !lineText.isEmpty() && lineText.charAt(lineText.length() - 1) == '\n';
             if (endsWithNewline) {
                 lineText = lineText.substring(0, lineText.length() - 1);
@@ -986,7 +837,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             int bestIndex = lineStart;
             int bestDiff = Math.abs(columnX);
 
-            // Evaluate all caret positions between characters (0..lineText.length()).
             for (int i = 0; i <= lineText.length(); i++) {
                 if (i > 0) {
                     char c = lineText.charAt(i - 1);
@@ -1000,19 +850,17 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                 }
             }
 
-            // Move caret there, no shift-selection for now (keep this simple & robust).
             updateCursorAndSelection(bestIndex, false);
         } catch (Throwable t) {
             LOG.error("[MultiLineScrollTextWidget] moveCaretVertically failed", t);
         }
     }
 
-    private void insertText(@NotNull String toInsert) {
+    private void insertText(String toInsert) {
         if (toInsert.isEmpty()) {
             return;
         }
 
-        // Delete selection first, like normal editors do.
         if (hasSelection()) {
             deleteSelection();
         }
@@ -1048,14 +896,12 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             return;
         }
 
-        // If there's a selection, delete that instead.
         if (hasSelection()) {
             deleteSelection();
             return;
         }
 
         if (direction < 0) {
-            // Backspace
             if (this.cursorIndex <= 0) {
                 return;
             }
@@ -1064,7 +910,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             this.text = before + after;
             this.cursorIndex--;
         } else if (direction > 0) {
-            // Delete
             if (this.cursorIndex >= this.text.length()) {
                 return;
             }
@@ -1105,9 +950,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         }
     }
 
-    /**
-     * HOME: move to start of the *current visual line* (not absolute start of text).
-     */
     private void moveCursorToStart(boolean shift) {
         try {
             reflowLines();
@@ -1127,7 +969,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                     break;
                 }
 
-                // Boundary at end of '\n' line belongs to next line.
                 if (cursorIndex > end ||
                         (cursorIndex == end && end > start && this.text.charAt(end - 1) == '\n')) {
                     continue;
@@ -1149,16 +990,8 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         }
     }
 
-    private void moveCursorToStart() {
-        moveCursorToStart(false);
-    }
-
     private void moveCursorToEnd(boolean shift) {
         updateCursorAndSelection(this.text.length(), shift);
-    }
-
-    private void moveCursorToEnd() {
-        moveCursorToEnd(false);
     }
 
     private int findWordBoundary(int direction) {
@@ -1176,12 +1009,10 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
 
             int i = idx;
 
-            // Skip any whitespace directly before the cursor
             while (i > 0 && Character.isWhitespace(this.text.charAt(i - 1))) {
                 i--;
             }
 
-            // Skip the previous "word"
             while (i > 0 && !Character.isWhitespace(this.text.charAt(i - 1))) {
                 i--;
             }
@@ -1194,12 +1025,10 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
 
             int i = idx;
 
-            // Skip any whitespace directly after the cursor
             while (i < len && Character.isWhitespace(this.text.charAt(i))) {
                 i++;
             }
 
-            // Skip the next "word"
             while (i < len && !Character.isWhitespace(this.text.charAt(i))) {
                 i++;
             }
@@ -1213,7 +1042,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             return;
         }
 
-        // If there's a selection, just delete that.
         if (hasSelection()) {
             deleteSelection();
             return;
@@ -1245,7 +1073,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             return;
         }
 
-        // If there's a selection, just delete that.
         if (hasSelection()) {
             deleteSelection();
             return;
@@ -1319,10 +1146,8 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                 return;
             }
 
-            // Normalize line endings
             clip = clip.replace("\r\n", "\n").replace('\r', '\n');
 
-            // If this widget does not allow newlines, strip them.
             if (!allowNewlines) {
                 clip = clip.replace("\n", " ");
             }
@@ -1333,11 +1158,7 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         }
     }
 
-    /**
-     * Checks if inserting the given string at the current cursor would still fit inside our
-     * width/height (maxLines) constraints.
-     */
-    private boolean wouldFitWithInsertion(@NotNull String toInsert) {
+    private boolean wouldFitWithInsertion(String toInsert) {
         try {
             if (toInsert.isEmpty()) {
                 return false;
@@ -1358,16 +1179,11 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             return wouldFitText(candidate);
         } catch (Throwable t) {
             LOG.error("[MultiLineScrollTextWidget] wouldFitWithInsertion failed", t);
-            // Fail safe: don't allow insertion if we couldn't decide.
             return false;
         }
     }
 
-    /**
-     * Simulate line wrapping for a given candidate string and check whether it would
-     * exceed maxLines.
-     */
-    private boolean wouldFitText(@NotNull String candidate) {
+    private boolean wouldFitText(String candidate) {
         if (candidate.isEmpty()) {
             return true;
         }
@@ -1396,16 +1212,14 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                 char c = candidate.charAt(lineEnd);
 
                 if (c == '\n') {
-                    lineEnd++; // include newline in this logical line
+                    lineEnd++;
                     break;
                 }
 
-                // NEW: use accurate measurement that matches rendering (custom font aware)
                 int charWidth = measureCharWidth(c);
 
                 if (currentWidth + charWidth > maxWidth) {
                     if (lastSpace > lineStart) {
-                        // Wrap at last space
                         lineEnd = lastSpace + 1;
                     }
                     break;
@@ -1419,7 +1233,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
             }
 
             if (lineEnd == lineStart) {
-                // Safety: avoid infinite loops if something goes wrong.
                 lineEnd = Math.min(lineStart + 1, len);
             }
 
@@ -1427,14 +1240,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         }
 
         return true;
-    }
-
-    private void moveCursor(int delta) {
-        int newIndex = this.cursorIndex + delta;
-        newIndex = Math.max(0, Math.min(newIndex, this.text.length()));
-        this.cursorIndex = newIndex;
-        clearSelection();
-        this.selectionAnchor = this.cursorIndex;
     }
 
     private void reflowLines() {
@@ -1462,16 +1267,14 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                     char c = t.charAt(lineEnd);
 
                     if (c == '\n') {
-                        lineEnd++; // include newline in this logical line
+                        lineEnd++;
                         break;
                     }
 
-                    // NEW: use accurate measurement that matches rendering (custom font aware)
                     int charWidth = measureCharWidth(c);
 
                     if (currentWidth + charWidth > maxWidth) {
                         if (lastSpace > lineStart) {
-                            // Wrap at last space
                             lineEnd = lastSpace + 1;
                         }
                         break;
@@ -1485,7 +1288,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
                 }
 
                 if (lineEnd == lineStart) {
-                    // Safety: avoid infinite loops if something goes wrong.
                     lineEnd = Math.min(lineStart + 1, t.length());
                 }
 
@@ -1507,12 +1309,8 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         return s.substring(s0, e0);
     }
 
-    // ---------------------------------------------------------------------
-    // Narration
-    // ---------------------------------------------------------------------
-
     @Override
-    protected void updateWidgetNarration(@NotNull NarrationElementOutput narrationElementOutput) {
+    protected void updateWidgetNarration(NarrationElementOutput narrationElementOutput) {
         defaultButtonNarrationText(narrationElementOutput);
     }
 }

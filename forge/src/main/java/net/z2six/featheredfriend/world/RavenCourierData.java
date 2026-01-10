@@ -16,7 +16,7 @@ import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.saveddata.SavedData;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
-import org.jetbrains.annotations.NotNull;
+
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -72,17 +72,17 @@ public class RavenCourierData extends SavedData {
         public String lastFailureReason;
 
         public DeliveryJob(long jobId,
-                           @NotNull UUID senderUuid,
-                           @NotNull String senderName,
-                           @NotNull UUID recipientUuid,
-                           @NotNull String recipientName,
-                           @NotNull CompoundTag sealedScrollNbt,
+                           UUID senderUuid,
+                           String senderName,
+                           UUID recipientUuid,
+                           String recipientName,
+                           CompoundTag sealedScrollNbt,
                            boolean inFlight,
-                           @NotNull String ravenName,
+                           String ravenName,
                            boolean failed,
                            int failureCount,
                            long lastFailureGameTime,
-                           @NotNull String lastFailureReason) {
+                           String lastFailureReason) {
             this.jobId = jobId;
             this.senderUuid = senderUuid;
             this.senderName = senderName;
@@ -139,7 +139,7 @@ public class RavenCourierData extends SavedData {
     // NBT (de)serialization
     // ---------------------------------------------------------------------
 
-    private void readFromNbt(@NotNull CompoundTag tag) {
+    private void readFromNbt(CompoundTag tag) {
         try {
             jobsByRecipient.clear();
 
@@ -235,7 +235,7 @@ public class RavenCourierData extends SavedData {
         }
     }
 
-    private void writeToNbt(@NotNull CompoundTag tag) {
+    private void writeToNbt(CompoundTag tag) {
         try {
             tag.putLong("NextJobId", nextJobId);
 
@@ -311,7 +311,7 @@ public class RavenCourierData extends SavedData {
     // ---------------------------------------------------------------------
 
     @NotNull
-    public static RavenCourierData get(@NotNull ServerLevel level) {
+    public static RavenCourierData get(ServerLevel level) {
         try {
             ServerLevel overworld = level.getServer().overworld();
             if (overworld == null) {
@@ -335,9 +335,9 @@ public class RavenCourierData extends SavedData {
     // ---------------------------------------------------------------------
 
     @Nullable
-    public DeliveryJob createJobFromSealedScroll(@NotNull ServerPlayer sender,
-                                                 @NotNull RavenEntity raven,
-                                                 @NotNull ItemStack scrollStack) {
+    public DeliveryJob createJobFromSealedScroll(ServerPlayer sender,
+                                                 RavenEntity raven,
+                                                 ItemStack scrollStack) {
         try {
             if (scrollStack.isEmpty()) {
                 LOG.warn("[RavenCourierData] createJobFromSealedScroll: stack is empty for player='{}'.",
@@ -455,7 +455,7 @@ public class RavenCourierData extends SavedData {
      * Mark a job as failed (persisted).
      * Also clears inFlight so it doesn't remain locked.
      */
-    public boolean markJobFailed(long jobId, @NotNull UUID recipientUuid, @NotNull String reason, long gameTime) {
+    public boolean markJobFailed(long jobId, UUID recipientUuid, String reason, long gameTime) {
         try {
             DeliveryJob job = getJobById(jobId);
             if (job == null) {
@@ -490,7 +490,7 @@ public class RavenCourierData extends SavedData {
      * Clears failed state for a sender-triggered retry.
      * Returns true only if job exists, sender matches, and job is currently failed and not inFlight.
      */
-    public boolean clearFailedForRetry(long jobId, @NotNull UUID senderUuid) {
+    public boolean clearFailedForRetry(long jobId, UUID senderUuid) {
         try {
             DeliveryJob job = getJobById(jobId);
             if (job == null) {
@@ -531,7 +531,7 @@ public class RavenCourierData extends SavedData {
     // ---------------------------------------------------------------------
 
     @NotNull
-    public List<DeliveryJob> getJobsForRecipient(@NotNull UUID recipientUuid) {
+    public List<DeliveryJob> getJobsForRecipient(UUID recipientUuid) {
         List<DeliveryJob> list = jobsByRecipient.get(recipientUuid);
         if (list == null || list.isEmpty()) {
             return Collections.emptyList();
@@ -552,7 +552,7 @@ public class RavenCourierData extends SavedData {
     }
 
     @NotNull
-    public List<DeliveryJob> getJobsForPlayer(@NotNull UUID playerUuid) {
+    public List<DeliveryJob> getJobsForPlayer(UUID playerUuid) {
         List<DeliveryJob> out = new ArrayList<>();
         for (List<DeliveryJob> list : jobsByRecipient.values()) {
             if (list == null || list.isEmpty()) {
@@ -570,7 +570,7 @@ public class RavenCourierData extends SavedData {
         return List.copyOf(out);
     }
 
-    public void removeJob(long jobId, @NotNull UUID recipientUuid) {
+    public void removeJob(long jobId, UUID recipientUuid) {
         try {
             List<DeliveryJob> list = jobsByRecipient.get(recipientUuid);
             if (list == null || list.isEmpty()) {
@@ -590,7 +590,7 @@ public class RavenCourierData extends SavedData {
         }
     }
 
-    public boolean hasOpenJobsAsSender(@NotNull UUID senderUuid) {
+    public boolean hasOpenJobsAsSender(UUID senderUuid) {
         try {
             if (jobsByRecipient.isEmpty()) {
                 return false;
@@ -637,7 +637,7 @@ public class RavenCourierData extends SavedData {
         }
     }
 
-    public int clearJobsForPlayer(@NotNull UUID playerUuid) {
+    public int clearJobsForPlayer(UUID playerUuid) {
         try {
             int removed = 0;
             Iterator<Map.Entry<UUID, List<DeliveryJob>>> it = jobsByRecipient.entrySet().iterator();
@@ -698,7 +698,7 @@ public class RavenCourierData extends SavedData {
     // Helper for TamedRavenScrollwatcher
     // ------------------------------------
 
-    public boolean hasFailedJobsAsSender(@NotNull UUID senderUuid) {
+    public boolean hasFailedJobsAsSender(UUID senderUuid) {
         try {
             if (jobsByRecipient.isEmpty()) {
                 return false;
@@ -725,7 +725,7 @@ public class RavenCourierData extends SavedData {
         }
     }
 
-    public boolean hasActiveNonFailedJobsAsSender(@NotNull UUID senderUuid) {
+    public boolean hasActiveNonFailedJobsAsSender(UUID senderUuid) {
         try {
             if (jobsByRecipient.isEmpty()) {
                 return false;
@@ -754,7 +754,7 @@ public class RavenCourierData extends SavedData {
     }
 
     @Nullable
-    public DeliveryJob getMostRecentFailedJobForSender(@NotNull UUID senderUuid) {
+    public DeliveryJob getMostRecentFailedJobForSender(UUID senderUuid) {
         try {
             DeliveryJob best = null;
 

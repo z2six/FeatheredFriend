@@ -36,7 +36,7 @@ import net.z2six.featheredfriend.entity.raven.RavenVariant;
 import net.z2six.featheredfriend.entity.raven.modules.TamedRaven;
 import net.z2six.featheredfriend.entity.raven.modules.Teleportation;
 import net.z2six.featheredfriend.registry.FFNeoForgeEntities;
-import org.jetbrains.annotations.NotNull;
+
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -142,7 +142,7 @@ public final class RavenCourierRuntime {
      *  - Leaves job pending so the regular dispatcher will spawn a courier again.
      *  - Tries an immediate dispatch pass (best effort).
      */
-    public static boolean requestRetryDelivery(@NotNull MinecraftServer server, @NotNull UUID senderUuid, long jobId) {
+    public static boolean requestRetryDelivery(MinecraftServer server, UUID senderUuid, long jobId) {
         try {
             if (server == null) {
                 return false;
@@ -179,7 +179,7 @@ public final class RavenCourierRuntime {
     // Server tick: periodic dispatch
     // ---------------------------------------------------------------------
 
-    private static void onServerTick(@NotNull ServerTickEvent.Post event) {
+    private static void onServerTick(ServerTickEvent.Post event) {
         try {
             MinecraftServer server = event.getServer();
             if (server == null) {
@@ -198,7 +198,7 @@ public final class RavenCourierRuntime {
         }
     }
 
-    private static void dispatchPendingDeliveries(@NotNull MinecraftServer server) {
+    private static void dispatchPendingDeliveries(MinecraftServer server) {
         try {
             ServerLevel overworld = server.overworld();
             if (overworld == null) {
@@ -328,7 +328,7 @@ public final class RavenCourierRuntime {
     // Courier raven spawn helpers
     // ---------------------------------------------------------------------
 
-    private static boolean hasActiveCourierRavenForJob(@NotNull MinecraftServer server, long jobId) {
+    private static boolean hasActiveCourierRavenForJob(MinecraftServer server, long jobId) {
         try {
             if (jobId <= 0L) {
                 return false;
@@ -377,10 +377,10 @@ public final class RavenCourierRuntime {
      *  - Do NOT remove job.
      *  - Despawn raven (with FX if possible).
      */
-    private static void handleCourierRavenTimeout(@NotNull ServerLevel level,
-                                                  @NotNull RavenCourierData data,
-                                                  @NotNull RavenEntity raven,
-                                                  @NotNull RavenCourierData.DeliveryJob job) {
+    private static void handleCourierRavenTimeout(ServerLevel level,
+                                                  RavenCourierData data,
+                                                  RavenEntity raven,
+                                                  RavenCourierData.DeliveryJob job) {
         try {
             long now = level.getGameTime();
 
@@ -435,12 +435,12 @@ public final class RavenCourierRuntime {
         return null;
     }
 
-    private static void reconcileJobsWithExistingCourierRavens(@NotNull MinecraftServer server,
-                                                               @NotNull ServerLevel overworld,
-                                                               @NotNull RavenCourierData data,
-                                                               @NotNull List<RavenCourierData.DeliveryJob> allJobs,
-                                                               @NotNull Set<UUID> busySenders,
-                                                               @NotNull Set<UUID> busyRecipients) {
+    private static void reconcileJobsWithExistingCourierRavens(MinecraftServer server,
+                                                               ServerLevel overworld,
+                                                               RavenCourierData data,
+                                                               List<RavenCourierData.DeliveryJob> allJobs,
+                                                               Set<UUID> busySenders,
+                                                               Set<UUID> busyRecipients) {
         try {
             Map<Long, RavenCourierData.DeliveryJob> jobsById = new HashMap<>();
             for (RavenCourierData.DeliveryJob job : allJobs) {
@@ -555,9 +555,9 @@ public final class RavenCourierRuntime {
     }
 
     @Nullable
-    private static RavenEntity spawnCourierRavenForJob(@NotNull ServerLevel level,
-                                                       @NotNull ServerPlayer recipient,
-                                                       @NotNull RavenCourierData.DeliveryJob job) {
+    private static RavenEntity spawnCourierRavenForJob(ServerLevel level,
+                                                       ServerPlayer recipient,
+                                                       RavenCourierData.DeliveryJob job) {
         try {
             RavenEntity raven = FFNeoForgeEntities.RAVEN.get().create(level);
             if (raven == null) {
@@ -618,9 +618,9 @@ public final class RavenCourierRuntime {
         }
     }
 
-    private static void attachCourierJobToRaven(@NotNull ServerLevel level,
-                                                @NotNull RavenEntity raven,
-                                                @NotNull RavenCourierData.DeliveryJob job) {
+    private static void attachCourierJobToRaven(ServerLevel level,
+                                                RavenEntity raven,
+                                                RavenCourierData.DeliveryJob job) {
         try {
             CompoundTag root = raven.getPersistentData();
             CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
@@ -658,9 +658,9 @@ public final class RavenCourierRuntime {
         }
     }
 
-    private static void playCourierSpawnFx(@NotNull ServerLevel level,
-                                           @NotNull ServerPlayer recipient,
-                                           @NotNull RavenEntity raven) {
+    private static void playCourierSpawnFx(ServerLevel level,
+                                           ServerPlayer recipient,
+                                           RavenEntity raven) {
         try {
             Vec3 ravenPos = raven.position();
 
@@ -710,9 +710,9 @@ public final class RavenCourierRuntime {
      *  - spawn base = (playerY + 15), then search for pocket near that.
      */
     @Nullable
-    private static Vec3 findCourierSpawnPos(@NotNull ServerLevel level,
-                                            @NotNull ServerPlayer player,
-                                            @NotNull RavenEntity simRaven,
+    private static Vec3 findCourierSpawnPos(ServerLevel level,
+                                            ServerPlayer player,
+                                            RavenEntity simRaven,
                                             long jobId) {
         try {
             BlockPos feet = player.blockPosition();
@@ -792,8 +792,8 @@ public final class RavenCourierRuntime {
         }
     }
 
-    private static int scanFirstCeilingYWithin15(@NotNull ServerLevel level,
-                                                 @NotNull ServerPlayer player,
+    private static int scanFirstCeilingYWithin15(ServerLevel level,
+                                                 ServerPlayer player,
                                                  int x,
                                                  int feetY,
                                                  int z,
@@ -865,8 +865,8 @@ public final class RavenCourierRuntime {
     }
 
     @Nullable
-    private static Vec3 findFirst3x3x3PocketNear(@NotNull ServerLevel level,
-                                                 @NotNull ServerPlayer player,
+    private static Vec3 findFirst3x3x3PocketNear(ServerLevel level,
+                                                 ServerPlayer player,
                                                  int cx,
                                                  int baseY,
                                                  int cz,
@@ -913,7 +913,7 @@ public final class RavenCourierRuntime {
         }
     }
 
-    private static boolean is3x3x3Air(@NotNull ServerLevel level, int cx, int cy, int cz) {
+    private static boolean is3x3x3Air(ServerLevel level, int cx, int cy, int cz) {
         try {
             for (int dy = 0; dy <= 2; dy++) {
                 int y = cy + dy;
@@ -933,12 +933,12 @@ public final class RavenCourierRuntime {
         }
     }
 
-    private static boolean canSimulatePathToPlayer(@NotNull ServerLevel level,
-                                                   @NotNull ServerPlayer player,
-                                                   @NotNull Vec3 spawnPos,
-                                                   @NotNull RavenEntity simRaven,
+    private static boolean canSimulatePathToPlayer(ServerLevel level,
+                                                   ServerPlayer player,
+                                                   Vec3 spawnPos,
+                                                   RavenEntity simRaven,
                                                    long jobId,
-                                                   @NotNull String reasonTag) {
+                                                   String reasonTag) {
         try {
             // Place the simulation raven at start position (not added to world; pure planning).
             try {
@@ -992,7 +992,7 @@ public final class RavenCourierRuntime {
     // Player RMB retrieval (courier raven -> sealed scroll)
     // ---------------------------------------------------------------------
 
-    private static void onEntityInteract(@NotNull PlayerInteractEvent.EntityInteract event) {
+    private static void onEntityInteract(PlayerInteractEvent.EntityInteract event) {
         try {
             Level level = event.getLevel();
             if (!(level instanceof ServerLevel serverLevel) || level.isClientSide()) {
@@ -1047,7 +1047,7 @@ public final class RavenCourierRuntime {
         }
     }
 
-    private static boolean isCourierRaven(@NotNull RavenEntity raven) {
+    private static boolean isCourierRaven(RavenEntity raven) {
         try {
             if (raven.getTags().contains(TAG_COURIER_RAVEN)) {
                 return true;
@@ -1069,7 +1069,7 @@ public final class RavenCourierRuntime {
         }
     }
 
-    private static long getCourierJobIdFromRaven(@NotNull RavenEntity raven) {
+    private static long getCourierJobIdFromRaven(RavenEntity raven) {
         try {
             CompoundTag root = raven.getPersistentData();
             if (root == null) {
@@ -1091,8 +1091,8 @@ public final class RavenCourierRuntime {
     // ---------------------------------------------------------------------
 
     @NotNull
-    private static ItemStack buildDeliveredScrollStack(@NotNull Item sealedScrollItem,
-                                                       @NotNull RavenCourierData.DeliveryJob job,
+    private static ItemStack buildDeliveredScrollStack(Item sealedScrollItem,
+                                                       RavenCourierData.DeliveryJob job,
                                                        @Nullable String deliveredName,
                                                        @Nullable UUID deliveredUuid,
                                                        boolean successfulDelivery) {
@@ -1173,9 +1173,9 @@ public final class RavenCourierRuntime {
         return stack;
     }
 
-    private static boolean giveSealedScrollToPlayerFromJob(@NotNull ServerLevel level,
-                                                           @NotNull ServerPlayer player,
-                                                           @NotNull RavenCourierData.DeliveryJob job) {
+    private static boolean giveSealedScrollToPlayerFromJob(ServerLevel level,
+                                                           ServerPlayer player,
+                                                           RavenCourierData.DeliveryJob job) {
         try {
             Item sealedScrollItem = BuiltInRegistries.ITEM.get(SEALED_SCROLL_ID);
             if (sealedScrollItem == null) {
@@ -1238,7 +1238,7 @@ public final class RavenCourierRuntime {
     // Courier raven death handling (death COMPLETES job)
     // ---------------------------------------------------------------------
 
-    private static void onRavenDeath(@NotNull LivingDeathEvent event) {
+    private static void onRavenDeath(LivingDeathEvent event) {
         try {
             LivingEntity living = event.getEntity();
             if (!(living instanceof RavenEntity raven)) {
@@ -1278,9 +1278,9 @@ public final class RavenCourierRuntime {
         }
     }
 
-    private static void dropSealedScrollAtRaven(@NotNull ServerLevel level,
-                                                @NotNull RavenEntity raven,
-                                                @NotNull RavenCourierData.DeliveryJob job) {
+    private static void dropSealedScrollAtRaven(ServerLevel level,
+                                                RavenEntity raven,
+                                                RavenCourierData.DeliveryJob job) {
         try {
             Item sealedScrollItem = BuiltInRegistries.ITEM.get(SEALED_SCROLL_ID);
             if (sealedScrollItem == null) {
@@ -1305,7 +1305,7 @@ public final class RavenCourierRuntime {
         }
     }
 
-    private static boolean hasEmptyInventorySlot(@NotNull ServerPlayer player) {
+    private static boolean hasEmptyInventorySlot(ServerPlayer player) {
         try {
             int size = player.getInventory().getContainerSize();
             for (int i = 0; i < size; i++) {
@@ -1325,8 +1325,8 @@ public final class RavenCourierRuntime {
         return false;
     }
 
-    private static boolean insertIntoFirstEmptySlot(@NotNull ServerPlayer player,
-                                                    @NotNull ItemStack stack) {
+    private static boolean insertIntoFirstEmptySlot(ServerPlayer player,
+                                                    ItemStack stack) {
         try {
             if (stack.isEmpty()) {
                 return false;
@@ -1356,9 +1356,9 @@ public final class RavenCourierRuntime {
         }
     }
 
-    private static void notifySenderOfRavenDeath(@NotNull ServerLevel anyLevel,
-                                                 @NotNull RavenEntity raven,
-                                                 @NotNull RavenCourierData.DeliveryJob job) {
+    private static void notifySenderOfRavenDeath(ServerLevel anyLevel,
+                                                 RavenEntity raven,
+                                                 RavenCourierData.DeliveryJob job) {
         try {
             MinecraftServer server = anyLevel.getServer();
             if (server == null) {
@@ -1403,7 +1403,7 @@ public final class RavenCourierRuntime {
         }
     }
 
-    private static void clearCourierFlags(@NotNull RavenEntity raven) {
+    private static void clearCourierFlags(RavenEntity raven) {
         try {
             if (raven.getTags().contains(TAG_COURIER_RAVEN)) {
                 raven.removeTag(TAG_COURIER_RAVEN);
@@ -1432,10 +1432,10 @@ public final class RavenCourierRuntime {
         }
     }
 
-    private static void despawnCourierRaven(@NotNull ServerLevel level,
-                                            @NotNull ServerPlayer contextPlayer,
-                                            @NotNull RavenEntity raven,
-                                            @NotNull String reason) {
+    private static void despawnCourierRaven(ServerLevel level,
+                                            ServerPlayer contextPlayer,
+                                            RavenEntity raven,
+                                            String reason) {
         try {
             TamedRaven tamedModule = null;
             try {
@@ -1492,7 +1492,7 @@ public final class RavenCourierRuntime {
         }
     }
 
-    private static void ensureRavenName(@NotNull RavenEntity raven, @NotNull String ravenName) {
+    private static void ensureRavenName(RavenEntity raven, String ravenName) {
         try {
             Component cur = raven.getCustomName();
             String curStr = (cur == null) ? "" : cur.getString();
@@ -1506,7 +1506,7 @@ public final class RavenCourierRuntime {
         }
     }
 
-    private static String safePlayerName(@NotNull Player player) {
+    private static String safePlayerName(Player player) {
         try {
             return player.getGameProfile().getName();
         } catch (Throwable ignored) {

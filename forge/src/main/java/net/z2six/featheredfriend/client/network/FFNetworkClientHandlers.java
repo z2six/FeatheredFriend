@@ -1,13 +1,11 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/client/network/FFNetworkClientHandlers.java
 package net.z2six.featheredfriend.client.network;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
-import net.neoforged.neoforge.network.handling.IPayloadContext;
+import net.minecraftforge.network.NetworkEvent;
 import net.z2six.featheredfriend.client.knownplayers.KnownPlayersClientCache;
 import net.z2six.featheredfriend.client.screen.RavenNamingScreen;
 import net.z2six.featheredfriend.network.FFNetwork;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 public final class FFNetworkClientHandlers {
@@ -17,8 +15,8 @@ public final class FFNetworkClientHandlers {
     private FFNetworkClientHandlers() {
     }
 
-    public static void handleKnownPlayersOnClient(@NotNull FFNetwork.KnownPlayersPayload payload,
-                                                  @NotNull IPayloadContext context) {
+    public static void handleKnownPlayersOnClient(FFNetwork.KnownPlayersPayload payload,
+                                                  NetworkEvent.Context context) {
         try {
             KnownPlayersClientCache cache = KnownPlayersClientCache.getInstance();
             cache.replaceAllFromServer(payload.players());
@@ -28,8 +26,8 @@ public final class FFNetworkClientHandlers {
         }
     }
 
-    public static void handleOpenRavenNameScreenOnClient(@NotNull FFNetwork.OpenRavenNameScreenPayload payload,
-                                                         @NotNull IPayloadContext context) {
+    public static void handleOpenRavenNameScreenOnClient(FFNetwork.OpenRavenNameScreenPayload payload,
+                                                         NetworkEvent.Context context) {
         try {
             Minecraft mc = Minecraft.getInstance();
             if (mc == null) return;
