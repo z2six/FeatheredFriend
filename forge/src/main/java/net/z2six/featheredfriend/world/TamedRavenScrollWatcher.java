@@ -66,7 +66,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *  - Edge detection of "start holding" is robust across reloads:
  *      * We store LAST_HOLDING_SEALED_SCROLL per player UUID.
  *      * On a fresh player entity (player.tickCount == 0), we force wasHolding=false
- *        so a player always counts as “newly holding” on join if they have the scroll selected.
+ *        so a player always counts as newly holding on join if they have the scroll selected.
  *
  * Spawn FX:
  *  - Enderpop-like portal particles + enderman teleport sound.
@@ -1635,7 +1635,7 @@ public final class TamedRavenScrollWatcher {
     /**
      * Returns true if the player's main hand item is the sealed scroll.
      */
-    public static boolean isHoldingSealedScroll(Player player) { // ← was private
+    public static boolean isHoldingSealedScroll(Player player) { // was private
         try {
             ItemStack main = player.getMainHandItem();
             if (main == null || main.isEmpty()) {

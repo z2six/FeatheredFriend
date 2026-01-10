@@ -91,7 +91,7 @@ public class ScrollSealingMenu extends AbstractContainerMenu implements ScrollAt
 
     /**
      * When true, the next ScrollSealingScreen that opens for this menu should
-     * skip its intro animation and go straight to the “fully open” state.
+     * skip its intro animation and go straight to the fully open state.
      *
      * This is set by EnderPearlInventoryScreen when closing back to the scroll GUI.
      */

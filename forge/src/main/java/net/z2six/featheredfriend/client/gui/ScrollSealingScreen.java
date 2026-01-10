@@ -1469,11 +1469,19 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         try {
-            // Forge 1.20.1: renderBackground only takes GuiGraphics
+            // Background (dirt/dim)
             this.renderBackground(guiGraphics);
 
-            super.render(guiGraphics, mouseX, mouseY, partialTick);
+            // Your scroll background, wax, pearl, etc.
+            this.renderBg(guiGraphics, partialTick, mouseX, mouseY);
 
+            // Render widgets added via addRenderableWidget()
+            // (this avoids AbstractContainerScreen slot rendering entirely)
+            for (var r : this.renderables) {
+                r.render(guiGraphics, mouseX, mouseY, partialTick);
+            }
+
+            // Your extra overlay renders (these are NOT necessarily in renderables)
             if (this.signatureWidget != null && uiPhase == UiPhase.IDLE) {
                 boolean hoverSignature = isMouseOverSignature(mouseX, mouseY)
                         && this.signatureWidget.getText().isEmpty();
@@ -1490,7 +1498,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 this.sealStampOverlay.render(guiGraphics, mouseX, mouseY, partialTick);
             }
 
-            if (sealStampTargetMode && sealStampSlotIndex >= 0 && sealStampStackForRender != null && !sealStampStackForRender.isEmpty()) {
+            // Seal-stamp cursor item
+            if (sealStampTargetMode && sealStampSlotIndex >= 0
+                    && sealStampStackForRender != null && !sealStampStackForRender.isEmpty()) {
                 try {
                     int iconX = mouseX - 8;
                     int iconY = mouseY - 8;
@@ -1501,17 +1511,19 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 }
             }
 
+            // Admiration fade overlay (unchanged)
             if (placedSealShown && placedFadeTicks >= 0) {
                 float t = Math.min(1.0f, placedFadeTicks / (float) PLACED_FADE_TICKS_TOTAL);
                 int alpha = (int) (t * 255.0f);
                 if (alpha < 0) alpha = 0;
                 if (alpha > 255) alpha = 255;
-
                 int color = (alpha << 24);
                 guiGraphics.fill(0, 0, this.width, this.height, color);
             }
 
-            this.renderTooltip(guiGraphics, mouseX, mouseY);
+            // Tooltips: we intentionally do NOT call AbstractContainerScreen tooltips,
+            // because that involves hoveredSlot logic. Add custom tooltips here if needed.
+
         } catch (Throwable t) {
             LOG.error("[ScrollSealingScreen] render failed", t);
         }
@@ -1520,11 +1532,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     @Override
     protected void renderLabels(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         // No default labels.
-    }
-
-    protected boolean isHovering(Slot slot, double mouseX, double mouseY) {
-        // Disable vanilla slot hover behavior on this screen (matches your intent)
-        return false;
     }
 
     // Intentionally NOT annotated with @Override to avoid signature mismatch across mappings/patches.
@@ -1895,10 +1902,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     // ---------------------------------------------------------------------
     // Container slot suppression
     // ---------------------------------------------------------------------
-
-    protected void renderSlot(GuiGraphics guiGraphics, Slot slot) {
-        // Intentionally empty: slots are invisible on the scroll-writing screen.
-    }
 
     @Override
     protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType type) {

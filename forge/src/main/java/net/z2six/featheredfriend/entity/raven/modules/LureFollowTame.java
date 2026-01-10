@@ -1191,7 +1191,7 @@ public class LureFollowTame {
             // Desired final follow position: in front of player's face.
             Vec3 desiredFront = computeFollowFrontPosition(player);
 
-            // Use the same “safe goal” logic you already have for A*.
+            // Use the same safe goal logic you already have for A*.
             RavenAStarPathing.Config cfg = new RavenAStarPathing.Config();
             cfg.allowLeaves = false;
             cfg.allowReplaceables = false;
@@ -1508,7 +1508,7 @@ public class LureFollowTame {
             boolean pathOk = false;
 
             if (needNewGoal) {
-                // 1) compute strict “front of player at eye height”
+                // 1) compute strict front of player at eye height
                 Vec3 rawFront = computeFollowFrontPosition(target);
 
                 // 2) apply XZ-only safety adjuster that LOCKS Y (no vertical hop)
@@ -1941,7 +1941,7 @@ public class LureFollowTame {
             if (playerCenter == null) return null;
 
             // Ring scan: r=0..maxR, testing perimeter of square ring in a stable order.
-            // This guarantees “closest” in a discrete sense.
+            // This guarantees closest in a discrete sense.
             for (int r = 0; r <= maxR; r++) {
                 // For each ring, try preferred Y first (above)
                 for (int yo : yOffsets) {
@@ -1950,7 +1950,7 @@ public class LureFollowTame {
                     // Clamp to your home vertical bounds policy
                     int y = invokeClampYToHomeBounds(yRaw);
 
-                    // We also refuse “below player” in the preferred pass by caller choosing yOffsets accordingly.
+                    // We also refuse below player in the preferred pass by caller choosing yOffsets accordingly.
                     // Still, if clamp pushes down unexpectedly, keep it sane:
                     if (yo >= 0 && y < playerY) {
                         y = playerY;

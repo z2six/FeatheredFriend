@@ -22,11 +22,11 @@ import java.util.UUID;
  *     - Start from a circle of radius DEFAULT_RADIUS.
  *     - Perturb the radius as a function of angle with a smooth random walk.
  *     - Clamp so it never exceeds the base radius (no clipping on preview).
- *     - Fill everything inside this wavy boundary => solid “wax disc”.
+ *     - Fill everything inside this wavy boundary => solid wax disc.
  *
  *  2) Sliced symmetry engine
  *     - Choose N slices (2–8).
- *     - A “base slice” is defined as the angular wedge [0, 2π/N).
+ *     - A base slice is defined as the angular wedge [0, 2π/N).
  *     - We generate shapes only once in the base slice mask.
  *
  *  3) Shape sets (modular)
@@ -96,7 +96,7 @@ public final class SealSigilGenerator {
      * Generate a sigil pattern for a player, using the default radius and
      * a fixed shape set + slices for now (can be exposed later).
      *
-     * This is mainly intended for actual “stamp” logic, not the debug preview.
+     * This is mainly intended for actual stamp logic, not the debug preview.
      *
      * NOTE: This path still uses the UUID+secret-based seed (legacy behavior).
      * For secret-only / RP-friendly behavior, prefer computeSeedFromSecretOnly().

@@ -2414,7 +2414,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
 
             if (landingPhase != LandingPhase.NONE) {
-                // ❌ No random blink here: landing state machine owns movement & phases.
+                // No random blink here: landing state machine owns movement & phases.
                 landing.tickLandingStateMachine(rnd, this);
                 return;
             }
@@ -2461,7 +2461,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
 
             // From HERE on, we are committing to a landing sequence.
-            // ❌ Do NOT random blink after this point.
+            // Do NOT random blink after this point.
             landing.landingLeafPos = leaf;
             landingPhase = LandingPhase.FLY_TO_OVERHEAD;
             landingTicks = 0;
@@ -2954,7 +2954,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             Vec3 newVel = new Vec3(vx, vy, vz);
 
-            // If we got damped into almost-zero, nudge out so we don't “buzz-lock”.
+            // If we got damped into almost-zero, nudge out so we don't buzz-lock.
             if (newVel.lengthSqr() < 0.0005D) {
                 RandomSource rnd = this.getRandom();
                 newVel = new Vec3(
@@ -4166,7 +4166,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             Vec3 prevVel = this.getDeltaMovement();
 
             // -----------------------------------------------------------------
-            // Force “planner-friendly” conditions for simulation (then restore)
+            // Force planner-friendly conditions for simulation (then restore)
             // - IMPORTANT: we do NOT want cooldown gates or avoidance/landing to block.
             // -----------------------------------------------------------------
             try {
@@ -4242,7 +4242,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
 
             // Optional: extra strictness — require at least 2 waypoints
-            // (You can remove this if you want “single-point” paths to count.)
+            // (You can remove this if you want single-point paths to count.)
             if (ok) {
                 try {
                     int pts = (this.pathWaypoints == null) ? 0 : this.pathWaypoints.size();

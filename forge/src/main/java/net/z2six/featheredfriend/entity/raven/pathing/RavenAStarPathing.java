@@ -324,7 +324,7 @@ public final class RavenAStarPathing {
             final Long2ByteOpenHashMap passableCache = new Long2ByteOpenHashMap();
             passableCache.defaultReturnValue((byte) -1);
 
-            // NEW: cache for per-node “safety penalty” so we don’t rescan the same node 100x.
+            // NEW: cache for per-node safety penalty so we don’t rescan the same node 100x.
             final Long2DoubleOpenHashMap nodePenaltyCache = new Long2DoubleOpenHashMap();
             nodePenaltyCache.defaultReturnValue(Double.NaN);
 
@@ -463,7 +463,7 @@ public final class RavenAStarPathing {
                         stepCost += (tieRnd.nextDouble() - 0.5D) * 0.002D;
                     }
 
-                    // NEW: add a tiny penalty for “risky” nodes (near ceilings / walls).
+                    // NEW: add a tiny penalty for risky nodes (near ceilings / walls).
                     stepCost += extraCostForNode(level, ncx, ncy, ncz, cfg, nodePenaltyCache);
 
                     double tentativeG = curG + stepCost;
@@ -577,7 +577,7 @@ public final class RavenAStarPathing {
 
             BlockPos anchor = nodeAnchorBlock(cx, cy, cz, gridStep);
 
-            // How far out we scan for “nearby solid stuff”.
+            // How far out we scan for nearby solid stuff.
             // Small radius keeps it cheap but enough to steer away from tight corridors.
             final int MAX_SCAN_RADIUS = 2;
 

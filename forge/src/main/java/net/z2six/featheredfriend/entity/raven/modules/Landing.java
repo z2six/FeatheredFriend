@@ -85,7 +85,7 @@ public final class Landing {
     // Drop physics
     private static final double DROP_NUDGE_Y = -0.18D;
 
-    // Local “view” of landing phases—mapped onto RavenEntity.landingPhase via reflection.
+    // Local view of landing phases—mapped onto RavenEntity.landingPhase via reflection.
     private enum Phase {
         NONE,
         FLY_TO_OVERHEAD,
@@ -312,7 +312,7 @@ public final class Landing {
 
             // Candidate corners to try.
             // Priority:
-            //  1) corners around the committed landingLeafPos (prevents “random other 2x2” selection)
+            //  1) corners around the committed landingLeafPos (prevents random other 2x2 selection)
             //  2) corners around feetBlock (fallback when landingLeaf is null or stale)
             BlockPos[] seeds;
             if (landingLeaf != null) {

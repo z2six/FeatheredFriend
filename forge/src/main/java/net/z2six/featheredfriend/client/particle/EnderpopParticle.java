@@ -105,7 +105,7 @@ public class EnderpopParticle extends TextureSheetParticle {
             else if (p > 1.0F - fadeEdge) a = (1.0F - p) / fadeEdge;
             else a = 1.0F;
 
-            // Slight “pop” scale early then settle
+            // Slight pop scale early then settle
             // scale curve: peak around p~0.25
             float pop = 1.0F + (float) Math.sin(Mth.clamp(p / 0.5F, 0.0F, 1.0F) * (float) Math.PI) * this.sizeJitter;
             this.quadSize = this.baseSize * pop;

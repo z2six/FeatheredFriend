@@ -110,7 +110,7 @@ public final class RavenSpawnEvents {
 
     /**
      * Optional global safety cap: total WILD ravens allowed in this level.
-     * This prevents “runaway spawn bug” floods even if other logic is broken.
+     * This prevents runaway spawn bug floods even if other logic is broken.
      *
      * Rule of thumb: (players * 2) + buffer.
      */
@@ -421,7 +421,7 @@ public final class RavenSpawnEvents {
 
     /**
      * Hard enforcement: if >2 WILD ravens are near this player, despawn extras immediately.
-     * We remove the farthest ones first (keeps “local pair” close to player).
+     * We remove the farthest ones first (keeps local pair close to player).
      */
     private static void cullExtraWildRavensNearPlayer(net.minecraft.server.level.ServerLevel level,
                                                       Player player,

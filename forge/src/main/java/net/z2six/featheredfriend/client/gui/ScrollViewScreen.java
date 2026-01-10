@@ -30,6 +30,7 @@ import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 
 import java.lang.reflect.Constructor;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * // forge/src/main/java/net/z2six/featheredfriend/client/gui/ScrollViewScreen.java
@@ -872,14 +873,25 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         try {
-            // Forge 1.20.1: renderBackground only takes GuiGraphics
             this.renderBackground(guiGraphics);
-            super.render(guiGraphics, mouseX, mouseY, partialTick);
 
-            // Pearl icon (attachments) rendered on top, only when scroll is open.
+            // Scroll background + wax/sigil rendering happens in renderBg()
+            this.renderBg(guiGraphics, partialTick, mouseX, mouseY);
+
+            // Render widgets without slot rendering
+            for (var r : this.renderables) {
+                r.render(guiGraphics, mouseX, mouseY, partialTick);
+            }
+
+            // Pearl icon on top
             renderAttachmentsPearlIcon(guiGraphics, mouseX, mouseY);
 
-            this.renderTooltip(guiGraphics, mouseX, mouseY);
+            // Tooltip for pearl only (no container slot tooltips)
+            if (this.viewPhase == ViewPhase.OPEN_IDLE
+                    && shouldShowPearlIcon()
+                    && isMouseInPearlIcon(mouseX, mouseY)) {
+                guiGraphics.renderTooltip(this.font, Component.literal("Attachments"), mouseX, mouseY);
+            }
         } catch (Throwable t) {
             LOG.error("[ScrollViewScreen] render failed", t);
         }
@@ -1307,9 +1319,6 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     // ---------------------------------------------------------------------
     // Container slot suppression
     // ---------------------------------------------------------------------
-
-    protected void renderSlot(GuiGraphics guiGraphics, Slot slot) {
-    }
 
     @Override
     protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType type) {
