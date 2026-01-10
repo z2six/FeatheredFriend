@@ -1,0 +1,15 @@
+{
+  "providers": [
+    {
+      "type": "ttf",
+      "file": "featheredfriend:gothic12.ttf",
+      "shift": [0, 0],
+      "size": 12,
+      "oversample": 4
+    },
+    {
+      "type": "reference",
+      "id": "minecraft:default"
+    }
+  ]
+}
