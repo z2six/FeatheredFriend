@@ -49,19 +49,19 @@ public record WaxSealPacket(
     // Codec
     // ---------------------------------------------------------------------
 
-    public static void encode(FriendlyByteBuf buf, WaxSealPacket p) {
+    public static void encode(WaxSealPacket p, FriendlyByteBuf buf) {
         try {
-            buf.writeVarInt(p.selectedStampSlot);
-            buf.writeUtf(p.dateText, 256);
-            buf.writeUtf(p.recipientName, 256);
-            buf.writeUtf(p.recipientUUID, 256);
-            buf.writeUtf(p.recipientText, 32768);
-            buf.writeUtf(p.messageText, 32768);
-            buf.writeUtf(p.signatureText, 32768);
-            buf.writeLong(p.seed);
-            buf.writeVarInt(p.slices);
-            buf.writeVarInt(p.style);
-            buf.writeUtf(p.senderName, 256);
+            buf.writeVarInt(p.selectedStampSlot());
+            buf.writeUtf(p.dateText(), 256);
+            buf.writeUtf(p.recipientName(), 256);
+            buf.writeUtf(p.recipientUUID(), 256);
+            buf.writeUtf(p.recipientText(), 32768);
+            buf.writeUtf(p.messageText(), 32768);
+            buf.writeUtf(p.signatureText(), 32768);
+            buf.writeLong(p.seed());
+            buf.writeVarInt(p.slices());
+            buf.writeVarInt(p.style());
+            buf.writeUtf(p.senderName(), 256);
         } catch (Throwable t) {
             LOG.error("[WaxSealPacket] encode failed", t);
         }

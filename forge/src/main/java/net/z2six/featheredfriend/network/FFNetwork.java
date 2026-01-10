@@ -110,6 +110,18 @@ public final class FFNetwork {
                     .consumerMainThread(FFNetwork::handleOpenRavenNameScreenOnClientProxy)
                     .add();
 
+            CHANNEL.messageBuilder(WaxSealPacket.class, id.getAndIncrement(), NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(WaxSealPacket::encode)
+                    .decoder(WaxSealPacket::decode)
+                    .consumerMainThread(FFNetwork::handleWaxSealOnServer)
+                    .add();
+
+            CHANNEL.messageBuilder(BreakSealPacket.class, id.getAndIncrement(), NetworkDirection.PLAY_TO_SERVER)
+                    .encoder((msg, buf) -> BreakSealPacket.encode(buf, msg)) // <-- swap args here
+                    .decoder(BreakSealPacket::decode)
+                    .consumerMainThread(FFNetwork::handleBreakSealOnServer)
+                    .add();
+
             LOG.info("[FFNetwork] Registered main messages OK (protocol={})", PROTOCOL_VERSION);
         } catch (Throwable t) {
             LOG.error("[FFNetwork] Failed to register main messages", t);
@@ -479,4 +491,41 @@ public final class FFNetwork {
         );
         CHANNEL.sendToServer(p);
     }
+
+    private static void handleWaxSealOnServer(WaxSealPacket msg, Supplier<NetworkEvent.Context> ctxSup) {
+        NetworkEvent.Context ctx = ctxSup.get();
+        try {
+            ServerPlayer sp = ctx.getSender();
+            if (sp == null) return;
+
+            ctx.enqueueWork(() -> {
+                try {
+                    WaxSealPacket.handle(msg, sp);
+                } catch (Throwable t) {
+                    LOG.error("[FFNetwork] Failed handling WaxSealPacket", t);
+                }
+            });
+        } finally {
+            ctx.setPacketHandled(true);
+        }
+    }
+
+    private static void handleBreakSealOnServer(BreakSealPacket msg, Supplier<NetworkEvent.Context> ctxSup) {
+        NetworkEvent.Context ctx = ctxSup.get();
+        try {
+            ServerPlayer sp = ctx.getSender();
+            if (sp == null) return;
+
+            ctx.enqueueWork(() -> {
+                try {
+                    BreakSealPacket.handle(msg, sp);
+                } catch (Throwable t) {
+                    LOG.error("[FFNetwork] Failed handling BreakSealPacket", t);
+                }
+            });
+        } finally {
+            ctx.setPacketHandled(true);
+        }
+    }
+
 }
