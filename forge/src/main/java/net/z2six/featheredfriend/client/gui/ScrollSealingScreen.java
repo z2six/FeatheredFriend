@@ -25,6 +25,8 @@ import net.z2six.featheredfriend.sigil.SealSigilGenerator;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator.SigilPattern;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
+import net.minecraft.nbt.Tag;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 
@@ -77,6 +79,14 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
 
     private static final ResourceLocation GOTHIC_FONT_ID =
             ffLoc("gothic12");
+
+    // Forge 1.20.1: custom payload is stored under the stack tag sub-compound "CustomData"
+    private static final String STACK_CUSTOM_DATA_KEY = "CustomData";
+    private static final String NBT_SEAL_ROOT = "SealStamp";
+    private static final String NBT_OWNER = "Owner";
+    private static final String NBT_SEED = "Seed";
+    private static final String NBT_SLICES = "Slices";
+    private static final String NBT_SHAPESET = "ShapeSet";
 
     // ---------------------------------------------------------------------
     // Scroll animation configuration
@@ -651,16 +661,15 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 return null;
             }
 
-            CompoundTag root = stampStack.getTag();
-            if (root == null || !root.contains("SealStamp")) {
-                LOG.debug("[ScrollSealingScreen] buildPatternFromStamp: missing SealStamp tag");
+            CompoundTag seal = getSealStampTag(stampStack);
+            if (seal == null) {
+                LOG.debug("[ScrollSealingScreen] buildPatternFromStamp: missing SealStamp under CustomData");
                 return null;
             }
 
-            CompoundTag seal = root.getCompound("SealStamp");
-            long seed = seal.getLong("Seed");
-            int slices = seal.getInt("Slices");
-            int style = seal.getInt("ShapeSet");
+            long seed = seal.getLong(NBT_SEED);
+            int slices = seal.getInt(NBT_SLICES);
+            int style = seal.getInt(NBT_SHAPESET);
 
             final int radiusPx = Math.max(
                     6,
@@ -799,16 +808,15 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 return null;
             }
 
-            CompoundTag root = stampStack.getTag();
-            if (root == null || !root.contains("SealStamp")) {
-                LOG.debug("[ScrollSealingScreen] buildZoomPatternFromStamp: missing SealStamp tag");
+            CompoundTag seal = getSealStampTag(stampStack);
+            if (seal == null) {
+                LOG.debug("[ScrollSealingScreen] buildZoomPatternFromStamp: missing SealStamp under CustomData");
                 return null;
             }
 
-            CompoundTag seal = root.getCompound("SealStamp");
-            long seed = seal.getLong("Seed");
-            int slices = seal.getInt("Slices");
-            int style = seal.getInt("ShapeSet");
+            long seed = seal.getLong(NBT_SEED);
+            int slices = seal.getInt(NBT_SLICES);
+            int style = seal.getInt(NBT_SHAPESET);
 
             int radiusPx = Math.max(6, ZOOM_SIGIL_RADIUS_PIXELS);
 
@@ -1612,16 +1620,16 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                             int style = 0;
 
                             try {
-                                CompoundTag root = actualStamp.getTag();
-                                if (root == null || !root.contains("SealStamp")) {
-                                    LOG.error("[ScrollSealingScreen] SealStamp NBT missing on etched stamp; aborting");
+                                CompoundTag seal = getSealStampTag(actualStamp);
+                                if (seal == null) {
+                                    LOG.error("[ScrollSealingScreen] SealStamp NBT missing under CustomData on etched stamp; aborting");
                                     return true;
                                 }
-                                CompoundTag seal = root.getCompound("SealStamp");
-                                senderName = seal.getString("Owner");
-                                seed = seal.getLong("Seed");
-                                slices = seal.getInt("Slices");
-                                style = seal.getInt("ShapeSet");
+
+                                senderName = seal.getString(NBT_OWNER);
+                                seed = seal.getLong(NBT_SEED);
+                                slices = seal.getInt(NBT_SLICES);
+                                style = seal.getInt(NBT_SHAPESET);
                             } catch (Throwable te) {
                                 LOG.error("[ScrollSealingScreen] Failed extracting SealStamp CustomData", te);
                                 return true;
@@ -1916,5 +1924,34 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     private static ResourceLocation ffLoc(String path) {
         return new ResourceLocation(Constants.MOD_ID, path);
     }
+
+    // Forge 1.20.1 helpers
+    @Nullable
+    private static CompoundTag getSealStampTag(ItemStack stampStack) {
+        try {
+            if (stampStack == null || stampStack.isEmpty()) return null;
+
+            CompoundTag tag = stampStack.getTag();
+            if (tag == null) return null;
+
+            if (!tag.contains(STACK_CUSTOM_DATA_KEY, Tag.TAG_COMPOUND)) {
+                return null;
+            }
+
+            CompoundTag customData = tag.getCompound(STACK_CUSTOM_DATA_KEY);
+            if (customData == null || customData.isEmpty()) return null;
+
+            if (!customData.contains(NBT_SEAL_ROOT, Tag.TAG_COMPOUND)) {
+                return null;
+            }
+
+            CompoundTag seal = customData.getCompound(NBT_SEAL_ROOT);
+            return (seal == null || seal.isEmpty()) ? null : seal;
+        } catch (Throwable t) {
+            LOG.error("[ScrollSealingScreen] getSealStampTag failed", t);
+            return null;
+        }
+    }
+
 
 }
