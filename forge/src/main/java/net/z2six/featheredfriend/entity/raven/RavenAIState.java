@@ -1,8 +1,8 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenAIState.java
+// forge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenAIState.java
 package net.z2six.featheredfriend.entity.raven;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenAIState.java
+ * forge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenAIState.java
  *
  * Simple server-side AI state machine for RavenEntity.
  *

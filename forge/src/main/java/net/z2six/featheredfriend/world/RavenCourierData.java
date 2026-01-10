@@ -1,9 +1,7 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/world/RavenCourierData.java
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/world/RavenCourierData.java
 package net.z2six.featheredfriend.world;
 
 import com.mojang.logging.LogUtils;
-import net.minecraft.core.HolderLookup;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -12,18 +10,16 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.saveddata.SavedData;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.util.*;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/world/RavenCourierData.java
+ * forge/src/main/java/net/z2six/featheredfriend/world/RavenCourierData.java
  *
  * World-owned storage for all pending raven courier delivery jobs.
  *
@@ -39,7 +35,7 @@ public class RavenCourierData extends SavedData {
     private static final String DATA_NAME = Constants.MOD_ID + "_raven_courier";
 
     private static final ResourceLocation SEALED_SCROLL_ID =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "scroll_sealed");
+            new ResourceLocation(Constants.MOD_ID, "scroll_sealed");
 
     // ---------------------------------------------------------------------
     // Internal job representation
@@ -119,14 +115,14 @@ public class RavenCourierData extends SavedData {
         return new RavenCourierData();
     }
 
-    public static RavenCourierData load(CompoundTag tag, HolderLookup.Provider lookupProvider) {
+    public static RavenCourierData load(CompoundTag tag) {
         RavenCourierData data = new RavenCourierData();
         data.readFromNbt(tag);
         return data;
     }
 
     @Override
-    public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
+    public CompoundTag save(CompoundTag tag) {
         try {
             writeToNbt(tag);
         } catch (Throwable t) {
@@ -294,8 +290,8 @@ public class RavenCourierData extends SavedData {
         }
     }
 
-    @Nullable
-    private static UUID parseUuidSafe(@Nullable String str) {
+
+    private static UUID parseUuidSafe(String str) {
         if (str == null || str.isEmpty()) {
             return null;
         }
@@ -310,7 +306,7 @@ public class RavenCourierData extends SavedData {
     // Accessor for the saved data instance
     // ---------------------------------------------------------------------
 
-    @NotNull
+
     public static RavenCourierData get(ServerLevel level) {
         try {
             ServerLevel overworld = level.getServer().overworld();
@@ -319,10 +315,11 @@ public class RavenCourierData extends SavedData {
             }
 
             var storage = overworld.getDataStorage();
-            SavedData.Factory<RavenCourierData> factory =
-                    new SavedData.Factory<>(RavenCourierData::create, RavenCourierData::load);
-
-            return storage.computeIfAbsent(factory, DATA_NAME);
+            return storage.computeIfAbsent(
+                    RavenCourierData::load,
+                    RavenCourierData::create,
+                    DATA_NAME
+            );
 
         } catch (Throwable t) {
             LOG.error("[RavenCourierData] get(...) failed safely, returning empty volatile instance: {}", t.toString());
@@ -334,7 +331,7 @@ public class RavenCourierData extends SavedData {
     // Public API: creation of jobs from Sealed Scrolls
     // ---------------------------------------------------------------------
 
-    @Nullable
+
     public DeliveryJob createJobFromSealedScroll(ServerPlayer sender,
                                                  RavenEntity raven,
                                                  ItemStack scrollStack) {
@@ -352,23 +349,13 @@ public class RavenCourierData extends SavedData {
                 return null;
             }
 
-            CustomData customData = scrollStack.get(DataComponents.CUSTOM_DATA);
-            if (customData == null) {
-                LOG.warn("[RavenCourierData] createJobFromSealedScroll: CUSTOM_DATA missing on sealed scroll (player='{}').",
-                        sender.getGameProfile().getName());
-                return null;
-            }
-
-            CompoundTag customRoot = customData.getUnsafe();
-            if (customRoot == null || !customRoot.contains("SealedScroll", Tag.TAG_COMPOUND)) {
-                LOG.warn("[RavenCourierData] createJobFromSealedScroll: SealedScroll compound missing in CUSTOM_DATA (player='{}').",
-                        sender.getGameProfile().getName());
-                return null;
-            }
-
-            CompoundTag sealed = customRoot.getCompound("SealedScroll");
-            if (sealed.isEmpty()) {
-                LOG.warn("[RavenCourierData] createJobFromSealedScroll: SealedScroll compound empty (player='{}').",
+            // 1.20.1: sealed scroll payload is stored in normal ItemStack NBT (not DataComponents/CustomData).
+            // Back-compat read:
+            //  - preferred: stackTag[Constants.MOD_ID].SealedScroll
+            //  - legacy:    stackTag.SealedScroll
+            CompoundTag sealed = getSealedScrollTagFromStack(scrollStack);
+            if (sealed == null || sealed.isEmpty()) {
+                LOG.warn("[RavenCourierData] createJobFromSealedScroll: SealedScroll compound missing/empty in NBT (player='{}').",
                         sender.getGameProfile().getName());
                 return null;
             }
@@ -443,6 +430,34 @@ public class RavenCourierData extends SavedData {
 
         } catch (Throwable t) {
             LOG.error("[RavenCourierData] createJobFromSealedScroll failed safely: {}", t.toString());
+            return null;
+        }
+    }
+
+    private static CompoundTag getSealedScrollTagFromStack(ItemStack stack) {
+        try {
+            CompoundTag root = stack.getTag();
+            if (root == null || root.isEmpty()) {
+                return null;
+            }
+
+            // Preferred: stackTag[modid].SealedScroll
+            if (root.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)) {
+                CompoundTag ff = root.getCompound(Constants.MOD_ID);
+                if (ff.contains("SealedScroll", Tag.TAG_COMPOUND)) {
+                    CompoundTag sealed = ff.getCompound("SealedScroll");
+                    if (!sealed.isEmpty()) return sealed;
+                }
+            }
+
+            // Legacy fallback: stackTag.SealedScroll
+            if (root.contains("SealedScroll", Tag.TAG_COMPOUND)) {
+                CompoundTag sealed = root.getCompound("SealedScroll");
+                if (!sealed.isEmpty()) return sealed;
+            }
+
+            return null;
+        } catch (Throwable t) {
             return null;
         }
     }
@@ -530,7 +545,7 @@ public class RavenCourierData extends SavedData {
     // Query helpers
     // ---------------------------------------------------------------------
 
-    @NotNull
+
     public List<DeliveryJob> getJobsForRecipient(UUID recipientUuid) {
         List<DeliveryJob> list = jobsByRecipient.get(recipientUuid);
         if (list == null || list.isEmpty()) {
@@ -539,7 +554,7 @@ public class RavenCourierData extends SavedData {
         return List.copyOf(list);
     }
 
-    @NotNull
+
     public List<DeliveryJob> getAllJobsFlat() {
         List<DeliveryJob> out = new ArrayList<>();
         for (List<DeliveryJob> list : jobsByRecipient.values()) {
@@ -551,7 +566,7 @@ public class RavenCourierData extends SavedData {
         return List.copyOf(out);
     }
 
-    @NotNull
+
     public List<DeliveryJob> getJobsForPlayer(UUID playerUuid) {
         List<DeliveryJob> out = new ArrayList<>();
         for (List<DeliveryJob> list : jobsByRecipient.values()) {
@@ -672,7 +687,7 @@ public class RavenCourierData extends SavedData {
         }
     }
 
-    @Nullable
+
     public DeliveryJob getJobById(long jobId) {
         try {
             if (jobsByRecipient.isEmpty()) {
@@ -753,7 +768,7 @@ public class RavenCourierData extends SavedData {
         }
     }
 
-    @Nullable
+
     public DeliveryJob getMostRecentFailedJobForSender(UUID senderUuid) {
         try {
             DeliveryJob best = null;

@@ -2,7 +2,7 @@
 package net.z2six.featheredfriend.calendar;
 
 import com.mojang.logging.LogUtils;
-import org.jetbrains.annotations.NotNull;
+
 import org.slf4j.Logger;
 
 /**
@@ -28,8 +28,7 @@ public final class FeatheredCalendar {
      * @param gameTime   World game time in ticks (e.g. ServerLevel.getDayTime()).
      * @param definition Calendar definition (month names, era, etc).
      */
-    @NotNull
-    public static CalendarDate fromGameTime(long gameTime, @NotNull CalendarDefinition definition) {
+    public static CalendarDate fromGameTime(long gameTime, CalendarDefinition definition) {
         try {
             long ticksPerDay = definition.getTicksPerDay();
             if (ticksPerDay <= 0L) {
@@ -88,8 +87,7 @@ public final class FeatheredCalendar {
     /**
      * Convenience: get a human-readable date string for a given world time.
      */
-    @NotNull
-    public static String formatDate(long gameTime, @NotNull CalendarDefinition definition) {
+    public static String formatDate(long gameTime, CalendarDefinition definition) {
         CalendarDate date = fromGameTime(gameTime, definition);
         return date.format(definition);
     }

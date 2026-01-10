@@ -1,29 +1,28 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/server/FFServerSyncEvents.java
+// forge/src/main/java/net/z2six/featheredfriend/server/FFServerSyncEvents.java
 package net.z2six.featheredfriend.server;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod;
+import net.z2six.featheredfriend.Constants;
 import org.slf4j.Logger;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/server/FFServerSyncEvents.java
- *
- * Registers GAME bus listeners to sync server settings to clients on join.
+ * Registers FORGE bus listeners to sync server settings to clients on join.
  */
+@Mod.EventBusSubscriber(modid = Constants.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class FFServerSyncEvents {
 
     private static final Logger LOG = LogUtils.getLogger();
 
+    /**
+     * Kept for compatibility if your mod init calls it.
+     * On Forge, the @EventBusSubscriber above is enough.
+     */
     public static void registerGameBus() {
-        try {
-            NeoForge.EVENT_BUS.register(FFServerSyncEvents.class);
-            LOG.debug("[FFServerSyncEvents] Registered on NeoForge EVENT_BUS");
-        } catch (Throwable t) {
-            LOG.error("[FFServerSyncEvents] registerGameBus failed safely", t);
-        }
+        LOG.debug("[FFServerSyncEvents] registerGameBus() called (Forge uses @EventBusSubscriber; nothing to do)");
     }
 
     @SubscribeEvent

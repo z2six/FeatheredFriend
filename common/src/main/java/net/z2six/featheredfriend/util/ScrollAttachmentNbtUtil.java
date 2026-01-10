@@ -10,7 +10,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import org.jetbrains.annotations.NotNull;
+
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
@@ -48,7 +48,7 @@ public final class ScrollAttachmentNbtUtil {
 
     private ScrollAttachmentNbtUtil() {}
 
-    public static boolean hasAnyAttachments(@NotNull CompoundTag sealedScrollTag) {
+    public static boolean hasAnyAttachments(CompoundTag sealedScrollTag) {
         try {
             if (sealedScrollTag.isEmpty()) return false;
             if (!sealedScrollTag.contains(ATTACHMENTS_KEY, Tag.TAG_LIST)) return false;
@@ -60,7 +60,7 @@ public final class ScrollAttachmentNbtUtil {
         }
     }
 
-    public static @NotNull List<ItemStack> readAttachments(@NotNull CompoundTag sealedScrollTag, int max) {
+    public static List<ItemStack> readAttachments(CompoundTag sealedScrollTag, int max) {
         List<ItemStack> out = new ArrayList<>();
         try {
             if (max <= 0) return out;
@@ -156,7 +156,7 @@ public final class ScrollAttachmentNbtUtil {
         return out;
     }
 
-    public static void writeAttachments(@NotNull CompoundTag sealedScrollTag, @NotNull List<ItemStack> stacks) {
+    public static void writeAttachments(CompoundTag sealedScrollTag, List<ItemStack> stacks) {
         try {
             ListTag list = new ListTag();
 

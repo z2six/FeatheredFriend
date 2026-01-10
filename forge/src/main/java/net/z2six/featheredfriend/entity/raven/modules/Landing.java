@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/modules/Landing.java
+// forge/src/main/java/net/z2six/featheredfriend/entity/raven/modules/Landing.java
 package net.z2six.featheredfriend.entity.raven.modules;
 
 import com.mojang.logging.LogUtils;
@@ -151,7 +151,7 @@ public final class Landing {
         }
     }
 
-    private static boolean setFieldValueSafe(Object target, String fieldName, @Nullable Object value) {
+    private static boolean setFieldValueSafe(Object target, String fieldName, Object value) {
         try {
             if (target == null || fieldName == null) return false;
             Field f = findField(target.getClass(), fieldName);
@@ -283,7 +283,7 @@ public final class Landing {
         return landingLeafPos;
     }
 
-    public void setLandingLeafPos(@Nullable BlockPos pos) {
+    public void setLandingLeafPos(BlockPos pos) {
         this.landingLeafPos = pos;
     }
 
@@ -292,7 +292,7 @@ public final class Landing {
         return idlePerchCorner;
     }
 
-    public void setIdlePerchCorner(@Nullable BlockPos pos) {
+    public void setIdlePerchCorner(BlockPos pos) {
         this.idlePerchCorner = pos;
     }
 
@@ -305,7 +305,7 @@ public final class Landing {
     // ---------------------------------------------------------------------
 
     @Nullable
-    public BlockPos findBestPerchCornerForLanding(@Nullable BlockPos landingLeaf, BlockPos feetBlock, RavenEntity ravenEntity) {
+    public BlockPos findBestPerchCornerForLanding(BlockPos landingLeaf, BlockPos feetBlock, RavenEntity ravenEntity) {
         try {
             BlockPos best = null;
             double bestD2 = Double.MAX_VALUE;

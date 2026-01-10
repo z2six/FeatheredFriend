@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/modules/FeatherParticles.java
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/entity/raven/modules/FeatherParticles.java
 package net.z2six.featheredfriend.entity.raven.modules;
 
 import com.mojang.logging.LogUtils;
@@ -13,7 +13,7 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/modules/FeatherParticles.java
+ * forge/src/main/java/net/z2six/featheredfriend/entity/raven/modules/FeatherParticles.java
  *
  * Client-side feather particle implementation and tunables.
  *
@@ -21,7 +21,7 @@ import org.slf4j.Logger;
  * - The *server* only ever spawns the registered FEATHER particle type:
  *
  *   serverLevel.sendParticles(
- *       FFNeoForgeParticles.FEATHER.get(),
+ *       FFForgeParticles.FEATHER.get(),
  *       x, y, z,                                 // treated as the CENTER for this burst
  *       FeatherParticles.getFeathersPerBurst(),  // number of feathers
  *       0.0D, 0.0D, 0.0D,                        // spread: we ignore it on the client
@@ -132,7 +132,7 @@ public final class FeatherParticles {
      * In FFClientParticles:
      *
      *   event.registerSpriteSet(
-     *       FFNeoForgeParticles.FEATHER.get(),
+     *       FFForgeParticles.FEATHER.get(),
      *       FeatherParticles::createProvider
      *   );
      *
@@ -144,10 +144,7 @@ public final class FeatherParticles {
      */
     public static ParticleProvider<SimpleParticleType> createProvider(SpriteSet spriteSet) {
         return (type, level, centerX, centerY, centerZ, unusedVx, unusedVy, unusedVz) -> {
-            if (!(level instanceof ClientLevel clientLevel)) {
-                return null;
-            }
-
+            ClientLevel clientLevel = level; // level is already ClientLevel here
             RandomSource rnd = clientLevel.random;
 
             // Sample a random direction on a sphere (simple method).

@@ -13,7 +13,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.menu.SealBreakGate;
-import org.jetbrains.annotations.NotNull;
+
 import org.slf4j.Logger;
 
 /**
@@ -42,7 +42,7 @@ public record BreakSealPacket(
     // Where we store the former "minecraft:custom_data" payload in 1.20.1
     private static final String STACK_CUSTOM_DATA_KEY = "CustomData";
 
-    public static void encode(@NotNull FriendlyByteBuf buf, @NotNull BreakSealPacket p) {
+    public static void encode(FriendlyByteBuf buf, BreakSealPacket p) {
         try {
             buf.writeVarInt(p.slotHint);
             buf.writeLong(p.seed);
@@ -54,7 +54,7 @@ public record BreakSealPacket(
         }
     }
 
-    public static @NotNull BreakSealPacket decode(@NotNull FriendlyByteBuf buf) {
+    public static BreakSealPacket decode(FriendlyByteBuf buf) {
         try {
             int slotHint = buf.readVarInt();
             long seed = buf.readLong();
@@ -72,7 +72,7 @@ public record BreakSealPacket(
     // Server handler
     // ---------------------------------------------------------------------
 
-    public static void handle(@NotNull BreakSealPacket p, @NotNull ServerPlayer serverPlayer) {
+    public static void handle(BreakSealPacket p, ServerPlayer serverPlayer) {
         try {
             if (serverPlayer == null) {
                 LOG.error("[BreakSealPacket] handle: serverPlayer is null");
@@ -182,7 +182,7 @@ public record BreakSealPacket(
         INVENTORY
     }
 
-    private static IdentifiedStack findTargetSealedScroll(@NotNull ServerPlayer player, @NotNull BreakSealPacket p) {
+    private static IdentifiedStack findTargetSealedScroll(ServerPlayer player, BreakSealPacket p) {
         try {
             Item sealedItem = resolveItemByPath("scroll_sealed");
             if (sealedItem == null || sealedItem == Items.AIR) {
@@ -209,9 +209,9 @@ public record BreakSealPacket(
         }
     }
 
-    private static IdentifiedStack findBySlotHint(@NotNull ServerPlayer player,
-                                                  @NotNull BreakSealPacket p,
-                                                  @NotNull Item sealedItem) {
+    private static IdentifiedStack findBySlotHint(ServerPlayer player,
+                                                  BreakSealPacket p,
+                                                  Item sealedItem) {
         try {
             int hint = p.slotHint();
             if (hint == 36) {
@@ -245,9 +245,9 @@ public record BreakSealPacket(
         }
     }
 
-    private static IdentifiedStack scanAllForFingerprint(@NotNull ServerPlayer player,
-                                                         @NotNull BreakSealPacket p,
-                                                         @NotNull Item sealedItem) {
+    private static IdentifiedStack scanAllForFingerprint(ServerPlayer player,
+                                                         BreakSealPacket p,
+                                                         Item sealedItem) {
         try {
             ItemStack main = player.getMainHandItem();
             if (matchesFingerprintSealedScroll(main, p, sealedItem)) {
@@ -273,9 +273,9 @@ public record BreakSealPacket(
         }
     }
 
-    private static boolean matchesFingerprintSealedScroll(@NotNull ItemStack stack,
-                                                          @NotNull BreakSealPacket p,
-                                                          @NotNull Item sealedItem) {
+    private static boolean matchesFingerprintSealedScroll(ItemStack stack,
+                                                          BreakSealPacket p,
+                                                          Item sealedItem) {
         try {
             if (stack.isEmpty()) return false;
             if (stack.getItem() != sealedItem) return false;
@@ -337,9 +337,9 @@ public record BreakSealPacket(
         }
     }
 
-    private static boolean replaceStackAtLocation(@NotNull ServerPlayer player,
-                                                  @NotNull IdentifiedStack identified,
-                                                  @NotNull ItemStack replacement) {
+    private static boolean replaceStackAtLocation(ServerPlayer player,
+                                                  IdentifiedStack identified,
+                                                  ItemStack replacement) {
         try {
             if (replacement.isEmpty()) {
                 LOG.error("[BreakSealPacket] replaceStackAtLocation: replacement is EMPTY; refusing");
@@ -379,8 +379,8 @@ public record BreakSealPacket(
      * Copies all SealedScroll NBT keys into opened, but strips Attachments so they can't be claimed twice.
      * Returns true if at least a SealedScroll compound was present and copied.
      */
-    private static boolean copySealedScrollDataWithoutAttachments(@NotNull ItemStack sealed,
-                                                                  @NotNull ItemStack opened) {
+    private static boolean copySealedScrollDataWithoutAttachments(ItemStack sealed,
+                                                                  ItemStack opened) {
         try {
             CompoundTag sealedRoot = getCustomDataCopy(sealed);
             if (sealedRoot == null || sealedRoot.isEmpty()) {
@@ -422,7 +422,7 @@ public record BreakSealPacket(
         }
     }
 
-    private static Item resolveItemByPath(@NotNull String path) {
+    private static Item resolveItemByPath(String path) {
         try {
             ResourceLocation id = new ResourceLocation(Constants.MOD_ID, path);
             Item item = BuiltInRegistries.ITEM.get(id);
@@ -456,7 +456,7 @@ public record BreakSealPacket(
     // CustomData compatibility (1.20.1)
     // ---------------------------------------------------------------------
 
-    private static @NotNull CompoundTag getCustomDataCopy(@NotNull ItemStack stack) {
+    private static CompoundTag getCustomDataCopy(ItemStack stack) {
         try {
             CompoundTag tag = stack.getTag();
             if (tag == null) return new CompoundTag();
@@ -469,7 +469,7 @@ public record BreakSealPacket(
         }
     }
 
-    private static void setCustomData(@NotNull ItemStack stack, @NotNull CompoundTag customDataRoot) {
+    private static void setCustomData(ItemStack stack, CompoundTag customDataRoot) {
         try {
             CompoundTag tag = stack.getOrCreateTag();
             tag.put(STACK_CUSTOM_DATA_KEY, customDataRoot);

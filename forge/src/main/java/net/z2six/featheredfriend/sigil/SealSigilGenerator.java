@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/sigil/SealSigilGenerator.java
+// forge/src/main/java/net/z2six/featheredfriend/sigil/SealSigilGenerator.java
 package net.z2six.featheredfriend.sigil;
 
 import com.mojang.logging.LogUtils;
@@ -12,7 +12,7 @@ import java.security.MessageDigest;
 import java.util.UUID;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/sigil/SealSigilGenerator.java
+ * forge/src/main/java/net/z2six/featheredfriend/sigil/SealSigilGenerator.java
  *
  * NEW sigil generator for FeatheredFriend seal stamps.
  *

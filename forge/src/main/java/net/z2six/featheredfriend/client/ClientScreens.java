@@ -10,10 +10,10 @@ import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.ScrollSealingScreen;
 import net.z2six.featheredfriend.client.gui.ScrollViewScreen;
 import net.z2six.featheredfriend.client.gui.SealStampScreen;
-import net.z2six.featheredfriend.neoforge.menu.ScrollSealingMenu;
-import net.z2six.featheredfriend.neoforge.menu.ScrollViewMenu;
-import net.z2six.featheredfriend.neoforge.menu.SealStampMenu;
-import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
+import net.z2six.featheredfriend.forge.menu.ScrollSealingMenu;
+import net.z2six.featheredfriend.forge.menu.ScrollViewMenu;
+import net.z2six.featheredfriend.forge.menu.SealStampMenu;
+import net.z2six.featheredfriend.registry.FFForgeMenus;
 import org.slf4j.Logger;
 
 /**
@@ -38,7 +38,7 @@ public final class ClientScreens {
         event.enqueueWork(() -> {
             try {
                 MenuScreens.register(
-                        FFNeoForgeMenus.SCROLL_SEALING_MENU.get(),
+                        FFForgeMenus.SCROLL_SEALING_MENU.get(),
                         (ScrollSealingMenu menu, net.minecraft.world.entity.player.Inventory inv, net.minecraft.network.chat.Component title) ->
                                 new ScrollSealingScreen(menu, inv, title)
                 );
@@ -49,7 +49,7 @@ public final class ClientScreens {
 
             try {
                 MenuScreens.register(
-                        FFNeoForgeMenus.SEAL_STAMP_MENU.get(),
+                        FFForgeMenus.SEAL_STAMP_MENU.get(),
                         (SealStampMenu menu, net.minecraft.world.entity.player.Inventory inv, net.minecraft.network.chat.Component title) ->
                                 new SealStampScreen(menu, inv, title)
                 );
@@ -60,7 +60,7 @@ public final class ClientScreens {
 
             try {
                 MenuScreens.register(
-                        FFNeoForgeMenus.SCROLL_VIEW_MENU.get(),
+                        FFForgeMenus.SCROLL_VIEW_MENU.get(),
                         (ScrollViewMenu menu, net.minecraft.world.entity.player.Inventory inv, net.minecraft.network.chat.Component title) ->
                                 new ScrollViewScreen(menu, inv, title)
                 );

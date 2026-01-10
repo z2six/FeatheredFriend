@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/world/RavenSpawnEvents.java
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/world/RavenSpawnEvents.java
 package net.z2six.featheredfriend.world;
 
 import com.mojang.logging.LogUtils;
@@ -16,8 +16,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.tick.LevelTickEvent;
 import net.z2six.featheredfriend.Constants;
 import org.slf4j.Logger;
 
@@ -26,7 +24,7 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/world/RavenSpawnEvents.java
+ * forge/src/main/java/net/z2six/featheredfriend/world/RavenSpawnEvents.java
  *
  * Natural spawner for Ravens.
  *
@@ -96,7 +94,7 @@ public final class RavenSpawnEvents {
 
     /** Raven entity id (registry name). */
     private static final ResourceLocation RAVEN_ID =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "raven");
+            new ResourceLocation(Constants.MOD_ID, "raven");
 
     /** Debug logging throttle (ticks). */
     private static final int DEBUG_LOG_INTERVAL_TICKS = 100;
@@ -134,8 +132,8 @@ public final class RavenSpawnEvents {
             }
             REGISTERED = true;
 
-            NeoForge.EVENT_BUS.addListener(RavenSpawnEvents::onLevelTickPost);
-            LOG.info("[RavenSpawnEvents] Registered LevelTickEvent.Post listener. ENABLE_SPAWNING={}", ENABLE_SPAWNING);
+            net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(RavenSpawnEvents::onLevelTick);
+            LOG.info("[RavenSpawnEvents] Registered TickEvent.LevelTickEvent listener. ENABLE_SPAWNING={}", ENABLE_SPAWNING);
         } catch (Throwable t) {
             LOG.error("[RavenSpawnEvents] Failed to register listeners", t);
         }
@@ -145,8 +143,12 @@ public final class RavenSpawnEvents {
     // EVENT HANDLER
     // ---------------------------------------------------------------------
 
-    private static void onLevelTickPost(LevelTickEvent.Post event) {
-        if (!(event.getLevel() instanceof net.minecraft.server.level.ServerLevel level)) {
+    private static void onLevelTick(net.minecraftforge.event.TickEvent.LevelTickEvent event) {
+        if (event.phase != net.minecraftforge.event.TickEvent.Phase.END) {
+            return;
+        }
+
+        if (!(event.level instanceof net.minecraft.server.level.ServerLevel level)) {
             return;
         }
 
@@ -157,7 +159,6 @@ public final class RavenSpawnEvents {
         try {
             final long gameTime = level.getGameTime();
 
-            // We use the registry lookup each run to avoid stale references in dev reload edge cases.
             final EntityType<?> ravenType = BuiltInRegistries.ENTITY_TYPE.get(RAVEN_ID);
             if (ravenType == null) {
                 if ((gameTime % DEBUG_LOG_INTERVAL_TICKS) == 0L) {
@@ -171,25 +172,19 @@ public final class RavenSpawnEvents {
                 return;
             }
 
-            // Defense-in-depth: global cap for WILD ravens.
-            // If this trips, something is spawning too many ravens (this handler, vanilla spawn lists, or another mod).
-            // We only cull if ravens are near a player (we do not roam the entire world).
             if ((gameTime % CLEANUP_INTERVAL_TICKS) == 0L) {
                 enforceGlobalWildRavenCapNearPlayers(level, players, ravenType, gameTime);
             }
 
-            // Per-player cleanup always runs on CLEANUP_INTERVAL_TICKS.
             if ((gameTime % CLEANUP_INTERVAL_TICKS) == 0L) {
                 for (Player player : players) {
                     if (player == null || player.isSpectator()) {
                         continue;
                     }
-                    // Even if player is too high for spawning, we still want cleanup in case they fly into a raven swarm.
                     cullExtraWildRavensNearPlayer(level, player, ravenType, gameTime);
                 }
             }
 
-            // Spawn checks run on CHECK_INTERVAL_TICKS.
             if ((gameTime % CHECK_INTERVAL_TICKS) != 0L) {
                 return;
             }
@@ -211,18 +206,15 @@ public final class RavenSpawnEvents {
                     continue;
                 }
 
-                // Skip spawns when player is far above the terrain (sky rigs).
                 if (isPlayerTooHighAboveSurface(level, player, gameTime)) {
                     continue;
                 }
 
                 final int wildCount = countWildRavensNearPlayer(level, player, ravenType, gameTime);
                 if (wildCount >= HARD_MAX_WILD_RAVENS_IN_RADIUS) {
-                    // Hard cap reached: never spawn more here.
                     continue;
                 }
 
-                // Decide spawn chance based on local WILD population.
                 final double spawnChance = (wildCount <= 0) ? SPAWN_CHANCE_EMPTY_AREA : SPAWN_CHANCE_WITH_ONE_RAVEN;
 
                 final RandomSource rnd = level.getRandom();
@@ -242,7 +234,6 @@ public final class RavenSpawnEvents {
                     continue;
                 }
 
-                // Before we actually spawn, re-check the cap to minimize “race” behavior if multiple handlers exist.
                 final int wildCountPreSpawn = countWildRavensNearPlayer(level, player, ravenType, gameTime);
                 if (wildCountPreSpawn >= HARD_MAX_WILD_RAVENS_IN_RADIUS) {
                     if ((gameTime % DEBUG_LOG_INTERVAL_TICKS) == 0L) {
@@ -274,7 +265,7 @@ public final class RavenSpawnEvents {
                 }
             }
         } catch (Throwable t) {
-            LOG.error("[RavenSpawnEvents] onLevelTickPost failed", t);
+            LOG.error("[RavenSpawnEvents] onLevelTick failed", t);
         }
     }
 
@@ -741,7 +732,8 @@ public final class RavenSpawnEvents {
                             level,
                             level.getCurrentDifficultyAt(pos),
                             MobSpawnType.NATURAL,
-                            null
+                            null,   // SpawnGroupData
+                            null    // CompoundTag
                     );
                 } catch (Throwable t) {
                     LOG.warn(

@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/modules/TamedRavenDeathHandler.java
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/entity/raven/modules/TamedRavenDeathHandler.java
 package net.z2six.featheredfriend.entity.raven.modules;
 
 import com.mojang.logging.LogUtils;
@@ -16,7 +16,7 @@ import org.slf4j.Logger;
 import java.util.List;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/modules/TamedRavenDeathHandler.java
+ * forge/src/main/java/net/z2six/featheredfriend/entity/raven/modules/TamedRavenDeathHandler.java
  *
  * Handles logic that should run when a RavenEntity dies and is associated with a
  * tamed raven stored in player persistent data.

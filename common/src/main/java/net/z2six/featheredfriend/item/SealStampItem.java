@@ -12,7 +12,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.level.Level;
 import net.z2six.featheredfriend.platform.Services;
-import org.jetbrains.annotations.NotNull;
+
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -45,7 +45,7 @@ public class SealStampItem extends Item {
     // Where we store the former "minecraft:custom_data" payload in 1.20.1
     private static final String STACK_CUSTOM_DATA_KEY = "CustomData";
 
-    public SealStampItem(@NotNull Properties properties) {
+    public SealStampItem(Properties properties) {
         super(properties);
         LOG.debug("[SealStampItem] Constructed");
     }
@@ -55,10 +55,9 @@ public class SealStampItem extends Item {
     // ---------------------------------------------------------------------
 
     @Override
-    @NotNull
-    public InteractionResultHolder<ItemStack> use(@NotNull Level level,
-                                                  @NotNull net.minecraft.world.entity.player.Player player,
-                                                  @NotNull InteractionHand hand) {
+    public InteractionResultHolder<ItemStack> use(Level level,
+                                                  net.minecraft.world.entity.player.Player player,
+                                                  InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
 
         try {
@@ -114,7 +113,7 @@ public class SealStampItem extends Item {
      *     }
      *   }
      */
-    public static boolean isEtched(@NotNull ItemStack stack) {
+    public static boolean isEtched(ItemStack stack) {
         try {
             CompoundTag root = getCustomDataCopy(stack);
             if (root == null || root.isEmpty()) {
@@ -157,10 +156,10 @@ public class SealStampItem extends Item {
     // ---------------------------------------------------------------------
 
     @Override
-    public void appendHoverText(@NotNull ItemStack stack,
-                                @Nullable Level level,
-                                @NotNull List<Component> tooltip,
-                                @NotNull TooltipFlag flag) {
+    public void appendHoverText(ItemStack stack,
+                                Level level,
+                                List<Component> tooltip,
+                                TooltipFlag flag) {
         super.appendHoverText(stack, level, tooltip, flag);
 
         try {
@@ -179,7 +178,7 @@ public class SealStampItem extends Item {
     // Internal helpers (1.20.1 compatibility)
     // ---------------------------------------------------------------------
 
-    private static @NotNull CompoundTag getCustomDataCopy(@NotNull ItemStack stack) {
+    private static CompoundTag getCustomDataCopy(ItemStack stack) {
         try {
             CompoundTag tag = stack.getTag();
             if (tag == null) {

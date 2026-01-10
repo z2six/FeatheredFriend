@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/modules/RavenSoundEngine.java
+// forge/src/main/java/net/z2six/featheredfriend/entity/raven/modules/RavenSoundEngine.java
 package net.z2six.featheredfriend.entity.raven.modules;
 
 import com.mojang.logging.LogUtils;

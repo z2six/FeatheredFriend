@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/integration/jei/FeatheredFriendJeiPlugin.java
+// forge/src/main/java/net/z2six/featheredfriend/integration/jei/FeatheredFriendJeiPlugin.java
 package net.z2six.featheredfriend.integration.jei;
 
 import mezz.jei.api.IModPlugin;
@@ -14,8 +14,8 @@ import net.minecraft.world.item.ItemStack;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.EnderPearlInventoryScreen;
 import net.z2six.featheredfriend.client.gui.ScrollSealingScreen;
-import net.z2six.featheredfriend.client.gui.SealStampScreen;
 import net.z2six.featheredfriend.client.gui.ScrollViewScreen;
+import net.z2six.featheredfriend.client.gui.SealStampScreen;
 import net.z2six.featheredfriend.registry.FFItems;
 import org.slf4j.Logger;
 
@@ -23,7 +23,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/integration/jei/FeatheredFriendJeiPlugin.java
+ * forge/src/main/java/net/z2six/featheredfriend/integration/jei/FeatheredFriendJeiPlugin.java
  *
  * JEI integration for FeatheredFriend.
  *
@@ -48,17 +48,15 @@ public class FeatheredFriendJeiPlugin implements IModPlugin {
 
     @Override
     public ResourceLocation getPluginUid() {
-        // ResourceLocation(String, String) is private in modern MC,
-        // so we use the parse helper instead.
         try {
-            return ResourceLocation.parse(Constants.MOD_ID + ":jei_plugin");
+            return new ResourceLocation(Constants.MOD_ID, "jei_plugin");
         } catch (Throwable t) {
             LOG.error(
                     "FeatheredFriendJeiPlugin: Failed to create plugin UID, " +
                             "falling back to 'featheredfriend:jei_plugin_fallback'",
                     t
             );
-            return ResourceLocation.parse("featheredfriend:jei_plugin_fallback");
+            return new ResourceLocation("featheredfriend", "jei_plugin_fallback");
         }
     }
 

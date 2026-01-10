@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/client/gui/ScrollViewAttachmentInventoryScreen.java
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/client/gui/ScrollViewAttachmentInventoryScreen.java
 package net.z2six.featheredfriend.client.gui;
 
 import com.mojang.logging.LogUtils;
@@ -10,13 +10,13 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.z2six.featheredfriend.Constants;
-import net.z2six.featheredfriend.neoforge.menu.ScrollViewMenu;
+import net.z2six.featheredfriend.forge.menu.ScrollViewMenu;
 
 import org.slf4j.Logger;
 import org.lwjgl.glfw.GLFW;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/client/gui/ScrollViewAttachmentInventoryScreen.java
+ * forge/src/main/java/net/z2six/featheredfriend/client/gui/ScrollViewAttachmentInventoryScreen.java
  *
  * Shows scroll attachments (1x9) + player inventory/hotbar for a viewed scroll.
  * Uses ScrollViewMenu as backing so taking items out is server-authoritative.
@@ -32,7 +32,7 @@ public class ScrollViewAttachmentInventoryScreen extends AbstractContainerScreen
     private static final Logger LOG = LogUtils.getLogger();
 
     private static final ResourceLocation INVENTORY_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scrollscreen/inventory.png");
+            ffLoc("textures/gui/scrollscreen/inventory.png");
 
     private static final int TEX_W = 176;
     private static final int TEX_H = 128;
@@ -236,12 +236,12 @@ public class ScrollViewAttachmentInventoryScreen extends AbstractContainerScreen
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         try {
-            this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
+            // Forge 1.20.1: renderBackground only takes GuiGraphics
+            this.renderBackground(guiGraphics);
+
             super.render(guiGraphics, mouseX, mouseY, partialTick);
 
             // Fade overlay:
-            //  - during fade-in: fadeTicks increases -> overlay alpha decreases from 1 -> 0
-            //  - during fade-out: fadeTicks decreases -> overlay alpha increases from 0 -> 1
             float fade = fadeProgress01();
             float overlayAlpha = 1.0f - fade;
 
@@ -374,5 +374,9 @@ public class ScrollViewAttachmentInventoryScreen extends AbstractContainerScreen
         } catch (Throwable t) {
             LOG.error("[ScrollViewAttachmentInventoryScreen] performCloseAction failed", t);
         }
+    }
+
+    private static ResourceLocation ffLoc(String path) {
+        return new ResourceLocation(Constants.MOD_ID, path);
     }
 }

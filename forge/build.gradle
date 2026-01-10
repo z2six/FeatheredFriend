@@ -1,3 +1,4 @@
+// forge/build.gradle
 plugins {
     id 'multiloader-loader'
     id 'net.neoforged.moddev.legacyforge'
@@ -45,9 +46,32 @@ legacyForge {
 
 sourceSets.main.resources.srcDir 'src/generated/resources'
 
+repositories {
+    maven { url = "https://maven.blamejared.com" }
+    maven { url = "https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/" }
+}
+
+// Define JEI version for this subproject.
+// (Keep it here so you don't need to touch gradle.properties.)
+def jei_version = "15.20.0.127"
+
 dependencies {
     compileOnly project(":common")
     annotationProcessor("org.spongepowered:mixin:0.8.5-SNAPSHOT:processor")
+
+    // GeckoLib (Forge 1.20.1) — use MDG's remapping configuration (NOT fg.deobf)
+    modImplementation "software.bernie.geckolib:geckolib-forge-1.20.1:4.7.3"
+
+    // JEI (Forge 1.20.1)
+    // compile-time API
+    modCompileOnly "mezz.jei:jei-1.20.1-common-api:${jei_version}"
+    modCompileOnly "mezz.jei:jei-1.20.1-forge-api:${jei_version}"
+
+    // runtime mod jar
+    modRuntimeOnly "mezz.jei:jei-1.20.1-forge:${jei_version}"
+
+    // Optional (but recommended if you keep @NotNull/@Nullable in common code)
+    compileOnly "org.jetbrains:annotations:24.1.0"
 }
 
 jar {

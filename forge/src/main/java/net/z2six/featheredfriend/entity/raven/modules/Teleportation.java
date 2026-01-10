@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/modules/Teleportation.java
+// forge/src/main/java/net/z2six/featheredfriend/entity/raven/modules/Teleportation.java
 package net.z2six.featheredfriend.entity.raven.modules;
 
 import com.mojang.logging.LogUtils;
@@ -14,12 +14,12 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import net.z2six.featheredfriend.entity.raven.RavenAIState;
-import net.z2six.featheredfriend.entity.raven.RavenAnimMode;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
+import net.z2six.featheredfriend.registry.FFForgeParticles;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import java.util.List;
-import net.minecraft.sounds.SoundEvent;
+
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.sounds.SoundEvents;
 
@@ -349,7 +349,7 @@ public final class Teleportation {
         }
     }
 
-    public void startTeleportSequence(@Nullable Vec3 target, long fxSeed, String reason, RavenEntity ravenEntity) {
+    public void startTeleportSequence(Vec3 target, long fxSeed, String reason, RavenEntity ravenEntity) {
         try {
             if (ravenEntity == null) return;
             if (ravenEntity.level() == null) return;
@@ -446,7 +446,7 @@ public final class Teleportation {
     // Teleport FX scheduler (server)
     // -------------------------------------------------------------------------------------------------
 
-    private void startTeleportFxServer(long seed, @Nullable Vec3 startPos, @Nullable Vec3 endPos, RavenEntity ravenEntity) {
+    private void startTeleportFxServer(long seed, Vec3 startPos, Vec3 endPos, RavenEntity ravenEntity) {
         try {
             if (ravenEntity == null) return;
 
@@ -564,7 +564,7 @@ public final class Teleportation {
             count = Mth.clamp(count, 1, 64);
 
             level.sendParticles(
-                    net.z2six.featheredfriend.registry.FFNeoForgeParticles.ENDERPOP.get(),
+                    FFForgeParticles.ENDERPOP.get(),
                     x, y, z,
                     count,
                     TELEPORT_FX_SPREAD_XZ, TELEPORT_FX_SPREAD_Y, TELEPORT_FX_SPREAD_XZ,
@@ -1086,7 +1086,7 @@ public final class Teleportation {
     //       Here we keep behavior but use reflection to avoid bloating RavenEntity's public API.
     // -------------------------------------------------------------------------------------------------
 
-    public void requestPanicTeleportAwayFromPlayer(@Nullable Player player, double distToPlayer, RavenEntity ravenEntity) {
+    public void requestPanicTeleportAwayFromPlayer(Player player, double distToPlayer, RavenEntity ravenEntity) {
         try {
             if (ravenEntity == null) return;
             if (ravenEntity.level() == null) return;
@@ -1277,7 +1277,7 @@ public final class Teleportation {
         }
     }
 
-    public boolean requestDamageBlinkTeleport(@Nullable net.minecraft.world.damagesource.DamageSource source, float amount, String reasonTag, RavenEntity ravenEntity) {
+    public boolean requestDamageBlinkTeleport(net.minecraft.world.damagesource.DamageSource source, float amount, String reasonTag, RavenEntity ravenEntity) {
         try {
             if (ravenEntity == null) return false;
             if (ravenEntity.level() == null) return false;
@@ -1609,7 +1609,7 @@ public final class Teleportation {
         }
     }
 
-    private static void setPrivateObject(Object obj, String fieldName, @Nullable Object value) {
+    private static void setPrivateObject(Object obj, String fieldName, Object value) {
         try {
             if (obj == null || fieldName == null) return;
             Field f = findField(obj.getClass(), fieldName);

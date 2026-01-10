@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/DamageDodge.java
+// forge/src/main/java/net/z2six/featheredfriend/entity/raven/DamageDodge.java
 package net.z2six.featheredfriend.entity.raven.modules;
 
 import com.mojang.logging.LogUtils;

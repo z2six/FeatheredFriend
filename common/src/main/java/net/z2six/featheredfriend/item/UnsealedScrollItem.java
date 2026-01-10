@@ -10,7 +10,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.z2six.featheredfriend.platform.Services;
-import org.jetbrains.annotations.NotNull;
+
 import org.slf4j.Logger;
 
 /**
@@ -23,15 +23,15 @@ public class UnsealedScrollItem extends Item {
 
     private static final Logger LOG = LogUtils.getLogger();
 
-    public UnsealedScrollItem(@NotNull Properties properties) {
+    public UnsealedScrollItem(Properties properties) {
         super(properties);
         LOG.debug("[UnsealedScrollItem] Created instance with properties {}", properties);
     }
 
     @Override
-    public @NotNull InteractionResultHolder<ItemStack> use(@NotNull Level level,
-                                                           @NotNull Player player,
-                                                           @NotNull InteractionHand hand) {
+    public InteractionResultHolder<ItemStack> use(Level level,
+                                                           Player player,
+                                                           InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
 
         try {

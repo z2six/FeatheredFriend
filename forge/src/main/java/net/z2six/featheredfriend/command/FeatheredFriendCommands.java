@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/command/FeatheredFriendCommands.java
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/command/FeatheredFriendCommands.java
 package net.z2six.featheredfriend.command;
 
 import com.mojang.authlib.GameProfile;
@@ -11,7 +11,6 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.GameProfileArgument;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
@@ -19,8 +18,8 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.storage.LevelResource;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.RegisterCommandsEvent;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.world.RavenCourierData;
 import org.slf4j.Logger;
@@ -83,10 +82,8 @@ public final class FeatheredFriendCommands {
      */
     public static void register() {
         try {
-            NeoForge.EVENT_BUS.addListener(
-                    (RegisterCommandsEvent event) -> FeatheredFriendCommands.onRegisterCommands(event)
-            );
-            LOG.info("[FeatheredFriendCommands] Registered command listener on NeoForge.EVENT_BUS");
+            MinecraftForge.EVENT_BUS.addListener(FeatheredFriendCommands::onRegisterCommands);
+            LOG.info("[FeatheredFriendCommands] Registered command listener on MinecraftForge.EVENT_BUS");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendCommands] Failed to register command listener", t);
         }
@@ -747,22 +744,9 @@ public final class FeatheredFriendCommands {
                 return null;
             }
 
-            // 1.21.x signature requires an accounter.
-            // Use a reasonable budget; player .dat should never be huge.
-            NbtAccounter accounter = NbtAccounter.create(PLAYERDAT_NBT_BUDGET_BYTES);
-
-            try {
-                // Prefer Path overload if present.
-                CompoundTag tag = NbtIo.readCompressed(path, accounter);
+            try (InputStream in = Files.newInputStream(path)) {
+                CompoundTag tag = NbtIo.readCompressed(in);
                 return tag == null ? new CompoundTag() : tag;
-            } catch (Throwable pathOverloadErr) {
-                // Fallback to InputStream overload if needed (futureproof / loader differences).
-                LOG.debug("[FeatheredFriendCommands] readPlayerDatSafe: Path overload failed for {}: {} (trying InputStream)",
-                        path, pathOverloadErr.toString());
-                try (InputStream in = Files.newInputStream(path)) {
-                    CompoundTag tag = NbtIo.readCompressed(in, accounter);
-                    return tag == null ? new CompoundTag() : tag;
-                }
             }
         } catch (Throwable t) {
             LOG.warn("[FeatheredFriendCommands] readPlayerDatSafe failed for {}: {}", path, t.toString());
@@ -775,7 +759,6 @@ public final class FeatheredFriendCommands {
             if (path == null) return false;
             if (tag == null) tag = new CompoundTag();
 
-            // Avoid partial writes: write to temp then move.
             Path tmp = path.resolveSibling(path.getFileName().toString() + ".tmp_ff");
 
             try (OutputStream out = Files.newOutputStream(tmp)) {
@@ -783,28 +766,20 @@ public final class FeatheredFriendCommands {
             } catch (Throwable writeErr) {
                 LOG.error("[FeatheredFriendCommands] writePlayerDatSafe: writeCompressed failed for tmp={} target={}: {}",
                         tmp, path, writeErr.toString());
-                try {
-                    Files.deleteIfExists(tmp);
-                } catch (Throwable ignored) {
-                }
+                try { Files.deleteIfExists(tmp); } catch (Throwable ignored) {}
                 return false;
             }
 
             try {
-                // Replace existing.
                 Files.move(tmp, path, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
             } catch (Throwable moveErr) {
-                // ATOMIC_MOVE may fail on some FS; retry without it.
                 LOG.debug("[FeatheredFriendCommands] writePlayerDatSafe: atomic move failed for {} -> {}: {} (retrying non-atomic)",
                         tmp, path, moveErr.toString());
                 try {
                     Files.move(tmp, path, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 } catch (Throwable moveErr2) {
                     LOG.error("[FeatheredFriendCommands] writePlayerDatSafe: move failed for {} -> {}: {}", tmp, path, moveErr2.toString());
-                    try {
-                        Files.deleteIfExists(tmp);
-                    } catch (Throwable ignored) {
-                    }
+                    try { Files.deleteIfExists(tmp); } catch (Throwable ignored) {}
                     return false;
                 }
             }

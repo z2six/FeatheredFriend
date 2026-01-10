@@ -1,8 +1,8 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenVariant.java
+// forge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenVariant.java
 package net.z2six.featheredfriend.entity.raven;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenVariant.java
+ * forge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenVariant.java
  *
  * Raven visual variants.
  *

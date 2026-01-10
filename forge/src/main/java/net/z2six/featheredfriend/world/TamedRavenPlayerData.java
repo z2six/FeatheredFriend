@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/world/TamedRavenPlayerData.java
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/world/TamedRavenPlayerData.java
 package net.z2six.featheredfriend.world;
 
 import com.mojang.logging.LogUtils;
@@ -9,7 +9,7 @@ import net.z2six.featheredfriend.Constants;
 import org.slf4j.Logger;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/world/TamedRavenPlayerData.java
+ * forge/src/main/java/net/z2six/featheredfriend/world/TamedRavenPlayerData.java
  *
  * Centralized helper for reading and clearing per-player TamedRaven data stored
  * in NeoForge persistent player data.

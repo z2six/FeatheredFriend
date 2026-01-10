@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/client/screen/RavenNamingScreen.java
+// forge/src/main/java/net/z2six/featheredfriend/client/screen/RavenNamingScreen.java
 package net.z2six.featheredfriend.client.screen;
 
 import com.mojang.logging.LogUtils;
@@ -97,7 +97,7 @@ public class RavenNamingScreen extends Screen {
                        float partialTick) {
         try {
             // 1.21+ signature: (GuiGraphics, int, int, float)
-            this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
+            this.renderBackground(guiGraphics);
 
             // Single label: "Name your raven:"
             guiGraphics.drawCenteredString(

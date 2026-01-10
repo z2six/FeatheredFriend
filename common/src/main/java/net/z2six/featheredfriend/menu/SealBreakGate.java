@@ -1,7 +1,7 @@
 // common/src/main/java/net/z2six/featheredfriend/menu/SealBreakGate.java
 package net.z2six.featheredfriend.menu;
 
-import org.jetbrains.annotations.NotNull;
+
 
 /**
  * // common/src/main/java/net/z2six/featheredfriend/menu/SealBreakGate.java
@@ -17,5 +17,5 @@ public interface SealBreakGate {
      * Marks the current container session as having had its seal broken.
      * Server-side only usage.
      */
-    void markSealBroken(@NotNull String reason);
+    void markSealBroken(String reason);
 }

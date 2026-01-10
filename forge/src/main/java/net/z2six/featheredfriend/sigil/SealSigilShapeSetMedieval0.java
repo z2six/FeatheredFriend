@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/sigil/SealSigilShapeSetMedieval0.java
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/sigil/SealSigilShapeSetMedieval0.java
 package net.z2six.featheredfriend.sigil;
 
 import com.mojang.logging.LogUtils;
@@ -7,7 +7,7 @@ import net.minecraft.util.RandomSource;
 import org.slf4j.Logger;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/sigil/SealSigilShapeSetMedieval0.java
+ * forge/src/main/java/net/z2six/featheredfriend/sigil/SealSigilShapeSetMedieval0.java
  *
  * Shape set 0 — "Medieval"
  *

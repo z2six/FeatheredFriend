@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/client/gui/WaxSealVisualizer.java
+// forge/src/main/java/net/z2six/featheredfriend/client/gui/WaxSealVisualizer.java
 package net.z2six.featheredfriend.client.gui;
 
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -12,7 +12,7 @@ import net.z2six.featheredfriend.sigil.SealSigilGenerator.SigilPattern;
 import org.slf4j.Logger;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/client/gui/WaxSealVisualizer.java
+ * forge/src/main/java/net/z2six/featheredfriend/client/gui/WaxSealVisualizer.java
  *
  * WaxSealVisualizer
  *
@@ -41,9 +41,8 @@ public final class WaxSealVisualizer {
     // Wax seal texture config (unchanged defaults)
     // ---------------------------------------------------------------------
 
-    /** Wax seal texture used behind the glyph (same as before). */
     private static final ResourceLocation WAX_SEAL_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/stampscreen/wax_seal.png");
+            ffLoc("textures/gui/stampscreen/wax_seal.png");
 
     /** Source texture size for wax_seal.png (unchanged). */
     private static final int WAX_SEAL_TEXTURE_WIDTH = 39;
@@ -776,4 +775,9 @@ public final class WaxSealVisualizer {
 
         return new int[]{dx, dy};
     }
+
+    private static ResourceLocation ffLoc(String path) {
+        return new ResourceLocation(Constants.MOD_ID, path);
+    }
+
 }

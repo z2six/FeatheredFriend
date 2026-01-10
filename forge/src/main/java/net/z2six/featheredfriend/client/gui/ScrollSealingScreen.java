@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/client/gui/ScrollSealingScreen.java
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/client/gui/ScrollSealingScreen.java
 package net.z2six.featheredfriend.client.gui;
 
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -20,7 +20,7 @@ import net.z2six.featheredfriend.client.gui.widget.RecipientOverlay;
 import net.z2six.featheredfriend.client.gui.widget.SealStampSelectionOverlay;
 import net.z2six.featheredfriend.config.FFCalendarConfig;
 import net.z2six.featheredfriend.item.SealStampItem;
-import net.z2six.featheredfriend.neoforge.menu.ScrollSealingMenu;
+import net.z2six.featheredfriend.forge.menu.ScrollSealingMenu;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator.SigilPattern;
 import org.lwjgl.glfw.GLFW;
@@ -29,7 +29,7 @@ import org.slf4j.Logger;
 import java.util.UUID;
 
 /**
- * // neoforge/src/main/java/net/z2six/featheredfriend/client/gui/ScrollSealingScreen.java
+ * // forge/src/main/java/net/z2six/featheredfriend/client/gui/ScrollSealingScreen.java
  *
  * ScrollSealingScreen
  *
@@ -60,27 +60,23 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
 
     private static final Logger LOG = LogUtils.getLogger();
 
-    // Legacy single-frame texture (kept as ultimate fallback)
     private static final ResourceLocation SCROLL_GUI_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scroll_sealing.png");
+            ffLoc("textures/gui/scroll_sealing.png");
 
-    // Animated scroll textures (sprite sheets: 1680x208, 7 frames horizontally)
     private static final ResourceLocation SCROLL_OPENING_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scrollscreen/scroll_opening.png");
+            ffLoc("textures/gui/scrollscreen/scroll_opening.png");
+
     private static final ResourceLocation SCROLL_CLOSING_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scrollscreen/scroll_closing.png");
+            ffLoc("textures/gui/scrollscreen/scroll_closing.png");
 
-    // Zoom variant for closing texture (same layout, different last frame)
     private static final ResourceLocation SCROLL_CLOSING_TEXTURE_ZOOM =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scrollscreen/scroll_closing.png");
+            ffLoc("textures/gui/scrollscreen/scroll_closing.png");
 
-    // Animated pearl texture (sprite sheet: 64x704, 11 frames vertically)
     private static final ResourceLocation PEARL_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scrollscreen/pearl.png");
+            ffLoc("textures/gui/scrollscreen/pearl.png");
 
-    // Gothic font id (from assets/featheredfriend/font/gothic12.json)
     private static final ResourceLocation GOTHIC_FONT_ID =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12");
+            ffLoc("gothic12");
 
     // ---------------------------------------------------------------------
     // Scroll animation configuration
@@ -1465,7 +1461,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         try {
-            this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
+            // Forge 1.20.1: renderBackground only takes GuiGraphics
+            this.renderBackground(guiGraphics);
+
             super.render(guiGraphics, mouseX, mouseY, partialTick);
 
             if (this.signatureWidget != null && uiPhase == UiPhase.IDLE) {
@@ -1516,7 +1514,12 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         // No default labels.
     }
 
-    @Override
+    protected boolean isHovering(Slot slot, double mouseX, double mouseY) {
+        // Disable vanilla slot hover behavior on this screen (matches your intent)
+        return false;
+    }
+
+    // Intentionally NOT annotated with @Override to avoid signature mismatch across mappings/patches.
     protected boolean isHovering(int x, int y, int width, int height, double mouseX, double mouseY) {
         return false;
     }
@@ -1885,7 +1888,6 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     // Container slot suppression
     // ---------------------------------------------------------------------
 
-    @Override
     protected void renderSlot(GuiGraphics guiGraphics, Slot slot) {
         // Intentionally empty: slots are invisible on the scroll-writing screen.
     }
@@ -1910,4 +1912,9 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             LOG.error("[ScrollSealingScreen] onSealClickedPlaceholder failed", t);
         }
     }
+
+    private static ResourceLocation ffLoc(String path) {
+        return new ResourceLocation(Constants.MOD_ID, path);
+    }
+
 }

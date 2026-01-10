@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/world/RavenCourierRuntime.java
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/world/RavenCourierRuntime.java
 package net.z2six.featheredfriend.world;
 
 import com.mojang.logging.LogUtils;
@@ -21,23 +21,19 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
-import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
-import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.minecraftforge.event.entity.living.LivingDeathEvent;
+import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import net.z2six.featheredfriend.entity.raven.RavenVariant;
 import net.z2six.featheredfriend.entity.raven.modules.TamedRaven;
 import net.z2six.featheredfriend.entity.raven.modules.Teleportation;
-import net.z2six.featheredfriend.registry.FFNeoForgeEntities;
+import net.z2six.featheredfriend.registry.FFForgeEntities;
 
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.util.HashMap;
@@ -48,7 +44,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/world/RavenCourierRuntime.java
+ * forge/src/main/java/net/z2six/featheredfriend/world/RavenCourierRuntime.java
  *
  * Server-side runtime for raven courier deliveries.
  *
@@ -76,7 +72,7 @@ public final class RavenCourierRuntime {
      * Registry name of the sealed scroll item.
      */
     private static final ResourceLocation SEALED_SCROLL_ID =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "scroll_sealed");
+            new ResourceLocation(Constants.MOD_ID, "scroll_sealed");
 
     /**
      * Lifetime of a courier raven in ticks.
@@ -115,10 +111,10 @@ public final class RavenCourierRuntime {
 
     public static void register() {
         try {
-            NeoForge.EVENT_BUS.addListener(RavenCourierRuntime::onServerTick);
-            NeoForge.EVENT_BUS.addListener(RavenCourierRuntime::onEntityInteract);
-            NeoForge.EVENT_BUS.addListener(RavenCourierRuntime::onRavenDeath);
-            LOG.info("[RavenCourierRuntime] Registered server tick + interaction + death listeners");
+            net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(RavenCourierRuntime::onServerTick);
+            net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(RavenCourierRuntime::onEntityInteract);
+            net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(RavenCourierRuntime::onRavenDeath);
+            LOG.info("[RavenCourierRuntime] Registered server tick + interaction + death listeners (Forge)");
         } catch (Throwable t) {
             LOG.error("[RavenCourierRuntime] Failed to register event listeners", t);
         }
@@ -179,8 +175,12 @@ public final class RavenCourierRuntime {
     // Server tick: periodic dispatch
     // ---------------------------------------------------------------------
 
-    private static void onServerTick(ServerTickEvent.Post event) {
+    private static void onServerTick(net.minecraftforge.event.TickEvent.ServerTickEvent event) {
         try {
+            if (event.phase != net.minecraftforge.event.TickEvent.Phase.END) {
+                return;
+            }
+
             MinecraftServer server = event.getServer();
             if (server == null) {
                 return;
@@ -412,7 +412,7 @@ public final class RavenCourierRuntime {
         }
     }
 
-    private static ServerPlayer findBestContextPlayer(@Nullable MinecraftServer server, @Nullable UUID senderUuid, @Nullable UUID recipientUuid) {
+    private static ServerPlayer findBestContextPlayer(MinecraftServer server, UUID senderUuid, UUID recipientUuid) {
         try {
             if (server == null) {
                 return null;
@@ -554,12 +554,12 @@ public final class RavenCourierRuntime {
         }
     }
 
-    @Nullable
+
     private static RavenEntity spawnCourierRavenForJob(ServerLevel level,
                                                        ServerPlayer recipient,
                                                        RavenCourierData.DeliveryJob job) {
         try {
-            RavenEntity raven = FFNeoForgeEntities.RAVEN.get().create(level);
+            RavenEntity raven = FFForgeEntities.RAVEN.get().create(level);
             if (raven == null) {
                 LOG.error("[RavenCourierRuntime] spawnCourierRavenForJob: entity factory returned null for jobId={}", job.jobId);
                 return null;
@@ -582,7 +582,7 @@ public final class RavenCourierRuntime {
             raven.moveTo(spawnPos.x, spawnPos.y, spawnPos.z, recipient.getYRot(), 0.0F);
 
             try {
-                raven.setTame(true, true);
+                raven.setTame(true);
             } catch (Throwable t) {
                 LOG.warn("[RavenCourierRuntime] spawnCourierRavenForJob: setTame(true,true) failed safely for jobId={}: {}", job.jobId, t.toString());
             }
@@ -709,7 +709,7 @@ public final class RavenCourierRuntime {
      * If no ceiling is found in the scanned radius:
      *  - spawn base = (playerY + 15), then search for pocket near that.
      */
-    @Nullable
+
     private static Vec3 findCourierSpawnPos(ServerLevel level,
                                             ServerPlayer player,
                                             RavenEntity simRaven,
@@ -864,7 +864,7 @@ public final class RavenCourierRuntime {
         }
     }
 
-    @Nullable
+
     private static Vec3 findFirst3x3x3PocketNear(ServerLevel level,
                                                  ServerPlayer player,
                                                  int cx,
@@ -1090,11 +1090,11 @@ public final class RavenCourierRuntime {
     // Scroll building / delivery (unchanged)
     // ---------------------------------------------------------------------
 
-    @NotNull
+
     private static ItemStack buildDeliveredScrollStack(Item sealedScrollItem,
                                                        RavenCourierData.DeliveryJob job,
-                                                       @Nullable String deliveredName,
-                                                       @Nullable UUID deliveredUuid,
+                                                       String deliveredName,
+                                                       UUID deliveredUuid,
                                                        boolean successfulDelivery) {
         ItemStack stack = new ItemStack(sealedScrollItem);
         try {
@@ -1153,10 +1153,15 @@ public final class RavenCourierRuntime {
             sealedCopy.putString("DeliveredToUUID", dUuidStr);
             sealedCopy.putBoolean("DeliveredToUnknown", unknown);
 
-            CompoundTag customRoot = new CompoundTag();
-            customRoot.put("SealedScroll", sealedCopy);
-            CustomData customData = CustomData.of(customRoot);
-            stack.set(net.minecraft.core.component.DataComponents.CUSTOM_DATA, customData);
+            // 1.20.1: write into ItemStack tag
+            // Preferred layout: stackTag[modid].SealedScroll = <compound>
+            CompoundTag root = stack.getOrCreateTag();
+            CompoundTag ff = root.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)
+                    ? root.getCompound(Constants.MOD_ID)
+                    : new CompoundTag();
+
+            ff.put("SealedScroll", sealedCopy);
+            root.put(Constants.MOD_ID, ff);
 
             if (LOG.isDebugEnabled()) {
                 LOG.debug("[RavenCourierRuntime] buildDeliveredScrollStack: jobId={} success={} first='{}' last='{}' succCnt={} failCnt={}",

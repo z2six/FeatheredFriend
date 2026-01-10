@@ -1,11 +1,11 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/client/FFClientSettingsCache.java
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/client/FFClientSettingsCache.java
 package net.z2six.featheredfriend.client;
 
 import com.mojang.logging.LogUtils;
 import org.slf4j.Logger;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/client/FFClientSettingsCache.java
+ * forge/src/main/java/net/z2six/featheredfriend/client/FFClientSettingsCache.java
  *
  * Client-side cache of server-owned FeatheredFriend settings (synced via payload).
  *

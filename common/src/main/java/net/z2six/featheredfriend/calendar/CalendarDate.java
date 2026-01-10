@@ -2,7 +2,7 @@
 package net.z2six.featheredfriend.calendar;
 
 import com.mojang.logging.LogUtils;
-import org.jetbrains.annotations.NotNull;
+
 import org.slf4j.Logger;
 
 /**
@@ -91,8 +91,7 @@ public final class CalendarDate {
      * Formats this date as a plain string using the provided definition.
      * Example: "Day 17 of Dawnroot, 112 AN"
      */
-    @NotNull
-    public String format(@NotNull CalendarDefinition definition) {
+    public String format(CalendarDefinition definition) {
         String monthName = definition.getMonthName(this.monthIndex);
         String era = definition.getEraSuffix();
         return "Day " + this.dayOfMonth + " of " + monthName + ", " + this.year + " " + era;

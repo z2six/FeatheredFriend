@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/client/gui/widget/RecipientOverlay.java
+// forge/src/main/java/net/z2six/featheredfriend/client/gui/widget/RecipientOverlay.java
 package net.z2six.featheredfriend.client.gui.widget;
 
 import com.mojang.logging.LogUtils;

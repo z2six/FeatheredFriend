@@ -14,7 +14,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.menu.ScrollAttachmentProvider;
-import org.jetbrains.annotations.NotNull;
+
 import org.slf4j.Logger;
 
 /**
@@ -49,7 +49,7 @@ public record WaxSealPacket(
     // Codec
     // ---------------------------------------------------------------------
 
-    public static void encode(@NotNull FriendlyByteBuf buf, @NotNull WaxSealPacket p) {
+    public static void encode(FriendlyByteBuf buf, WaxSealPacket p) {
         try {
             buf.writeVarInt(p.selectedStampSlot);
             buf.writeUtf(p.dateText, 256);
@@ -67,7 +67,7 @@ public record WaxSealPacket(
         }
     }
 
-    public static @NotNull WaxSealPacket decode(@NotNull FriendlyByteBuf buf) {
+    public static WaxSealPacket decode(FriendlyByteBuf buf) {
         try {
             int slot = buf.readVarInt();
             String dateText = buf.readUtf(256);
@@ -104,7 +104,7 @@ public record WaxSealPacket(
     // Server handler
     // ---------------------------------------------------------------------
 
-    public static void handle(@NotNull WaxSealPacket p, @NotNull ServerPlayer serverPlayer) {
+    public static void handle(WaxSealPacket p, ServerPlayer serverPlayer) {
         try {
             // 1) Remove one unsealed scroll
             ItemStack removed = removeOneUnsealedScroll(serverPlayer);
@@ -274,7 +274,7 @@ public record WaxSealPacket(
      * the player's main inventory. Returns a copy of the removed stack (count=1),
      * or null if none were found.
      */
-    private static ItemStack removeOneUnsealedScroll(@NotNull ServerPlayer player) {
+    private static ItemStack removeOneUnsealedScroll(ServerPlayer player) {
         try {
             Item unsealed = resolveItemByPath("scroll_unsealed");
             if (unsealed == null || unsealed == Items.AIR) {
@@ -310,7 +310,7 @@ public record WaxSealPacket(
      * Resolve an item from the built-in item registry by path within this mod's namespace.
      * Returns null or Items.AIR if the item does not exist.
      */
-    private static Item resolveItemByPath(@NotNull String path) {
+    private static Item resolveItemByPath(String path) {
         try {
             ResourceLocation id = new ResourceLocation(Constants.MOD_ID, path);
             Item item = BuiltInRegistries.ITEM.get(id);
@@ -350,7 +350,7 @@ public record WaxSealPacket(
     // CustomData compatibility (1.20.1)
     // ---------------------------------------------------------------------
 
-    private static @NotNull CompoundTag getCustomDataCopy(@NotNull ItemStack stack) {
+    private static CompoundTag getCustomDataCopy(ItemStack stack) {
         try {
             CompoundTag tag = stack.getTag();
             if (tag == null) return new CompoundTag();
@@ -363,7 +363,7 @@ public record WaxSealPacket(
         }
     }
 
-    private static void setCustomData(@NotNull ItemStack stack, @NotNull CompoundTag customDataRoot) {
+    private static void setCustomData(ItemStack stack, CompoundTag customDataRoot) {
         try {
             CompoundTag tag = stack.getOrCreateTag();
             tag.put(STACK_CUSTOM_DATA_KEY, customDataRoot);

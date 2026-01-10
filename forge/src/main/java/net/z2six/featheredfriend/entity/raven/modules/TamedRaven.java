@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/modules/TamedRaven.java
+// forge/src/main/java/net/z2six/featheredfriend/entity/raven/modules/TamedRaven.java
 package net.z2six.featheredfriend.entity.raven.modules;
 
 import com.mojang.logging.LogUtils;
@@ -10,7 +10,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
-import net.z2six.featheredfriend.registry.FFNeoForgeParticles;
+import net.z2six.featheredfriend.registry.FFForgeParticles;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -204,7 +204,7 @@ public final class TamedRaven {
     // Internal helpers
     // ---------------------------------------------------------------------
 
-    private String sanitizeName(@Nullable String raw, Player owner) {
+    private String sanitizeName(String raw, Player owner) {
         try {
             String s = (raw == null) ? "" : raw.trim();
             if (s.isEmpty()) {
@@ -325,7 +325,7 @@ public final class TamedRaven {
             try {
                 int count = FeatherParticles.getFeathersPerBurst();
                 serverLevel.sendParticles(
-                        FFNeoForgeParticles.FEATHER.get(),
+                        FFForgeParticles.FEATHER.get(),
                         x, y, z,
                         count,
                         0.4D, 0.25D, 0.4D, // spread

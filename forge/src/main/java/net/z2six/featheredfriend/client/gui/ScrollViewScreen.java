@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/client/gui/ScrollViewScreen.java
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/client/gui/ScrollViewScreen.java
 package net.z2six.featheredfriend.client.gui;
 
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -22,7 +22,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.widget.MultiLineScrollTextWidget;
-import net.z2six.featheredfriend.neoforge.menu.ScrollViewMenu;
+import net.z2six.featheredfriend.forge.menu.ScrollViewMenu;
 import net.z2six.featheredfriend.network.FFNetwork;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator.SigilPattern;
@@ -32,7 +32,7 @@ import org.slf4j.Logger;
 import java.lang.reflect.Constructor;
 
 /**
- * // neoforge/src/main/java/net/z2six/featheredfriend/client/gui/ScrollViewScreen.java
+ * // forge/src/main/java/net/z2six/featheredfriend/client/gui/ScrollViewScreen.java
  *
  * ScrollViewScreen
  *
@@ -64,16 +64,19 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     // ---------------------------------------------------------------------
 
     private static final ResourceLocation SCROLL_GUI_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scroll_sealing.png");
+            new ResourceLocation(Constants.MOD_ID, "textures/gui/scroll_sealing.png");
 
     private static final ResourceLocation SCROLL_CLOSING_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scrollscreen/scroll_closing.png");
+            new ResourceLocation(Constants.MOD_ID, "textures/gui/scrollscreen/scroll_closing.png");
 
     private static final ResourceLocation SCROLL_CLOSING_TEXTURE_ZOOM =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scrollscreen/scroll_closing.png");
+            new ResourceLocation(Constants.MOD_ID, "textures/gui/scrollscreen/scroll_closing.png");
 
     private static final ResourceLocation GOTHIC_FONT_ID =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12");
+            new ResourceLocation(Constants.MOD_ID, "gothic12");
+
+    private static final ResourceLocation PEARL_TEXTURE =
+            new ResourceLocation(Constants.MOD_ID, "textures/gui/scrollscreen/pearl.png");
 
     // ---------------------------------------------------------------------
     // Scroll animation configuration
@@ -164,9 +167,6 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     private static final int PEARL_ICON_X = 202;
     private static final int PEARL_ICON_Y = 18;
     private static final int PEARL_ICON_SIZE = 16;
-
-    private static final ResourceLocation PEARL_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scrollscreen/pearl.png");
 
     private static final int PEARL_FRAME_WIDTH = 32;
     private static final int PEARL_FRAME_HEIGHT = 32;
@@ -863,7 +863,8 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         try {
-            this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
+            // Forge 1.20.1: renderBackground only takes GuiGraphics
+            this.renderBackground(guiGraphics);
             super.render(guiGraphics, mouseX, mouseY, partialTick);
 
             // Pearl icon (attachments) rendered on top, only when scroll is open.
@@ -948,7 +949,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
     }
 
-    @Override
+    // Intentionally NOT annotated with @Override to avoid signature mismatch across mappings/patches.
     protected boolean isHovering(int x, int y, int width, int height, double mouseX, double mouseY) {
         return false;
     }
@@ -1298,7 +1299,6 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     // Container slot suppression
     // ---------------------------------------------------------------------
 
-    @Override
     protected void renderSlot(GuiGraphics guiGraphics, Slot slot) {
     }
 
@@ -1621,7 +1621,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
     private static Item resolveItemByPath(String path) {
         try {
-            ResourceLocation id = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, path);
+            ResourceLocation id = new ResourceLocation(Constants.MOD_ID, path);
             Item item = BuiltInRegistries.ITEM.get(id);
             if (item == null) {
                 LOG.error("[ScrollViewScreen] resolveItemByPath: item {} is null", id);

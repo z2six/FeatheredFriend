@@ -9,7 +9,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.z2six.featheredfriend.Constants;
-import org.jetbrains.annotations.NotNull;
+
 import org.slf4j.Logger;
 
 /**
@@ -51,8 +51,8 @@ public record SealStampCarveResultPacket(
     // Codec
     // ---------------------------------------------------------------------
 
-    public static void encode(@NotNull FriendlyByteBuf buf,
-                              @NotNull SealStampCarveResultPacket msg) {
+    public static void encode(FriendlyByteBuf buf,
+                              SealStampCarveResultPacket msg) {
         try {
             buf.writeInt(msg.stampSlot);
             buf.writeLong(msg.seed);
@@ -64,7 +64,7 @@ public record SealStampCarveResultPacket(
         }
     }
 
-    public static @NotNull SealStampCarveResultPacket decode(@NotNull FriendlyByteBuf buf) {
+    public static SealStampCarveResultPacket decode(FriendlyByteBuf buf) {
         try {
             int slot = buf.readInt();
             long seed = buf.readLong();
@@ -82,7 +82,7 @@ public record SealStampCarveResultPacket(
     // Server-side handler
     // ---------------------------------------------------------------------
 
-    public static void handle(@NotNull SealStampCarveResultPacket msg, @NotNull ServerPlayer player) {
+    public static void handle(SealStampCarveResultPacket msg, ServerPlayer player) {
         try {
             if (msg.stampSlot() < 0) {
                 LOG.error("[SealStampCarveResultPacket] Invalid stampSlot {}", msg.stampSlot());
@@ -145,7 +145,7 @@ public record SealStampCarveResultPacket(
     // CustomData compatibility (1.20.1)
     // ---------------------------------------------------------------------
 
-    private static @NotNull CompoundTag getCustomDataCopy(@NotNull ItemStack stack) {
+    private static CompoundTag getCustomDataCopy(ItemStack stack) {
         try {
             CompoundTag tag = stack.getTag();
             if (tag == null) return new CompoundTag();
@@ -158,7 +158,7 @@ public record SealStampCarveResultPacket(
         }
     }
 
-    private static void setCustomData(@NotNull ItemStack stack, @NotNull CompoundTag customDataRoot) {
+    private static void setCustomData(ItemStack stack, CompoundTag customDataRoot) {
         try {
             CompoundTag tag = stack.getOrCreateTag();
             tag.put(STACK_CUSTOM_DATA_KEY, customDataRoot);

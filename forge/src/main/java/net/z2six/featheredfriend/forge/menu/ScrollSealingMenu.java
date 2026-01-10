@@ -1,5 +1,5 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/neoforge/menu/ScrollSealingMenu.java
-package net.z2six.featheredfriend.neoforge.menu;
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/neoforge/menu/ScrollSealingMenu.java
+package net.z2six.featheredfriend.forge.menu;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.world.Container;
@@ -10,12 +10,12 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.z2six.featheredfriend.menu.ScrollAttachmentProvider;
-import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
+import net.z2six.featheredfriend.registry.FFForgeMenus;
 
 import org.slf4j.Logger;
 
 /**
- * // neoforge/src/main/java/net/z2six/featheredfriend/neoforge/menu/ScrollSealingMenu.java
+ * // forge/src/main/java/net/z2six/featheredfriend/neoforge/menu/ScrollSealingMenu.java
  *
  * ScrollSealingMenu
  *
@@ -98,7 +98,7 @@ public class ScrollSealingMenu extends AbstractContainerMenu implements ScrollAt
     private boolean clientSkipIntroAnimation = false;
 
     public ScrollSealingMenu(int containerId, Inventory playerInventory) {
-        super(FFNeoForgeMenus.SCROLL_SEALING_MENU.get(), containerId);
+        super(FFForgeMenus.SCROLL_SEALING_MENU.get(), containerId);
         this.playerInventory = playerInventory;
         this.attachmentContainer = new SimpleContainer(ATTACHMENT_SLOT_COUNT);
 

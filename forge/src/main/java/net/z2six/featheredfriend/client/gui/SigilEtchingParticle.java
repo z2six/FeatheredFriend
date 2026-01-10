@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/client/gui/SigilEtchingParticle.java
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/client/gui/SigilEtchingParticle.java
 package net.z2six.featheredfriend.client.gui;
 
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -13,7 +13,7 @@ import org.slf4j.Logger;
 
 /**
 
- // neoforge/src/main/java/net/z2six/featheredfriend/client/gui/SigilEtchingParticle.java
+ // forge/src/main/java/net/z2six/featheredfriend/client/gui/SigilEtchingParticle.java
 
  SigilEtchingParticle
 
@@ -49,7 +49,7 @@ public class SigilEtchingParticle {
     private static final Logger LOG = LogUtils.getLogger();
 
     private static final ResourceLocation PARTICLE_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/texture_etching16x.png");
+            new ResourceLocation(Constants.MOD_ID, "textures/gui/texture_etching16x.png");
 
     private static boolean textureCheckDone = false;
     private static boolean hasTexture = false;

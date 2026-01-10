@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/client/particle/FeatherParticle.java
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/client/particle/FeatherParticle.java
 package net.z2six.featheredfriend.client.particle;
 
 import com.mojang.logging.LogUtils;
@@ -166,7 +166,6 @@ public final class FeatherParticle extends TextureSheetParticle {
             this.sprites = sprites;
         }
 
-        @Nullable
         @Override
         public Particle createParticle(net.minecraft.core.particles.SimpleParticleType type,
                                        ClientLevel level,

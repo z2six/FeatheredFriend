@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/world/TamedRavenScrollWatcher.java
+// forge/src/main/java/net/z2six/featheredfriend/world/TamedRavenScrollWatcher.java
 package net.z2six.featheredfriend.world;
 
 import com.mojang.logging.LogUtils;
@@ -19,23 +19,18 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import net.z2six.featheredfriend.entity.raven.modules.RavenSoundEngine;
 import net.z2six.featheredfriend.entity.raven.modules.TamedRaven;
 import net.z2six.featheredfriend.entity.raven.modules.Teleportation;
-import net.z2six.featheredfriend.world.FeatheredFriendSettingsData;
 import net.minecraft.world.level.block.state.BlockState;
-import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
+import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.entity.Entity;
 
-import net.z2six.featheredfriend.registry.FFNeoForgeEntities;
+import net.z2six.featheredfriend.registry.FFForgeEntities;
 
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -48,7 +43,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/world/TamedRavenScrollWatcher.java
+ * forge/src/main/java/net/z2six/featheredfriend/world/TamedRavenScrollWatcher.java
  *
  * Behavior:
  *  - When a player holds a sealed scroll in MAIN HAND and has stored TamedRaven data:
@@ -96,7 +91,7 @@ public final class TamedRavenScrollWatcher {
      * Registry name of the sealed scroll item.
      */
     private static final ResourceLocation SEALED_SCROLL_ID =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "scroll_sealed");
+            new ResourceLocation(Constants.MOD_ID, "scroll_sealed");
 
     /**
      * Scoreboard tag used to mark scroll-summoned ravens.
@@ -130,9 +125,9 @@ public final class TamedRavenScrollWatcher {
 
     public static void register() {
         try {
-            NeoForge.EVENT_BUS.addListener(TamedRavenScrollWatcher::onPlayerTick);
-            NeoForge.EVENT_BUS.addListener(TamedRavenScrollWatcher::onEntityInteract);
-            LOG.info("[TamedRavenScrollWatcher] Registered PlayerTickEvent.Post + EntityInteract listeners");
+            net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(TamedRavenScrollWatcher::onPlayerTick);
+            net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(TamedRavenScrollWatcher::onEntityInteract);
+            LOG.info("[TamedRavenScrollWatcher] Registered PlayerTickEvent + EntityInteract listeners (Forge)");
         } catch (Throwable t) {
             LOG.error("[TamedRavenScrollWatcher] Failed to register event listeners", t);
         }
@@ -142,9 +137,13 @@ public final class TamedRavenScrollWatcher {
     // Tick handler
     // ---------------------------------------------------------------------
 
-    private static void onPlayerTick(PlayerTickEvent.Post event) {
+    private static void onPlayerTick(net.minecraftforge.event.TickEvent.PlayerTickEvent event) {
+        if (event.phase != net.minecraftforge.event.TickEvent.Phase.END) {
+            return;
+        }
+
         try {
-            Player player = event.getEntity();
+            Player player = event.player;
             if (player == null) {
                 return;
             }
@@ -443,7 +442,7 @@ public final class TamedRavenScrollWatcher {
         return out;
     }
 
-    @Nullable
+    
     private static RavenEntity pickClosestRaven(List<RavenEntity> ravens, ServerPlayer owner) {
         if (ravens.isEmpty()) {
             return null;
@@ -463,12 +462,12 @@ public final class TamedRavenScrollWatcher {
     // Spawn / despawn
     // ---------------------------------------------------------------------
 
-    @Nullable
+    
     private static RavenEntity spawnSummonedRaven(ServerLevel level,
                                                   ServerPlayer owner,
                                                   String ravenName) {
         try {
-            RavenEntity raven = FFNeoForgeEntities.RAVEN.get().create(level);
+            RavenEntity raven = FFForgeEntities.RAVEN.get().create(level);
             if (raven == null) {
                 LOG.error("[TamedRavenScrollWatcher] spawnSummonedRaven: entity factory returned null");
                 return null;
@@ -485,7 +484,7 @@ public final class TamedRavenScrollWatcher {
             raven.moveTo(spawnPos.x, spawnPos.y, spawnPos.z, owner.getYRot(), 0.0F);
 
             try {
-                raven.setTame(true, true);
+                raven.setTame(true);
             } catch (Throwable t) {
                 LOG.warn("[TamedRavenScrollWatcher] spawnSummonedRaven: setTame(true, true) failed safely: {}", t.toString());
             }
@@ -616,7 +615,7 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    @NotNull
+    
     private static InteractionResult handleScrollSummonedRavenInteract(ServerLevel level,
                                                                        ServerPlayer player,
                                                                        RavenEntity raven,
@@ -726,7 +725,7 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    @Nullable
+    
     private static RecallPayload readRecallPayload(RavenEntity raven) {
         try {
             CompoundTag root = raven.getPersistentData();
@@ -760,7 +759,7 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    private static boolean isSealedScrollStack(@Nullable ItemStack stack) {
+    private static boolean isSealedScrollStack(ItemStack stack) {
         try {
             if (stack == null || stack.isEmpty()) {
                 return false;
@@ -772,7 +771,7 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    @NotNull
+
     private static ItemStack buildSealedScrollFromNbt(CompoundTag sealedScrollNbt) {
         try {
             Item item = BuiltInRegistries.ITEM.get(SEALED_SCROLL_ID);
@@ -783,11 +782,14 @@ public final class TamedRavenScrollWatcher {
 
             ItemStack stack = new ItemStack(item);
 
-            CompoundTag customRoot = new CompoundTag();
-            customRoot.put("SealedScroll", sealedScrollNbt.copy());
+            // 1.20.1: write into ItemStack tag
+            CompoundTag root = stack.getOrCreateTag();
+            CompoundTag ff = root.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)
+                    ? root.getCompound(Constants.MOD_ID)
+                    : new CompoundTag();
 
-            CustomData customData = CustomData.of(customRoot);
-            stack.set(net.minecraft.core.component.DataComponents.CUSTOM_DATA, customData);
+            ff.put("SealedScroll", sealedScrollNbt.copy());
+            root.put(Constants.MOD_ID, ff);
 
             return stack;
 
@@ -995,7 +997,7 @@ public final class TamedRavenScrollWatcher {
     // Spawn position helpers
     // ---------------------------------------------------------------------
 
-    @Nullable
+    
     private static Vec3 findSafeSpawnAbovePlayer(ServerLevel level,
                                                  ServerPlayer owner,
                                                  RavenEntity simRaven) {
@@ -1156,7 +1158,7 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    @Nullable
+    
     private static Vec3 findFirst3x3x2PocketNear(ServerLevel level,
                                                  ServerPlayer owner,
                                                  int cx,
@@ -1338,7 +1340,7 @@ public final class TamedRavenScrollWatcher {
      *     - HasTamedRaven : boolean
      *     - RavenName     : string
      */
-    @Nullable
+    
     private static TamedRavenInfo readTamedRavenInfo(Player player) {
         try {
             CompoundTag root = player.getPersistentData();
@@ -1677,7 +1679,7 @@ public final class TamedRavenScrollWatcher {
      *
      * Otherwise returns null.
      */
-    @Nullable
+    
     public static ServerPlayer getScrollSummonOwnerIfHoldingScroll(ServerLevel level,
                                                                    RavenEntity raven) {
         try {

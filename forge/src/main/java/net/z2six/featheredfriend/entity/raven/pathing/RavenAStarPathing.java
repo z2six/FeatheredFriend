@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/pathing/RavenAStarPathing.java
+// forge/src/main/java/net/z2six/featheredfriend/entity/raven/pathing/RavenAStarPathing.java
 package net.z2six.featheredfriend.entity.raven.pathing;
 
 import com.mojang.logging.LogUtils;
@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/pathing/RavenAStarPathing.java
+ * forge/src/main/java/net/z2six/featheredfriend/entity/raven/pathing/RavenAStarPathing.java
  *
  * Raven flight pathing (A*) with:
  *  - NO DIAGONALS (strict 6-neighbor expansion).
@@ -1382,7 +1382,7 @@ public final class RavenAStarPathing {
         }
     }
 
-    // MainFile: neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/pathing/RavenAStarPathing.java
+    // MainFile: forge/src/main/java/net/z2six/featheredfriend/entity/raven/pathing/RavenAStarPathing.java
     private static boolean isCellPassable(
             net.minecraft.server.level.ServerLevel level,
             net.minecraft.core.BlockPos feetPos,

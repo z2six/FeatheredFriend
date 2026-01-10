@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/client/gui/SealStampScreen.java
+// forge/src/main/java/net/z2six/featheredfriend/client/gui/SealStampScreen.java
 package net.z2six.featheredfriend.client.gui;
 
 import com.mojang.logging.LogUtils;
@@ -13,12 +13,12 @@ import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.player.Inventory;
-import net.neoforged.neoforge.network.PacketDistributor;
+// import net.neoforged.neoforge.network.PacketDistributor;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.widget.MultiLineScrollTextWidget;
 import net.z2six.featheredfriend.item.SealStampItem;
 import net.z2six.featheredfriend.item.SealStampCarveLogic;
-import net.z2six.featheredfriend.neoforge.menu.SealStampMenu;
+import net.z2six.featheredfriend.forge.menu.SealStampMenu;
 import net.z2six.featheredfriend.network.SealStampCarveResultPacket;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator.SigilPattern;
@@ -31,7 +31,7 @@ import java.util.List;
 
 /**
 
- neoforge/src/main/java/net/z2six/featheredfriend/client/gui/SealStampScreen.java
+ forge/src/main/java/net/z2six/featheredfriend/client/gui/SealStampScreen.java
 
  SealStampScreen
 
@@ -45,13 +45,11 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
     private static final Logger LOG = LogUtils.getLogger();
 
-    // Gothic font id (same as used by ScrollSealingScreen / MultiLineScrollTextWidget)
     private static final ResourceLocation GOTHIC_FONT_ID =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12");
+            new ResourceLocation(Constants.MOD_ID, "gothic12");
 
-    // New full-screen GUI texture (replaces old flat background + buttons)
     private static final ResourceLocation STAMP_UI_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/stampscreen/stamp_ui.png");
+            new ResourceLocation(Constants.MOD_ID, "textures/gui/stampscreen/stamp_ui.png");
 
     // ---------------------------------------------------------------------
     // GUI dimensions
@@ -674,10 +672,13 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                         LOG.info("[SealStampScreen] Carve FINISHED → sending SealStampCarveResultPacket (stampSlot={} owner='{}')",
                                 effectiveSlot, ownerName);
 
-                        // Send the result to the server for actual NBT write (payload-based)
-                        PacketDistributor.sendToServer(
+                        // Send the result to the server for actual NBT write
+                        boolean sent = sendToServerReflective(
                                 new SealStampCarveResultPacket(effectiveSlot, seed, slices, style, ownerName)
                         );
+                        if (!sent) {
+                            LOG.error("[SealStampScreen] Failed to send SealStampCarveResultPacket to server (reflective send)");
+                        }
 
                         // Close the container / GUI after a successful carve
                         try {
@@ -737,7 +738,8 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         try {
-            this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
+            // Forge 1.20.1: renderBackground only takes GuiGraphics
+            this.renderBackground(guiGraphics);
             super.render(guiGraphics, mouseX, mouseY, partialTick);
 
             // Debug outlines for button hitboxes (drawn on top of everything else)
@@ -746,8 +748,8 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                 drawDebugBorder(guiGraphics, this.etchingsButton, 0xFFFF0000); // red
                 drawDebugBorder(guiGraphics, this.styleButton,   0xFF00FF00); // green
                 drawDebugBorder(guiGraphics, this.carveButton,   0xFF0000FF); // blue
-                if (this.scaleButton instanceof AbstractWidget widget) {
-                    drawDebugBorder(guiGraphics, widget, 0xFFFFFF00); // yellow
+                if (this.scaleButton != null) {
+                    drawDebugBorder(guiGraphics, this.scaleButton, 0xFFFFFF00); // yellow
                 }
             }
 
@@ -762,7 +764,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
     @Override
     protected void renderLabels(GuiGraphics guiGraphics, int mouseX, int mouseY) {
-// Intentionally empty.
+    // Intentionally empty.
     }
 
     private void renderPreviewArea(GuiGraphics guiGraphics) {
@@ -953,6 +955,64 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] computeSealStampSlot failed", t);
             return -1;
+        }
+    }
+
+    private static boolean sendToServerReflective(Object packet) {
+        try {
+            if (packet == null) {
+                LOG.error("[SealStampScreen] sendToServerReflective: packet is null");
+                return false;
+            }
+
+            // Load FFNetwork without hard-binding to its field names
+            Class<?> ffNetworkClass = Class.forName("net.z2six.featheredfriend.network.FFNetwork");
+
+            // Find a static field that looks like a SimpleChannel and has sendToServer(Object)
+            for (java.lang.reflect.Field f : ffNetworkClass.getDeclaredFields()) {
+                try {
+                    int mods = f.getModifiers();
+                    if (!java.lang.reflect.Modifier.isStatic(mods)) continue;
+
+                    f.setAccessible(true);
+                    Object channel = f.get(null);
+                    if (channel == null) continue;
+
+                    // Heuristic: class name ends with SimpleChannel and has sendToServer(packet)
+                    Class<?> chCls = channel.getClass();
+                    if (!chCls.getName().endsWith("SimpleChannel")) continue;
+
+                    try {
+                        java.lang.reflect.Method sendToServer = chCls.getMethod("sendToServer", Object.class);
+                        sendToServer.invoke(channel, packet);
+                        LOG.debug("[SealStampScreen] sendToServerReflective: sent via FFNetwork.{} ({})",
+                                f.getName(), chCls.getName());
+                        return true;
+                    } catch (NoSuchMethodException ignored) {
+                        // Some mappings use a typed method; try any single-arg method named sendToServer
+                        for (java.lang.reflect.Method m : chCls.getMethods()) {
+                            if (!"sendToServer".equals(m.getName())) continue;
+                            if (m.getParameterCount() != 1) continue;
+                            try {
+                                m.invoke(channel, packet);
+                                LOG.debug("[SealStampScreen] sendToServerReflective: sent via FFNetwork.{} ({}) using {}",
+                                        f.getName(), chCls.getName(), m.toString());
+                                return true;
+                            } catch (Throwable ignored2) {
+                                // keep scanning
+                            }
+                        }
+                    }
+                } catch (Throwable fieldErr) {
+                    LOG.debug("[SealStampScreen] sendToServerReflective: field scan error: {}", fieldErr.toString());
+                }
+            }
+
+            LOG.error("[SealStampScreen] sendToServerReflective: could not locate a usable SimpleChannel in FFNetwork");
+            return false;
+        } catch (Throwable t) {
+            LOG.error("[SealStampScreen] sendToServerReflective failed", t);
+            return false;
         }
     }
 }

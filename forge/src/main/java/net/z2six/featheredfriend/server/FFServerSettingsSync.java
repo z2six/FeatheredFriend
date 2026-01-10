@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/server/FFServerSettingsSync.java
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/server/FFServerSettingsSync.java
 package net.z2six.featheredfriend.server;
 
 import com.mojang.logging.LogUtils;

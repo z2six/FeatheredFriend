@@ -9,7 +9,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.z2six.featheredfriend.platform.Services;
-import org.jetbrains.annotations.NotNull;
+
 import org.slf4j.Logger;
 
 /**
@@ -26,16 +26,15 @@ public class ScrollViewItem extends Item {
 
     private static final Logger LOG = LogUtils.getLogger();
 
-    public ScrollViewItem(@NotNull Properties properties) {
+    public ScrollViewItem(Properties properties) {
         super(properties);
         LOG.debug("[ScrollViewItem] Constructed with properties={}", properties);
     }
 
     @Override
-    @NotNull
-    public InteractionResultHolder<ItemStack> use(@NotNull Level level,
-                                                  @NotNull net.minecraft.world.entity.player.Player player,
-                                                  @NotNull InteractionHand hand) {
+    public InteractionResultHolder<ItemStack> use(Level level,
+                                                  net.minecraft.world.entity.player.Player player,
+                                                  InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
 
         try {

@@ -3,7 +3,7 @@ package net.z2six.featheredfriend.calendar;
 
 import com.mojang.logging.LogUtils;
 import net.z2six.featheredfriend.Constants;
-import org.jetbrains.annotations.NotNull;
+
 import org.slf4j.Logger;
 
 import java.util.Arrays;
@@ -71,8 +71,8 @@ public final class CalendarDefinition {
      * @param ticksPerDay  number of Minecraft ticks per in-game day (>= 1)
      */
     public CalendarDefinition(
-            @NotNull String[] monthNames,
-            @NotNull String yearSuffix,
+            String[] monthNames,
+            String yearSuffix,
             int daysPerMonth,
             long ticksPerDay
     ) {
@@ -103,7 +103,7 @@ public final class CalendarDefinition {
      * Common-side default definition used when no server config has been
      * synced yet. This is also what older code (FeatheredCalendar) expects.
      */
-    public static @NotNull CalendarDefinition defaultDefinition() {
+    public static CalendarDefinition defaultDefinition() {
         try {
             return new CalendarDefinition(
                     HARD_DEFAULT_MONTHS.clone(),
@@ -127,7 +127,7 @@ public final class CalendarDefinition {
      * Legacy alias kept so existing code that calls getEraSuffix() still compiles.
      * Internally just returns the year suffix (e.g. "AN").
      */
-    public @NotNull String getEraSuffix() {
+    public String getEraSuffix() {
         return getYearSuffix();
     }
 
@@ -135,7 +135,7 @@ public final class CalendarDefinition {
     // Validation helpers
     // ---------------------------------------------------------------------
 
-    private static String @NotNull [] validateMonths(String @NotNull [] input) {
+    private static String [] validateMonths(String [] input) {
         try {
             if (input.length == 0) {
                 LOG.warn("[CalendarDefinition] monthNames was empty; using hard default months");
@@ -159,7 +159,7 @@ public final class CalendarDefinition {
         }
     }
 
-    private static @NotNull String validateYearSuffix(@NotNull String input) {
+    private static String validateYearSuffix(String input) {
         try {
             if (input.isBlank()) {
                 LOG.warn("[CalendarDefinition] yearSuffix was blank; using hard default '{}'", HARD_DEFAULT_YEAR_SUFFIX);
@@ -206,12 +206,12 @@ public final class CalendarDefinition {
         return monthNames.length;
     }
 
-    public @NotNull String[] getMonthNames() {
+    public String[] getMonthNames() {
         // Defensive copy to keep immutability.
         return monthNames.clone();
     }
 
-    public @NotNull String getMonthName(int index) {
+    public String getMonthName(int index) {
         if (index < 0 || index >= monthNames.length) {
             LOG.warn("[CalendarDefinition] getMonthName: index {} out of range (0..{}); clamping", index, monthNames.length - 1);
             int clamped = Math.max(0, Math.min(index, monthNames.length - 1));
@@ -220,7 +220,7 @@ public final class CalendarDefinition {
         return monthNames[index];
     }
 
-    public @NotNull String getYearSuffix() {
+    public String getYearSuffix() {
         return yearSuffix;
     }
 
@@ -251,7 +251,7 @@ public final class CalendarDefinition {
      * @param monthIndex 0-based month index
      * @param year       absolute year number
      */
-    public @NotNull String formatDate(int dayOfMonth, int monthIndex, int year) {
+    public String formatDate(int dayOfMonth, int monthIndex, int year) {
         String month = getMonthName(monthIndex);
         int safeDay = Math.max(1, Math.min(dayOfMonth, daysPerMonth));
         return "Day " + safeDay + " of " + month + ", " + year + " " + yearSuffix;

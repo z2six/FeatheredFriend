@@ -9,8 +9,8 @@ import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.z2six.featheredfriend.chat.ChatDisabler;
 import net.z2six.featheredfriend.client.FFClientSyncEvents;
+import net.z2six.featheredfriend.client.FFForgeClient;
 import net.z2six.featheredfriend.client.FFKeyBindings;
-import net.z2six.featheredfriend.client.FFNeoForgeClient;
 import net.z2six.featheredfriend.client.particle.FFClientParticles;
 import net.z2six.featheredfriend.client.raven.RavenClientEvents;
 import net.z2six.featheredfriend.command.FeatheredFriendCommands;
@@ -19,11 +19,8 @@ import net.z2six.featheredfriend.config.FFClientConfig;
 import net.z2six.featheredfriend.events.FFPlayerEvents;
 import net.z2six.featheredfriend.network.FFNetwork;
 import net.z2six.featheredfriend.network.FFPayloads;
-import net.z2six.featheredfriend.registry.FFCreativeTabsNeoForge;
-import net.z2six.featheredfriend.registry.FFNeoForgeEntities;
-import net.z2six.featheredfriend.registry.FFNeoForgeItems;
-import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
-import net.z2six.featheredfriend.registry.FFNeoForgeParticles;
+import net.z2six.featheredfriend.registry.*;
+import net.z2six.featheredfriend.registry.FFForgeMenus;
 import net.z2six.featheredfriend.server.FFServerSyncEvents;
 import net.z2six.featheredfriend.world.RavenCourierRuntime;
 import net.z2six.featheredfriend.world.RavenSpawnEvents;
@@ -72,11 +69,11 @@ public class FeatheredFriend {
         // Registries
         // ---------------------------------------------------------------------
         try {
-            FFNeoForgeItems.register(modEventBus);
+            FFForgeItems.register(modEventBus);
             FFCreativeTabsNeoForge.register(modEventBus);
-            FFNeoForgeMenus.register(modEventBus);
+            FFForgeMenus.register(modEventBus);
 
-            FFNeoForgeParticles.register(modEventBus);
+            FFForgeParticles.register(modEventBus);
 
             LOG.info("[FeatheredFriend] Registered registries (items/tabs/menus/particles)");
         } catch (Throwable t) {
@@ -84,7 +81,7 @@ public class FeatheredFriend {
         }
 
         try {
-            FFNeoForgeEntities.register(modEventBus);
+            FFForgeEntities.register(modEventBus);
             LOG.info("[FeatheredFriend] Registered entity registries");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to register entities", t);
@@ -94,9 +91,9 @@ public class FeatheredFriend {
         // Networking
         // ---------------------------------------------------------------------
         try {
-            // Your existing network hookup (keep it if you still use it for other payloads/messages)
-            modEventBus.addListener(FFNetwork::register);
-            LOG.info("[FeatheredFriend] Hooked FFNetwork payload registration listener");
+            // Register SimpleChannel messages during FMLCommonSetupEvent
+            FFNetwork.register(modEventBus);
+            LOG.info("[FeatheredFriend] Registered FFNetwork common-setup hook");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to hook FFNetwork payload registration listener", t);
         }
@@ -121,12 +118,6 @@ public class FeatheredFriend {
         // ---------------------------------------------------------------------
         // Client-only registrations
         // ---------------------------------------------------------------------
-        try {
-            modEventBus.addListener(FFNeoForgeClient::onRegisterMenuScreens);
-            LOG.info("[FeatheredFriend] Hooked client menu screen registration listener");
-        } catch (Throwable t) {
-            LOG.error("[FeatheredFriend] Failed to hook client menu screen registration", t);
-        }
 
         try {
             if (FMLEnvironment.dist == Dist.CLIENT) {

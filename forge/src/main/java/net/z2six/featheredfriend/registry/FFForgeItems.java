@@ -12,7 +12,7 @@ import org.slf4j.Logger;
  *
  * Bridges the common FFItems.ITEM_MAP into Forge's DeferredRegister.
  */
-public final class FFNeoForgeItems {
+public final class FFForgeItems {
 
     private static final Logger LOG = Constants.LOG;
 
@@ -35,6 +35,6 @@ public final class FFNeoForgeItems {
         ITEMS.register(modEventBus);
     }
 
-    private FFNeoForgeItems() {
+    private FFForgeItems() {
     }
 }

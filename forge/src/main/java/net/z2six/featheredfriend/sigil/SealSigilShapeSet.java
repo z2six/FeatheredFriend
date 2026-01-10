@@ -1,11 +1,11 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/sigil/SealSigilShapeSet.java
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/sigil/SealSigilShapeSet.java
 package net.z2six.featheredfriend.sigil;
 
 import net.minecraft.util.RandomSource;
 
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/sigil/SealSigilShapeSet.java
+ * forge/src/main/java/net/z2six/featheredfriend/sigil/SealSigilShapeSet.java
  *
  * Interface for modular sigil shape sets.
  *

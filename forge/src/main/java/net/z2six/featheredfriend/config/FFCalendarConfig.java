@@ -1,10 +1,9 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/config/FFCalendarConfig.java
 package net.z2six.featheredfriend.config;
 
 import com.mojang.logging.LogUtils;
-import net.neoforged.fml.ModLoadingContext;
-import net.neoforged.fml.config.ModConfig;
-import net.neoforged.neoforge.common.ModConfigSpec;
+import net.minecraftforge.common.ForgeConfigSpec;
+import net.minecraftforge.fml.ModLoadingContext;
+import net.minecraftforge.fml.config.ModConfig;
 import net.z2six.featheredfriend.calendar.CalendarDefinition;
 import org.slf4j.Logger;
 
@@ -13,29 +12,16 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * // neoforge/src/main/java/net/z2six/featheredfriend/config/FFCalendarConfig.java
+ * forge/src/main/java/net/z2six/featheredfriend/config/FFCalendarConfig.java
  *
- * NeoForge-side SERVER config for FeatheredFriend.
- *
- * Sections:
- * - [calendar]
- *   * monthNames (8 entries)
- *   * yearSuffix
- *   * daysPerMonth (server-authoritative, synced to clients by your calendar sync)
- *
- * - [settings]
- *   * chatDisabledDefault (server default for world-owned SavedData when missing)
- *
- * NOTE:
- * - chatDisabled is still stored as world-owned SavedData (runtime mutable).
- *   The config is used as the DEFAULT when no SavedData value exists yet.
+ * Forge-side SERVER config for FeatheredFriend (Forge 1.20.1).
  */
 public final class FFCalendarConfig {
 
     private static final Logger LOG = LogUtils.getLogger();
 
     // ---------------------------------------------------------------------
-    // Defaults (also used as fallback if config is invalid)
+    // Defaults
     // ---------------------------------------------------------------------
 
     public static final String[] DEFAULT_MONTH_NAMES = new String[]{
@@ -51,43 +37,30 @@ public final class FFCalendarConfig {
 
     public static final String DEFAULT_YEAR_SUFFIX = "A.N.";
 
-    /**
-     * Default days-per-month. Historically this was 28. We keep 28 as default
-     * to preserve existing behavior unless the server owner changes it.
-     *
-     * For perfect sync with Serene Seasons sub_season_duration=16, set daysPerMonth=24 in the server config.
-     */
     public static final int DEFAULT_DAYS_PER_MONTH = 28;
 
     public static final int MONTHS_PER_YEAR = DEFAULT_MONTH_NAMES.length;
 
-    /**
-     * Not configurable in this task; used for dayIndex calculation everywhere.
-     */
     public static final int TICKS_PER_DAY = 24000;
 
-    /**
-     * NEW: default for world-owned chat setting when SavedData is missing.
-     * Kept as "disabled by default" to preserve your existing intent.
-     */
     public static final boolean DEFAULT_CHAT_DISABLED_DEFAULT = true;
 
     // ---------------------------------------------------------------------
     // Spec + entries
     // ---------------------------------------------------------------------
 
-    public static final ModConfigSpec SERVER_SPEC;
+    public static final ForgeConfigSpec SERVER_SPEC;
 
     // calendar
-    public static final ModConfigSpec.ConfigValue<List<? extends String>> MONTH_NAMES;
-    public static final ModConfigSpec.ConfigValue<String> YEAR_SUFFIX;
-    public static final ModConfigSpec.IntValue DAYS_PER_MONTH;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> MONTH_NAMES;
+    public static final ForgeConfigSpec.ConfigValue<String> YEAR_SUFFIX;
+    public static final ForgeConfigSpec.IntValue DAYS_PER_MONTH;
 
     // settings
-    public static final ModConfigSpec.BooleanValue CHAT_DISABLED_DEFAULT;
+    public static final ForgeConfigSpec.BooleanValue CHAT_DISABLED_DEFAULT;
 
     static {
-        ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
+        ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
 
         // -----------------------
         // calendar
@@ -136,7 +109,7 @@ public final class FFCalendarConfig {
         CHAT_DISABLED_DEFAULT = builder
                 .comment(
                         "Default for FeatheredFriend's world-owned chat flag when the world SavedData has no value yet.",
-                        "If true, chat is disabled by default until an admin enables it in-game (or via commands if you add those).",
+                        "If true, chat is disabled by default until an admin enables it in-game.",
                         "This does NOT forcibly override the world value every boot; it is only used as a fallback default."
                 )
                 .define("chatDisabledDefault", DEFAULT_CHAT_DISABLED_DEFAULT);
@@ -149,23 +122,20 @@ public final class FFCalendarConfig {
     }
 
     // ---------------------------------------------------------------------
-    // Registration (NeoForge idiom)
+    // Registration (Forge idiom)
     // ---------------------------------------------------------------------
 
     public static void register() {
         try {
-            ModLoadingContext.get()
-                    .getActiveContainer()
-                    .registerConfig(ModConfig.Type.SERVER, SERVER_SPEC);
-
-            LOG.debug("[FFCalendarConfig] Registered SERVER config with active ModContainer");
+            ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, SERVER_SPEC);
+            LOG.debug("[FFCalendarConfig] Registered SERVER config");
         } catch (Throwable t) {
             LOG.error("[FFCalendarConfig] Failed to register SERVER config", t);
         }
     }
 
     // ---------------------------------------------------------------------
-    // Safe accessors (server-side use; client reads synced values)
+    // Safe accessors
     // ---------------------------------------------------------------------
 
     public static String getMonthName(int index) {

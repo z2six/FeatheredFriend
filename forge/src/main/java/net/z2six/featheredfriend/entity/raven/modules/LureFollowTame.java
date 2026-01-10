@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/modules/LureFollowTame.java
+// forge/src/main/java/net/z2six/featheredfriend/entity/raven/modules/LureFollowTame.java
 package net.z2six.featheredfriend.entity.raven.modules;
 
 import com.mojang.logging.LogUtils;
@@ -101,11 +101,11 @@ public class LureFollowTame {
 
     // Follow owner: 3x3x3 pocket targeting + override gating
     private boolean followOverrideActive = false;
-    private @Nullable BlockPos followPocketAnchor = null; // anchor block for 3x3x3 pocket (center block at y)
+    private BlockPos followPocketAnchor = null; // anchor block for 3x3x3 pocket (center block at y)
     private int followPocketRecalcCooldownTicks = 0;
 
     // Lure-follow (pre-taming) state
-    private @Nullable java.util.UUID lureFollowPlayerUuid = null;
+    private java.util.UUID lureFollowPlayerUuid = null;
     private int lureFollowTicks = 0;
 
     // Small grace so follow doesn't flap off instantly if player briefly swaps items
@@ -113,9 +113,9 @@ public class LureFollowTame {
     private static final int LURE_FOLLOW_REFRESH_TICKS = 3 * 20; // keep active for 3s per refresh
 
     // Follow goal stability (prevents constant re-path + vertical "hops")
-    private @Nullable Vec3 followCachedGoal = null;
-    private @Nullable Vec3 followCachedOwnerPos = null;
-    private @Nullable Vec3 followCachedOwnerLook = null;
+    private Vec3 followCachedGoal = null;
+    private Vec3 followCachedOwnerPos = null;
+    private Vec3 followCachedOwnerLook = null;
     private int followGoalTtlTicks = 0;
     private int followRepathCooldownTicks = 0;
 
@@ -493,7 +493,7 @@ public class LureFollowTame {
      * in front of the player so the generic avoidance / collision logic can
      * try to maneuver through tight spaces (like a 3x3 corridor).
      */
-    private void fallbackBallisticLure(@Nullable Vec3 desiredGoal, Player target) {
+    private void fallbackBallisticLure(Vec3 desiredGoal, Player target) {
         try {
             if (target == null || !target.isAlive() || target.isSpectator()) {
                 return;
@@ -1059,7 +1059,7 @@ public class LureFollowTame {
         }
     }
 
-    public @Nullable Player getLureFollowPlayerServerSafe() {
+    public Player getLureFollowPlayerServerSafe() {
         try {
             if (!(raven.level() instanceof ServerLevel serverLevel)) return null;
             if (!isLureFollowActive()) return null;
@@ -1081,7 +1081,7 @@ public class LureFollowTame {
     // LURE-FOLLOW REQUEST -------------------------------------------------------------------------
     // ---------------------------------------------------------------------------------------------
 
-    public void requestLureFollowPlayer(@Nullable Player player, double distToPlayer) {
+    public void requestLureFollowPlayer(Player player, double distToPlayer) {
         try {
             if (raven.level().isClientSide) return;
             if (!raven.isAlive()) return;
@@ -2125,7 +2125,7 @@ public class LureFollowTame {
         }
     }
 
-    private void onRavenArrivedAtFollowTarget(Player target, boolean usingLure, @Nullable Vec3 frontGoal) {
+    private void onRavenArrivedAtFollowTarget(Player target, boolean usingLure, Vec3 frontGoal) {
         try {
             if (raven == null) return;
             if (raven.level() == null || raven.level().isClientSide) return;

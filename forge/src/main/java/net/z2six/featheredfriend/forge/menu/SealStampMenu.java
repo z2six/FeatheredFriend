@@ -1,16 +1,16 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/neoforge/menu/SealStampMenu.java
-package net.z2six.featheredfriend.neoforge.menu;
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/neoforge/menu/SealStampMenu.java
+package net.z2six.featheredfriend.forge.menu;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.ItemStack;
-import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
+import net.z2six.featheredfriend.registry.FFForgeMenus;
 import org.slf4j.Logger;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/neoforge/menu/SealStampMenu.java
+ * forge/src/main/java/net/z2six/featheredfriend/neoforge/menu/SealStampMenu.java
  *
  * Updated for Step 2:
  * - Stores EXACT item slot used to open the menu.
@@ -24,7 +24,7 @@ public class SealStampMenu extends AbstractContainerMenu {
     private final int stampSlotIndex;
 
     public SealStampMenu(int containerId, Inventory playerInventory, int stampSlotIndex) {
-        super(FFNeoForgeMenus.SEAL_STAMP_MENU.get(), containerId);
+        super(FFForgeMenus.SEAL_STAMP_MENU.get(), containerId);
         this.stampSlotIndex = stampSlotIndex;
 
         LOG.debug("[SealStampMenu] Creating menu id={} for player={} stampSlot={}",

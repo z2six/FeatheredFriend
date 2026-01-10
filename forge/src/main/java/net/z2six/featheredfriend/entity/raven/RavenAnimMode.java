@@ -1,8 +1,8 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenAnimMode.java
+// forge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenAnimMode.java
 package net.z2six.featheredfriend.entity.raven;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenAnimMode.java
+ * forge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenAnimMode.java
  *
  * Animation mode for the Raven GeckoLib controller.
  *

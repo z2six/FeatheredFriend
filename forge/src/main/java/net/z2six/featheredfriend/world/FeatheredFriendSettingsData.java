@@ -1,8 +1,7 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/world/FeatheredFriendSettingsData.java
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/world/FeatheredFriendSettingsData.java
 package net.z2six.featheredfriend.world;
 
 import com.mojang.logging.LogUtils;
-import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
@@ -13,7 +12,7 @@ import net.z2six.featheredfriend.config.FFCalendarConfig;
 import org.slf4j.Logger;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/world/FeatheredFriendSettingsData.java
+ * forge/src/main/java/net/z2six/featheredfriend/world/FeatheredFriendSettingsData.java
  *
  * World-owned settings for FeatheredFriend.
  *
@@ -60,14 +59,14 @@ public class FeatheredFriendSettingsData extends SavedData {
         return new FeatheredFriendSettingsData();
     }
 
-    public static FeatheredFriendSettingsData load(CompoundTag tag, HolderLookup.Provider lookupProvider) {
+    public static FeatheredFriendSettingsData load(CompoundTag tag) {
         FeatheredFriendSettingsData data = new FeatheredFriendSettingsData();
         data.readFromNbt(tag);
         return data;
     }
 
     @Override
-    public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
+    public CompoundTag save(CompoundTag tag) {
         try {
             writeToNbt(tag);
         } catch (Throwable t) {
@@ -118,19 +117,18 @@ public class FeatheredFriendSettingsData extends SavedData {
         }
     }
 
-    @NotNull
+
     public static FeatheredFriendSettingsData get(ServerLevel level) {
         try {
             ServerLevel overworld = level.getServer().overworld();
-            if (overworld == null) {
-                overworld = level;
-            }
+            if (overworld == null) overworld = level;
 
             var storage = overworld.getDataStorage();
-            SavedData.Factory<FeatheredFriendSettingsData> factory =
-                    new SavedData.Factory<>(FeatheredFriendSettingsData::create, FeatheredFriendSettingsData::load);
-
-            return storage.computeIfAbsent(factory, DATA_NAME);
+            return storage.computeIfAbsent(
+                    FeatheredFriendSettingsData::load,
+                    FeatheredFriendSettingsData::create,
+                    DATA_NAME
+            );
 
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendSettingsData] get(...) failed safely, returning volatile defaults: {}", t.toString());

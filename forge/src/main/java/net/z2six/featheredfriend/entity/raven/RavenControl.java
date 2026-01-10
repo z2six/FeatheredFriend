@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenControl.java
+// forge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenControl.java
 package net.z2six.featheredfriend.entity.raven;
 
 import com.mojang.logging.LogUtils;
@@ -6,7 +6,7 @@ import net.minecraft.core.BlockPos;
 import org.slf4j.Logger;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenControl.java
+ * forge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenControl.java
  *
  * Per-entity command wrapper for RavenEntity.
  *

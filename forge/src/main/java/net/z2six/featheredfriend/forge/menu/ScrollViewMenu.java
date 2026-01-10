@@ -1,11 +1,10 @@
-package net.z2six.featheredfriend.neoforge.menu;
+package net.z2six.featheredfriend.forge.menu;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.Container;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -15,7 +14,7 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.z2six.featheredfriend.menu.SealBreakGate;
-import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
+import net.z2six.featheredfriend.registry.FFForgeMenus;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
@@ -55,7 +54,7 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
     private boolean sealBrokenThisSession = false;
 
     public ScrollViewMenu(int containerId, Inventory playerInventory) {
-        super(FFNeoForgeMenus.SCROLL_VIEW_MENU.get(), containerId);
+        super(FFForgeMenus.SCROLL_VIEW_MENU.get(), containerId);
         this.playerInventory = playerInventory;
 
         String playerName = "unknown";

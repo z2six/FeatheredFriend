@@ -1,16 +1,16 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/client/raven/render/model/RavenGeoModel.java
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/client/raven/render/model/RavenGeoModel.java
 package net.z2six.featheredfriend.client.raven.render.model;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.resources.ResourceLocation;
-import net.z2six.featheredfriend.client.raven.RavenVisuals;
+import net.z2six.featheredfriend.entity.raven.RavenVisuals;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import net.z2six.featheredfriend.entity.raven.RavenVariant;
 import org.slf4j.Logger;
 import software.bernie.geckolib.model.GeoModel;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/client/raven/render/model/RavenGeoModel.java
+ * forge/src/main/java/net/z2six/featheredfriend/client/raven/render/model/RavenGeoModel.java
  *
  * Provides GeckoLib model/texture/animation resources for the Raven,
  * selecting resources based on the RavenVariant.

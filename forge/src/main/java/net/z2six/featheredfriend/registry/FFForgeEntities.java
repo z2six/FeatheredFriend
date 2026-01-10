@@ -18,7 +18,7 @@ import org.slf4j.Logger;
 /**
  * Forge entity registry for FeatheredFriend.
  */
-public final class FFNeoForgeEntities {
+public final class FFForgeEntities {
 
     private static final Logger LOG = LogUtils.getLogger();
 
@@ -30,7 +30,7 @@ public final class FFNeoForgeEntities {
 
     public static final RegistryObject<EntityType<RavenEntity>> RAVEN =
             ENTITY_TYPES.register("raven", () -> {
-                LOG.info("[FFNeoForgeEntities] Building Raven EntityType with hitbox w={} h={}",
+                LOG.info("[FFForgeEntities] Building Raven EntityType with hitbox w={} h={}",
                         RAVEN_HITBOX_WIDTH, RAVEN_HITBOX_HEIGHT);
 
                 return EntityType.Builder
@@ -40,28 +40,28 @@ public final class FFNeoForgeEntities {
                         .build(Constants.MOD_ID + ":raven");
             });
 
-    private FFNeoForgeEntities() {
+    private FFForgeEntities() {
     }
 
     public static void register(IEventBus modEventBus) {
-        LOG.info("[FFNeoForgeEntities] Registering entity types");
+        LOG.info("[FFForgeEntities] Registering entity types");
         ENTITY_TYPES.register(modEventBus);
 
         try {
-            modEventBus.addListener(FFNeoForgeEntities::onEntityAttributeCreation);
-            LOG.info("[FFNeoForgeEntities] Hooked EntityAttributeCreationEvent listener");
+            modEventBus.addListener(FFForgeEntities::onEntityAttributeCreation);
+            LOG.info("[FFForgeEntities] Hooked EntityAttributeCreationEvent listener");
         } catch (Throwable t) {
-            LOG.error("[FFNeoForgeEntities] Failed to hook EntityAttributeCreationEvent listener", t);
+            LOG.error("[FFForgeEntities] Failed to hook EntityAttributeCreationEvent listener", t);
         }
     }
 
     private static void onEntityAttributeCreation(EntityAttributeCreationEvent event) {
-        LOG.info("[FFNeoForgeEntities] Creating attributes for registered entities");
+        LOG.info("[FFForgeEntities] Creating attributes for registered entities");
         try {
             event.put(RAVEN.get(), createRavenAttributes().build());
-            LOG.info("[FFNeoForgeEntities] Registered Raven attributes");
+            LOG.info("[FFForgeEntities] Registered Raven attributes");
         } catch (Throwable t) {
-            LOG.error("[FFNeoForgeEntities] Failed to register Raven attributes", t);
+            LOG.error("[FFForgeEntities] Failed to register Raven attributes", t);
         }
     }
 
@@ -71,7 +71,7 @@ public final class FFNeoForgeEntities {
                     .add(Attributes.MAX_HEALTH, 16.0D)
                     .add(Attributes.MOVEMENT_SPEED, 0.28D);
         } catch (Throwable t) {
-            LOG.error("[FFNeoForgeEntities] createRavenAttributes failed; falling back to minimal attributes", t);
+            LOG.error("[FFForgeEntities] createRavenAttributes failed; falling back to minimal attributes", t);
             return Mob.createMobAttributes()
                     .add(Attributes.MAX_HEALTH, 16.0D);
         }

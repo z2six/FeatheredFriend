@@ -1,4 +1,4 @@
-// neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenEntity.java
+// forge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenEntity.java
 package net.z2six.featheredfriend.entity.raven;
 
 import com.mojang.logging.LogUtils;
@@ -28,15 +28,16 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.z2six.featheredfriend.entity.raven.modules.*;
+import net.z2six.featheredfriend.registry.FFForgeParticles;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import software.bernie.geckolib.animatable.GeoEntity;
-import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
-import software.bernie.geckolib.animation.AnimatableManager;
-import software.bernie.geckolib.animation.AnimationController;
-import software.bernie.geckolib.animation.AnimationState;
-import software.bernie.geckolib.animation.PlayState;
-import software.bernie.geckolib.animation.RawAnimation;
+import software.bernie.geckolib.core.animatable.instance.AnimatableInstanceCache;
+import software.bernie.geckolib.core.animation.AnimatableManager;
+import software.bernie.geckolib.core.animation.AnimationController;
+import software.bernie.geckolib.core.animation.AnimationState;
+import software.bernie.geckolib.core.object.PlayState;
+import software.bernie.geckolib.core.animation.RawAnimation;
 import software.bernie.geckolib.util.GeckoLibUtil;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
@@ -55,13 +56,12 @@ import net.minecraft.world.phys.AABB;
 // Modules
 import net.z2six.featheredfriend.entity.raven.pathing.RavenAStarPathing;
 import net.z2six.featheredfriend.world.TamedRavenScrollWatcher;
-import net.z2six.featheredfriend.entity.raven.modules.TamedRavenDeathHandler;
 
 import java.util.Collections;
 import java.util.List;
 
 /**
- * neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenEntity.java
+ * forge/src/main/java/net/z2six/featheredfriend/entity/raven/RavenEntity.java
  *
  * Raven entity with phase-based AI focusing on:
  *  - Perching ~75% of the time (IDLE_GROUND on LEAVES, NO_AIR).
@@ -133,21 +133,24 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     // Sound handling
     // --------------------
 
-    // Lazy-resolved sound IDs for raven SFX
+    // Sound IDs (1.20.x style)
     private static final ResourceLocation SOUND_RAVEN_CAWING_NORMAL_ID =
-            ResourceLocation.fromNamespaceAndPath("featheredfriend", "raven.cawing_normal");
+            new ResourceLocation("featheredfriend", "raven.cawing_normal");
 
-    // You might use these later from other behaviors:
     private static final ResourceLocation SOUND_RAVEN_CAW_AGREE_ID =
-            ResourceLocation.fromNamespaceAndPath("featheredfriend", "raven.caw_agree");
+            new ResourceLocation("featheredfriend", "raven.caw_agree");
+
     private static final ResourceLocation SOUND_RAVEN_CAW_DMG_ID =
-            ResourceLocation.fromNamespaceAndPath("featheredfriend", "raven.caw_dmg");
+            new ResourceLocation("featheredfriend", "raven.caw_dmg");
+
     private static final ResourceLocation SOUND_RAVEN_CAW_WHISTLE_ID =
-            ResourceLocation.fromNamespaceAndPath("featheredfriend", "raven.caw_whistle");
+            new ResourceLocation("featheredfriend", "raven.caw_whistle");
+
     private static final ResourceLocation SOUND_RAVEN_AIR_WOOSH_ID =
-            ResourceLocation.fromNamespaceAndPath("featheredfriend", "raven.air_woosh");
+            new ResourceLocation("featheredfriend", "raven.air_woosh");
+
     private static final ResourceLocation SOUND_RAVEN_TELEPORT_ID =
-            ResourceLocation.fromNamespaceAndPath("featheredfriend", "raven.teleport");
+            new ResourceLocation("featheredfriend", "raven.teleport");
 
     // Cached SoundEvents (lazy-resolved from the IDs above)
     private static SoundEvent cachedRavenCawingNormal = null;
@@ -356,27 +359,27 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     // -------------
 
     @Override
-    protected void defineSynchedData(SynchedEntityData.Builder builder) {
-        super.defineSynchedData(builder);
+    protected void defineSynchedData() {
+        super.defineSynchedData();
 
         // Core raven state
-        builder.define(DATA_VARIANT, RavenVariant.NORMAL.id());
-        builder.define(DATA_ANIM_MODE, RavenAnimMode.AUTO.id());
-        builder.define(DATA_AI_STATE, RavenAIState.IDLE_GROUND.id());
+        this.entityData.define(DATA_VARIANT, RavenVariant.NORMAL.id());
+        this.entityData.define(DATA_ANIM_MODE, RavenAnimMode.AUTO.id());
+        this.entityData.define(DATA_AI_STATE, RavenAIState.IDLE_GROUND.id());
 
         // Follow cooldown shared with LureFollowTame via DATA_FOLLOW_COOLDOWN_TICKS
-        builder.define(DATA_FOLLOW_COOLDOWN_TICKS, 0);
+        this.entityData.define(DATA_FOLLOW_COOLDOWN_TICKS, 0);
 
         // Teleport FX sync (client renders short burst)
-        builder.define(Teleportation.DATA_TELEPORT_FX_TICKS, 0);
-        builder.define(Teleportation.DATA_TELEPORT_FX_SEED, 0L);
+        this.entityData.define(Teleportation.DATA_TELEPORT_FX_TICKS, 0);
+        this.entityData.define(Teleportation.DATA_TELEPORT_FX_SEED, 0L);
 
         // Transparency
-        builder.define(Teleportation.DATA_TELEPORT_FADE_ALPHA, 255);
+        this.entityData.define(Teleportation.DATA_TELEPORT_FADE_ALPHA, 255);
 
         // Lure/follow flags
-        builder.define(DATA_LURE_FOLLOW_ARMED, Boolean.FALSE);
-        builder.define(DATA_LURE_FOLLOW_ACTIVE, Boolean.FALSE);
+        this.entityData.define(DATA_LURE_FOLLOW_ARMED, Boolean.FALSE);
+        this.entityData.define(DATA_LURE_FOLLOW_ACTIVE, Boolean.FALSE);
     }
 
     // -----------------
@@ -387,7 +390,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         return RavenVariant.fromId(this.entityData.get(DATA_VARIANT));
     }
 
-    public void setRavenVariant(@Nullable RavenVariant variant) {
+    public void setRavenVariant(RavenVariant variant) {
         if (variant == null) {
             variant = RavenVariant.NORMAL;
         }
@@ -402,7 +405,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         return RavenAnimMode.fromId(this.entityData.get(DATA_ANIM_MODE));
     }
 
-    public void setAnimMode(@Nullable RavenAnimMode mode) {
+    public void setAnimMode(RavenAnimMode mode) {
         if (mode == null) {
             mode = RavenAnimMode.AUTO;
         }
@@ -417,7 +420,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         return RavenAIState.fromId(this.entityData.get(DATA_AI_STATE));
     }
 
-    public void setAIState(@Nullable RavenAIState state) {
+    public void setAIState(RavenAIState state) {
         if (state == null) {
             state = RavenAIState.IDLE_GROUND;
         }
@@ -1028,7 +1031,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
      *  - no more int->boolean mismatch
      *  - no duplicate ensurePathTo signatures
      */
-    private boolean ensurePathTo(@Nullable Vec3 goal, int timeoutTicks, long seed, @Nullable String reason) {
+    private boolean ensurePathTo(Vec3 goal, int timeoutTicks, long seed, String reason) {
         // Derive priority based on why we're planning (keeps all existing call sites unchanged).
         boolean highPriority = isHighPriorityReason(reason);
 
@@ -1045,7 +1048,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
      * Optional compatibility overload if you ever want to call it explicitly with a boolean.
      * (Not required for your current code, but keeps the API clean.)
      */
-    private boolean ensurePathTo(@Nullable Vec3 goal, boolean highPriority, long seed, @Nullable String reason) {
+    private boolean ensurePathTo(Vec3 goal, boolean highPriority, long seed, String reason) {
         // Default timeout if caller didn't provide one.
         // Keep it modest: long enough to move to a waypoint, short enough to replan.
         final int defaultTimeout = 6 * 20;
@@ -1065,11 +1068,11 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
      *    => the raven never flies in an air block that has a solid neighbor horizontally
      *       or directly overhead; only true 3x3 corridors / open space are valid.
      */
-    private boolean ensurePathTo(@Nullable Vec3 goal,
+    private boolean ensurePathTo(Vec3 goal,
                                  boolean highPriority,
                                  int timeoutTicks,
                                  long seed,
-                                 @Nullable String reason) {
+                                 String reason) {
         if (this.level().isClientSide) {
             return false;
         }
@@ -1275,7 +1278,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
      * You wanted retries / return-home / follow / landing approach to be allowed to punch through throttles.
      * This keeps behavior stable without rewriting all your call sites to pass booleans everywhere.
      */
-    private boolean isHighPriorityReason(@Nullable String reason) {
+    private boolean isHighPriorityReason(String reason) {
         if (reason == null || reason.isEmpty()) {
             return false;
         }
@@ -1449,7 +1452,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     }
 
     @Override
-    public @Nullable AgeableMob getBreedOffspring(ServerLevel level, AgeableMob otherParent) {
+    public AgeableMob getBreedOffspring(ServerLevel level, AgeableMob otherParent) {
         if (this.tickCount % 200 == 0) {
             //LOG.debug("[RavenEntity] getBreedOffspring called but breeding is not implemented (returning null).");
         }
@@ -1484,35 +1487,20 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             net.minecraft.world.level.ServerLevelAccessor level,
             net.minecraft.world.DifficultyInstance difficulty,
             net.minecraft.world.entity.MobSpawnType spawnType,
-            @org.jetbrains.annotations.Nullable net.minecraft.world.entity.SpawnGroupData spawnGroupData
+            @org.jetbrains.annotations.Nullable net.minecraft.world.entity.SpawnGroupData spawnGroupData,
+            @org.jetbrains.annotations.Nullable CompoundTag spawnTag
     ) {
-        net.minecraft.world.entity.SpawnGroupData out = null;
+        net.minecraft.world.entity.SpawnGroupData out;
 
         try {
-            out = super.finalizeSpawn(level, difficulty, spawnType, spawnGroupData);
+            out = super.finalizeSpawn(level, difficulty, spawnType, spawnGroupData, spawnTag);
         } catch (Throwable t) {
-            // Fail-safe: if vanilla spawn init ever changes or throws, we still want the raven to exist.
-            //LOG.warn("[RavenEntity] finalizeSpawn: super.finalizeSpawn failed safely: {}", t.toString());
-            out = spawnGroupData;
+            out = spawnGroupData; // fail-safe
         }
 
         try {
-            // ------------------------------------------------------------
-            // Roll per-spawn tame-cost (3..6 golden nuggets)
-            // Only roll if not already set (e.g., NBT-loaded or manually assigned).
-            // ------------------------------------------------------------
             initGoldenNuggetsRequiredToTameIfNeeded("finalizeSpawn:" + spawnType);
-
-            if (this.tickCount % 20 == 0) {
-                /* LOG.debug("[RavenEntity] finalizeSpawn: nuggetsRequiredToTame={} spawnType={} pos={}",
-                        this.getGoldenNuggetsRequiredToTame(),
-                        spawnType,
-                        this.position());
-                 */
-            }
-        } catch (Throwable t) {
-            //LOG.warn("[RavenEntity] finalizeSpawn: tame-cost init failed safely: {}", t.toString());
-        }
+        } catch (Throwable ignored) {}
 
         return out;
     }
@@ -3275,7 +3263,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         int count = net.z2six.featheredfriend.entity.raven.modules.FeatherParticles.getFeathersPerBurst();
 
                         serverLevel.sendParticles(
-                                net.z2six.featheredfriend.registry.FFNeoForgeParticles.FEATHER.get(),
+                                FFForgeParticles.FEATHER.get(),
                                 fxX, fxY, fxZ,
                                 count,
                                 0.4D, 0.25D, 0.4D, // spread
