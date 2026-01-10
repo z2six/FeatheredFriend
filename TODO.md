@@ -20,8 +20,6 @@ A living backlog of planned work for the mod.
     - Balanced (no permanent near-invulnerability)
     - Compatible with existing combat / AI behavior
 
----
-
 ### Raven Status GUI — “Badge”
 Small, movable horizontal HUD bar with animated textures indicating raven state.  
 **Do not show** if the player has **no bound/tamed raven**.
@@ -39,12 +37,9 @@ Small, movable horizontal HUD bar with animated textures indicating raven state.
 - Died
 - Detected hostile mob or another player (within configurable radius)
 - Catch-all issue / needs attention ⚠
-
 **Notes**
 - Prefer: one primary state + optional small badges (to avoid combinatorial texture explosion)
 - Add hover tooltip or tiny subtext only if it stays unobtrusive
-
----
 
 ### Raven Status GUI — Text Log
 A lightweight, in-game status/event log using the **same event stream** as the badge HUD.
@@ -52,14 +47,14 @@ A lightweight, in-game status/event log using the **same event stream** as the b
 - Keep it readable (timestamps optional)
 - Optional filters (errors-only / delivery-only / combat-only)
 
----
-
 ### Taming overhaul
 Currently, you can just spam RMB while holding several nuggets. This is counteractive to the intent of the taming system, which is that the player has to stop, listen and think.
 - Introduce Iron Nuggets along with Golden Nuggets
 - Each raven (on spawn) has a random sequence of 3-6 nuggets
 - Nugget sequence includes Gold & Iron
 - Different sound cues for each type of nugget
+
+---
 
 ## Minor
 
@@ -69,20 +64,14 @@ Currently, you can just spam RMB while holding several nuggets. This is countera
     - Additional situational sound cues
     - Misc. small audio feedback improvements
 
----
-
 ### More stealing RP
 - When raven gets hit (and doesn't dodge), drop scroll and go into panick mode (playerAvoidance) or despawn
-
----
 
 ### Dedicated client-sided "favourite" stamp storage
 - Currently, the favouriting of Seal Stamps is not stored therefore resets each client restart.
 
----
 ### Configurable months
 - Allow users to configure the amount of months per year
 
----
 ### Font change client-sided config
 Allow clients to switch back to Vanilla fonts
