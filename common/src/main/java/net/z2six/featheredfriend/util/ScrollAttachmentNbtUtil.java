@@ -2,7 +2,6 @@
 package net.z2six.featheredfriend.util;
 
 import com.mojang.logging.LogUtils;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -11,7 +10,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.component.CustomData;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
@@ -29,20 +27,10 @@ import java.util.List;
  *     ]
  *   }
  *
- * This stays intentionally conservative:
- *  - Reads {id, Count} and optionally a data compound if present.
- *  - Writes back the same format.
- *  - Ignores invalid ids safely.
- *
- * IMPORTANT (MC 1.21+):
- *  - ItemStack no longer exposes getTag()/setTag().
- *  - Custom per-stack data is stored via DataComponents (e.g. DataComponents.CUSTOM_DATA).
- *
- * We store optional item data in the attachment entry under:
- *  - "CustomData": CompoundTag  (matches your ScrollViewMenu rebuildStackFromAttachmentTag)
- *
- * For backward compatibility, we also READ legacy "tag" if it exists,
- * but we will WRITE "CustomData".
+ * IMPORTANT (Forge 1.20.1):
+ * - DataComponents / CustomData component do not exist.
+ * - We preserve the exact same "CustomData" field in the attachment entry,
+ *   but apply it to ItemStacks by storing it under stack.getOrCreateTag().put("CustomData", ...).
  */
 public final class ScrollAttachmentNbtUtil {
 
@@ -54,6 +42,9 @@ public final class ScrollAttachmentNbtUtil {
     // Optional per-item attachment data keys
     private static final String LEGACY_TAG_KEY = "tag";
     private static final String CUSTOM_DATA_KEY = "CustomData";
+
+    // Where we store the former "minecraft:custom_data" payload in 1.20.1
+    private static final String STACK_CUSTOM_DATA_KEY = "CustomData";
 
     private ScrollAttachmentNbtUtil() {}
 
@@ -148,10 +139,10 @@ public final class ScrollAttachmentNbtUtil {
 
                 if (dataTag != null && !dataTag.isEmpty()) {
                     try {
-                        // Store as component custom data (MC 1.21+)
-                        stack.set(DataComponents.CUSTOM_DATA, CustomData.of(dataTag.copy()));
+                        // 1.20.1: store our custom payload under stack tag's "CustomData" compound
+                        stack.getOrCreateTag().put(STACK_CUSTOM_DATA_KEY, dataTag.copy());
                     } catch (Throwable applyErr) {
-                        LOG.warn("[ScrollAttachmentNbtUtil] Failed applying CustomData component for {} at index {}",
+                        LOG.warn("[ScrollAttachmentNbtUtil] Failed applying CustomData payload for {} at index {}",
                                 id, i, applyErr);
                     }
                 }
@@ -183,13 +174,15 @@ public final class ScrollAttachmentNbtUtil {
                 entry.putString("id", id.toString());
                 entry.putInt("Count", s.getCount());
 
-                // Preserve per-item CustomData via DataComponents (MC 1.21+)
+                // Preserve per-item CustomData payload (1.20.1: stored under stack tag sub-compound "CustomData")
                 try {
-                    CustomData cd = s.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
-                    CompoundTag tag = cd.copyTag();
-                    if (tag != null && !tag.isEmpty()) {
-                        // Write in the same shape your ScrollViewMenu expects ("CustomData")
-                        entry.put(CUSTOM_DATA_KEY, tag.copy());
+                    CompoundTag tag = s.getTag();
+                    if (tag != null && tag.contains(STACK_CUSTOM_DATA_KEY, Tag.TAG_COMPOUND)) {
+                        CompoundTag cd = tag.getCompound(STACK_CUSTOM_DATA_KEY);
+                        if (cd != null && !cd.isEmpty()) {
+                            // Write in the same shape your ScrollViewMenu expects ("CustomData")
+                            entry.put(CUSTOM_DATA_KEY, cd.copy());
+                        }
                     }
                 } catch (Throwable tagErr) {
                     LOG.warn("[ScrollAttachmentNbtUtil] writeAttachments: failed writing CustomData for {}", id, tagErr);

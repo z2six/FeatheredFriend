@@ -1,19 +1,16 @@
-// common/src/main/java/net/z2six/featheredfriend/network/BreakSealPacket.java
+// MainFile: common/src/main/java/net/z2six/featheredfriend/network/BreakSealPacket.java
 package net.z2six.featheredfriend.network;
 
 import com.mojang.logging.LogUtils;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.nbt.Tag;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.component.CustomData;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.menu.SealBreakGate;
 import org.jetbrains.annotations.NotNull;
@@ -25,15 +22,10 @@ import org.slf4j.Logger;
  * C2S payload sent the moment the player "breaks the seal" by clicking the wax area
  * in ScrollViewScreen (the click that starts the OPENING animation).
  *
- * Server behaviour:
- *  1) Identify the exact scroll_sealed stack (slot-hint first, fallback scan)
- *  2) Replace that stack with scroll_opened
- *  3) Copy SealedScroll NBT data EXCEPT Attachments into the opened scroll
- *  4) Mark current container as "seal broken this session" (via common interface)
- *
- * Identification:
- *  - slotHint: 36 main hand, 37 off hand, 0..35 inventory, -1 unknown
- *  - fingerprint fields: seed, recipientUUID, dateText, senderName
+ * Forge 1.20.1 note:
+ * - CustomPacketPayload/StreamCodec/RegistryFriendlyByteBuf do not exist.
+ * - This packet keeps the exact same fields + encode/decode logic, but uses FriendlyByteBuf.
+ * - Former DataComponents.CUSTOM_DATA payload is stored under ItemStack tag sub-compound "CustomData".
  */
 public record BreakSealPacket(
         int slotHint,
@@ -41,17 +33,16 @@ public record BreakSealPacket(
         String recipientUUID,
         String dateText,
         String senderName
-) implements CustomPacketPayload {
+) {
 
     private static final Logger LOG = LogUtils.getLogger();
 
-    public static final Type<BreakSealPacket> TYPE =
-            new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "break_seal"));
+    public static final ResourceLocation ID = new ResourceLocation(Constants.MOD_ID, "break_seal");
 
-    public static final StreamCodec<RegistryFriendlyByteBuf, BreakSealPacket> STREAM_CODEC =
-            StreamCodec.of(BreakSealPacket::encode, BreakSealPacket::decode);
+    // Where we store the former "minecraft:custom_data" payload in 1.20.1
+    private static final String STACK_CUSTOM_DATA_KEY = "CustomData";
 
-    private static void encode(@NotNull RegistryFriendlyByteBuf buf, @NotNull BreakSealPacket p) {
+    public static void encode(@NotNull FriendlyByteBuf buf, @NotNull BreakSealPacket p) {
         try {
             buf.writeVarInt(p.slotHint);
             buf.writeLong(p.seed);
@@ -63,7 +54,7 @@ public record BreakSealPacket(
         }
     }
 
-    private static @NotNull BreakSealPacket decode(@NotNull RegistryFriendlyByteBuf buf) {
+    public static @NotNull BreakSealPacket decode(@NotNull FriendlyByteBuf buf) {
         try {
             int slotHint = buf.readVarInt();
             long seed = buf.readLong();
@@ -75,11 +66,6 @@ public record BreakSealPacket(
             LOG.error("[BreakSealPacket] decode failed; returning safe defaults", t);
             return new BreakSealPacket(-1, 0L, "", "", "");
         }
-    }
-
-    @Override
-    public @NotNull Type<BreakSealPacket> type() {
-        return TYPE;
     }
 
     // ---------------------------------------------------------------------
@@ -294,8 +280,7 @@ public record BreakSealPacket(
             if (stack.isEmpty()) return false;
             if (stack.getItem() != sealedItem) return false;
 
-            CustomData cd = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
-            CompoundTag root = cd.copyTag();
+            CompoundTag root = getCustomDataCopy(stack);
             if (root == null || root.isEmpty()) return false;
             if (!root.contains("SealedScroll", CompoundTag.TAG_COMPOUND)) return false;
 
@@ -397,8 +382,7 @@ public record BreakSealPacket(
     private static boolean copySealedScrollDataWithoutAttachments(@NotNull ItemStack sealed,
                                                                   @NotNull ItemStack opened) {
         try {
-            CustomData sealedCd = sealed.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
-            CompoundTag sealedRoot = sealedCd.copyTag();
+            CompoundTag sealedRoot = getCustomDataCopy(sealed);
             if (sealedRoot == null || sealedRoot.isEmpty()) {
                 LOG.warn("[BreakSealPacket] Sealed stack has no CUSTOM_DATA; nothing to copy");
                 return false;
@@ -428,7 +412,7 @@ public record BreakSealPacket(
             }
 
             openedRoot.put("SealedScroll", openedSeal);
-            opened.set(DataComponents.CUSTOM_DATA, CustomData.of(openedRoot));
+            setCustomData(opened, openedRoot);
 
             LOG.debug("[BreakSealPacket] Copied SealedScroll data (without attachments) onto opened scroll");
             return true;
@@ -440,7 +424,7 @@ public record BreakSealPacket(
 
     private static Item resolveItemByPath(@NotNull String path) {
         try {
-            ResourceLocation id = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, path);
+            ResourceLocation id = new ResourceLocation(Constants.MOD_ID, path);
             Item item = BuiltInRegistries.ITEM.get(id);
             if (item == null) {
                 LOG.error("[BreakSealPacket] resolveItemByPath: item {} is null", id);
@@ -466,5 +450,31 @@ public record BreakSealPacket(
         if (s == null) return "null";
         if (s.length() <= 120) return s;
         return s.substring(0, 120) + "...";
+    }
+
+    // ---------------------------------------------------------------------
+    // CustomData compatibility (1.20.1)
+    // ---------------------------------------------------------------------
+
+    private static @NotNull CompoundTag getCustomDataCopy(@NotNull ItemStack stack) {
+        try {
+            CompoundTag tag = stack.getTag();
+            if (tag == null) return new CompoundTag();
+            if (!tag.contains(STACK_CUSTOM_DATA_KEY, Tag.TAG_COMPOUND)) return new CompoundTag();
+            CompoundTag cd = tag.getCompound(STACK_CUSTOM_DATA_KEY);
+            return cd == null ? new CompoundTag() : cd.copy();
+        } catch (Throwable t) {
+            LOG.error("[BreakSealPacket] getCustomDataCopy failed", t);
+            return new CompoundTag();
+        }
+    }
+
+    private static void setCustomData(@NotNull ItemStack stack, @NotNull CompoundTag customDataRoot) {
+        try {
+            CompoundTag tag = stack.getOrCreateTag();
+            tag.put(STACK_CUSTOM_DATA_KEY, customDataRoot);
+        } catch (Throwable t) {
+            LOG.error("[BreakSealPacket] setCustomData failed", t);
+        }
     }
 }

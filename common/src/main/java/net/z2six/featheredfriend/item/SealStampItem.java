@@ -1,8 +1,7 @@
-// MainFile: common/src/main/java/net/z2six/featheredfriend/content/item/SealStampItem.java
+// MainFile: common/src/main/java/net/z2six/featheredfriend/item/SealStampItem.java
 package net.z2six.featheredfriend.item;
 
 import com.mojang.logging.LogUtils;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -14,6 +13,7 @@ import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.level.Level;
 import net.z2six.featheredfriend.platform.Services;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.util.List;
@@ -25,12 +25,11 @@ import java.util.List;
  *
  * - Right-click (RMB) with this item in hand opens the Seal-carving GUI,
  *   but only if the stamp is not yet etched.
- * - "Etched" state is determined purely by data stored in the CUSTOM_DATA
- *   component (no legacy NBT helpers like hasTag()/getTag()).
+ * - "Etched" state is determined purely by data stored in custom per-stack data.
  *
- * For now (step 1):
- *  - Wire RMB → open a dedicated placeholder GUI using a separate menu/screen
- *    from the scroll sealing GUI.
+ * Forge 1.20.1 note:
+ * - DataComponents/CUSTOM_DATA do not exist. We store the same custom payload under
+ *   the ItemStack's tag as a dedicated sub-compound named "CustomData".
  */
 public class SealStampItem extends Item {
 
@@ -42,6 +41,9 @@ public class SealStampItem extends Item {
     private static final String NBT_SEED        = "Seed";
     private static final String NBT_SLICES      = "Slices";
     private static final String NBT_SHAPESET    = "ShapeSet";
+
+    // Where we store the former "minecraft:custom_data" payload in 1.20.1
+    private static final String STACK_CUSTOM_DATA_KEY = "CustomData";
 
     public SealStampItem(@NotNull Properties properties) {
         super(properties);
@@ -95,13 +97,13 @@ public class SealStampItem extends Item {
     }
 
     // ---------------------------------------------------------------------
-    // Etched state (uses CUSTOM_DATA, no legacy hasTag/getTag)
+    // Etched state (uses custom data payload)
     // ---------------------------------------------------------------------
 
     /**
      * Returns true if this stamp already has an etched seal.
      *
-     * Layout in CUSTOM_DATA (to be written in a later step):
+     * Layout in custom data:
      *
      *   CustomData: {
      *     SealStamp: {
@@ -114,17 +116,13 @@ public class SealStampItem extends Item {
      */
     public static boolean isEtched(@NotNull ItemStack stack) {
         try {
-            var customData = stack.getOrDefault(
-                    DataComponents.CUSTOM_DATA,
-                    net.minecraft.world.item.component.CustomData.EMPTY
-            );
-            if (customData.isEmpty()) {
+            CompoundTag root = getCustomDataCopy(stack);
+            if (root == null || root.isEmpty()) {
                 LOG.debug("[SealStampItem] isEtched: no CustomData on stack");
                 return false;
             }
 
-            CompoundTag root = customData.copyTag();
-            if (root == null || !root.contains(NBT_SEAL_ROOT)) {
+            if (!root.contains(NBT_SEAL_ROOT)) {
                 LOG.debug("[SealStampItem] isEtched: no '{}' compound found", NBT_SEAL_ROOT);
                 return false;
             }
@@ -160,10 +158,10 @@ public class SealStampItem extends Item {
 
     @Override
     public void appendHoverText(@NotNull ItemStack stack,
-                                @NotNull TooltipContext context,
+                                @Nullable Level level,
                                 @NotNull List<Component> tooltip,
                                 @NotNull TooltipFlag flag) {
-        super.appendHoverText(stack, context, tooltip, flag);
+        super.appendHoverText(stack, level, tooltip, flag);
 
         try {
             if (isEtched(stack)) {
@@ -174,6 +172,27 @@ public class SealStampItem extends Item {
             }
         } catch (Throwable t) {
             LOG.error("[SealStampItem] appendHoverText failed", t);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Internal helpers (1.20.1 compatibility)
+    // ---------------------------------------------------------------------
+
+    private static @NotNull CompoundTag getCustomDataCopy(@NotNull ItemStack stack) {
+        try {
+            CompoundTag tag = stack.getTag();
+            if (tag == null) {
+                return new CompoundTag();
+            }
+            if (!tag.contains(STACK_CUSTOM_DATA_KEY, CompoundTag.TAG_COMPOUND)) {
+                return new CompoundTag();
+            }
+            CompoundTag cd = tag.getCompound(STACK_CUSTOM_DATA_KEY);
+            return cd == null ? new CompoundTag() : cd.copy();
+        } catch (Throwable t) {
+            LOG.error("[SealStampItem] getCustomDataCopy failed", t);
+            return new CompoundTag();
         }
     }
 }

@@ -2,15 +2,12 @@
 package net.z2six.featheredfriend.network;
 
 import com.mojang.logging.LogUtils;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.nbt.Tag;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.CustomData;
 import net.z2six.featheredfriend.Constants;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -20,7 +17,7 @@ import org.slf4j.Logger;
  *
  * C2S payload sent when the player finishes carving a seal stamp in the GUI.
  *
- * Writes into the stamp's CustomData component:
+ * Writes into the stamp's CustomData payload:
  *
  *   CustomData: {
  *     SealStamp: {
@@ -31,10 +28,9 @@ import org.slf4j.Logger;
  *     }
  *   }
  *
- * Slot mapping:
- *  - 0–35: inventory slots (if used)
- *  - 36:   main hand
- *  - 37:   off hand
+ * Forge 1.20.1 note:
+ * - We store the former DataComponents.CUSTOM_DATA payload under ItemStack tag sub-compound "CustomData".
+ * - Uses FriendlyByteBuf for encode/decode.
  */
 public record SealStampCarveResultPacket(
         int stampSlot,
@@ -42,22 +38,21 @@ public record SealStampCarveResultPacket(
         int slices,
         int style,
         String ownerName
-) implements CustomPacketPayload {
+) {
 
     private static final Logger LOG = LogUtils.getLogger();
 
+    public static final ResourceLocation ID = new ResourceLocation(Constants.MOD_ID, "seal_stamp_carve_result");
+
+    // Where we store the former "minecraft:custom_data" payload in 1.20.1
+    private static final String STACK_CUSTOM_DATA_KEY = "CustomData";
+
     // ---------------------------------------------------------------------
-    // Payload type & codec
+    // Codec
     // ---------------------------------------------------------------------
 
-    public static final Type<SealStampCarveResultPacket> TYPE =
-            new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "seal_stamp_carve_result"));
-
-    public static final StreamCodec<RegistryFriendlyByteBuf, SealStampCarveResultPacket> STREAM_CODEC =
-            StreamCodec.of(SealStampCarveResultPacket::encode, SealStampCarveResultPacket::decode);
-
-    private static void encode(@NotNull RegistryFriendlyByteBuf buf,
-                               @NotNull SealStampCarveResultPacket msg) {
+    public static void encode(@NotNull FriendlyByteBuf buf,
+                              @NotNull SealStampCarveResultPacket msg) {
         try {
             buf.writeInt(msg.stampSlot);
             buf.writeLong(msg.seed);
@@ -69,7 +64,7 @@ public record SealStampCarveResultPacket(
         }
     }
 
-    private static @NotNull SealStampCarveResultPacket decode(@NotNull RegistryFriendlyByteBuf buf) {
+    public static @NotNull SealStampCarveResultPacket decode(@NotNull FriendlyByteBuf buf) {
         try {
             int slot = buf.readInt();
             long seed = buf.readLong();
@@ -81,11 +76,6 @@ public record SealStampCarveResultPacket(
             LOG.error("[SealStampCarveResultPacket] decode failed, returning safe default", t);
             return new SealStampCarveResultPacket(-1, 0L, 0, 0, "");
         }
-    }
-
-    @Override
-    public @NotNull Type<SealStampCarveResultPacket> type() {
-        return TYPE;
     }
 
     // ---------------------------------------------------------------------
@@ -118,9 +108,8 @@ public record SealStampCarveResultPacket(
                 return;
             }
 
-            // Read existing CustomData via DataComponents.CUSTOM_DATA
-            CustomData customData = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
-            CompoundTag root = customData.copyTag();
+            // Read existing CustomData payload from stack tag sub-compound "CustomData"
+            CompoundTag root = getCustomDataCopy(stack);
             if (root == null) {
                 root = new CompoundTag();
             }
@@ -134,8 +123,8 @@ public record SealStampCarveResultPacket(
 
             root.put("SealStamp", sealRoot);
 
-            // Write back into the CUSTOM_DATA component
-            stack.set(DataComponents.CUSTOM_DATA, CustomData.of(root));
+            // Write back into the custom payload
+            setCustomData(stack, root);
 
             LOG.info(
                     "[SealStampCarveResultPacket] Wrote seal data to slot {} for player {} (seed={} slices={} style={} owner='{}')",
@@ -149,6 +138,32 @@ public record SealStampCarveResultPacket(
 
         } catch (Throwable t) {
             LOG.error("[SealStampCarveResultPacket] handle failed", t);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // CustomData compatibility (1.20.1)
+    // ---------------------------------------------------------------------
+
+    private static @NotNull CompoundTag getCustomDataCopy(@NotNull ItemStack stack) {
+        try {
+            CompoundTag tag = stack.getTag();
+            if (tag == null) return new CompoundTag();
+            if (!tag.contains(STACK_CUSTOM_DATA_KEY, Tag.TAG_COMPOUND)) return new CompoundTag();
+            CompoundTag cd = tag.getCompound(STACK_CUSTOM_DATA_KEY);
+            return cd == null ? new CompoundTag() : cd.copy();
+        } catch (Throwable t) {
+            LOG.error("[SealStampCarveResultPacket] getCustomDataCopy failed", t);
+            return new CompoundTag();
+        }
+    }
+
+    private static void setCustomData(@NotNull ItemStack stack, @NotNull CompoundTag customDataRoot) {
+        try {
+            CompoundTag tag = stack.getOrCreateTag();
+            tag.put(STACK_CUSTOM_DATA_KEY, customDataRoot);
+        } catch (Throwable t) {
+            LOG.error("[SealStampCarveResultPacket] setCustomData failed", t);
         }
     }
 }

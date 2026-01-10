@@ -2,19 +2,16 @@
 package net.z2six.featheredfriend.network;
 
 import com.mojang.logging.LogUtils;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.nbt.Tag;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.component.CustomData;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.menu.ScrollAttachmentProvider;
 import org.jetbrains.annotations.NotNull;
@@ -23,32 +20,9 @@ import org.slf4j.Logger;
 /**
  * // common/src/main/java/net/z2six/featheredfriend/network/WaxSealPacket.java
  *
- * Handles the "wax seal" action when the player clicks inside the wax area
- * on the ScrollSealingScreen with an etched Seal Stamp selected.
- *
- * Server-side behaviour:
- *  1) Remove 1x featheredfriend:scroll_unsealed from the player's inventory.
- *  2) Create 1x featheredfriend:scroll_sealed with all scroll NBT data:
- *     - DateText
- *     - RecipientName
- *     - RecipientUUID
- *     - RecipientText
- *     - MessageText
- *     - SignatureText
- *     - SenderName (from the Seal Stamp, not anything else)
- *     - Seed
- *     - Slices
- *     - Style
- *     - Attachments (if any) taken from the current ScrollAttachmentProvider
- *       container (ScrollSealingMenu attachment bar).
- *  3) Try to add the sealed scroll to the inventory; if full, drop at player.
- *
- * Attachments:
- *  - If the player's current containerMenu implements ScrollAttachmentProvider,
- *    all non-empty attachment slots are serialized into a "Attachments" ListTag
- *    in the SealedScroll compound.
- *  - The provider's slots are cleared and suppressAttachmentRefundOnClose(true)
- *    is set so the menu does not refund them again on close.
+ * Forge 1.20.1 note:
+ * - Uses FriendlyByteBuf for encode/decode.
+ * - Former DataComponents.CUSTOM_DATA payload is stored under ItemStack tag sub-compound "CustomData".
  */
 public record WaxSealPacket(
         int selectedStampSlot,
@@ -62,21 +36,20 @@ public record WaxSealPacket(
         int slices,
         int style,
         String senderName
-) implements CustomPacketPayload {
+) {
 
     private static final Logger LOG = LogUtils.getLogger();
 
-    public static final Type<WaxSealPacket> TYPE =
-            new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "wax_seal"));
+    public static final ResourceLocation ID = new ResourceLocation(Constants.MOD_ID, "wax_seal");
 
-    public static final StreamCodec<RegistryFriendlyByteBuf, WaxSealPacket> STREAM_CODEC =
-            StreamCodec.of(WaxSealPacket::encode, WaxSealPacket::decode);
+    // Where we store the former "minecraft:custom_data" payload in 1.20.1
+    private static final String STACK_CUSTOM_DATA_KEY = "CustomData";
 
     // ---------------------------------------------------------------------
     // Codec
     // ---------------------------------------------------------------------
 
-    private static void encode(@NotNull RegistryFriendlyByteBuf buf, @NotNull WaxSealPacket p) {
+    public static void encode(@NotNull FriendlyByteBuf buf, @NotNull WaxSealPacket p) {
         try {
             buf.writeVarInt(p.selectedStampSlot);
             buf.writeUtf(p.dateText, 256);
@@ -94,7 +67,7 @@ public record WaxSealPacket(
         }
     }
 
-    private static @NotNull WaxSealPacket decode(@NotNull RegistryFriendlyByteBuf buf) {
+    public static @NotNull WaxSealPacket decode(@NotNull FriendlyByteBuf buf) {
         try {
             int slot = buf.readVarInt();
             String dateText = buf.readUtf(256);
@@ -125,11 +98,6 @@ public record WaxSealPacket(
                     ""
             );
         }
-    }
-
-    @Override
-    public @NotNull Type<WaxSealPacket> type() {
-        return TYPE;
     }
 
     // ---------------------------------------------------------------------
@@ -191,7 +159,7 @@ public record WaxSealPacket(
                             // We store:
                             //   - "id": full item ID (e.g. "minecraft:oak_log")
                             //   - "Count": stack size
-                            //   - "CustomData": copy of minecraft:custom_data (if present)
+                            //   - "CustomData": copy of our custom payload (if present)
                             ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
                             if (itemId == null) {
                                 LOG.warn("[WaxSealPacket] Attachment slot {} has item with null registry key; skipping", i);
@@ -202,12 +170,9 @@ public record WaxSealPacket(
                             stackTag.putInt("Count", stack.getCount());
 
                             try {
-                                CustomData cd = stack.get(DataComponents.CUSTOM_DATA);
-                                if (cd != null) {
-                                    CompoundTag customDataTag = cd.copyTag();
-                                    if (customDataTag != null && !customDataTag.isEmpty()) {
-                                        stackTag.put("CustomData", customDataTag);
-                                    }
+                                CompoundTag cd = getCustomDataCopy(stack);
+                                if (cd != null && !cd.isEmpty()) {
+                                    stackTag.put("CustomData", cd.copy());
                                 }
                             } catch (Throwable tCd) {
                                 LOG.error("[WaxSealPacket] Failed to copy CustomData for attachment slot {}", i, tCd);
@@ -266,8 +231,8 @@ public record WaxSealPacket(
             root.put("SealedScroll", seal);
 
             try {
-                // Correct 1.21+ API: set CUSTOM_DATA via DataComponents
-                sealed.set(DataComponents.CUSTOM_DATA, CustomData.of(root));
+                // 1.20.1: store our custom payload under the ItemStack tag's "CustomData" compound
+                setCustomData(sealed, root);
             } catch (Throwable tSet) {
                 LOG.error("[WaxSealPacket] Failed to attach CustomData to sealed scroll", tSet);
             }
@@ -320,7 +285,13 @@ public record WaxSealPacket(
             for (int i = 0; i < player.getInventory().items.size(); i++) {
                 ItemStack s = player.getInventory().items.get(i);
                 if (!s.isEmpty() && s.getItem() == unsealed) {
-                    ItemStack taken = s.copyWithCount(1);
+                    ItemStack taken = s.copy();
+                    try {
+                        taken.setCount(1);
+                    } catch (Throwable tSet) {
+                        LOG.error("[WaxSealPacket] Failed to set taken count to 1 at slot {}", i, tSet);
+                    }
+
                     try {
                         s.shrink(1);
                     } catch (Throwable tShrink) {
@@ -341,7 +312,7 @@ public record WaxSealPacket(
      */
     private static Item resolveItemByPath(@NotNull String path) {
         try {
-            ResourceLocation id = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, path);
+            ResourceLocation id = new ResourceLocation(Constants.MOD_ID, path);
             Item item = BuiltInRegistries.ITEM.get(id);
             if (item == null) {
                 LOG.error("[WaxSealPacket] resolveItemByPath: item {} is null", id);
@@ -372,6 +343,32 @@ public record WaxSealPacket(
         } catch (Throwable t) {
             LOG.error("[WaxSealPacket] safeString substring failed (len={} maxLen={})", input.length(), maxLen, t);
             return "";
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // CustomData compatibility (1.20.1)
+    // ---------------------------------------------------------------------
+
+    private static @NotNull CompoundTag getCustomDataCopy(@NotNull ItemStack stack) {
+        try {
+            CompoundTag tag = stack.getTag();
+            if (tag == null) return new CompoundTag();
+            if (!tag.contains(STACK_CUSTOM_DATA_KEY, Tag.TAG_COMPOUND)) return new CompoundTag();
+            CompoundTag cd = tag.getCompound(STACK_CUSTOM_DATA_KEY);
+            return cd == null ? new CompoundTag() : cd.copy();
+        } catch (Throwable t) {
+            LOG.error("[WaxSealPacket] getCustomDataCopy failed", t);
+            return new CompoundTag();
+        }
+    }
+
+    private static void setCustomData(@NotNull ItemStack stack, @NotNull CompoundTag customDataRoot) {
+        try {
+            CompoundTag tag = stack.getOrCreateTag();
+            tag.put(STACK_CUSTOM_DATA_KEY, customDataRoot);
+        } catch (Throwable t) {
+            LOG.error("[WaxSealPacket] setCustomData failed", t);
         }
     }
 }
