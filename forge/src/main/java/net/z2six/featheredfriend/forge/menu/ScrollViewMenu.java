@@ -16,6 +16,7 @@ import net.minecraft.world.item.ItemStack;
 import net.z2six.featheredfriend.menu.SealBreakGate;
 import net.z2six.featheredfriend.registry.FFForgeMenus;
 import org.slf4j.Logger;
+import net.z2six.featheredfriend.Constants;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -451,18 +452,24 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
                     hand.getCount(),
                     this.containerId);
 
-            CompoundTag root = hand.getTag();
-            if (root == null || root.isEmpty()) {
+            // ✅ CANONICAL READ: tag.<modid>.SealedScroll
+            CompoundTag tag = hand.getTag();
+            if (tag == null || tag.isEmpty()) {
                 LOG.info("[ScrollViewMenu] Snapshot load: root tag missing/empty");
                 return;
             }
 
-            if (!root.contains("SealedScroll", Tag.TAG_COMPOUND)) {
-                LOG.info("[ScrollViewMenu] Snapshot load: SealedScroll compound missing");
+            CompoundTag ff = tag.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)
+                    ? tag.getCompound(Constants.MOD_ID)
+                    : null;
+
+            if (ff == null || ff.isEmpty() || !ff.contains("SealedScroll", Tag.TAG_COMPOUND)) {
+                LOG.info("[ScrollViewMenu] Snapshot load: SealedScroll compound missing (expected tag.{}.SealedScroll)", Constants.MOD_ID);
                 return;
             }
 
-            CompoundTag seal = root.getCompound("SealedScroll");
+            CompoundTag seal = ff.getCompound("SealedScroll");
+
             if (!seal.contains("Attachments", Tag.TAG_LIST)) {
                 LOG.info("[ScrollViewMenu] Snapshot load: Attachments list missing");
                 return;
@@ -543,6 +550,24 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
     // ---------------------------------------------------------------------
     // Delivery helpers (unchanged)
     // ---------------------------------------------------------------------
+
+    private static CompoundTag getSealedScrollCompoundCanonical(ItemStack stack) {
+        try {
+            if (stack == null || stack.isEmpty()) return null;
+
+            CompoundTag tag = stack.getTag();
+            if (tag == null || tag.isEmpty()) return null;
+
+            if (!tag.contains(net.z2six.featheredfriend.Constants.MOD_ID, Tag.TAG_COMPOUND)) return null;
+            CompoundTag ff = tag.getCompound(net.z2six.featheredfriend.Constants.MOD_ID);
+
+            if (!ff.contains("SealedScroll", Tag.TAG_COMPOUND)) return null;
+            return ff.getCompound("SealedScroll");
+        } catch (Throwable t) {
+            LOG.error("[ScrollViewMenu] getSealedScrollCompoundCanonical failed", t);
+            return null;
+        }
+    }
 
     private static boolean tryAddWholeStack(Player player, ItemStack stack) {
         try {

@@ -354,13 +354,22 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             LOG.debug("[ScrollViewScreen] Using scroll stack from hand: item={} count={}",
                     BuiltInRegistries.ITEM.getKey(sealedScrollStack.getItem()), sealedScrollStack.getCount());
 
-            CompoundTag root = hand.getTag();
-            if (root == null || !root.contains("SealedScroll", Tag.TAG_COMPOUND)) {
-                LOG.warn("[ScrollViewScreen] SealedScroll NBT compound missing on held item");
+            CompoundTag tag = hand.getTag();
+            if (tag == null) {
+                LOG.warn("[ScrollViewScreen] SealedScroll NBT missing: held item tag is null");
                 return;
             }
 
-            CompoundTag seal = root.getCompound("SealedScroll");
+            CompoundTag ff = tag.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)
+                    ? tag.getCompound(Constants.MOD_ID)
+                    : null;
+
+            if (ff == null || !ff.contains("SealedScroll", Tag.TAG_COMPOUND)) {
+                LOG.warn("[ScrollViewScreen] SealedScroll NBT compound missing on held item (expected tag.{}.SealedScroll)", Constants.MOD_ID);
+                return;
+            }
+
+            CompoundTag seal = ff.getCompound("SealedScroll");
 
             this.dateText = safeTagString(seal, "DateText");
             this.recipientText = safeTagString(seal, "RecipientText");
@@ -1528,11 +1537,13 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
     private boolean matchesFingerprintClient(ItemStack stack) {
         try {
-            CompoundTag root = stack.getTag();
-            if (root == null || root.isEmpty()) return false;
-            if (!root.contains("SealedScroll", Tag.TAG_COMPOUND)) return false;
+            CompoundTag tag = stack.getTag();
+            if (tag == null || tag.isEmpty()) return false;
 
-            CompoundTag seal = root.getCompound("SealedScroll");
+            CompoundTag ff = tag.contains(Constants.MOD_ID, Tag.TAG_COMPOUND) ? tag.getCompound(Constants.MOD_ID) : null;
+            if (ff == null || !ff.contains("SealedScroll", Tag.TAG_COMPOUND)) return false;
+
+            CompoundTag seal = ff.getCompound("SealedScroll");
 
             long seed = 0L;
             try {
@@ -1587,31 +1598,27 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
     private static boolean copySealedScrollDataWithoutAttachmentsClient(ItemStack sealed, ItemStack opened) {
         try {
-            CompoundTag sealedRoot = sealed.getTag();
-            if (sealedRoot == null || sealedRoot.isEmpty()) {
-                return false;
-            }
-            if (!sealedRoot.contains("SealedScroll", Tag.TAG_COMPOUND)) {
-                return false;
-            }
+            CompoundTag sealedTag = sealed.getTag();
+            if (sealedTag == null || sealedTag.isEmpty()) return false;
 
-            CompoundTag sealedSeal = sealedRoot.getCompound("SealedScroll");
-            if (sealedSeal == null) {
-                return false;
-            }
+            CompoundTag ff = sealedTag.contains(Constants.MOD_ID, Tag.TAG_COMPOUND) ? sealedTag.getCompound(Constants.MOD_ID) : null;
+            if (ff == null || !ff.contains("SealedScroll", Tag.TAG_COMPOUND)) return false;
 
-            CompoundTag openedRoot = new CompoundTag();
+            CompoundTag sealedSeal = ff.getCompound("SealedScroll");
+            if (sealedSeal == null) return false;
+
+            CompoundTag openedTag = opened.getOrCreateTag();
+            CompoundTag openedFf = openedTag.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)
+                    ? openedTag.getCompound(Constants.MOD_ID)
+                    : new CompoundTag();
+
             CompoundTag openedSeal = sealedSeal.copy();
-
             if (openedSeal.contains("Attachments")) {
-                try {
-                    openedSeal.remove("Attachments");
-                } catch (Throwable ignored) {
-                }
+                openedSeal.remove("Attachments");
             }
 
-            openedRoot.put("SealedScroll", openedSeal);
-            opened.setTag(openedRoot);
+            openedFf.put("SealedScroll", openedSeal);
+            openedTag.put(Constants.MOD_ID, openedFf);
             return true;
         } catch (Throwable t) {
             LOG.error("[ScrollViewScreen] copySealedScrollDataWithoutAttachmentsClient failed", t);

@@ -13,19 +13,17 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.menu.SealBreakGate;
-
 import org.slf4j.Logger;
 
 /**
- * // common/src/main/java/net/z2six/featheredfriend/network/BreakSealPacket.java
+ * common/src/main/java/net/z2six/featheredfriend/network/BreakSealPacket.java
  *
- * C2S payload sent the moment the player "breaks the seal" by clicking the wax area
- * in ScrollViewScreen (the click that starts the OPENING animation).
+ * SINGLE CANONICAL NBT LOCATION:
+ *   stack.tag[Constants.MOD_ID].SealedScroll
+ * i.e.
+ *   tag.featheredfriend.SealedScroll
  *
- * Forge 1.20.1 note:
- * - CustomPacketPayload/StreamCodec/RegistryFriendlyByteBuf do not exist.
- * - This packet keeps the exact same fields + encode/decode logic, but uses FriendlyByteBuf.
- * - Former DataComponents.CUSTOM_DATA payload is stored under ItemStack tag sub-compound "CustomData".
+ * No CustomData usage here.
  */
 public record BreakSealPacket(
         int slotHint,
@@ -34,13 +32,9 @@ public record BreakSealPacket(
         String dateText,
         String senderName
 ) {
-
     private static final Logger LOG = LogUtils.getLogger();
 
     public static final ResourceLocation ID = new ResourceLocation(Constants.MOD_ID, "break_seal");
-
-    // Where we store the former "minecraft:custom_data" payload in 1.20.1
-    private static final String STACK_CUSTOM_DATA_KEY = "CustomData";
 
     public static void encode(FriendlyByteBuf buf, BreakSealPacket p) {
         try {
@@ -87,7 +81,7 @@ public record BreakSealPacket(
                     safeLog(p.dateText()),
                     safeLog(p.senderName()));
 
-            // We only trust this packet while the player is in a container that opts-in to seal-break gating.
+            // Only trust while the player is in a container that opts-in.
             if (!(serverPlayer.containerMenu instanceof SealBreakGate sealGate)) {
                 LOG.warn("[BreakSealPacket] handle: player {} containerMenu does not implement SealBreakGate (is {}); ignoring",
                         serverPlayer.getGameProfile().getName(),
@@ -119,7 +113,6 @@ public record BreakSealPacket(
                 LOG.error("[BreakSealPacket] scroll_sealed not found in registry; aborting conversion");
                 return;
             }
-
             if (target.stack.getItem() != sealedItem) {
                 LOG.warn("[BreakSealPacket] Matched stack item is not scroll_sealed (got {}); aborting conversion",
                         BuiltInRegistries.ITEM.getKey(target.stack.getItem()));
@@ -128,7 +121,7 @@ public record BreakSealPacket(
 
             ItemStack opened = new ItemStack(openedItem, 1);
 
-            // Copy SealedScroll custom data but REMOVE Attachments
+            // Copy SealedScroll but REMOVE Attachments
             boolean copied = copySealedScrollDataWithoutAttachments(target.stack, opened);
             if (!copied) {
                 LOG.warn("[BreakSealPacket] Failed to copy SealedScroll data (without attachments). Proceeding with opened scroll anyway.");
@@ -142,12 +135,20 @@ public record BreakSealPacket(
                 return;
             }
 
-            // Mark menu: this enables attachment delivery upon close.
+            // Mark menu: enables attachment delivery upon close.
             try {
                 sealGate.markSealBroken("BreakSealPacket");
             } catch (Throwable tMark) {
                 LOG.error("[BreakSealPacket] Failed to mark SealBreakGate seal broken; attachments may not deliver", tMark);
             }
+
+            // Make sure inventory/menu state gets pushed
+            try {
+                serverPlayer.getInventory().setChanged();
+            } catch (Throwable ignored) { }
+            try {
+                serverPlayer.containerMenu.broadcastChanges();
+            } catch (Throwable ignored) { }
 
             LOG.info("[BreakSealPacket] Conversion complete for player {}: scroll_sealed -> scroll_opened at {}",
                     serverPlayer.getGameProfile().getName(),
@@ -190,28 +191,19 @@ public record BreakSealPacket(
                 return null;
             }
 
-            // 1) Slot hint first (most exact)
+            // 1) Slot hint first
             IdentifiedStack hinted = findBySlotHint(player, p, sealedItem);
-            if (hinted != null) {
-                return hinted;
-            }
+            if (hinted != null) return hinted;
 
-            // 2) Fallback scan (hands + inventory)
-            IdentifiedStack scanned = scanAllForFingerprint(player, p, sealedItem);
-            if (scanned != null) {
-                return scanned;
-            }
-
-            return null;
+            // 2) Fallback scan
+            return scanAllForFingerprint(player, p, sealedItem);
         } catch (Throwable t) {
             LOG.error("[BreakSealPacket] findTargetSealedScroll failed", t);
             return null;
         }
     }
 
-    private static IdentifiedStack findBySlotHint(ServerPlayer player,
-                                                  BreakSealPacket p,
-                                                  Item sealedItem) {
+    private static IdentifiedStack findBySlotHint(ServerPlayer player, BreakSealPacket p, Item sealedItem) {
         try {
             int hint = p.slotHint();
             if (hint == 36) {
@@ -245,9 +237,7 @@ public record BreakSealPacket(
         }
     }
 
-    private static IdentifiedStack scanAllForFingerprint(ServerPlayer player,
-                                                         BreakSealPacket p,
-                                                         Item sealedItem) {
+    private static IdentifiedStack scanAllForFingerprint(ServerPlayer player, BreakSealPacket p, Item sealedItem) {
         try {
             ItemStack main = player.getMainHandItem();
             if (matchesFingerprintSealedScroll(main, p, sealedItem)) {
@@ -273,18 +263,13 @@ public record BreakSealPacket(
         }
     }
 
-    private static boolean matchesFingerprintSealedScroll(ItemStack stack,
-                                                          BreakSealPacket p,
-                                                          Item sealedItem) {
+    private static boolean matchesFingerprintSealedScroll(ItemStack stack, BreakSealPacket p, Item sealedItem) {
         try {
-            if (stack.isEmpty()) return false;
+            if (stack == null || stack.isEmpty()) return false;
             if (stack.getItem() != sealedItem) return false;
 
-            CompoundTag root = getCustomDataCopy(stack);
-            if (root == null || root.isEmpty()) return false;
-            if (!root.contains("SealedScroll", CompoundTag.TAG_COMPOUND)) return false;
-
-            CompoundTag seal = root.getCompound("SealedScroll");
+            CompoundTag seal = getSealedScrollCompound(stack);
+            if (seal == null) return false;
 
             long seed = 0L;
             try {
@@ -337,11 +322,9 @@ public record BreakSealPacket(
         }
     }
 
-    private static boolean replaceStackAtLocation(ServerPlayer player,
-                                                  IdentifiedStack identified,
-                                                  ItemStack replacement) {
+    private static boolean replaceStackAtLocation(ServerPlayer player, IdentifiedStack identified, ItemStack replacement) {
         try {
-            if (replacement.isEmpty()) {
+            if (replacement == null || replacement.isEmpty()) {
                 LOG.error("[BreakSealPacket] replaceStackAtLocation: replacement is EMPTY; refusing");
                 return false;
             }
@@ -376,51 +359,69 @@ public record BreakSealPacket(
     }
 
     /**
-     * Copies all SealedScroll NBT keys into opened, but strips Attachments so they can't be claimed twice.
-     * Returns true if at least a SealedScroll compound was present and copied.
+     * Copies SealedScroll into opened, but strips Attachments.
+     * Reads/writes ONLY tag.<modid>.SealedScroll.
      */
-    private static boolean copySealedScrollDataWithoutAttachments(ItemStack sealed,
-                                                                  ItemStack opened) {
+    private static boolean copySealedScrollDataWithoutAttachments(ItemStack sealed, ItemStack opened) {
         try {
-            CompoundTag sealedRoot = getCustomDataCopy(sealed);
-            if (sealedRoot == null || sealedRoot.isEmpty()) {
-                LOG.warn("[BreakSealPacket] Sealed stack has no CUSTOM_DATA; nothing to copy");
-                return false;
-            }
-
-            if (!sealedRoot.contains("SealedScroll", CompoundTag.TAG_COMPOUND)) {
-                LOG.warn("[BreakSealPacket] Sealed stack CUSTOM_DATA missing SealedScroll; nothing to copy");
-                return false;
-            }
-
-            CompoundTag sealedSeal = sealedRoot.getCompound("SealedScroll");
+            CompoundTag sealedSeal = getSealedScrollCompound(sealed);
             if (sealedSeal == null) {
-                LOG.warn("[BreakSealPacket] SealedScroll compound is null; nothing to copy");
+                LOG.warn("[BreakSealPacket] Sealed stack missing tag.{}.SealedScroll; nothing to copy", Constants.MOD_ID);
                 return false;
             }
 
-            CompoundTag openedRoot = new CompoundTag();
+            CompoundTag openedTag = opened.getOrCreateTag();
+            CompoundTag openedFf = openedTag.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)
+                    ? openedTag.getCompound(Constants.MOD_ID)
+                    : new CompoundTag();
+
             CompoundTag openedSeal = sealedSeal.copy();
 
             if (openedSeal.contains("Attachments")) {
-                try {
-                    openedSeal.remove("Attachments");
-                    LOG.info("[BreakSealPacket] Removed Attachments from opened scroll SealedScroll compound");
-                } catch (Throwable tRem) {
-                    LOG.error("[BreakSealPacket] Failed to remove Attachments key from SealedScroll copy", tRem);
-                }
+                openedSeal.remove("Attachments");
+                LOG.info("[BreakSealPacket] Removed Attachments from opened scroll SealedScroll compound");
             }
 
-            openedRoot.put("SealedScroll", openedSeal);
-            setCustomData(opened, openedRoot);
+            openedFf.put("SealedScroll", openedSeal);
+            openedTag.put(Constants.MOD_ID, openedFf);
 
-            LOG.debug("[BreakSealPacket] Copied SealedScroll data (without attachments) onto opened scroll");
+            LOG.debug("[BreakSealPacket] Copied SealedScroll data (without attachments) onto opened scroll (tag.{}.SealedScroll)", Constants.MOD_ID);
             return true;
         } catch (Throwable t) {
             LOG.error("[BreakSealPacket] copySealedScrollDataWithoutAttachments failed", t);
             return false;
         }
     }
+
+    // ---------------------------------------------------------------------
+    // Canonical sealed scroll accessor
+    // ---------------------------------------------------------------------
+
+    /**
+     * Returns the SealedScroll compound from tag.<modid>.SealedScroll, or null if missing.
+     */
+    private static CompoundTag getSealedScrollCompound(ItemStack stack) {
+        try {
+            if (stack == null || stack.isEmpty()) return null;
+
+            CompoundTag tag = stack.getTag();
+            if (tag == null || tag.isEmpty()) return null;
+
+            if (!tag.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)) return null;
+            CompoundTag ff = tag.getCompound(Constants.MOD_ID);
+            if (ff == null || ff.isEmpty()) return null;
+
+            if (!ff.contains("SealedScroll", Tag.TAG_COMPOUND)) return null;
+            return ff.getCompound("SealedScroll");
+        } catch (Throwable t) {
+            LOG.error("[BreakSealPacket] getSealedScrollCompound failed", t);
+            return null;
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Misc helpers
+    // ---------------------------------------------------------------------
 
     private static Item resolveItemByPath(String path) {
         try {
@@ -450,31 +451,5 @@ public record BreakSealPacket(
         if (s == null) return "null";
         if (s.length() <= 120) return s;
         return s.substring(0, 120) + "...";
-    }
-
-    // ---------------------------------------------------------------------
-    // CustomData compatibility (1.20.1)
-    // ---------------------------------------------------------------------
-
-    private static CompoundTag getCustomDataCopy(ItemStack stack) {
-        try {
-            CompoundTag tag = stack.getTag();
-            if (tag == null) return new CompoundTag();
-            if (!tag.contains(STACK_CUSTOM_DATA_KEY, Tag.TAG_COMPOUND)) return new CompoundTag();
-            CompoundTag cd = tag.getCompound(STACK_CUSTOM_DATA_KEY);
-            return cd == null ? new CompoundTag() : cd.copy();
-        } catch (Throwable t) {
-            LOG.error("[BreakSealPacket] getCustomDataCopy failed", t);
-            return new CompoundTag();
-        }
-    }
-
-    private static void setCustomData(ItemStack stack, CompoundTag customDataRoot) {
-        try {
-            CompoundTag tag = stack.getOrCreateTag();
-            tag.put(STACK_CUSTOM_DATA_KEY, customDataRoot);
-        } catch (Throwable t) {
-            LOG.error("[BreakSealPacket] setCustomData failed", t);
-        }
     }
 }
