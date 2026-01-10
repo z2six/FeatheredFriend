@@ -14,6 +14,7 @@ import net.minecraftforge.network.simple.SimpleChannel;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.data.FFKnownPlayersData;
 import org.slf4j.Logger;
+import net.z2six.featheredfriend.network.SealStampCarveResultPacket;
 
 import java.lang.reflect.Method;
 import java.util.*;
@@ -64,7 +65,10 @@ public final class FFNetwork {
         try {
             AtomicInteger id = new AtomicInteger(0);
 
+            // ---------------------------
             // C2S
+            // ---------------------------
+
             CHANNEL.messageBuilder(RequestKnownPlayersPacket.class, id.getAndIncrement(), NetworkDirection.PLAY_TO_SERVER)
                     .encoder(RequestKnownPlayersPacket::encode)
                     .decoder(RequestKnownPlayersPacket::decode)
@@ -83,7 +87,17 @@ public final class FFNetwork {
                     .consumerMainThread(FFNetwork::handleRavenNameChosenOnServer)
                     .add();
 
+            // ✅ NEW: C2S stamp carving result
+            CHANNEL.messageBuilder(SealStampCarveResultPacket.class, id.getAndIncrement(), NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(SealStampCarveResultPacket::encode)
+                    .decoder(SealStampCarveResultPacket::decode)
+                    .consumerMainThread(FFNetwork::handleSealStampCarveResultOnServer)
+                    .add();
+
+            // ---------------------------
             // S2C
+            // ---------------------------
+
             CHANNEL.messageBuilder(KnownPlayersPayload.class, id.getAndIncrement(), NetworkDirection.PLAY_TO_CLIENT)
                     .encoder(KnownPlayersPayload::encode)
                     .decoder(KnownPlayersPayload::decode)
@@ -99,6 +113,27 @@ public final class FFNetwork {
             LOG.info("[FFNetwork] Registered main messages OK (protocol={})", PROTOCOL_VERSION);
         } catch (Throwable t) {
             LOG.error("[FFNetwork] Failed to register main messages", t);
+        }
+    }
+
+    private static void handleSealStampCarveResultOnServer(
+            SealStampCarveResultPacket msg,
+            Supplier<NetworkEvent.Context> ctxSup
+    ) {
+        NetworkEvent.Context ctx = ctxSup.get();
+        try {
+            ServerPlayer sp = ctx.getSender();
+            if (sp == null) return;
+
+            ctx.enqueueWork(() -> {
+                try {
+                    SealStampCarveResultPacket.handle(msg, sp);
+                } catch (Throwable t) {
+                    LOG.error("[FFNetwork] Failed handling SealStampCarveResultPacket", t);
+                }
+            });
+        } finally {
+            ctx.setPacketHandled(true);
         }
     }
 
@@ -255,6 +290,15 @@ public final class FFNetwork {
     // ---------------------------
     // Send helpers
     // ---------------------------
+
+    public static void sendSealStampCarveResultToServer(SealStampCarveResultPacket msg) {
+        try {
+            CHANNEL.sendToServer(msg);
+            LOG.debug("[FFNetwork] Sent SealStampCarveResultPacket to server (slot={})", msg.stampSlot());
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendSealStampCarveResultToServer failed", t);
+        }
+    }
 
     public static void sendRavenNameChosenToServer(int ravenEntityId, String name) {
         try {

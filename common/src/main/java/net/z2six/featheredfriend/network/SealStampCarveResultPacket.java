@@ -51,8 +51,7 @@ public record SealStampCarveResultPacket(
     // Codec
     // ---------------------------------------------------------------------
 
-    public static void encode(FriendlyByteBuf buf,
-                              SealStampCarveResultPacket msg) {
+    public static void encode(SealStampCarveResultPacket msg, FriendlyByteBuf buf) {
         try {
             buf.writeInt(msg.stampSlot);
             buf.writeLong(msg.seed);

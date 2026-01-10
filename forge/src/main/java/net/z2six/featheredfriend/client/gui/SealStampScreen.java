@@ -13,7 +13,7 @@ import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.player.Inventory;
-// import net.neoforged.neoforge.network.PacketDistributor;
+import net.z2six.featheredfriend.network.FFNetwork;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.widget.MultiLineScrollTextWidget;
 import net.z2six.featheredfriend.item.SealStampItem;
@@ -673,12 +673,9 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                                 effectiveSlot, ownerName);
 
                         // Send the result to the server for actual NBT write
-                        boolean sent = sendToServerReflective(
+                        FFNetwork.sendSealStampCarveResultToServer(
                                 new SealStampCarveResultPacket(effectiveSlot, seed, slices, style, ownerName)
                         );
-                        if (!sent) {
-                            LOG.error("[SealStampScreen] Failed to send SealStampCarveResultPacket to server (reflective send)");
-                        }
 
                         // Close the container / GUI after a successful carve
                         try {
@@ -955,64 +952,6 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] computeSealStampSlot failed", t);
             return -1;
-        }
-    }
-
-    private static boolean sendToServerReflective(Object packet) {
-        try {
-            if (packet == null) {
-                LOG.error("[SealStampScreen] sendToServerReflective: packet is null");
-                return false;
-            }
-
-            // Load FFNetwork without hard-binding to its field names
-            Class<?> ffNetworkClass = Class.forName("net.z2six.featheredfriend.network.FFNetwork");
-
-            // Find a static field that looks like a SimpleChannel and has sendToServer(Object)
-            for (java.lang.reflect.Field f : ffNetworkClass.getDeclaredFields()) {
-                try {
-                    int mods = f.getModifiers();
-                    if (!java.lang.reflect.Modifier.isStatic(mods)) continue;
-
-                    f.setAccessible(true);
-                    Object channel = f.get(null);
-                    if (channel == null) continue;
-
-                    // Heuristic: class name ends with SimpleChannel and has sendToServer(packet)
-                    Class<?> chCls = channel.getClass();
-                    if (!chCls.getName().endsWith("SimpleChannel")) continue;
-
-                    try {
-                        java.lang.reflect.Method sendToServer = chCls.getMethod("sendToServer", Object.class);
-                        sendToServer.invoke(channel, packet);
-                        LOG.debug("[SealStampScreen] sendToServerReflective: sent via FFNetwork.{} ({})",
-                                f.getName(), chCls.getName());
-                        return true;
-                    } catch (NoSuchMethodException ignored) {
-                        // Some mappings use a typed method; try any single-arg method named sendToServer
-                        for (java.lang.reflect.Method m : chCls.getMethods()) {
-                            if (!"sendToServer".equals(m.getName())) continue;
-                            if (m.getParameterCount() != 1) continue;
-                            try {
-                                m.invoke(channel, packet);
-                                LOG.debug("[SealStampScreen] sendToServerReflective: sent via FFNetwork.{} ({}) using {}",
-                                        f.getName(), chCls.getName(), m.toString());
-                                return true;
-                            } catch (Throwable ignored2) {
-                                // keep scanning
-                            }
-                        }
-                    }
-                } catch (Throwable fieldErr) {
-                    LOG.debug("[SealStampScreen] sendToServerReflective: field scan error: {}", fieldErr.toString());
-                }
-            }
-
-            LOG.error("[SealStampScreen] sendToServerReflective: could not locate a usable SimpleChannel in FFNetwork");
-            return false;
-        } catch (Throwable t) {
-            LOG.error("[SealStampScreen] sendToServerReflective failed", t);
-            return false;
         }
     }
 }
