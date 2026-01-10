@@ -82,3 +82,7 @@ Currently, you can just spam RMB while holding several nuggets. This is countera
 ---
 ### Configurable months
 - Allow users to configure the amount of months per year
+
+---
+### Font change client-sided config
+Allow clients to switch back to Vanilla fonts
