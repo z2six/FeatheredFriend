@@ -13,7 +13,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.saveddata.SavedData;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
-
 import org.slf4j.Logger;
 
 import java.util.*;
@@ -27,6 +26,14 @@ import java.util.*;
  *  - Jobs can be marked FAILED (persisted) if delivery fails for non-death reasons (e.g. timeout/stuck).
  *  - Failed jobs are NOT removed automatically; sender must trigger retry later.
  *  - inFlight is still runtime-only (reset on load).
+ *
+ * IMPORTANT (Forge 1.20.1 port):
+ *  - Sealed scroll payload may exist in multiple NBT layouts due to port churn.
+ *  - We now support reading from:
+ *      1) tag[Constants.MOD_ID].SealedScroll        (preferred)
+ *      2) tag.CustomData.SealedScroll              (current port writer output, observed in logs)
+ *      3) tag.SealedScroll                         (legacy fallback)
+ *  - If we read from (2) or (3), we migrate by copying into (1) server-side.
  */
 public class RavenCourierData extends SavedData {
 
@@ -36,6 +43,10 @@ public class RavenCourierData extends SavedData {
 
     private static final ResourceLocation SEALED_SCROLL_ID =
             new ResourceLocation(Constants.MOD_ID, "scroll_sealed");
+
+    // Stack layout keys (1.20.1 NBT)
+    private static final String KEY_CUSTOM_DATA = "CustomData";
+    private static final String KEY_SEALED_SCROLL = "SealedScroll";
 
     // ---------------------------------------------------------------------
     // Internal job representation
@@ -290,7 +301,6 @@ public class RavenCourierData extends SavedData {
         }
     }
 
-
     private static UUID parseUuidSafe(String str) {
         if (str == null || str.isEmpty()) {
             return null;
@@ -305,7 +315,6 @@ public class RavenCourierData extends SavedData {
     // ---------------------------------------------------------------------
     // Accessor for the saved data instance
     // ---------------------------------------------------------------------
-
 
     public static RavenCourierData get(ServerLevel level) {
         try {
@@ -331,7 +340,6 @@ public class RavenCourierData extends SavedData {
     // Public API: creation of jobs from Sealed Scrolls
     // ---------------------------------------------------------------------
 
-
     public DeliveryJob createJobFromSealedScroll(ServerPlayer sender,
                                                  RavenEntity raven,
                                                  ItemStack scrollStack) {
@@ -349,15 +357,22 @@ public class RavenCourierData extends SavedData {
                 return null;
             }
 
-            // 1.20.1: sealed scroll payload is stored in normal ItemStack NBT (not DataComponents/CustomData).
-            // Back-compat read:
-            //  - preferred: stackTag[Constants.MOD_ID].SealedScroll
-            //  - legacy:    stackTag.SealedScroll
-            CompoundTag sealed = getSealedScrollTagFromStack(scrollStack);
+            // Read SealedScroll payload with robust back-compat + migration.
+            SealedScrollRead read = getSealedScrollFromStack(scrollStack, true);
+            CompoundTag sealed = (read == null) ? null : read.sealed;
+
             if (sealed == null || sealed.isEmpty()) {
-                LOG.warn("[RavenCourierData] createJobFromSealedScroll: SealedScroll compound missing/empty in NBT (player='{}').",
-                        sender.getGameProfile().getName());
+                CompoundTag root = scrollStack.getTag();
+                String keys = (root == null) ? "<no tag>" : safeKeys(root);
+                LOG.warn("[RavenCourierData] createJobFromSealedScroll: SealedScroll compound missing/empty in NBT (player='{}', stackKeys={}).",
+                        sender.getGameProfile().getName(),
+                        keys);
                 return null;
+            }
+
+            if (read != null && read.sourcePath != null) {
+                LOG.info("[RavenCourierData] createJobFromSealedScroll: Found SealedScroll at {} (migratedToModId={}) for player='{}'.",
+                        read.sourcePath, read.migratedToModId, sender.getGameProfile().getName());
             }
 
             String recipientUuidStr = sealed.getString("RecipientUUID");
@@ -434,31 +449,159 @@ public class RavenCourierData extends SavedData {
         }
     }
 
-    private static CompoundTag getSealedScrollTagFromStack(ItemStack stack) {
+    private static final class SealedScrollRead {
+        final CompoundTag sealed;
+        final String sourcePath;
+        final boolean migratedToModId;
+
+        private SealedScrollRead(CompoundTag sealed, String sourcePath, boolean migratedToModId) {
+            this.sealed = sealed;
+            this.sourcePath = sourcePath;
+            this.migratedToModId = migratedToModId;
+        }
+    }
+
+    /**
+     * Robust sealed-scroll payload reader (Forge 1.20.1 NBT layouts).
+     *
+     * Supported layouts:
+     *  1) tag[Constants.MOD_ID].SealedScroll   (preferred)
+     *  2) tag.CustomData.SealedScroll         (current writer output, seen in your NBT dump)
+     *  3) tag.SealedScroll                    (legacy fallback)
+     *
+     * If migrateToModId is true and we read from (2) or (3),
+     * we copy the payload into (1) on the stack.
+     */
+    private static SealedScrollRead getSealedScrollFromStack(ItemStack stack, boolean migrateToModId) {
         try {
             CompoundTag root = stack.getTag();
             if (root == null || root.isEmpty()) {
                 return null;
             }
 
-            // Preferred: stackTag[modid].SealedScroll
-            if (root.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)) {
-                CompoundTag ff = root.getCompound(Constants.MOD_ID);
-                if (ff.contains("SealedScroll", Tag.TAG_COMPOUND)) {
-                    CompoundTag sealed = ff.getCompound("SealedScroll");
-                    if (!sealed.isEmpty()) return sealed;
+            // 1) Preferred: tag[modid].SealedScroll
+            try {
+                if (root.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)) {
+                    CompoundTag ff = root.getCompound(Constants.MOD_ID);
+                    if (ff.contains(KEY_SEALED_SCROLL, Tag.TAG_COMPOUND)) {
+                        CompoundTag sealed = ff.getCompound(KEY_SEALED_SCROLL);
+                        if (sealed != null && !sealed.isEmpty()) {
+                            return new SealedScrollRead(sealed, "tag." + Constants.MOD_ID + "." + KEY_SEALED_SCROLL, false);
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+
+            // 2) Port layout: tag.CustomData.SealedScroll
+            try {
+                if (root.contains(KEY_CUSTOM_DATA, Tag.TAG_COMPOUND)) {
+                    CompoundTag cd = root.getCompound(KEY_CUSTOM_DATA);
+                    if (cd.contains(KEY_SEALED_SCROLL, Tag.TAG_COMPOUND)) {
+                        CompoundTag sealed = cd.getCompound(KEY_SEALED_SCROLL);
+                        if (sealed != null && !sealed.isEmpty()) {
+                            boolean migrated = false;
+                            if (migrateToModId) {
+                                migrated = migrateSealedScrollToModId(stack, sealed);
+                            }
+                            return new SealedScrollRead(sealed, "tag." + KEY_CUSTOM_DATA + "." + KEY_SEALED_SCROLL, migrated);
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+
+            // 3) Legacy: tag.SealedScroll
+            try {
+                if (root.contains(KEY_SEALED_SCROLL, Tag.TAG_COMPOUND)) {
+                    CompoundTag sealed = root.getCompound(KEY_SEALED_SCROLL);
+                    if (sealed != null && !sealed.isEmpty()) {
+                        boolean migrated = false;
+                        if (migrateToModId) {
+                            migrated = migrateSealedScrollToModId(stack, sealed);
+                        }
+                        return new SealedScrollRead(sealed, "tag." + KEY_SEALED_SCROLL, migrated);
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+
+            return null;
+
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
+     * Copies the given sealed-scroll payload into tag[Constants.MOD_ID].SealedScroll.
+     * Leaves existing data in place (we copy, not move) for max compatibility.
+     */
+    private static boolean migrateSealedScrollToModId(ItemStack stack, CompoundTag sealed) {
+        try {
+            if (sealed == null || sealed.isEmpty()) {
+                return false;
+            }
+
+            CompoundTag root = stack.getOrCreateTag();
+
+            CompoundTag ff;
+            try {
+                ff = root.getCompound(Constants.MOD_ID);
+            } catch (Throwable t) {
+                ff = new CompoundTag();
+            }
+
+            if (ff == null) {
+                ff = new CompoundTag();
+            }
+
+            // If already present and non-empty, don't overwrite (avoid stomping newer format).
+            if (ff.contains(KEY_SEALED_SCROLL, Tag.TAG_COMPOUND)) {
+                CompoundTag existing = ff.getCompound(KEY_SEALED_SCROLL);
+                if (existing != null && !existing.isEmpty()) {
+                    return false;
                 }
             }
 
-            // Legacy fallback: stackTag.SealedScroll
-            if (root.contains("SealedScroll", Tag.TAG_COMPOUND)) {
-                CompoundTag sealed = root.getCompound("SealedScroll");
-                if (!sealed.isEmpty()) return sealed;
+            ff.put(KEY_SEALED_SCROLL, sealed.copy());
+            root.put(Constants.MOD_ID, ff);
+
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("[RavenCourierData] migrateSealedScrollToModId: copied payload into tag.{}.{}",
+                        Constants.MOD_ID, KEY_SEALED_SCROLL);
             }
 
-            return null;
+            return true;
+
         } catch (Throwable t) {
-            return null;
+            LOG.warn("[RavenCourierData] migrateSealedScrollToModId failed safely: {}", t.toString());
+            return false;
+        }
+    }
+
+    private static String safeKeys(CompoundTag tag) {
+        try {
+            if (tag == null) return "<null>";
+            Set<String> keys = tag.getAllKeys();
+            if (keys == null || keys.isEmpty()) return "[]";
+            // keep logs sane
+            int max = 12;
+            StringBuilder sb = new StringBuilder("[");
+            int i = 0;
+            for (String k : keys) {
+                if (i > 0) sb.append(", ");
+                sb.append(k);
+                i++;
+                if (i >= max) {
+                    if (keys.size() > max) sb.append(", ...");
+                    break;
+                }
+            }
+            sb.append("]");
+            return sb.toString();
+        } catch (Throwable t) {
+            return "<keys-error>";
         }
     }
 
@@ -545,7 +688,6 @@ public class RavenCourierData extends SavedData {
     // Query helpers
     // ---------------------------------------------------------------------
 
-
     public List<DeliveryJob> getJobsForRecipient(UUID recipientUuid) {
         List<DeliveryJob> list = jobsByRecipient.get(recipientUuid);
         if (list == null || list.isEmpty()) {
@@ -553,7 +695,6 @@ public class RavenCourierData extends SavedData {
         }
         return List.copyOf(list);
     }
-
 
     public List<DeliveryJob> getAllJobsFlat() {
         List<DeliveryJob> out = new ArrayList<>();
@@ -565,7 +706,6 @@ public class RavenCourierData extends SavedData {
         }
         return List.copyOf(out);
     }
-
 
     public List<DeliveryJob> getJobsForPlayer(UUID playerUuid) {
         List<DeliveryJob> out = new ArrayList<>();
@@ -687,7 +827,6 @@ public class RavenCourierData extends SavedData {
         }
     }
 
-
     public DeliveryJob getJobById(long jobId) {
         try {
             if (jobsByRecipient.isEmpty()) {
@@ -767,7 +906,6 @@ public class RavenCourierData extends SavedData {
             return false;
         }
     }
-
 
     public DeliveryJob getMostRecentFailedJobForSender(UUID senderUuid) {
         try {
