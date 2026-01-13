@@ -1,6 +1,8 @@
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/network/FFPayloads.java
 package net.z2six.featheredfriend.network;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -26,6 +28,9 @@ import java.util.function.Supplier;
  * What we sync (server-owned):
  * - chatDisabled (global)
  * - canEditChat (per-player permission check, computed server-side)
+ *
+ * What we sync (client-owned, per-player preference):
+ * - autoSummonOnScroll (client preference that influences server tick logic)
  */
 public final class FFPayloads {
 
@@ -33,8 +38,11 @@ public final class FFPayloads {
 
     /**
      * Bump if you change message shapes. Must match client + server.
+     *
+     * v2:
+     * - added ClientAutoSummonPrefPayload (C2S)
      */
-    private static final String PROTOCOL_VERSION = "1";
+    private static final String PROTOCOL_VERSION = "2";
 
     private static final SimpleChannel CHANNEL = NetworkRegistry.ChannelBuilder
             .named(new net.minecraft.resources.ResourceLocation(Constants.MOD_ID, "settings"))
@@ -44,6 +52,12 @@ public final class FFPayloads {
             .simpleChannel();
 
     private static final AtomicBoolean REGISTERED = new AtomicBoolean(false);
+
+    /**
+     * Per-player key stored in ServerPlayer persistent NBT (server side).
+     * This is the server’s authoritative copy of the client preference, updated by C2S message.
+     */
+    public static final String PLAYER_NBT_KEY_AUTO_SUMMON_PREF = "ClientAutoSummonOnScroll";
 
     private FFPayloads() {
         // no-op
@@ -87,6 +101,13 @@ public final class FFPayloads {
                     .consumerMainThread(FFPayloads::handleSetChatDisabled)
                     .add();
 
+            // NEW (C2S): client per-player auto-summon preference
+            CHANNEL.messageBuilder(ClientAutoSummonPrefPayload.class, id.getAndIncrement(), NetworkDirection.PLAY_TO_SERVER)
+                    .encoder(ClientAutoSummonPrefPayload::encode)
+                    .decoder(ClientAutoSummonPrefPayload::decode)
+                    .consumerMainThread(FFPayloads::handleClientAutoSummonPref)
+                    .add();
+
             LOG.info("[FFPayloads] Registered settings messages OK (protocol={})", PROTOCOL_VERSION);
         } catch (Throwable t) {
             LOG.error("[FFPayloads] Failed to register settings messages", t);
@@ -94,7 +115,7 @@ public final class FFPayloads {
     }
 
     // ---------------------------------------------------------------------
-    // Client-side cache
+    // Client-side cache (server-owned settings)
     // ---------------------------------------------------------------------
 
     public static final class ClientState {
@@ -159,6 +180,19 @@ public final class FFPayloads {
         }
     }
 
+    /**
+     * Client -> Server: per-player preference controlling whether holding a sealed scroll auto-summons the raven.
+     * Server stores it on the player persistent NBT.
+     */
+    public record ClientAutoSummonPrefPayload(boolean autoSummonOnScroll) {
+        static void encode(ClientAutoSummonPrefPayload msg, FriendlyByteBuf buf) {
+            buf.writeBoolean(msg.autoSummonOnScroll);
+        }
+        static ClientAutoSummonPrefPayload decode(FriendlyByteBuf buf) {
+            return new ClientAutoSummonPrefPayload(buf.readBoolean());
+        }
+    }
+
     // ---------------------------------------------------------------------
     // Client send helpers
     // ---------------------------------------------------------------------
@@ -166,6 +200,7 @@ public final class FFPayloads {
     public static void sendRequestServerSettingsToServer() {
         try {
             CHANNEL.sendToServer(new RequestServerSettingsPayload());
+            LOG.debug("[FFPayloads] Sent RequestServerSettingsPayload to server");
         } catch (Throwable t) {
             LOG.error("[FFPayloads] sendRequestServerSettingsToServer failed", t);
         }
@@ -174,13 +209,23 @@ public final class FFPayloads {
     public static void sendSetChatDisabledToServer(boolean chatDisabled) {
         try {
             CHANNEL.sendToServer(new SetChatDisabledPayload(chatDisabled));
+            LOG.debug("[FFPayloads] Sent SetChatDisabledPayload to server (chatDisabled={})", chatDisabled);
         } catch (Throwable t) {
             LOG.error("[FFPayloads] sendSetChatDisabledToServer failed", t);
         }
     }
 
+    public static void sendClientAutoSummonPrefToServer(boolean autoSummonOnScroll) {
+        try {
+            CHANNEL.sendToServer(new ClientAutoSummonPrefPayload(autoSummonOnScroll));
+            LOG.debug("[FFPayloads] Sent ClientAutoSummonPrefPayload to server (autoSummonOnScroll={})", autoSummonOnScroll);
+        } catch (Throwable t) {
+            LOG.error("[FFPayloads] sendClientAutoSummonPrefToServer failed", t);
+        }
+    }
+
     // ---------------------------------------------------------------------
-    // Server-side send helpers
+    // Server-side send helpers (server-owned settings)
     // ---------------------------------------------------------------------
 
     public static void sendSettingsToPlayer(ServerLevel level, ServerPlayer player) {
@@ -316,6 +361,41 @@ public final class FFPayloads {
 
                 } catch (Throwable t) {
                     LOG.error("[FFPayloads] handleSetChatDisabled work failed safely", t);
+                }
+            });
+
+        } finally {
+            ctx.setPacketHandled(true);
+        }
+    }
+
+    private static void handleClientAutoSummonPref(ClientAutoSummonPrefPayload payload, Supplier<NetworkEvent.Context> ctxSup) {
+        NetworkEvent.Context ctx = ctxSup.get();
+        try {
+            ServerPlayer sp = ctx.getSender();
+            if (sp == null) {
+                return;
+            }
+
+            ctx.enqueueWork(() -> {
+                try {
+                    CompoundTag root = sp.getPersistentData();
+                    if (root == null) {
+                        LOG.warn("[FFPayloads] handleClientAutoSummonPref: player persistentData null; skipping (player={})",
+                                sp.getGameProfile().getName());
+                        return;
+                    }
+
+                    CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
+                    ffTag.putBoolean(PLAYER_NBT_KEY_AUTO_SUMMON_PREF, payload.autoSummonOnScroll());
+                    root.put(Constants.MOD_ID, ffTag);
+
+                    LOG.info("[FFPayloads] Stored client autoSummon preference for {} -> {}",
+                            sp.getGameProfile().getName(), payload.autoSummonOnScroll());
+
+                } catch (Throwable t) {
+                    LOG.error("[FFPayloads] handleClientAutoSummonPref work failed safely (player={})",
+                            sp.getGameProfile().getName(), t);
                 }
             });
 

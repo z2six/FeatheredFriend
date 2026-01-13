@@ -1,4 +1,4 @@
-// forge/src/main/java/net/z2six/featheredfriend/world/TamedRavenScrollWatcher.java
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/world/TamedRavenScrollWatcher.java
 package net.z2six.featheredfriend.world;
 
 import com.mojang.logging.LogUtils;
@@ -30,6 +30,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.entity.Entity;
 
 import net.z2six.featheredfriend.registry.FFForgeEntities;
+import net.z2six.featheredfriend.network.FFPayloads;
 
 import org.slf4j.Logger;
 import net.minecraft.world.InteractionHand;
@@ -45,43 +46,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * forge/src/main/java/net/z2six/featheredfriend/world/TamedRavenScrollWatcher.java
  *
- * Behavior:
- *  - When a player holds a sealed scroll in MAIN HAND and has stored TamedRaven data:
- *      * Ensure there is exactly ONE "scroll-summoned" RavenEntity for that player.
- *      * On "start holding" edge (was not holding, now holding):
- *          - Despawn any existing scroll-summoned ravens for that player
- *            with TamedRaven's fade-out + Enderpop + feather FX.
- *          - Spawn a fresh raven with Enderpop-style spawn FX (no feather FX).
- *  - While the player keeps holding the sealed scroll:
- *      * If the raven somehow dies, we respawn a new one (single instance).
- *      * If duplicates exist (from previous bugs), we keep the closest and despawn the rest.
- *  - When the player stops holding the sealed scroll or loses the tamed raven:
- *      * We despawn all scroll-summoned ravens with TamedRaven's fade-out FX.
- *
- * Implementation:
- *  - Detection of "scroll-summoned" ravens is via scoreboard tag + owner UUID:
- *      * Scoreboard tag:  "ff_scroll_summoned"
- *      * Owner:           raven.getOwnerUUID() == playerUUID
- *  - No entity-id-based spawn logic; we derive the state from the world every tick.
- *  - Edge detection of "start holding" is robust across reloads:
- *      * We store LAST_HOLDING_SEALED_SCROLL per player UUID.
- *      * On a fresh player entity (player.tickCount == 0), we force wasHolding=false
- *        so a player always counts as newly holding on join if they have the scroll selected.
- *
- * Spawn FX:
- *  - Enderpop-like portal particles + enderman teleport sound.
- *  - NO feather FX on spawn (those are despawn-only via TamedRaven).
- *
- * Despawn FX:
- *  - Uses TamedRaven.beginDespawnWithFx, which is assumed to:
- *      * Fade out the raven.
- *      * Play Enderpop + feather particles.
- *
- * Important implementation detail:
- *  - As soon as we request despawn of a scroll-summoned raven, we remove:
- *      * The scoreboard tag "ff_scroll_summoned".
- *      * The NBT flags ScrollSummoned / ScrollSummonedOwner.
- *    This prevents repeated despawn calls while the fade-out is in progress.
+ * (unchanged header docs)
  */
 public final class TamedRavenScrollWatcher {
 
@@ -251,8 +216,7 @@ public final class TamedRavenScrollWatcher {
             boolean hasActiveNonFailedAsSender = courierData.hasActiveNonFailedJobsAsSender(playerId);
             boolean hasFailedAsSender = courierData.hasFailedJobsAsSender(playerId);
 
-            // OLD RULE still applies only for ACTIVE (non-failed) jobs:
-            // If you are holding a sealed scroll while you already have an active job, we disallow scroll-summon (prevents multi-send abuse).
+            // OLD RULE still applies only for ACTIVE (non-failed) jobs
             if (hasActiveNonFailedAsSender && holdingNow) {
                 if (!scrollRavens.isEmpty()) {
                     for (RavenEntity r : scrollRavens) {
@@ -301,22 +265,21 @@ public final class TamedRavenScrollWatcher {
                 return;
             }
 
-            // From here on: holdingNow == true (original auto-summon flow continues)
-            boolean autoSummonEnabled = true;
-            try {
-                FeatheredFriendSettingsData settingsData = FeatheredFriendSettingsData.get(serverLevel);
-                autoSummonEnabled = settingsData.isAutoSummonOnScrollEnabled();
-            } catch (Throwable settingsErr) {
-                LOG.warn("[TamedRavenScrollWatcher] Failed to read autoSummonOnScroll setting; defaulting to enabled: {}",
-                        settingsErr.toString());
-                autoSummonEnabled = true;
-            }
+            // From here on: holdingNow == true
+
+            // -----------------------------------------------------------------
+            // FIX #1: Auto-summon gating is now per-player preference
+            // stored server-side on the player persistent NBT (synced from client).
+            // -----------------------------------------------------------------
+            boolean autoSummonEnabled = getPlayerAutoSummonPref(serverPlayer);
 
             if (!autoSummonEnabled) {
                 if (scrollRavens.isEmpty()) {
+                    // Important: do not auto-spawn. Manual whistle is the only way.
                     return;
                 }
 
+                // If player manually whistled and there is already a raven, keep it (dedupe if needed).
                 if (scrollRavens.size() > 1) {
                     RavenEntity primary = pickClosestRaven(scrollRavens, serverPlayer);
                     for (RavenEntity r : scrollRavens) {
@@ -357,7 +320,7 @@ public final class TamedRavenScrollWatcher {
                 RavenEntity spawned = spawnSummonedRaven(serverLevel, serverPlayer, ravenName);
                 if (spawned != null && (serverPlayer.tickCount % 40 == 0)) {
                     LOG.info("[TamedRavenScrollWatcher] Continuous-hold: respawned scroll-raven id={} for player='{}' at {}",
-                            spawned.getId(), safePlayerName(player), spawned.position());
+                            spawned.getId(), safePlayerName(serverPlayer), spawned.position());
                 }
                 return;
             }
@@ -381,15 +344,48 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
+    /**
+     * Server-side getter for per-player auto-summon preference.
+     *
+     * Data source:
+     * - ServerPlayer persistent NBT (Constants.MOD_ID compound)
+     * - Key: FFPayloads.PLAYER_NBT_KEY_AUTO_SUMMON_PREF
+     *
+     * Default behavior:
+     * - If not present (client not yet synced), default to TRUE to preserve legacy behavior.
+     */
+    private static boolean getPlayerAutoSummonPref(ServerPlayer player) {
+        try {
+            CompoundTag root = player.getPersistentData();
+            if (root == null) return true;
+
+            CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
+            if (ffTag == null || ffTag.isEmpty()) {
+                return true;
+            }
+
+            if (!ffTag.contains(FFPayloads.PLAYER_NBT_KEY_AUTO_SUMMON_PREF, Tag.TAG_BYTE)) {
+                return true;
+            }
+
+            boolean v = ffTag.getBoolean(FFPayloads.PLAYER_NBT_KEY_AUTO_SUMMON_PREF);
+            if (LOG.isDebugEnabled() && player.tickCount % 200 == 0) {
+                LOG.debug("[TamedRavenScrollWatcher] getPlayerAutoSummonPref: player='{}' -> {}",
+                        safePlayerName(player), v);
+            }
+            return v;
+
+        } catch (Throwable t) {
+            LOG.warn("[TamedRavenScrollWatcher] getPlayerAutoSummonPref failed safely for player='{}': {}",
+                    safePlayerName(player), t.toString());
+            return true;
+        }
+    }
+
     // ---------------------------------------------------------------------
     // World scanning helpers
     // ---------------------------------------------------------------------
 
-    /**
-     * Return all ravens in a radius around the player that:
-     *  - Have scoreboard tag TAG_SCROLL_SUMMONED, AND
-     *  - Are tamed by this player (owner UUID matches).
-     */
     private static List<RavenEntity> findScrollSummonedRavensForPlayer(ServerLevel level,
                                                                        ServerPlayer owner) {
         List<RavenEntity> out = new ArrayList<>();
@@ -442,7 +438,6 @@ public final class TamedRavenScrollWatcher {
         return out;
     }
 
-    
     private static RavenEntity pickClosestRaven(List<RavenEntity> ravens, ServerPlayer owner) {
         if (ravens.isEmpty()) {
             return null;
@@ -462,7 +457,6 @@ public final class TamedRavenScrollWatcher {
     // Spawn / despawn
     // ---------------------------------------------------------------------
 
-    
     private static RavenEntity spawnSummonedRaven(ServerLevel level,
                                                   ServerPlayer owner,
                                                   String ravenName) {
@@ -473,7 +467,6 @@ public final class TamedRavenScrollWatcher {
                 return null;
             }
 
-            // Find spawn using your 6-step logic + simulated path test
             Vec3 spawnPos = findSafeSpawnAbovePlayer(level, owner, raven);
             if (spawnPos == null) {
                 LOG.warn("[TamedRavenScrollWatcher] spawnSummonedRaven: no valid spawn (or simulated path failed) for player='{}' -> not spawning.",
@@ -496,7 +489,6 @@ public final class TamedRavenScrollWatcher {
 
             ensureRavenName(raven, ravenName);
 
-            // If sender has FAILED jobs, arm this raven with recall payload (carry the failed scroll back).
             try {
                 RavenCourierData courierData = RavenCourierData.get(level);
                 RavenCourierData.DeliveryJob failedJob = courierData.getMostRecentFailedJobForSender(owner.getUUID());
@@ -526,7 +518,6 @@ public final class TamedRavenScrollWatcher {
                         safePlayerName(owner), t.toString());
             }
 
-            // Lifetime tag as before
             try {
                 CompoundTag root = raven.getPersistentData();
                 CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
@@ -584,7 +575,6 @@ public final class TamedRavenScrollWatcher {
                 return;
             }
 
-            // Only handle scroll-summoned ravens owned by this player
             if (!isScrollSummonedRaven(raven)) {
                 return;
             }
@@ -615,19 +605,16 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    
     private static InteractionResult handleScrollSummonedRavenInteract(ServerLevel level,
                                                                        ServerPlayer player,
                                                                        RavenEntity raven,
                                                                        InteractionHand hand) {
         try {
-            // If raven is armed with a failed-job recall payload:
             RecallPayload recall = readRecallPayload(raven);
             if (recall != null) {
                 LOG.info("[TamedRavenScrollWatcher] RecallInteract: player='{}' ravenId={} jobId={} recipient={}",
                         safePlayerName(player), raven.getId(), recall.jobId, recall.recipientUuidStr);
 
-                // 1) Give/drop the failed scroll back to player
                 ItemStack returned = buildSealedScrollFromNbt(recall.sealedScrollNbt);
                 if (!returned.isEmpty()) {
                     giveOrDropFirstEmpty(player, returned);
@@ -636,7 +623,6 @@ public final class TamedRavenScrollWatcher {
                             recall.jobId, safePlayerName(player));
                 }
 
-                // 2) Remove the failed job from world data (it is now "resolved")
                 try {
                     RavenCourierData data = RavenCourierData.get(level);
                     UUID recipientUuid = null;
@@ -657,7 +643,6 @@ public final class TamedRavenScrollWatcher {
                             recall.jobId, safePlayerName(player), t.toString());
                 }
 
-                // 3) If player is holding a NEW sealed scroll in-hand, create a new courier job and consume it.
                 ItemStack inHand = player.getItemInHand(hand);
                 boolean holdingNewSealedScroll = isSealedScrollStack(inHand);
 
@@ -686,7 +671,6 @@ public final class TamedRavenScrollWatcher {
                     }
                 }
 
-                // 4) Despawn the scroll-summoned raven (always) after recall interaction
                 try {
                     despawnOneScrollSummonedRaven(level, player, raven, "recall-complete");
                 } catch (Throwable t) {
@@ -697,14 +681,11 @@ public final class TamedRavenScrollWatcher {
                 return InteractionResult.CONSUME;
             }
 
-            // No recall payload -> fall back to original behavior:
-            // only accept interaction when player is actually using a sealed scroll on the raven.
             ItemStack stack = player.getItemInHand(hand);
             if (!isSealedScrollStack(stack)) {
                 return InteractionResult.PASS;
             }
 
-            // Delegate to your existing "send scroll" logic:
             return handleSealedScrollInteract(raven, player, hand);
 
         } catch (Throwable t) {
@@ -725,7 +706,6 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    
     private static RecallPayload readRecallPayload(RavenEntity raven) {
         try {
             CompoundTag root = raven.getPersistentData();
@@ -771,7 +751,6 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-
     private static ItemStack buildSealedScrollFromNbt(CompoundTag sealedScrollNbt) {
         try {
             Item item = BuiltInRegistries.ITEM.get(SEALED_SCROLL_ID);
@@ -782,7 +761,6 @@ public final class TamedRavenScrollWatcher {
 
             ItemStack stack = new ItemStack(item);
 
-            // 1.20.1: write into ItemStack tag
             CompoundTag root = stack.getOrCreateTag();
             CompoundTag ff = root.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)
                     ? root.getCompound(Constants.MOD_ID)
@@ -818,7 +796,6 @@ public final class TamedRavenScrollWatcher {
                 }
             }
 
-            // No empty slot -> drop
             player.drop(stack, false);
             LOG.info("[TamedRavenScrollWatcher] giveOrDropFirstEmpty: inventory full; dropped returned scroll for player='{}'",
                     safePlayerName(player));
@@ -832,13 +809,6 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    /**
-     * Play Enderpop-style spawn FX:
-     *  - Portal particles (no feathers) at the raven.
-     *  - Enderman teleport sound at the raven.
-     *  - Raven wing woosh at the raven.
-     *  - Player whistle at the *player's* position.
-     */
     private static void playScrollSummonSpawnFx(ServerLevel level,
                                                 ServerPlayer owner,
                                                 RavenEntity raven) {
@@ -846,7 +816,6 @@ public final class TamedRavenScrollWatcher {
             Vec3 ravenPos = raven.position();
             Vec3 playerPos = owner.position();
 
-            // Portal particles around the raven
             level.sendParticles(
                     ParticleTypes.PORTAL,
                     ravenPos.x,
@@ -859,7 +828,6 @@ public final class TamedRavenScrollWatcher {
                     0.02D
             );
 
-            // Enderman-style teleport sound at the raven
             level.playSound(
                     null,
                     ravenPos.x,
@@ -871,7 +839,6 @@ public final class TamedRavenScrollWatcher {
                     1.0F + (level.random.nextFloat() - 0.5F) * 0.2F
             );
 
-            // Player whistle at the player's position (so it feels like the player is "calling" the raven)
             RavenSoundEngine.playAt(
                     level,
                     "featheredfriend:raven.whistle",
@@ -886,16 +853,6 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    /**
-     * Despawn ONE scroll-summoned raven via TamedRaven.beginDespawnWithFx,
-     * falling back to discard() if anything goes wrong.
-     *
-     * IMPORTANT:
-     *  - After we request despawn, we immediately clear:
-     *      * The scoreboard tag TAG_SCROLL_SUMMONED.
-     *      * The NBT flags ScrollSummoned / ScrollSummonedOwner.
-     *    This prevents repeated despawn calls while the fade-out is still running.
-     */
     private static void despawnOneScrollSummonedRaven(ServerLevel level,
                                                       ServerPlayer owner,
                                                       RavenEntity raven,
@@ -916,14 +873,12 @@ public final class TamedRavenScrollWatcher {
             } catch (Throwable ignored) {
             }
 
-            // Trigger a one-shot Enderpop FX burst (particles + raven teleport/woosh sounds)
-            // at the despawn position, reusing the Teleportation module's logic.
             try {
                 Vec3 fxPos = raven.position().add(0.0D, 0.6D, 0.0D);
                 long fxSeed =
                         raven.getUUID().getLeastSignificantBits()
                                 ^ (long) raven.tickCount
-                                ^ 0x5C829867; // just a fixed salt for scroll-despawn
+                                ^ 0x5C829867;
                 Teleportation teleportFx = new Teleportation(raven);
                 teleportFx.spawnEnderpopBurst(
                         level,
@@ -939,7 +894,6 @@ public final class TamedRavenScrollWatcher {
                         raven.getId(), fxErr.toString());
             }
 
-            // Request fade-out FX via module if present.
             if (tamedModule != null) {
                 try {
                     tamedModule.beginDespawnWithFx(level, owner, ravenName);
@@ -956,9 +910,6 @@ public final class TamedRavenScrollWatcher {
                 raven.discard();
             }
 
-            // --- CRUCIAL: stop treating this raven as scroll-summoned from now on ---
-
-            // 1) Remove scoreboard tag so we no longer pick it up in findScrollSummonedRavensForPlayer.
             try {
                 if (raven.getTags().contains(TAG_SCROLL_SUMMONED)) {
                     raven.removeTag(TAG_SCROLL_SUMMONED);
@@ -968,7 +919,6 @@ public final class TamedRavenScrollWatcher {
                         TAG_SCROLL_SUMMONED, raven.getId(), t.toString());
             }
 
-            // 2) Clear NBT flags used for scroll-summon bookkeeping.
             try {
                 CompoundTag root = raven.getPersistentData();
                 if (root != null) {
@@ -997,7 +947,6 @@ public final class TamedRavenScrollWatcher {
     // Spawn position helpers
     // ---------------------------------------------------------------------
 
-    
     private static Vec3 findSafeSpawnAbovePlayer(ServerLevel level,
                                                  ServerPlayer owner,
                                                  RavenEntity simRaven) {
@@ -1010,15 +959,11 @@ public final class TamedRavenScrollWatcher {
             final int minY = level.getMinBuildHeight();
             final int maxY = level.getMaxBuildHeight() - 1;
 
-            // 1) Ceiling scan within 15 blocks above player feet
             int ceilingY = scanFirstCeilingYWithin15(level, owner, cx, feetY, cz, minY, maxY);
 
-            // 2) If ceiling found, scan for a safe 3x3 pocket BELOW ceiling.
-            //    IMPORTANT FIX: use baseY = ceilingY - 3 so our 3-high pocket has clearance under the ceiling.
             if (ceilingY > 0) {
                 int baseYUnderCeiling = ceilingY - 3;
 
-                // Clamp so a 3-high pocket fits in world bounds
                 if (baseYUnderCeiling < minY) baseYUnderCeiling = minY;
                 if (baseYUnderCeiling > maxY - 2) baseYUnderCeiling = maxY - 2;
 
@@ -1030,9 +975,7 @@ public final class TamedRavenScrollWatcher {
                             pocketUnderCeiling
                     );
 
-                    // 5) Simulated A* check
                     if (canSimulatePathToPlayer(level, owner, pocketUnderCeiling, simRaven)) {
-                        // 6) Spawn at pocket center
                         return pocketUnderCeiling;
                     }
 
@@ -1044,7 +987,6 @@ public final class TamedRavenScrollWatcher {
                     return null;
                 }
 
-                // 4) If no pocket under ceiling, fall through to +15 fallback.
                 LOG.warn(
                         "[TamedRavenScrollWatcher] findSafeSpawnAbovePlayer: CEILING FOUND at y={} but NO pocket-under-ceiling found (baseY={}) player='{}'",
                         ceilingY,
@@ -1053,11 +995,9 @@ public final class TamedRavenScrollWatcher {
                 );
             }
 
-            // 4) Fallback: safe pocket around +15 blocks above player
             final int preferredOffsetY = 15;
             int baseY = Mth.floor(owner.getY() + preferredOffsetY + 0.5D);
 
-            // Keep away from build limits; then also ensure 3-high pocket fits.
             int clampMin = level.getMinBuildHeight() + 2;
             int clampMax = level.getMaxBuildHeight() - 2;
             baseY = Mth.clamp(baseY, clampMin, clampMax);
@@ -1104,8 +1044,6 @@ public final class TamedRavenScrollWatcher {
                                                  int minY,
                                                  int maxY) {
         try {
-            // Guarantee we are scanning the player's FEET column only (no offsets).
-            // Scan exactly 15 blocks above feet.
             for (int dy = 1; dy <= 15; dy++) {
                 int y = feetY + dy;
                 if (y < minY || y > maxY) {
@@ -1127,7 +1065,6 @@ public final class TamedRavenScrollWatcher {
                 try {
                     isAir = st.isAir();
                 } catch (Throwable t) {
-                    // If blockstate is weird, treat as non-air (safer for "ANY non-air" semantics).
                     isAir = false;
                     LOG.warn("[TamedRavenScrollWatcher] scanFirstCeilingYWithin15: st.isAir() threw at {} st={} player='{}': {}",
                             probe, st, safePlayerName(owner), t.toString());
@@ -1158,7 +1095,6 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    
     private static Vec3 findFirst3x3x2PocketNear(ServerLevel level,
                                                  ServerPlayer owner,
                                                  int cx,
@@ -1167,7 +1103,6 @@ public final class TamedRavenScrollWatcher {
                                                  int minY,
                                                  int maxY) {
         try {
-            // We require a 3x3x3 air pocket (not 3x3x2) so A* start nodes are valid under low ceilings.
             if (baseY < minY || baseY > (maxY - 2)) {
                 LOG.warn(
                         "[TamedRavenScrollWatcher] findFirst3x3x2PocketNear: baseY out of bounds for 3-high pocket. baseY={} minY={} maxY={} player='{}'",
@@ -1269,8 +1204,6 @@ public final class TamedRavenScrollWatcher {
                                                    Vec3 spawnPos,
                                                    RavenEntity simRaven) {
         try {
-            // Put the simulation raven at the candidate start position.
-            // This raven is NOT added to the world, so this stays purely "planning".
             try {
                 simRaven.moveTo(spawnPos.x, spawnPos.y, spawnPos.z, owner.getYRot(), 0.0F);
             } catch (Throwable t) {
@@ -1331,16 +1264,6 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    /**
-     * Reads the same structure stored by TamedRaven.storeTamedRavenForPlayer:
-     *
-     *   root = player.getPersistentData()
-     *   ffTag = root.getCompound(Constants.MOD_ID)
-     *   ravenTag = ffTag.getCompound("TamedRaven")
-     *     - HasTamedRaven : boolean
-     *     - RavenName     : string
-     */
-    
     private static TamedRavenInfo readTamedRavenInfo(Player player) {
         try {
             CompoundTag root = player.getPersistentData();
@@ -1372,18 +1295,6 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    /**
-     * Handles the specific case:
-     *  - Player RMBs a tamed RavenEntity
-     *  - with a Sealed Scroll in hand
-     *  - and the player is the raven's owner.
-     *
-     * Called from RavenEntity.mobInteract(...) on BOTH CLIENT and SERVER.
-     *
-     * Returns:
-     *   - PASS    -> scroll interaction not handled here; let other logic run.
-     *   - SUCCESS / CONSUME / sidedSuccess(...) -> interaction consumed by scroll logic.
-     */
     public static InteractionResult handleSealedScrollInteract(RavenEntity raven,
                                                                Player player,
                                                                InteractionHand hand) {
@@ -1396,7 +1307,6 @@ public final class TamedRavenScrollWatcher {
             boolean clientSide = level.isClientSide;
             ItemStack stack = player.getItemInHand(hand);
 
-            // Only care about our sealed scroll item
             if (stack == null || stack.isEmpty()) {
                 return InteractionResult.PASS;
             }
@@ -1406,7 +1316,6 @@ public final class TamedRavenScrollWatcher {
                 return InteractionResult.PASS;
             }
 
-            // Only when this raven is tamed and owned by the player using the scroll
             boolean isOwner = false;
             try {
                 isOwner = raven.isTame() && raven.isOwnedBy(player);
@@ -1416,7 +1325,6 @@ public final class TamedRavenScrollWatcher {
             }
 
             if (!isOwner) {
-                // Not the owner's raven -> do nothing special, let other logic run.
                 LOG.info(
                         "[TamedRavenScrollWatcher] handleSealedScrollInteract: player='{}' used scroll on raven id={} but is not owner (ignoring).",
                         safePlayerName(player),
@@ -1425,13 +1333,7 @@ public final class TamedRavenScrollWatcher {
                 return InteractionResult.PASS;
             }
 
-            // At this point we KNOW:
-            //  - The item is a sealed scroll
-            //  - The raven is tamed
-            //  - The player is the raven's owner
-
             if (clientSide) {
-                // CLIENT: just make it look successful, real logic is server-side.
                 LOG.info(
                         "[TamedRavenScrollWatcher] handleSealedScrollInteract: CLIENT accepted sealed scroll use " +
                                 "(player='{}', raven id={}, hand={}, stack={})",
@@ -1443,9 +1345,7 @@ public final class TamedRavenScrollWatcher {
                 return InteractionResult.sidedSuccess(true);
             }
 
-            // SERVER: perform the first leg of courier dispatch.
             if (!(player instanceof ServerPlayer serverPlayer)) {
-                // Should never happen on logical server, but we guard anyway.
                 LOG.warn("[TamedRavenScrollWatcher] handleSealedScrollInteract: player is not ServerPlayer on server side");
                 return InteractionResult.PASS;
             }
@@ -1454,7 +1354,6 @@ public final class TamedRavenScrollWatcher {
                 return InteractionResult.PASS;
             }
 
-            // 1) Create a delivery job in RavenCourierData from this Sealed Scroll.
             RavenCourierData courierData = RavenCourierData.get(serverLevel);
             RavenCourierData.DeliveryJob job = courierData.createJobFromSealedScroll(
                     serverPlayer,
@@ -1463,8 +1362,6 @@ public final class TamedRavenScrollWatcher {
             );
 
             if (job == null) {
-                // Something about the scroll's NBT / recipient data was invalid.
-                // We do NOT consume the item and we do NOT despawn the raven.
                 LOG.warn(
                         "[TamedRavenScrollWatcher] handleSealedScrollInteract: FAILED to create courier job " +
                                 "(player='{}', raven id={}, hand={}, stack={})",
@@ -1485,7 +1382,6 @@ public final class TamedRavenScrollWatcher {
                     raven.getId()
             );
 
-            // 2) Switch the model of this raven to the SCROLL variant (visually holding the scroll).
             try {
                 raven.setRavenVariant(net.z2six.featheredfriend.entity.raven.RavenVariant.SCROLL);
             } catch (Throwable t) {
@@ -1493,14 +1389,11 @@ public final class TamedRavenScrollWatcher {
                         raven.getId(), t.toString());
             }
 
-            // 3) Consume exactly ONE Sealed Scroll from the player's hand (the one we just used),
-            //    now that we KNOW the job was created and stored successfully.
             try {
                 ItemStack inHand = serverPlayer.getItemInHand(hand);
                 if (!inHand.isEmpty() && inHand.getItem() == stack.getItem()) {
                     inHand.shrink(1);
                 } else {
-                    // If for some weird reason the item changed between checks, log and skip.
                     LOG.warn("[TamedRavenScrollWatcher] handleSealedScrollInteract: item in hand changed before consumption for player='{}'",
                             safePlayerName(serverPlayer));
                 }
@@ -1510,7 +1403,6 @@ public final class TamedRavenScrollWatcher {
                         t.toString());
             }
 
-            // 4) Trigger fade-out / despawn FX for this raven, but ONLY because job creation succeeded.
             try {
                 despawnOneScrollSummonedRaven(
                         serverLevel,
@@ -1522,12 +1414,8 @@ public final class TamedRavenScrollWatcher {
                 LOG.error("[TamedRavenScrollWatcher] handleSealedScrollInteract: despawnOneScrollSummonedRaven failed safely for id={}: {}",
                         raven.getId(),
                         t.toString());
-                // Fail-safe: if FX despawn fails, we do NOT forcibly discard here,
-                // so the raven remains in-world rather than causing a hard state mismatch.
             }
 
-            // We fully handled this interaction: the scroll was turned into a courier job,
-            // the raven swapped to SCROLL variant and began its fade-out.
             return InteractionResult.CONSUME;
 
         } catch (Throwable t) {
@@ -1536,26 +1424,6 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    // ---------------------------------------------------------------------
-    // Simple helpers
-    // ---------------------------------------------------------------------
-
-    /**
-     * Handles a whistle keybind request from the client.
-     *
-     * Contract:
-     *  - Must be called on the logical server.
-     *  - The caller is expected to be the raven's owner.
-     *
-     * Behavior:
-     *  - If the player is not holding a sealed scroll -> tells them and does nothing.
-     *  - If they don't have a stored tamed raven -> tells them and does nothing.
-     *  - If no scroll-summoned ravens exist -> spawns one (same FX as auto-summon).
-     *  - If multiple exist -> keeps the closest, despawns the rest, replays FX on the survivor.
-     *  - If exactly one exists -> enforces correct name and replays FX on it.
-     *
-     * This path ignores the "auto-summon on scroll" setting; it is a manual override.
-     */
     public static void handleWhistleSummonRequest(ServerPlayer serverPlayer) {
         try {
             ServerLevel serverLevel = serverPlayer.serverLevel();
@@ -1632,10 +1500,7 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    /**
-     * Returns true if the player's main hand item is the sealed scroll.
-     */
-    public static boolean isHoldingSealedScroll(Player player) { // was private
+    public static boolean isHoldingSealedScroll(Player player) {
         try {
             ItemStack main = player.getMainHandItem();
             if (main == null || main.isEmpty()) {
@@ -1655,10 +1520,6 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    /**
-     * Returns true if this raven is currently marked as a scroll-summoned raven
-     * via the TAG_SCROLL_SUMMONED scoreboard tag.
-     */
     public static boolean isScrollSummonedRaven(RavenEntity raven) {
         try {
             return raven.getTags().contains(TAG_SCROLL_SUMMONED);
@@ -1669,21 +1530,9 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    /**
-     * Convenience helper:
-     *  - Only valid on the server (ServerLevel).
-     *  - Returns the raven's owner as ServerPlayer *iff*:
-     *      * the raven is scroll-summoned, AND
-     *      * the owner is online in this level, AND
-     *      * the owner is currently holding a sealed scroll in main hand.
-     *
-     * Otherwise returns null.
-     */
-    
     public static ServerPlayer getScrollSummonOwnerIfHoldingScroll(ServerLevel level,
                                                                    RavenEntity raven) {
         try {
-            // Must be tagged as scroll-summoned.
             if (!isScrollSummonedRaven(raven)) {
                 return null;
             }
@@ -1714,7 +1563,6 @@ public final class TamedRavenScrollWatcher {
                 return null;
             }
 
-            // Reuse the existing helper to validate scroll in main hand.
             if (!isHoldingSealedScroll(owner)) {
                 return null;
             }

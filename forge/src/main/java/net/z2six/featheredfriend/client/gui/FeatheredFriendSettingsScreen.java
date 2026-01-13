@@ -1,3 +1,4 @@
+// MainFile: forge/src/main/java/net/z2six/featheredfriend/client/gui/FeatheredFriendSettingsScreen.java
 package net.z2six.featheredfriend.client.gui;
 
 import com.mojang.logging.LogUtils;
@@ -10,11 +11,9 @@ import net.z2six.featheredfriend.config.FFClientConfig;
 import net.z2six.featheredfriend.network.FFPayloads;
 import org.slf4j.Logger;
 
-import java.lang.reflect.Method;
-
 /**
  * Settings screen:
- * - Auto-summon: client-only config (FFClientConfig).
+ * - Auto-summon: client-only config (FFClientConfig) + synced to server as per-player preference.
  * - Chat disabled: server-owned, synced via FFPayloads.ClientState.
  * - Sends C2S payloads only when safe.
  */
@@ -22,7 +21,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
 
     private static final Logger LOG = LogUtils.getLogger();
 
-    // client-only preference
+    // client-only preference (but server needs a copy to affect server tick logic)
     private boolean autoSummonOnScroll;
 
     // server-owned + synced
@@ -61,6 +60,18 @@ public class FeatheredFriendSettingsScreen extends Screen {
                             } catch (Throwable t) {
                                 LOG.error("[FeatheredFriendSettingsScreen] Failed to update autoSummonOnScroll client config", t);
                             }
+
+                            // NEW: inform the server of this per-player preference so server tick logic can respect it.
+                            try {
+                                if (!isConnectionReady()) {
+                                    LOG.debug("[FeatheredFriendSettingsScreen] Skipping autoSummon pref sync: connection not ready");
+                                    return;
+                                }
+                                FFPayloads.sendClientAutoSummonPrefToServer(autoSummonOnScroll);
+                                LOG.info("[FeatheredFriendSettingsScreen] Sent ClientAutoSummonPrefPayload -> {}", autoSummonOnScroll);
+                            } catch (Throwable t) {
+                                LOG.warn("[FeatheredFriendSettingsScreen] Failed sending ClientAutoSummonPrefPayload safely: {}", t.toString());
+                            }
                         })
                 .bounds(centerX - 100, y, 200, 20)
                 .build();
@@ -88,9 +99,8 @@ public class FeatheredFriendSettingsScreen extends Screen {
                                         return;
                                     }
 
-                                    // Works on NeoForge (PacketDistributor.sendToServer) and can be adapted
-                                    // to Forge environments where the sending API differs, without compile-time deps.
-                                    sendPayloadToServerReflective(new FFPayloads.SetChatDisabledPayload(newValue));
+                                    // Forge 1.20.1: use the settings SimpleChannel directly (no reflection).
+                                    FFPayloads.sendSetChatDisabledToServer(newValue);
 
                                     LOG.info("[FeatheredFriendSettingsScreen] Sent SetChatDisabledPayload -> {}", newValue);
                                 } catch (Throwable t) {
@@ -170,7 +180,8 @@ public class FeatheredFriendSettingsScreen extends Screen {
                 return;
             }
 
-            sendPayloadToServerReflective(new FFPayloads.RequestServerSettingsPayload());
+            // Forge 1.20.1: use the settings SimpleChannel directly.
+            FFPayloads.sendRequestServerSettingsToServer();
             LOG.info("[FeatheredFriendSettingsScreen] Requested server settings sync");
         } catch (Throwable t) {
             LOG.warn("[FeatheredFriendSettingsScreen] requestServerSettings failed safely: {}", t.toString());
@@ -254,48 +265,5 @@ public class FeatheredFriendSettingsScreen extends Screen {
     @Override
     public boolean isPauseScreen() {
         return true;
-    }
-
-    // ---------------------------------------------------------------------
-    // Sending helper (no compile-time dependency on Forge/NeoForge PacketDistributor)
-    // ---------------------------------------------------------------------
-
-    private static void sendPayloadToServerReflective(Object payload) {
-        if (payload == null) {
-            return;
-        }
-
-        // 1) NeoForge: net.neoforged.neoforge.network.PacketDistributor.sendToServer(payload)
-        if (tryInvokeSendToServer("net.neoforged.neoforge.network.PacketDistributor", payload)) {
-            return;
-        }
-
-        // 2) Forge (some versions): net.minecraftforge.network.PacketDistributor.sendToServer(payload)
-        if (tryInvokeSendToServer("net.minecraftforge.network.PacketDistributor", payload)) {
-            return;
-        }
-
-        LOG.warn("[FeatheredFriendSettingsScreen] No PacketDistributor.sendToServer found at runtime; payload not sent: {}", payload.getClass().getName());
-    }
-
-    private static boolean tryInvokeSendToServer(String className, Object payload) {
-        try {
-            Class<?> cls = Class.forName(className);
-
-            // Find any static method named sendToServer with exactly 1 parameter.
-            for (Method m : cls.getMethods()) {
-                if (!"sendToServer".equals(m.getName())) continue;
-                if (m.getParameterCount() != 1) continue;
-                m.invoke(null, payload);
-                return true;
-            }
-
-            return false;
-        } catch (ClassNotFoundException e) {
-            return false;
-        } catch (Throwable t) {
-            LOG.warn("[FeatheredFriendSettingsScreen] Failed invoking {}.sendToServer reflectively: {}", className, t.toString());
-            return false;
-        }
     }
 }
