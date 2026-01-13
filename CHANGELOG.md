@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [1.3.6] [Forge-exclusive]
+- Fixed auto-summon/whistle & chat disablement config not syncing correctly with server
+
+## [1.3.5] [Forge-exclusive]
+- Fixed a bug where recipes on Forge didn't register properly
+
 ## [1.3.4]
 - More logging removed from Raven entity
 - Removed/added commands regarding tamed ravens
