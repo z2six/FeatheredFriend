@@ -19,7 +19,7 @@ public final class FFForgeClient {
         LOG.debug("[FFForgeClient] onClientSetup invoked; no action (screens handled by ClientScreens).");
     }
 
-    // ✅ Add this to satisfy FeatheredFriend.java
+    // Add this to satisfy FeatheredFriend.java
     public static void onRegisterMenuScreens(FMLClientSetupEvent event) {
         LOG.debug("[FFForgeClient] onRegisterMenuScreens invoked; delegating to ClientScreens.");
         ClientScreens.onClientSetup(event);
