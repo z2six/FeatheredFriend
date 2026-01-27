@@ -73,7 +73,7 @@ public final class KnownPlayersClientCache {
                 kept++;
             }
 
-            LOG.info("[KnownPlayersClientCache] replaceAllFromServer: now tracking {} known players", kept);
+            LOG.debug("[KnownPlayersClientCache] replaceAllFromServer: now tracking {} known players", kept);
 
             // Immediately refresh online flags view
             refreshOnlineNow();

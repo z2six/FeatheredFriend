@@ -923,13 +923,13 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             }
 
             if (selectedRecipientUuid == null) {
-                LOG.info("[ScrollSealingScreen] onSignButtonClicked: No recipient UUID set, aborting sign");
+                LOG.debug("[ScrollSealingScreen] onSignButtonClicked: No recipient UUID set, aborting sign");
                 return;
             }
 
             String recipientText = recipientField != null ? recipientField.getText() : null;
             if (recipientText == null || recipientText.trim().isEmpty()) {
-                LOG.info("[ScrollSealingScreen] onSignButtonClicked: Recipient field is empty, aborting sign");
+                LOG.debug("[ScrollSealingScreen] onSignButtonClicked: Recipient field is empty, aborting sign");
                 return;
             }
 
@@ -947,7 +947,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
 
             saveEditorStateToMenu();
 
-            LOG.info("[ScrollSealingScreen] Scroll signed by {} ({}) on {}",
+            LOG.debug("[ScrollSealingScreen] Scroll signed by {} ({}) on {}",
                     signerName, signerUuid, dateString);
 
             beginOutroFade();
@@ -1577,7 +1577,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
 
                 if (button == 0) {
                     if (inZoomWaxArea) {
-                        LOG.info(
+                        LOG.debug(
                                 "[ScrollSealingScreen] Zoom wax area clicked with selected stamp: slotIndex={} stack={}",
                                 this.sealStampSlotIndex,
                                 this.sealStampStackForRender
@@ -1916,7 +1916,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     @SuppressWarnings("unused")
     private void onSealClickedPlaceholder() {
         try {
-            LOG.info("[ScrollSealingScreen] Seal placeholder clicked. RecipientUUID={} SignerUUID={}",
+            LOG.debug("[ScrollSealingScreen] Seal placeholder clicked. RecipientUUID={} SignerUUID={}",
                     selectedRecipientUuid, signerUuid);
         } catch (Throwable t) {
             LOG.error("[ScrollSealingScreen] onSealClickedPlaceholder failed", t);

@@ -100,7 +100,7 @@ public final class TamedRaven {
             this.namingGuiRequested = true;
             this.pendingOwnerUuid = serverPlayer.getUUID();
 
-            LOG.info("[TamedRaven] onTamingFullyPaid: triggering naming GUI for player={} ravenId={} pos={}",
+            LOG.debug("[TamedRaven] onTamingFullyPaid: triggering naming GUI for player={} ravenId={} pos={}",
                     serverPlayer.getGameProfile().getName(), raven.getId(), raven.position());
 
             // S2C: open naming screen for this raven entity.
@@ -135,7 +135,7 @@ public final class TamedRaven {
             this.tamingCompleted = true;
             this.namingGuiRequested = false;
 
-            LOG.info("[TamedRaven] onNameChosenFromClient: name='{}' player={} ravenId={} pos={}",
+            LOG.debug("[TamedRaven] onNameChosenFromClient: name='{}' player={} ravenId={} pos={}",
                     name, player.getGameProfile().getName(), raven.getId(), raven.position());
 
             // Store bound raven data tied to player (for later summoning).
@@ -188,7 +188,7 @@ public final class TamedRaven {
 
             if (despawnWithFxTicks >= total) {
                 Vec3 pos = raven.position();
-                LOG.info("[TamedRaven] tickServer: despawn complete after fade; removing raven id={} pos={}",
+                LOG.debug("[TamedRaven] tickServer: despawn complete after fade; removing raven id={} pos={}",
                         raven.getId(), pos);
                 raven.discard();
                 despawnWithFxActive = false;
@@ -273,7 +273,7 @@ public final class TamedRaven {
             ffTag.put("TamedRaven", ravenTag);
             root.put(Constants.MOD_ID, ffTag);
 
-            LOG.info("[TamedRaven] Stored tamed raven for player={} name='{}'",
+            LOG.debug("[TamedRaven] Stored tamed raven for player={} name='{}'",
                     player.getGameProfile().getName(), ravenName);
 
         } catch (Throwable t) {
@@ -332,7 +332,7 @@ public final class TamedRaven {
                         0.0D               // speed; motion variance handled by vanilla + provider
                 );
                 if (raven.tickCount % 40 == 0) {
-                    LOG.info("[TamedRaven] beginDespawnWithFx: spawned FEATHER particles at {} count={}", pos, count);
+                    LOG.debug("[TamedRaven] beginDespawnWithFx: spawned FEATHER particles at {} count={}", pos, count);
                 }
             } catch (Throwable tFeathers) {
                 if (raven.tickCount % 80 == 0) {
@@ -344,7 +344,7 @@ public final class TamedRaven {
             this.despawnWithFxActive = true;
             this.despawnWithFxTicks = 0;
 
-            LOG.info("[TamedRaven] beginDespawnWithFx: owner={} name='{}' id={} pos={}",
+            LOG.debug("[TamedRaven] beginDespawnWithFx: owner={} name='{}' id={} pos={}",
                     owner.getGameProfile().getName(), name, raven.getId(), pos);
 
         } catch (Throwable t) {

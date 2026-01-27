@@ -14,7 +14,7 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import net.z2six.featheredfriend.Constants;
-import net.z2six.featheredfriend.world.FeatheredFriendSettingsData;
+import net.z2six.featheredfriend.config.FFCalendarConfig;
 import org.slf4j.Logger;
 
 import java.util.List;
@@ -52,7 +52,7 @@ public final class FFPayloads {
     public static void register(IEventBus modBus) {
         try {
             modBus.addListener(FFPayloads::onRegisterPayloadHandlers);
-            LOG.info("[FFPayloads] Hooked RegisterPayloadHandlersEvent listener");
+            LOG.debug("[FFPayloads] Hooked RegisterPayloadHandlersEvent listener");
         } catch (Throwable t) {
             LOG.error("[FFPayloads] register() failed safely", t);
         }
@@ -80,7 +80,7 @@ public final class FFPayloads {
                     FFPayloads::handleSetChatDisabled
             );
 
-            LOG.info("[FFPayloads] Registered settings payloads OK (protocol={})", PROTOCOL_VERSION);
+            LOG.debug("[FFPayloads] Registered settings payloads OK (protocol={})", PROTOCOL_VERSION);
         } catch (Throwable t) {
             LOG.error("[FFPayloads] onRegisterPayloadHandlers failed safely", t);
         }
@@ -116,7 +116,7 @@ public final class FFPayloads {
             canEditChat = newCanEditChat;
             hasSynced = true;
 
-            LOG.info("[FFPayloads.ClientState] Applied server settings: chatDisabled={} canEditChat={}",
+            LOG.debug("[FFPayloads.ClientState] Applied server settings: chatDisabled={} canEditChat={}",
                     newChatDisabled, newCanEditChat);
         }
 
@@ -124,7 +124,7 @@ public final class FFPayloads {
             hasSynced = false;
             chatDisabled = true;
             canEditChat = false;
-            LOG.info("[FFPayloads.ClientState] Cleared client cache");
+            LOG.debug("[FFPayloads.ClientState] Cleared client cache");
         }
     }
 
@@ -209,9 +209,7 @@ public final class FFPayloads {
                 return;
             }
 
-            FeatheredFriendSettingsData data = FeatheredFriendSettingsData.get(level);
-
-            boolean chatDisabledValue = data.isChatDisabled();
+            boolean chatDisabledValue = FFCalendarConfig.isChatDisabled();
             boolean canEditChatValue;
             try {
                 canEditChatValue = player.hasPermissions(4);
@@ -222,7 +220,7 @@ public final class FFPayloads {
             ServerSettingsPayload msg = new ServerSettingsPayload(chatDisabledValue, canEditChatValue);
             PacketDistributor.sendToPlayer(player, msg);
 
-            LOG.info("[FFPayloads] Sent settings to {}: chatDisabled={} canEditChat={}",
+            LOG.debug("[FFPayloads] Sent settings to {}: chatDisabled={} canEditChat={}",
                     player.getGameProfile().getName(), chatDisabledValue, canEditChatValue);
 
         } catch (Throwable t) {
@@ -324,10 +322,9 @@ public final class FFPayloads {
                         return;
                     }
 
-                    FeatheredFriendSettingsData data = FeatheredFriendSettingsData.get(level);
-                    data.setChatDisabled(payload.chatDisabled());
+                    FFCalendarConfig.setChatDisabled(payload.chatDisabled());
 
-                    LOG.info("[FFPayloads] {} set chatDisabled -> {}",
+                    LOG.debug("[FFPayloads] {} set chatDisabled -> {}",
                             sp.getGameProfile().getName(), payload.chatDisabled());
 
                     broadcastSettings(level);

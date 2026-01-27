@@ -48,7 +48,7 @@ public final class FFNeoForgeEntities {
     public static final DeferredHolder<EntityType<?>, EntityType<RavenEntity>> RAVEN =
             ENTITY_TYPES.register("raven", () -> {
                 try {
-                    LOG.info("[FFNeoForgeEntities] Building Raven EntityType with hitbox w={} h={}",
+                    LOG.debug("[FFNeoForgeEntities] Building Raven EntityType with hitbox w={} h={}",
                             RAVEN_HITBOX_WIDTH, RAVEN_HITBOX_HEIGHT);
 
                     return EntityType.Builder
@@ -73,7 +73,7 @@ public final class FFNeoForgeEntities {
     }
 
     public static void register(IEventBus modEventBus) {
-        LOG.info("[FFNeoForgeEntities] Registering entity types");
+        LOG.debug("[FFNeoForgeEntities] Registering entity types");
         try {
             ENTITY_TYPES.register(modEventBus);
         } catch (Throwable t) {
@@ -83,17 +83,17 @@ public final class FFNeoForgeEntities {
         // Attributes are registered via MOD bus event listener (NOT EventBusSubscriber).
         try {
             modEventBus.addListener(FFNeoForgeEntities::onEntityAttributeCreation);
-            LOG.info("[FFNeoForgeEntities] Hooked EntityAttributeCreationEvent listener");
+            LOG.debug("[FFNeoForgeEntities] Hooked EntityAttributeCreationEvent listener");
         } catch (Throwable t) {
             LOG.error("[FFNeoForgeEntities] Failed to hook EntityAttributeCreationEvent listener", t);
         }
     }
 
     private static void onEntityAttributeCreation(EntityAttributeCreationEvent event) {
-        LOG.info("[FFNeoForgeEntities] Creating attributes for registered entities");
+        LOG.debug("[FFNeoForgeEntities] Creating attributes for registered entities");
         try {
             event.put(RAVEN.get(), createRavenAttributes().build());
-            LOG.info("[FFNeoForgeEntities] Registered Raven attributes");
+            LOG.debug("[FFNeoForgeEntities] Registered Raven attributes");
         } catch (Throwable t) {
             LOG.error("[FFNeoForgeEntities] Failed to register Raven attributes", t);
         }

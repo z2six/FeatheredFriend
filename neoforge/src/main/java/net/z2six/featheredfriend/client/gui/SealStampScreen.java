@@ -590,7 +590,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             // This is what will actually be sent to the server when the carve finishes.
             int effectiveSlot = computeSealStampSlot(Minecraft.getInstance());
 
-            LOG.info("[SealStampScreen] Carve START → menuStampSlot={} effectiveStampSlot={} seed={} slices={} style={} secret='{}'",
+            LOG.debug("[SealStampScreen] Carve START → menuStampSlot={} effectiveStampSlot={} seed={} slices={} style={} secret='{}'",
                     this.stampSlot, effectiveSlot, seed, slices, style, secret);
 
             // Disable button for the duration of the carve animation.
@@ -671,7 +671,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
                         String ownerName = mc.player.getGameProfile().getName();
 
-                        LOG.info("[SealStampScreen] Carve FINISHED → sending SealStampCarveResultPacket (stampSlot={} owner='{}')",
+                        LOG.debug("[SealStampScreen] Carve FINISHED → sending SealStampCarveResultPacket (stampSlot={} owner='{}')",
                                 effectiveSlot, ownerName);
 
                         // Send the result to the server for actual NBT write (payload-based)

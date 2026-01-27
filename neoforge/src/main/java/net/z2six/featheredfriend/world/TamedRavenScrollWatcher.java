@@ -132,7 +132,7 @@ public final class TamedRavenScrollWatcher {
         try {
             NeoForge.EVENT_BUS.addListener(TamedRavenScrollWatcher::onPlayerTick);
             NeoForge.EVENT_BUS.addListener(TamedRavenScrollWatcher::onEntityInteract);
-            LOG.info("[TamedRavenScrollWatcher] Registered PlayerTickEvent.Post + EntityInteract listeners");
+            LOG.debug("[TamedRavenScrollWatcher] Registered PlayerTickEvent.Post + EntityInteract listeners");
         } catch (Throwable t) {
             LOG.error("[TamedRavenScrollWatcher] Failed to register event listeners", t);
         }
@@ -195,7 +195,7 @@ public final class TamedRavenScrollWatcher {
                         if (despawnAt > 0L && nowGameTime >= despawnAt) {
                             expired.add(r);
 
-                            LOG.info(
+                            LOG.debug(
                                     "[TamedRavenScrollWatcher] Lifetime expired for scroll raven id={} owner='{}' now={} despawnAt={}",
                                     r.getId(),
                                     safePlayerName(serverPlayer),
@@ -266,7 +266,7 @@ public final class TamedRavenScrollWatcher {
                     }
                 }
                 if (serverPlayer.tickCount % 80 == 0) {
-                    LOG.info(
+                    LOG.debug(
                             "[TamedRavenScrollWatcher] Player '{}' has ACTIVE courier job(s); disabling scroll-summoned raven while sealed scroll is held.",
                             safePlayerName(player)
                     );
@@ -348,7 +348,7 @@ public final class TamedRavenScrollWatcher {
 
                 RavenEntity spawned = spawnSummonedRaven(serverLevel, serverPlayer, ravenName);
                 if (spawned != null) {
-                    LOG.info("[TamedRavenScrollWatcher] Start-hold: spawned scroll-raven id={} for player='{}' at {}",
+                    LOG.debug("[TamedRavenScrollWatcher] Start-hold: spawned scroll-raven id={} for player='{}' at {}",
                             spawned.getId(), safePlayerName(player), spawned.position());
                 }
                 return;
@@ -357,7 +357,7 @@ public final class TamedRavenScrollWatcher {
             if (scrollRavens.isEmpty()) {
                 RavenEntity spawned = spawnSummonedRaven(serverLevel, serverPlayer, ravenName);
                 if (spawned != null && (serverPlayer.tickCount % 40 == 0)) {
-                    LOG.info("[TamedRavenScrollWatcher] Continuous-hold: respawned scroll-raven id={} for player='{}' at {}",
+                    LOG.debug("[TamedRavenScrollWatcher] Continuous-hold: respawned scroll-raven id={} for player='{}' at {}",
                             spawned.getId(), safePlayerName(player), spawned.position());
                 }
                 return;
@@ -519,7 +519,7 @@ public final class TamedRavenScrollWatcher {
                         LOG.warn("[TamedRavenScrollWatcher] spawnSummonedRaven: setRavenVariant(SCROLL) failed safely: {}", t.toString());
                     }
 
-                    LOG.info("[TamedRavenScrollWatcher] spawnSummonedRaven: recall armed for player='{}' jobId={} recipient={} (failed).",
+                    LOG.debug("[TamedRavenScrollWatcher] spawnSummonedRaven: recall armed for player='{}' jobId={} recipient={} (failed).",
                             safePlayerName(owner), failedJob.jobId, failedJob.recipientUuid);
                 }
             } catch (Throwable t) {
@@ -557,7 +557,7 @@ public final class TamedRavenScrollWatcher {
             level.addFreshEntity(raven);
 
             playScrollSummonSpawnFx(level, owner, raven);
-            LOG.info("[TamedRavenScrollWatcher] spawnSummonedRaven: spawned id={} name='{}' for player='{}' at {}",
+            LOG.debug("[TamedRavenScrollWatcher] spawnSummonedRaven: spawned id={} name='{}' for player='{}' at {}",
                     raven.getId(), ravenName, safePlayerName(owner), raven.position());
 
             return raven;
@@ -625,7 +625,7 @@ public final class TamedRavenScrollWatcher {
             // If raven is armed with a failed-job recall payload:
             RecallPayload recall = readRecallPayload(raven);
             if (recall != null) {
-                LOG.info("[TamedRavenScrollWatcher] RecallInteract: player='{}' ravenId={} jobId={} recipient={}",
+                LOG.debug("[TamedRavenScrollWatcher] RecallInteract: player='{}' ravenId={} jobId={} recipient={}",
                         safePlayerName(player), raven.getId(), recall.jobId, recall.recipientUuidStr);
 
                 // 1) Give/drop the failed scroll back to player
@@ -647,7 +647,7 @@ public final class TamedRavenScrollWatcher {
 
                     if (recipientUuid != null) {
                         data.removeJob(recall.jobId, recipientUuid);
-                        LOG.info("[TamedRavenScrollWatcher] RecallInteract: removed failed jobId={} recipient={} after return to sender='{}'",
+                        LOG.debug("[TamedRavenScrollWatcher] RecallInteract: removed failed jobId={} recipient={} after return to sender='{}'",
                                 recall.jobId, recipientUuid, safePlayerName(player));
                     } else {
                         LOG.warn("[TamedRavenScrollWatcher] RecallInteract: could not parse recipient UUID '{}' for jobId={} (job not removed).",
@@ -675,7 +675,7 @@ public final class TamedRavenScrollWatcher {
                                         safePlayerName(player), shrinkErr.toString());
                             }
 
-                            LOG.info("[TamedRavenScrollWatcher] RecallInteract: created NEW courier jobId={} after recall return (player='{}')",
+                            LOG.debug("[TamedRavenScrollWatcher] RecallInteract: created NEW courier jobId={} after recall return (player='{}')",
                                     newJob.jobId, safePlayerName(player));
                         } else {
                             LOG.warn("[TamedRavenScrollWatcher] RecallInteract: failed to create NEW job from held sealed scroll for player='{}'",
@@ -818,7 +818,7 @@ public final class TamedRavenScrollWatcher {
 
             // No empty slot -> drop
             player.drop(stack, false);
-            LOG.info("[TamedRavenScrollWatcher] giveOrDropFirstEmpty: inventory full; dropped returned scroll for player='{}'",
+            LOG.debug("[TamedRavenScrollWatcher] giveOrDropFirstEmpty: inventory full; dropped returned scroll for player='{}'",
                     safePlayerName(player));
 
         } catch (Throwable t) {
@@ -941,7 +941,7 @@ public final class TamedRavenScrollWatcher {
             if (tamedModule != null) {
                 try {
                     tamedModule.beginDespawnWithFx(level, owner, ravenName);
-                    LOG.info("[TamedRavenScrollWatcher] despawnOneScrollSummonedRaven: triggered despawn FX for id={} name='{}' player='{}' reason={}",
+                    LOG.debug("[TamedRavenScrollWatcher] despawnOneScrollSummonedRaven: triggered despawn FX for id={} name='{}' player='{}' reason={}",
                             raven.getId(), ravenName, safePlayerName(owner), reason);
                 } catch (Throwable t) {
                     LOG.error("[TamedRavenScrollWatcher] despawnOneScrollSummonedRaven: beginDespawnWithFx failed; discarding raven directly. err={}",
@@ -1022,7 +1022,7 @@ public final class TamedRavenScrollWatcher {
 
                 Vec3 pocketUnderCeiling = findFirst3x3x2PocketNear(level, owner, cx, baseYUnderCeiling, cz, minY, maxY);
                 if (pocketUnderCeiling != null) {
-                    LOG.info(
+                    LOG.debug(
                             "[TamedRavenScrollWatcher] findSafeSpawnAbovePlayer: CEILING FOUND at y={} -> pocketUnderCeiling={}",
                             ceilingY,
                             pocketUnderCeiling
@@ -1065,7 +1065,7 @@ public final class TamedRavenScrollWatcher {
 
             Vec3 pocket = findFirst3x3x2PocketNear(level, owner, cx, baseY, cz, minY, maxY);
             if (pocket != null) {
-                LOG.info("[TamedRavenScrollWatcher] findSafeSpawnAbovePlayer: fallback +15 pocket={}", pocket);
+                LOG.debug("[TamedRavenScrollWatcher] findSafeSpawnAbovePlayer: fallback +15 pocket={}", pocket);
 
                 if (canSimulatePathToPlayer(level, owner, pocket, simRaven)) {
                     return pocket;
@@ -1137,7 +1137,7 @@ public final class TamedRavenScrollWatcher {
                         try {
                             key = String.valueOf(net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(st.getBlock()));
                         } catch (Throwable ignored) {}
-                        LOG.info("[TamedRavenScrollWatcher] scanFirstCeilingYWithin15: HIT dy={} y={} block={} feetY={} player='{}'",
+                        LOG.debug("[TamedRavenScrollWatcher] scanFirstCeilingYWithin15: HIT dy={} y={} block={} feetY={} player='{}'",
                                 dy, y, key, feetY, safePlayerName(owner));
                     }
                     return y;
@@ -1192,7 +1192,7 @@ public final class TamedRavenScrollWatcher {
                         if (is3x3x3Air(level, tx, baseY, tz)) {
                             Vec3 pocket = new Vec3(tx + 0.5D, baseY + 0.1D, tz + 0.5D);
 
-                            LOG.info(
+                            LOG.debug(
                                     "[TamedRavenScrollWatcher] findFirst3x3x2PocketNear: FOUND pocket={} baseY={} off=({}, {}) player='{}'",
                                     pocket,
                                     baseY,
@@ -1206,7 +1206,7 @@ public final class TamedRavenScrollWatcher {
                 }
             }
 
-            LOG.info(
+            LOG.debug(
                     "[TamedRavenScrollWatcher] findFirst3x3x2PocketNear: NONE baseY={} center=({}, {}) radius={} player='{}'",
                     baseY,
                     cx,
@@ -1300,10 +1300,10 @@ public final class TamedRavenScrollWatcher {
             }
 
             if (ok) {
-                LOG.info("[TamedRavenScrollWatcher] canSimulatePathToPlayer: A* simulation OK player='{}' spawnPos={} goal={}",
+                LOG.debug("[TamedRavenScrollWatcher] canSimulatePathToPlayer: A* simulation OK player='{}' spawnPos={} goal={}",
                         safePlayerName(owner), spawnPos, goal);
             } else {
-                LOG.info("[TamedRavenScrollWatcher] canSimulatePathToPlayer: A* simulation FAIL player='{}' spawnPos={} goal={}",
+                LOG.debug("[TamedRavenScrollWatcher] canSimulatePathToPlayer: A* simulation FAIL player='{}' spawnPos={} goal={}",
                         safePlayerName(owner), spawnPos, goal);
             }
 
@@ -1415,7 +1415,7 @@ public final class TamedRavenScrollWatcher {
 
             if (!isOwner) {
                 // Not the owner's raven -> do nothing special, let other logic run.
-                LOG.info(
+                LOG.debug(
                         "[TamedRavenScrollWatcher] handleSealedScrollInteract: player='{}' used scroll on raven id={} but is not owner (ignoring).",
                         safePlayerName(player),
                         raven.getId()
@@ -1430,7 +1430,7 @@ public final class TamedRavenScrollWatcher {
 
             if (clientSide) {
                 // CLIENT: just make it look successful, real logic is server-side.
-                LOG.info(
+                LOG.debug(
                         "[TamedRavenScrollWatcher] handleSealedScrollInteract: CLIENT accepted sealed scroll use " +
                                 "(player='{}', raven id={}, hand={}, stack={})",
                         safePlayerName(player),
@@ -1474,7 +1474,7 @@ public final class TamedRavenScrollWatcher {
                 return InteractionResult.PASS;
             }
 
-            LOG.info(
+            LOG.debug(
                     "[TamedRavenScrollWatcher] handleSealedScrollInteract: SERVER created courier jobId={} from sealed scroll " +
                             "(sender='{}', recipient='{}', ravenId={})",
                     job.jobId,
@@ -1568,7 +1568,7 @@ public final class TamedRavenScrollWatcher {
                 serverPlayer.sendSystemMessage(
                         Component.literal("[FeatheredFriend] You must hold a sealed scroll to whistle for your raven.")
                 );
-                LOG.info("[TamedRavenScrollWatcher] Whistle request denied: player='{}' not holding sealed scroll and no failed jobs.",
+                LOG.debug("[TamedRavenScrollWatcher] Whistle request denied: player='{}' not holding sealed scroll and no failed jobs.",
                         safePlayerName(serverPlayer));
                 return;
             }
@@ -1583,7 +1583,7 @@ public final class TamedRavenScrollWatcher {
                 serverPlayer.sendSystemMessage(
                         Component.literal("[FeatheredFriend] You do not have a tamed raven bound to you.")
                 );
-                LOG.info("[TamedRavenScrollWatcher] Whistle request denied: player='{}' has no stored tamed raven.",
+                LOG.debug("[TamedRavenScrollWatcher] Whistle request denied: player='{}' has no stored tamed raven.",
                         safePlayerName(serverPlayer));
                 return;
             }
@@ -1593,7 +1593,7 @@ public final class TamedRavenScrollWatcher {
             if (scrollRavens.isEmpty()) {
                 RavenEntity spawned = spawnSummonedRaven(serverLevel, serverPlayer, ravenName);
                 if (spawned != null) {
-                    LOG.info("[TamedRavenScrollWatcher] Whistle: spawned scroll-raven id={} for player='{}' at {}",
+                    LOG.debug("[TamedRavenScrollWatcher] Whistle: spawned scroll-raven id={} for player='{}' at {}",
                             spawned.getId(), safePlayerName(serverPlayer), spawned.position());
                 }
                 return;

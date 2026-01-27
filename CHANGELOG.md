@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [1.3.7]
+- Ravens will need a mix of iron/gold nuggets with different cawing sounds (to avoid people spam right clicking with golden nuggets in hand)
+- Fixed server config on the .toml side of things (hot loaded, now properly works with chat disabling)
+- Potential bug that could cause Ravens to keep spawning indefinitely, resulting in hundreds of Ravens
+- Improved Raven spawning (it didn't work as I intended before, has a "ravens per player" new server config)
+- Reviewed and made small adjustments to Raven death logic
+
 ## [1.3.6] [Forge-exclusive]
 - Fixed auto-summon/whistle & chat disablement config not syncing correctly with server
 

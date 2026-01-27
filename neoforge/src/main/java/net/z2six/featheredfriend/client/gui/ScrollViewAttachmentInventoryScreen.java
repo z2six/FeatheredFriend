@@ -128,7 +128,7 @@ public class ScrollViewAttachmentInventoryScreen extends AbstractContainerScreen
             Screen current = mc.screen;
             ScrollViewScreen parent = (current instanceof ScrollViewScreen sv) ? sv : null;
 
-            LOG.info("[ScrollViewAttachmentInventoryScreen] handlePearlClicked: opening attachment screen containerId={} parentPresent={}",
+            LOG.debug("[ScrollViewAttachmentInventoryScreen] handlePearlClicked: opening attachment screen containerId={} parentPresent={}",
                     menu.containerId, parent != null);
 
             if (parent != null) {
@@ -347,7 +347,7 @@ public class ScrollViewAttachmentInventoryScreen extends AbstractContainerScreen
 
             if (this.parent != null) {
                 // Return to parent WITHOUT closing container.
-                LOG.info("[ScrollViewAttachmentInventoryScreen] performCloseAction: returning to parent ScrollViewScreen (same instance) containerId={}",
+                LOG.debug("[ScrollViewAttachmentInventoryScreen] performCloseAction: returning to parent ScrollViewScreen (same instance) containerId={}",
                         safeContainerId());
                 mc.setScreen(this.parent);
                 return;

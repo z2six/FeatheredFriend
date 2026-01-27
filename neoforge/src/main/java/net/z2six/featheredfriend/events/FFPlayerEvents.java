@@ -8,6 +8,9 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.z2six.featheredfriend.data.FFKnownPlayersData;
 import net.z2six.featheredfriend.network.FFNetwork;
+import net.z2six.featheredfriend.Constants;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import org.slf4j.Logger;
 
 import java.util.List;
@@ -41,8 +44,9 @@ public final class FFPlayerEvents {
 
         try {
             NeoForge.EVENT_BUS.addListener(FFPlayerEvents::onPlayerLoggedIn);
+            NeoForge.EVENT_BUS.addListener(FFPlayerEvents::onPlayerClone);
             REGISTERED = true;
-            LOG.info("[FFPlayerEvents] Registered PlayerLoggedInEvent listener on NeoForge.EVENT_BUS");
+            LOG.debug("[FFPlayerEvents] Registered PlayerLoggedInEvent listener on NeoForge.EVENT_BUS");
         } catch (Throwable t) {
             LOG.error("[FFPlayerEvents] register() failed safely", t);
         }
@@ -78,13 +82,45 @@ public final class FFPlayerEvents {
                 }
             }
 
-            LOG.info("[FFPlayerEvents] Login '{}' -> known players now {} (broadcasted to {} online)",
+            LOG.debug("[FFPlayerEvents] Login '{}' -> known players now {} (broadcasted to {} online)",
                     safeName(serverPlayer),
                     players.size(),
                     server.getPlayerList().getPlayers().size());
 
         } catch (Throwable t) {
             LOG.error("[FFPlayerEvents] Failed to process PlayerLoggedInEvent", t);
+        }
+    }
+
+    /**
+     * Ensure our per-player persistent data survives player cloning (death/respawn).
+     *
+     * Without this, entries like {@code featheredfriend.TamedRaven} can be lost when the server creates
+     * a new player entity after death, leading to "my tamed raven disappeared from the stored list".
+     */
+    private static void onPlayerClone(PlayerEvent.Clone event) {
+        try {
+            if (event == null) return;
+            if (!(event.getEntity() instanceof ServerPlayer newPlayer)) return;
+            if (!(event.getOriginal() instanceof ServerPlayer oldPlayer)) return;
+
+            CompoundTag oldRoot = oldPlayer.getPersistentData();
+            if (oldRoot == null) return;
+            if (!oldRoot.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)) return;
+
+            CompoundTag oldMod = oldRoot.getCompound(Constants.MOD_ID);
+            if (oldMod == null || oldMod.isEmpty()) return;
+
+            CompoundTag newRoot = newPlayer.getPersistentData();
+            if (newRoot == null) return;
+
+            // Copy our entire mod compound to preserve tamed raven records and any future persistent flags.
+            newRoot.put(Constants.MOD_ID, oldMod.copy());
+
+            LOG.debug("[FFPlayerEvents] Player cloned: copied persistent '{}' tag for player={} (wasDeath={})",
+                    Constants.MOD_ID, safeName(newPlayer), event.isWasDeath());
+        } catch (Throwable t) {
+            LOG.error("[FFPlayerEvents] onPlayerClone failed safely", t);
         }
     }
 

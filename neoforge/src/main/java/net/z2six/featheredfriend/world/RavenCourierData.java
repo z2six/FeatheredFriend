@@ -225,7 +225,7 @@ public class RavenCourierData extends SavedData {
                 }
             }
 
-            LOG.info("[RavenCourierData] Loaded {} recipients with pending jobs (nextJobId={})",
+            LOG.debug("[RavenCourierData] Loaded {} recipients with pending jobs (nextJobId={})",
                     jobsByRecipient.size(), nextJobId);
 
         } catch (Throwable t) {
@@ -436,7 +436,7 @@ public class RavenCourierData extends SavedData {
 
             setDirty();
 
-            LOG.info("[RavenCourierData] Created delivery job id={} (sender='{}' [{}], recipient='{}' [{}], ravenId={} ravenName='{}')",
+            LOG.debug("[RavenCourierData] Created delivery job id={} (sender='{}' [{}], recipient='{}' [{}], ravenId={} ravenName='{}')",
                     jobId, senderName, senderUuid, recipientName, recipientUuid, raven.getId(), ravenName);
 
             return job;
@@ -476,7 +476,7 @@ public class RavenCourierData extends SavedData {
 
             setDirty();
 
-            LOG.info("[RavenCourierData] markJobFailed: jobId={} recipient={} reason='{}' failureCount={}",
+            LOG.debug("[RavenCourierData] markJobFailed: jobId={} recipient={} reason='{}' failureCount={}",
                     jobId, recipientUuid, job.lastFailureReason, job.failureCount);
 
             return true;
@@ -517,7 +517,7 @@ public class RavenCourierData extends SavedData {
 
             setDirty();
 
-            LOG.info("[RavenCourierData] clearFailedForRetry: cleared failed state for jobId={} sender={}", jobId, senderUuid);
+            LOG.debug("[RavenCourierData] clearFailedForRetry: cleared failed state for jobId={} sender={}", jobId, senderUuid);
             return true;
 
         } catch (Throwable t) {
@@ -583,7 +583,7 @@ public class RavenCourierData extends SavedData {
                     jobsByRecipient.remove(recipientUuid);
                 }
                 setDirty();
-                LOG.info("[RavenCourierData] Removed job id={} for recipient={}", jobId, recipientUuid);
+                LOG.debug("[RavenCourierData] Removed job id={} for recipient={}", jobId, recipientUuid);
             }
         } catch (Throwable t) {
             LOG.error("[RavenCourierData] removeJob failed safely: {}", t.toString());
@@ -629,7 +629,7 @@ public class RavenCourierData extends SavedData {
             if (count > 0) {
                 setDirty();
             }
-            LOG.info("[RavenCourierData] clearAllJobs: removed {} job(s).", count);
+            LOG.debug("[RavenCourierData] clearAllJobs: removed {} job(s).", count);
             return count;
         } catch (Throwable t) {
             LOG.error("[RavenCourierData] clearAllJobs failed safely: {}", t.toString());
@@ -663,7 +663,7 @@ public class RavenCourierData extends SavedData {
                 setDirty();
             }
 
-            LOG.info("[RavenCourierData] clearJobsForPlayer: removed {} job(s) for player={}", removed, playerUuid);
+            LOG.debug("[RavenCourierData] clearJobsForPlayer: removed {} job(s) for player={}", removed, playerUuid);
             return removed;
 
         } catch (Throwable t) {

@@ -8,12 +8,12 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
-import net.z2six.featheredfriend.command.FeatheredFriendCommands;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import net.z2six.featheredfriend.world.TamedRavenPlayerData;
 import org.slf4j.Logger;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * neoforge/src/main/java/net/z2six/featheredfriend/entity/raven/modules/TamedRavenDeathHandler.java
@@ -53,6 +53,47 @@ public final class TamedRavenDeathHandler {
 
             if (!(raven.level() instanceof ServerLevel serverLevel)) {
                 // Client side or weird dimension; ignore.
+                return;
+            }
+
+            // Only clear stored tamed raven data when a *real* tamed raven dies.
+            // (Do NOT clear when courier ravens die; they are not the owner's "bound raven".)
+            try {
+                if (!raven.isTame()) {
+                    return;
+                }
+            } catch (Throwable ignored) {
+                return;
+            }
+
+            try {
+                if (raven.getTags().contains("ff_courier_raven")) {
+                    return;
+                }
+            } catch (Throwable ignored) {
+            }
+
+            UUID ownerUuid;
+            try {
+                ownerUuid = raven.getOwnerUUID();
+            } catch (Throwable ignored) {
+                return;
+            }
+            if (ownerUuid == null) {
+                return;
+            }
+
+            ServerPlayer owner;
+            try {
+                owner = serverLevel.getServer().getPlayerList().getPlayer(ownerUuid);
+            } catch (Throwable ignored) {
+                owner = null;
+            }
+            if (owner == null) {
+                if (raven.tickCount % 80 == 0) {
+                    LOG.debug("[TamedRavenDeathHandler] Owner is offline/unavailable; cannot clear TamedRaven data for uuid={}",
+                            ownerUuid);
+                }
                 return;
             }
 
@@ -102,57 +143,8 @@ public final class TamedRavenDeathHandler {
 
             String entityNameTrim = ravenNameFromEntity == null ? "" : ravenNameFromEntity.trim();
 
-            // Try to find the owner via persistent TamedRaven data.
-            for (ServerPlayer candidate : players) {
-                if (candidate == null) {
-                    continue;
-                }
-
-                TamedRavenPlayerData.TamedRavenInfo info =
-                        TamedRavenPlayerData.getTamedRavenInfo(candidate);
-
-                if (!info.hasTamedRaven()) {
-                    continue;
-                }
-
-                String storedName = info.ravenName();
-                String storedNameTrim = storedName == null ? "" : storedName.trim();
-
-                // ---------------------------------------------------------------------
-                // MATCHING LOGIC
-                //
-                // Stored base name is something like "Crux".
-                // Entity display name is something like "Dev's Crux".
-                //
-                // We treat it as a match if:
-                //   - storedName == entityName
-                //   - OR entityName ends with storedName (e.g., "Dev's Crux".endsWith("Crux"))
-                // ---------------------------------------------------------------------
-                if (!storedNameTrim.isEmpty() && !entityNameTrim.isEmpty()) {
-                    boolean directMatch = storedNameTrim.equals(entityNameTrim);
-                    boolean suffixMatch = entityNameTrim.endsWith(storedNameTrim);
-
-                    if (!directMatch && !suffixMatch) {
-                        if (raven.tickCount % 80 == 0) {
-                            LOG.debug("[TamedRavenDeathHandler] Skipping candidate owner={} storedName='{}' entityName='{}' (no match)",
-                                    candidate.getGameProfile().getName(), storedNameTrim, entityNameTrim);
-                        }
-                        continue;
-                    }
-                } else {
-                    // If we have no reliable name match, be conservative and skip this candidate.
-                    if (raven.tickCount % 80 == 0) {
-                        LOG.debug("[TamedRavenDeathHandler] Skipping candidate owner={} due to empty names. stored='{}' entity='{}'",
-                                candidate.getGameProfile().getName(), storedNameTrim, entityNameTrim);
-                    }
-                    continue;
-                }
-
-                // At this point we treat 'candidate' as the owner.
-                if (raven.tickCount % 40 == 0) {
-                    LOG.info("[TamedRavenDeathHandler] Matched owner={} for raven id={} storedName='{}' entityName='{}'",
-                            candidate.getGameProfile().getName(), raven.getId(), storedNameTrim, entityNameTrim);
-                }
+            TamedRavenPlayerData.TamedRavenInfo info = TamedRavenPlayerData.getTamedRavenInfo(owner);
+            String storedNameTrim = (info == null || info.ravenName() == null) ? "" : info.ravenName().trim();
 
                 String displayName = !entityNameTrim.isEmpty()
                         ? entityNameTrim
@@ -168,44 +160,36 @@ public final class TamedRavenDeathHandler {
                 }
 
                 try {
-                    candidate.sendSystemMessage(Component.literal(baseMessage));
+                    owner.sendSystemMessage(Component.literal(baseMessage));
                 } catch (Throwable tSend) {
                     LOG.warn("[TamedRavenDeathHandler] Failed to send base death message to owner={}: {}",
-                            candidate.getGameProfile().getName(), tSend.toString());
+                            owner.getGameProfile().getName(), tSend.toString());
                 }
 
                 // Optional "last seen nearby <player>" message.
                 if (closestPlayer != null
-                        && !closestPlayer.getUUID().equals(candidate.getUUID())) {
+                        && !closestPlayer.getUUID().equals(owner.getUUID())) {
                     String lastSeenMsg = "[FeatheredFriend] It was last seen nearby "
                             + closestPlayer.getGameProfile().getName() + ".";
                     try {
-                        candidate.sendSystemMessage(Component.literal(lastSeenMsg));
+                        owner.sendSystemMessage(Component.literal(lastSeenMsg));
                     } catch (Throwable tSend2) {
                         LOG.warn("[TamedRavenDeathHandler] Failed to send last-seen message to owner={}: {}",
-                                candidate.getGameProfile().getName(), tSend2.toString());
+                                owner.getGameProfile().getName(), tSend2.toString());
                     }
                 }
 
-                // Clear the TamedRaven data for this owner using the SAME logic as the command.
-                boolean cleared = FeatheredFriendCommands.clearPlayerTamedRavenData(candidate);
+                // Clear the TamedRaven data for this owner.
+                boolean cleared = TamedRavenPlayerData.clearPlayerTamedRavenData(owner);
                 if (cleared) {
-                    LOG.info("[TamedRavenDeathHandler] Cleared TamedRaven data for owner={} due to raven death. ravenName={}",
-                            candidate.getGameProfile().getName(), displayName);
+                    LOG.debug("[TamedRavenDeathHandler] Cleared TamedRaven data for owner={} due to raven death. ravenName={}",
+                            owner.getGameProfile().getName(), displayName);
                 } else {
-                    LOG.info("[TamedRavenDeathHandler] Owner={} had no TamedRaven data to clear on raven death. ravenName={}",
-                            candidate.getGameProfile().getName(), displayName);
+                    LOG.debug("[TamedRavenDeathHandler] Owner={} had no TamedRaven data to clear on raven death. ravenName={}",
+                            owner.getGameProfile().getName(), displayName);
                 }
 
-                // Only one owner expected; break after first match.
                 return;
-            }
-
-            // If we get here, no matching owner was found.
-            if (raven.tickCount % 80 == 0) {
-                LOG.debug("[TamedRavenDeathHandler] No matching TamedRaven owner found for raven id={} entityName='{}'",
-                        raven.getId(), entityNameTrim);
-            }
 
         } catch (Throwable t) {
             LOG.error("[TamedRavenDeathHandler] onRavenDeath failed safely", t);

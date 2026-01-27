@@ -91,9 +91,9 @@ public final class FFKnownPlayersData extends SavedData {
                     }
                 }
 
-                LOG.info("[FFKnownPlayersData] Loaded {} known players from disk", loaded);
+                LOG.debug("[FFKnownPlayersData] Loaded {} known players from disk", loaded);
             } else {
-                LOG.info("[FFKnownPlayersData] No '{}' list in saved data; starting empty", NBT_PLAYERS);
+                LOG.debug("[FFKnownPlayersData] No '{}' list in saved data; starting empty", NBT_PLAYERS);
             }
         } catch (Throwable t) {
             LOG.error("[FFKnownPlayersData] load() failed safely; data may be incomplete", t);
@@ -142,9 +142,9 @@ public final class FFKnownPlayersData extends SavedData {
             setDirty();
 
             if (prev == null) {
-                LOG.info("[FFKnownPlayersData] Added known player: {} ({})", name, uuid);
+                LOG.debug("[FFKnownPlayersData] Added known player: {} ({})", name, uuid);
             } else if (!prev.equals(name)) {
-                LOG.info("[FFKnownPlayersData] Updated known player name: {} -> {} ({})", prev, name, uuid);
+                LOG.debug("[FFKnownPlayersData] Updated known player name: {} -> {} ({})", prev, name, uuid);
             } else {
                 LOG.debug("[FFKnownPlayersData] addOrUpdate: unchanged for {} ({})", name, uuid);
             }

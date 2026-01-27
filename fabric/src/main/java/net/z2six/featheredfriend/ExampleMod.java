@@ -12,7 +12,7 @@ public class FeatheredFriend implements ModInitializer {
         // project.
 
         // Use Fabric to bootstrap the Common mod.
-        Constants.LOG.info("Hello Fabric world!");
+        Constants.LOG.debug("Hello Fabric world!");
         CommonClass.init();
     }
 }

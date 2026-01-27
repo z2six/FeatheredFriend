@@ -44,7 +44,7 @@ public final class FFNetwork {
 
     public static void registerSimpleMessages() {
         try {
-            LOG.info("[FFNetwork] registerSimpleMessages() called; payload-based networking is used (no-op)");
+            LOG.debug("[FFNetwork] registerSimpleMessages() called; payload-based networking is used (no-op)");
         } catch (Throwable t) {
             LOG.error("[FFNetwork] registerSimpleMessages() failed (no-op stub)", t);
         }
@@ -52,7 +52,7 @@ public final class FFNetwork {
 
     public static void register(final RegisterPayloadHandlersEvent event) {
         try {
-            LOG.info("[FFNetwork] RegisterPayloadHandlersEvent received -> registering payloads");
+            LOG.debug("[FFNetwork] RegisterPayloadHandlersEvent received -> registering payloads");
             var registrar = event.registrar("1");
 
             registrar.playToClient(
@@ -103,7 +103,7 @@ public final class FFNetwork {
                     FFNetwork::handleWhistleForRavenOnServer
             );
 
-            LOG.info("[FFNetwork] Registered payload channels: known_players, request_known_players, open_raven_name_screen, " +
+            LOG.debug("[FFNetwork] Registered payload channels: known_players, request_known_players, open_raven_name_screen, " +
                     "seal_stamp_carve_result, wax_seal, break_seal, raven_name_chosen, whistle_for_raven");
 
         } catch (Throwable t) {

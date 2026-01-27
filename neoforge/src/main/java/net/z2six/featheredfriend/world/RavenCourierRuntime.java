@@ -118,7 +118,7 @@ public final class RavenCourierRuntime {
             NeoForge.EVENT_BUS.addListener(RavenCourierRuntime::onServerTick);
             NeoForge.EVENT_BUS.addListener(RavenCourierRuntime::onEntityInteract);
             NeoForge.EVENT_BUS.addListener(RavenCourierRuntime::onRavenDeath);
-            LOG.info("[RavenCourierRuntime] Registered server tick + interaction + death listeners");
+            LOG.debug("[RavenCourierRuntime] Registered server tick + interaction + death listeners");
         } catch (Throwable t) {
             LOG.error("[RavenCourierRuntime] Failed to register event listeners", t);
         }
@@ -157,7 +157,7 @@ public final class RavenCourierRuntime {
             boolean ok = data.clearFailedForRetry(jobId, senderUuid);
 
             if (ok) {
-                LOG.info("[RavenCourierRuntime] requestRetryDelivery: sender={} requested retry for jobId={}", senderUuid, jobId);
+                LOG.debug("[RavenCourierRuntime] requestRetryDelivery: sender={} requested retry for jobId={}", senderUuid, jobId);
                 try {
                     // Best-effort: dispatch immediately so UI feels responsive.
                     dispatchPendingDeliveries(server);
@@ -316,7 +316,7 @@ public final class RavenCourierRuntime {
             }
 
             if (dispatchedCount > 0 && LOG.isInfoEnabled()) {
-                LOG.info("[RavenCourierRuntime] Dispatched {} courier raven(s) this tick.", dispatchedCount);
+                LOG.debug("[RavenCourierRuntime] Dispatched {} courier raven(s) this tick.", dispatchedCount);
             }
 
         } catch (Throwable t) {
@@ -400,7 +400,7 @@ public final class RavenCourierRuntime {
                 raven.discard();
             }
 
-            LOG.info("[RavenCourierRuntime] handleCourierRavenTimeout: jobId={} marked failed; courier raven id={} despawned.", job.jobId, raven.getId());
+            LOG.debug("[RavenCourierRuntime] handleCourierRavenTimeout: jobId={} marked failed; courier raven id={} despawned.", job.jobId, raven.getId());
 
         } catch (Throwable t) {
             LOG.error("[RavenCourierRuntime] handleCourierRavenTimeout failed safely for jobId={}", job.jobId, t);
@@ -522,7 +522,7 @@ public final class RavenCourierRuntime {
                             }
 
                             if (now >= despawnAt) {
-                                LOG.info("[RavenCourierRuntime] reconcile: lifetime expired for courier raven id={} jobId={} now={} despawnAt={}",
+                                LOG.debug("[RavenCourierRuntime] reconcile: lifetime expired for courier raven id={} jobId={} now={} despawnAt={}",
                                         raven.getId(), job.jobId, now, despawnAt);
 
                                 // NEW semantics: mark job failed; do NOT remove; do NOT drop scroll.
@@ -607,7 +607,7 @@ public final class RavenCourierRuntime {
 
             playCourierSpawnFx(level, recipient, raven);
 
-            LOG.info("[RavenCourierRuntime] spawnCourierRavenForJob: spawned courier raven id={} for jobId={} recipient='{}' at {} name='{}'",
+            LOG.debug("[RavenCourierRuntime] spawnCourierRavenForJob: spawned courier raven id={} for jobId={} recipient='{}' at {} name='{}'",
                     raven.getId(), job.jobId, job.recipientName, raven.position(), ravenName);
 
             return raven;
@@ -737,7 +737,7 @@ public final class RavenCourierRuntime {
 
                 Vec3 pocketUnderCeiling = findFirst3x3x3PocketNear(level, player, cx, baseYUnderCeiling, cz, minY, maxY);
                 if (pocketUnderCeiling != null) {
-                    LOG.info("[RavenCourierRuntime] findCourierSpawnPos: CEILING FOUND at y={} -> pocketUnderCeiling={} jobId={} player='{}'",
+                    LOG.debug("[RavenCourierRuntime] findCourierSpawnPos: CEILING FOUND at y={} -> pocketUnderCeiling={} jobId={} player='{}'",
                             ceilingY, pocketUnderCeiling, jobId, safePlayerName(player));
 
                     // Step 5/6: Simulated A* check from spawn to player
@@ -770,7 +770,7 @@ public final class RavenCourierRuntime {
 
             Vec3 pocket = findFirst3x3x3PocketNear(level, player, cx, baseY, cz, minY, maxY);
             if (pocket != null) {
-                LOG.info("[RavenCourierRuntime] findCourierSpawnPos: fallback +15 pocket={} jobId={} player='{}'",
+                LOG.debug("[RavenCourierRuntime] findCourierSpawnPos: fallback +15 pocket={} jobId={} player='{}'",
                         pocket, jobId, safePlayerName(player));
 
                 if (canSimulatePathToPlayer(level, player, pocket, simRaven, jobId, "courier-fallback+15")) {
@@ -850,7 +850,7 @@ public final class RavenCourierRuntime {
                         key = String.valueOf(BuiltInRegistries.BLOCK.getKey(st.getBlock()));
                     } catch (Throwable ignored) {}
 
-                    LOG.info("[RavenCourierRuntime] scanFirstCeilingYWithin15: HIT dy={} y={} block={} feetY={} player='{}'",
+                    LOG.debug("[RavenCourierRuntime] scanFirstCeilingYWithin15: HIT dy={} y={} block={} feetY={} player='{}'",
                             dy, y, key, feetY, safePlayerName(player));
                     return y;
                 }
@@ -895,7 +895,7 @@ public final class RavenCourierRuntime {
 
                         if (is3x3x3Air(level, tx, baseY, tz)) {
                             Vec3 pocket = new Vec3(tx + 0.5D, baseY + 0.1D, tz + 0.5D);
-                            LOG.info("[RavenCourierRuntime] findFirst3x3x3PocketNear: FOUND pocket={} baseY={} off=({}, {}) player='{}'",
+                            LOG.debug("[RavenCourierRuntime] findFirst3x3x3PocketNear: FOUND pocket={} baseY={} off=({}, {}) player='{}'",
                                     pocket, baseY, dx, dz, safePlayerName(player));
                             return pocket;
                         }
@@ -903,7 +903,7 @@ public final class RavenCourierRuntime {
                 }
             }
 
-            LOG.info("[RavenCourierRuntime] findFirst3x3x3PocketNear: NONE baseY={} center=({}, {}) radius={} player='{}'",
+            LOG.debug("[RavenCourierRuntime] findFirst3x3x3PocketNear: NONE baseY={} center=({}, {}) radius={} player='{}'",
                     baseY, cx, cz, maxR, safePlayerName(player));
             return null;
 
@@ -973,10 +973,10 @@ public final class RavenCourierRuntime {
             }
 
             if (ok) {
-                LOG.info("[RavenCourierRuntime] canSimulatePathToPlayer: A* simulation OK player='{}' spawnPos={} goal={} jobId={}",
+                LOG.debug("[RavenCourierRuntime] canSimulatePathToPlayer: A* simulation OK player='{}' spawnPos={} goal={} jobId={}",
                         safePlayerName(player), spawnPos, goal, jobId);
             } else {
-                LOG.info("[RavenCourierRuntime] canSimulatePathToPlayer: A* simulation FAIL player='{}' spawnPos={} goal={} jobId={}",
+                LOG.debug("[RavenCourierRuntime] canSimulatePathToPlayer: A* simulation FAIL player='{}' spawnPos={} goal={} jobId={}",
                         safePlayerName(player), spawnPos, goal, jobId);
             }
 
@@ -1223,7 +1223,7 @@ public final class RavenCourierRuntime {
             );
             player.sendSystemMessage(msg);
 
-            LOG.info("[RavenCourierRuntime] giveSealedScrollToPlayerFromJob: {} delivery of sealed scroll for jobId={} to player='{}'",
+            LOG.debug("[RavenCourierRuntime] giveSealedScrollToPlayerFromJob: {} delivery of sealed scroll for jobId={} to player='{}'",
                     hasSpace ? "successful" : "failed (dropped)", job.jobId, safePlayerName(player));
 
             return true;
@@ -1298,7 +1298,7 @@ public final class RavenCourierRuntime {
 
             raven.spawnAtLocation(stack, 0.2F);
 
-            LOG.info("[RavenCourierRuntime] dropSealedScrollAtRaven: dropped sealed scroll for jobId={} at pos={}", job.jobId, raven.position());
+            LOG.debug("[RavenCourierRuntime] dropSealedScrollAtRaven: dropped sealed scroll for jobId={} at pos={}", job.jobId, raven.position());
 
         } catch (Throwable t) {
             LOG.error("[RavenCourierRuntime] dropSealedScrollAtRaven failed safely for jobId={}", job.jobId, t);
@@ -1396,7 +1396,7 @@ public final class RavenCourierRuntime {
             );
             sender.sendSystemMessage(msg);
 
-            LOG.info("[RavenCourierRuntime] notifySenderOfRavenDeath: notified sender='{}' of raven death (jobId={})",
+            LOG.debug("[RavenCourierRuntime] notifySenderOfRavenDeath: notified sender='{}' of raven death (jobId={})",
                     safePlayerName(sender), job.jobId);
         } catch (Throwable t) {
             LOG.error("[RavenCourierRuntime] notifySenderOfRavenDeath failed safely for jobId={}", job.jobId, t);
@@ -1472,7 +1472,7 @@ public final class RavenCourierRuntime {
             if (tamedModule != null) {
                 try {
                     tamedModule.beginDespawnWithFx(level, contextPlayer, ravenName);
-                    LOG.info("[RavenCourierRuntime] despawnCourierRaven: triggered despawn FX for id={} name='{}' player='{}' reason={}",
+                    LOG.debug("[RavenCourierRuntime] despawnCourierRaven: triggered despawn FX for id={} name='{}' player='{}' reason={}",
                             raven.getId(), ravenName, safePlayerName(contextPlayer), reason);
                 } catch (Throwable t) {
                     LOG.error("[RavenCourierRuntime] despawnCourierRaven: beginDespawnWithFx failed; discarding raven directly. err={}",

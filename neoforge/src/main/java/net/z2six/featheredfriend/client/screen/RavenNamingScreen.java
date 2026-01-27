@@ -168,7 +168,7 @@ public class RavenNamingScreen extends Screen {
                 name = name.substring(0, MAX_NAME_CHARS);
             }
 
-            LOG.info("[RavenNamingScreen] onDone: sending name='{}' for ravenEntityId={}", name, ravenEntityId);
+            LOG.debug("[RavenNamingScreen] onDone: sending name='{}' for ravenEntityId={}", name, ravenEntityId);
             FFNetwork.sendRavenNameChosenToServer(ravenEntityId, name);
 
             this.onClose();
@@ -181,7 +181,7 @@ public class RavenNamingScreen extends Screen {
 
     private void onCancel() {
         try {
-            LOG.info("[RavenNamingScreen] onCancel: closing without sending name (ravenEntityId={})", ravenEntityId);
+            LOG.debug("[RavenNamingScreen] onCancel: closing without sending name (ravenEntityId={})", ravenEntityId);
             this.onClose();
         } catch (Throwable t) {
             LOG.error("[RavenNamingScreen] onCancel failed", t);

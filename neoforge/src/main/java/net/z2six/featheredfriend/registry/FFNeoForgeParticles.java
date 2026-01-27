@@ -53,7 +53,7 @@ public final class FFNeoForgeParticles {
     }
 
     public static void register(IEventBus modEventBus) {
-        LOG.info("[FFNeoForgeParticles] Registering particle types");
+        LOG.debug("[FFNeoForgeParticles] Registering particle types");
         try {
             PARTICLE_TYPES.register(modEventBus);
         } catch (Throwable t) {

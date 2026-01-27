@@ -42,7 +42,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
     protected void init() {
         super.init();
 
-        LOG.info("[FeatheredFriendSettingsScreen] init()");
+        LOG.debug("[FeatheredFriendSettingsScreen] init()");
 
         loadFromCacheAndMaybeRequestSync();
 
@@ -58,7 +58,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
                             try {
                                 FFClientConfig.setAutoSummonOnScroll(autoSummonOnScroll);
                                 FFClientConfig.save();
-                                LOG.info("[FeatheredFriendSettingsScreen] Updated client config autoSummonOnScroll -> {}", autoSummonOnScroll);
+                                LOG.debug("[FeatheredFriendSettingsScreen] Updated client config autoSummonOnScroll -> {}", autoSummonOnScroll);
                             } catch (Throwable t) {
                                 LOG.error("[FeatheredFriendSettingsScreen] Failed to update autoSummonOnScroll client config", t);
                             }
@@ -90,7 +90,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
                                     }
 
                                     PacketDistributor.sendToServer(new FFPayloads.SetChatDisabledPayload(newValue));
-                                    LOG.info("[FeatheredFriendSettingsScreen] Sent SetChatDisabledPayload -> {}", newValue);
+                                    LOG.debug("[FeatheredFriendSettingsScreen] Sent SetChatDisabledPayload -> {}", newValue);
                                 } catch (Throwable t) {
                                     LOG.error("[FeatheredFriendSettingsScreen] Failed to send chatDisabled toggle", t);
                                 }
@@ -117,7 +117,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
      */
     public void onServerSettingsUpdated() {
         try {
-            LOG.info("[FeatheredFriendSettingsScreen] onServerSettingsUpdated()");
+            LOG.debug("[FeatheredFriendSettingsScreen] onServerSettingsUpdated()");
 
             refreshFromCacheOnly();
 
@@ -131,7 +131,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
             }
 
             if (this.chatDisabledButton == null && this.canEditChat) {
-                LOG.info("[FeatheredFriendSettingsScreen] Chat button absent but perms now true; rebuilding widgets");
+                LOG.debug("[FeatheredFriendSettingsScreen] Chat button absent but perms now true; rebuilding widgets");
                 tryRebuildWidgets();
             }
 
@@ -169,7 +169,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
             }
 
             PacketDistributor.sendToServer(new FFPayloads.RequestServerSettingsPayload());
-            LOG.info("[FeatheredFriendSettingsScreen] Requested server settings sync");
+            LOG.debug("[FeatheredFriendSettingsScreen] Requested server settings sync");
         } catch (Throwable t) {
             LOG.warn("[FeatheredFriendSettingsScreen] requestServerSettings failed safely: {}", t.toString());
         }
@@ -206,10 +206,10 @@ public class FeatheredFriendSettingsScreen extends Screen {
             if (!hasServerSettings) {
                 // Request sync if we're actually in-world.
                 if (isConnectionReady()) {
-                    LOG.info("[FeatheredFriendSettingsScreen] No synced server settings yet; requesting sync");
+                    LOG.debug("[FeatheredFriendSettingsScreen] No synced server settings yet; requesting sync");
                     requestServerSettings();
                 } else {
-                    LOG.info("[FeatheredFriendSettingsScreen] No synced server settings yet; connection not ready (client tick will sync)");
+                    LOG.debug("[FeatheredFriendSettingsScreen] No synced server settings yet; connection not ready (client tick will sync)");
                 }
             }
 

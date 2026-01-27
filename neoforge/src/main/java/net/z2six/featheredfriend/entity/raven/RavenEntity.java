@@ -484,7 +484,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
                 // Rate-limited log so we can confirm what's trying to steal the state.
                 if (this.tickCount % 20 == 0) {
-                    /* LOG.info(
+                    /* LOG.debug(
                             "[RavenEntity] setAIState: BLOCKED transition {} -> {} while follow protected (override={}, scrollLock={}) " +
                                     "pos={} flyTarget={} pathGoal={} followCd={}",
                             prev,
@@ -552,7 +552,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // If same-state spam happens, log occasionally so you can see it.
             if (prev == state) {
                 if (this.tickCount % 80 == 0) {
-                    /* LOG.info(
+                    /* LOG.debug(
                             "[RavenEntity] setAIState(same): {} pos={} landingPhase={} landingLeafPos={} " +
                                     "idleTicksRemaining={} idleCommitTicks={} roamTicksRemaining={} " +
                                     "flyTarget={} flyTtl={} pathGoal={} pendingGoal={} pathPts={} pathIdx={}",
@@ -574,7 +574,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 }
             } else {
                 // Real transition: log every time.
-                /* LOG.info(
+                /* LOG.debug(
                         "[RavenEntity] AI STATE CHANGE: {} -> {} pos={} vel={} noGravity={} onGround={} " +
                                 "landingPhase={} landingLeafPos={} landingTicks={} " +
                                 "idlePerchCorner={} idleTicksRemaining={} idleCommitTicks={} idleLeafLossTicks={} idleLockTicks={} " +
@@ -621,7 +621,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             RavenAIState st = getAIStateForDebug();
 
-            /* LOG.info("[RavenEntity] HEARTBEAT({}): ai={} pos={} vel={} noGravity={} onGround={} hColl={} vColl={} landingPhase={} landingLeafPos={} landingTicks={} idlePerchCorner={} idleTicksRemaining={} idleCommitTicks={} idleLeafLossTicks={} idleLockTicks={} roamTicksRemaining={} flyTarget={} flyTtl={} pathGoal={} pendingGoal={} pathPts={} pathIdx={}",
+            /* LOG.debug("[RavenEntity] HEARTBEAT({}): ai={} pos={} vel={} noGravity={} onGround={} hColl={} vColl={} landingPhase={} landingLeafPos={} landingTicks={} idlePerchCorner={} idleTicksRemaining={} idleCommitTicks={} idleLeafLossTicks={} idleLockTicks={} roamTicksRemaining={} flyTarget={} flyTtl={} pathGoal={} pendingGoal={} pathPts={} pathIdx={}",
                     where,
                     st,
                     this.position(),
@@ -665,7 +665,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         homeInitialized = true;
         homePos = this.blockPosition();
         if (this.tickCount % 20 == 0) {
-            // LOG.info("[RavenEntity] Home initialized at {}", homePos);
+            // LOG.debug("[RavenEntity] Home initialized at {}", homePos);
         }
     }
 
@@ -858,7 +858,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                             consecutiveStartSampleAdjustments++;
                             if (this.tickCount % 20 == 0) {
                                 /*
-                                LOG.info("[RavenEntity] Path start sample adjusted: rawStart={} -> chosenStart={} (up={} snapXZ={} clearance={}x{} allowLeaves={} allowReplaceables={} adjCount={})",
+                                LOG.debug("[RavenEntity] Path start sample adjusted: rawStart={} -> chosenStart={} (up={} snapXZ={} clearance={}x{} allowLeaves={} allowReplaceables={} adjCount={})",
                                         rawStart,
                                         cand,
                                         String.format("%.3f", up),
@@ -1182,7 +1182,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 double dy = safeStart.y - rawStart.y;
                 double dz = safeStart.z - rawStart.z;
                 if ((dx * dx + dy * dy + dz * dz) > 0.0001D) {
-                    /* LOG.info("[RavenEntity] ensurePathTo(core): start adjusted raw={} safe={} (reason={})",
+                    /* LOG.debug("[RavenEntity] ensurePathTo(core): start adjusted raw={} safe={} (reason={})",
                             rawStart, safeStart, reason);
                      */
                 }
@@ -1196,7 +1196,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             if (this.tickCount % 20 == 0) {
                 double dg2 = safeGoal.distanceToSqr(rawGoal);
                 if (dg2 > 1.0E-6D) {
-                    /* LOG.info("[RavenEntity] ensurePathTo(core): goal adjusted rawGoal={} safeGoal={} d2={} (reason={})",
+                    /* LOG.debug("[RavenEntity] ensurePathTo(core): goal adjusted rawGoal={} safeGoal={} d2={} (reason={})",
                             rawGoal, safeGoal, String.format("%.3f", dg2), reason);
                      */
                 }
@@ -1222,7 +1222,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
                 /*
                 if (this.tickCount % 20 == 0) {
-                    LOG.info("[RavenEntity] ensurePathTo(core): A* FAIL (fails={} reason={}) start={} rawGoal={} safeGoal={} pos={} vel={} collH={} collV={} bounds={}",
+                    LOG.debug("[RavenEntity] ensurePathTo(core): A* FAIL (fails={} reason={}) start={} rawGoal={} safeGoal={} pos={} vel={} collH={} collV={} bounds={}",
                             consecutivePathPlanFails,
                             reason,
                             safeStart,
@@ -1251,7 +1251,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             pathFailCooldownTicks = 0;
 
             if (this.tickCount % 20 == 0) {
-                /* LOG.info("[RavenEntity] ensurePathTo(core): A* OK pts={} reason={} start={} rawGoal={} safeGoal={} pos={}",
+                /* LOG.debug("[RavenEntity] ensurePathTo(core): A* OK pts={} reason={} start={} rawGoal={} safeGoal={} pos={}",
                         pts.size(), reason, safeStart, rawGoal, safeGoal, this.position());
                  */
             }
@@ -1343,7 +1343,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         this.pathWaypointIndex = 0;
 
                         if (this.tickCount % 20 == 0) {
-                            /* LOG.info("[RavenEntity] advanceWaypointIfNeeded: path exhausted but not arrived -> flyDirectToGoal. reason={} goal={} dGoal={} pos={} flyTarget={}",
+                            /* LOG.debug("[RavenEntity] advanceWaypointIfNeeded: path exhausted but not arrived -> flyDirectToGoal. reason={} goal={} dGoal={} pos={} flyTarget={}",
                                     reason,
                                     goal,
                                     String.format("%.3f", dGoal),
@@ -1533,19 +1533,21 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             tag.putInt(NBT_HOME_Z, homePos.getZ());
 
             // ------------------------------------------------------------
-            // Persist per-spawn tame-cost (3..6 golden nuggets)
+            // Persist per-spawn taming requirement
             // ------------------------------------------------------------
             try {
                 // Ensure it's initialized before saving (server side typically).
-                if (this.getGoldenNuggetsRequiredToTame() <= 0 && this.level() != null && !this.level().isClientSide) {
+                if (this.level() != null && !this.level().isClientSide) {
                     initGoldenNuggetsRequiredToTameIfNeeded("save");
                 }
 
-                int v = this.getGoldenNuggetsRequiredToTame();
+                int v = Math.max(0, this.getGoldenNuggetsRequiredToTame());
                 if (v < 3) v = 3;
                 if (v > 6) v = 6;
 
                 tag.putInt(LureFollowTame.NBT_TAME_NUGGETS_REQUIRED, v);
+                tag.putString(LureFollowTame.NBT_TAME_NUGGET_SEQUENCE, lureFollowTame.getTameNuggetSequence());
+                tag.putInt(LureFollowTame.NBT_TAME_NUGGET_SEQUENCE_INDEX, lureFollowTame.getTameNuggetSequenceIndex());
 
                 if (this.tickCount % 200 == 0) {
                     /* LOG.debug("[RavenEntity] Saved tame-cost: {}={}",
@@ -1599,9 +1601,18 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
 
             // ------------------------------------------------------------
-            // Load per-spawn tame-cost (3..6 golden nuggets)
+            // Load per-spawn taming requirement
             // ------------------------------------------------------------
             try {
+                String loadedSequence = null;
+                int loadedIndex = 0;
+                if (tag.contains(LureFollowTame.NBT_TAME_NUGGET_SEQUENCE, net.minecraft.nbt.Tag.TAG_STRING)) {
+                    loadedSequence = tag.getString(LureFollowTame.NBT_TAME_NUGGET_SEQUENCE);
+                }
+                if (tag.contains(LureFollowTame.NBT_TAME_NUGGET_SEQUENCE_INDEX, net.minecraft.nbt.Tag.TAG_INT)) {
+                    loadedIndex = tag.getInt(LureFollowTame.NBT_TAME_NUGGET_SEQUENCE_INDEX);
+                }
+
                 if (tag.contains(LureFollowTame.NBT_TAME_NUGGETS_REQUIRED, net.minecraft.nbt.Tag.TAG_INT)) {
                     int v = tag.getInt(LureFollowTame.NBT_TAME_NUGGETS_REQUIRED);
                     if (v < 3) v = 3;
@@ -1614,9 +1625,19 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                                 LureFollowTame.NBT_TAME_NUGGETS_REQUIRED, v);
                          */
                     }
+
+                    // Back-compat: if no explicit sequence is stored, treat old ravens as "all gold".
+                    if (loadedSequence == null || loadedSequence.isBlank()) {
+                        loadedSequence = "G".repeat(v);
+                        loadedIndex = 0;
+                    }
                 } else {
                     // Older saves: initialize safely (server side).
                     initGoldenNuggetsRequiredToTameIfNeeded("load-missingTag");
+                }
+
+                if (loadedSequence != null && !loadedSequence.isBlank()) {
+                    lureFollowTame.setTameNuggetSequence(loadedSequence, loadedIndex);
                 }
             } catch (Throwable t2) {
                 if (this.tickCount % 200 == 0) {
@@ -1646,18 +1667,6 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             ensureHomeInitialized();
 
             // ------------------------------------------------------------------
-            // TELEPORT SEQUENCE HAS ABSOLUTE PRIORITY
-            // ------------------------------------------------------------------
-            teleportation.tickTeleportSequenceServer(this);
-
-            if (teleportation.teleportSeqPhase != Teleportation.TeleportSeqPhase.NONE) {
-                // While teleporting, we do NOTHING else except FX.
-                teleportation.tickTeleportFxServer(this);
-                return;
-            }
-
-
-            // ------------------------------------------------------------------
             // TAMED RAVEN DESPAWN FADE (server only)
             // ------------------------------------------------------------------
             try {
@@ -1669,6 +1678,17 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 if (this.tickCount % 80 == 0) {
                     //LOG.error("[RavenEntity] aiStep: TamedRaven.tickServer failed safely", t);
                 }
+            }
+
+            // ------------------------------------------------------------------
+            // TELEPORT SEQUENCE HAS ABSOLUTE PRIORITY
+            // ------------------------------------------------------------------
+            teleportation.tickTeleportSequenceServer(this);
+
+            if (teleportation.teleportSeqPhase != Teleportation.TeleportSeqPhase.NONE) {
+                // While teleporting, we do NOTHING else except FX.
+                teleportation.tickTeleportFxServer(this);
+                return;
             }
 
             // ------------------------------------------------------------------
@@ -1724,7 +1744,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                                             ^ (long) this.tickCount
                                             ^ 0xA5A5A5A5L;
 
-                            /* LOG.info(
+                            /* LOG.debug(
                                     "[RavenEntity] A* retry tick: retryGoal={} pos={} vel={} collH={} collV={} fails={}",
                                     retryGoal,
                                     this.position(),
@@ -1738,7 +1758,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                             boolean ok = ensurePathTo(retryGoal, 6 * 20, seed, "retry-loop");
 
                             if (ok) {
-                                /* LOG.info(
+                                /* LOG.debug(
                                         "[RavenEntity] A* retry SUCCESS -> pts={} idx={} flyTarget={}",
                                         (pathWaypoints == null ? 0 : pathWaypoints.size()),
                                         pathWaypointIndex,
@@ -1746,7 +1766,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                                 );
                                  */
                             } else {
-                                /* LOG.info(
+                                /* LOG.debug(
                                         "[RavenEntity] A* retry FAILED -> nextRetryIn={}t",
                                         PATH_RETRY_INTERVAL_TICKS
                                 );
@@ -1917,7 +1937,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
                 if (getAIState() != RavenAIState.IDLE_GROUND) {
                     if (this.tickCount % 20 == 0) {
-                        //LOG.info("[RavenEntity] tickIdleGround: player avoidance switched AI state -> {} (yielding idle tick)", getAIState());
+                        //LOG.debug("[RavenEntity] tickIdleGround: player avoidance switched AI state -> {} (yielding idle tick)", getAIState());
                     }
                     return;
                 }
@@ -1989,7 +2009,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 idleLeafLossTicks++;
 
                 if (this.tickCount % 20 == 0) {
-                    /* LOG.info("[RavenEntity] IDLE: perch invalid sample {}/{} pos={} idlePerchCorner={} bbMinY={} onGround={} vColl={} commitTicks={} idleTicksRemaining={}",
+                    /* LOG.debug("[RavenEntity] IDLE: perch invalid sample {}/{} pos={} idlePerchCorner={} bbMinY={} onGround={} vColl={} commitTicks={} idleTicksRemaining={}",
                             idleLeafLossTicks,
                             IDLE_LEAF_LOSS_GRACE_TICKS,
                             this.position(),
@@ -2008,7 +2028,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     // Hard reason: perch truly lost.
                     String leaveReason = "idle perch invalid for " + idleLeafLossTicks + " ticks";
                     if (this.tickCount % 20 == 0) {
-                        /* LOG.info("[RavenEntity] IDLE -> ROAM_FLY (reason={}) pos={} idlePerchCorner={}",
+                        /* LOG.debug("[RavenEntity] IDLE -> ROAM_FLY (reason={}) pos={} idlePerchCorner={}",
                                 leaveReason, this.position(), landing.idlePerchCorner);
                          */
                     }
@@ -2068,7 +2088,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 } else {
                     String leaveReason = "idle timer expired";
                     if (this.tickCount % 20 == 0) {
-                        /* LOG.info("[RavenEntity] IDLE -> ROAM_FLY (reason={}) pos={} idlePerchCorner={}",
+                        /* LOG.debug("[RavenEntity] IDLE -> ROAM_FLY (reason={}) pos={} idlePerchCorner={}",
                                 leaveReason, this.position(), landing.idlePerchCorner);
                          */
                     }
@@ -2180,7 +2200,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                             stillOverriding = false;
 
                             if (this.tickCount % 40 == 0) {
-                                /* LOG.info("[RavenEntity] PlayerAvoidance: arrived near flee target -> clearing override. pos={} targetDist={}",
+                                /* LOG.debug("[RavenEntity] PlayerAvoidance: arrived near flee target -> clearing override. pos={} targetDist={}",
                                         pos, String.format("%.3f", Math.sqrt(d2)));
                                  */
                             }
@@ -2252,7 +2272,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     }
 
                     if (this.tickCount % 40 == 0) {
-                        /* LOG.info("[RavenEntity] PlayerAvoidance override active: ticksLeft={} pos={} vel={} flyTarget={} flyTtl={} pathGoal={} pts={} idx={}",
+                        /* LOG.debug("[RavenEntity] PlayerAvoidance override active: ticksLeft={} pos={} vel={} flyTarget={} flyTtl={} pathGoal={} pts={} idx={}",
                                 playerAvoidanceOverrideTicks,
                                 this.position(),
                                 this.getDeltaMovement(),
@@ -2558,7 +2578,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     public InteractionResult mobInteract(Player player, InteractionHand hand) {
         try {
             // Unthrottled debug so we KNOW if this ever fires
-            /* LOG.info("[RavenEntity] mobInteract ENTER: player={} hand={} pos={} side={}",
+            /* LOG.debug("[RavenEntity] mobInteract ENTER: player={} hand={} pos={} side={}",
                     (player == null ? "null" : player.getName().getString()),
                     hand,
                     this.position(),
@@ -2583,7 +2603,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         TamedRavenScrollWatcher.handleSealedScrollInteract(this, player, hand);
 
                 if (scrollResult.consumesAction()) {
-                    /* LOG.info(
+                    /* LOG.debug(
                             "[RavenEntity] mobInteract: sealed-scroll handler consumed interaction: result={} side={}",
                             scrollResult,
                             this.level() == null
@@ -2605,7 +2625,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 if (this.lureFollowTame != null) {
                     InteractionResult lureResult = this.lureFollowTame.handleTamingInteract(player, hand);
 
-                    /* LOG.info(
+                    /* LOG.debug(
                             "[RavenEntity] mobInteract: handleTamingInteract returned {} (item={}, side={})",
                             lureResult,
                             (stack == null ? "null" : stack.toString()),
@@ -2619,7 +2639,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         return lureResult;
                     }
                 } else {
-                    //LOG.info("[RavenEntity] mobInteract: lureFollowTame == null, skipping taming hook");
+                    //LOG.debug("[RavenEntity] mobInteract: lureFollowTame == null, skipping taming hook");
                 }
             } catch (Throwable t) {
                 //LOG.warn("[RavenEntity] mobInteract lure/tame hook failed safely: {}", t.toString());
@@ -2629,7 +2649,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // If neither scroll logic nor LureFollowTame cared, fall back to vanilla.
             // ----------------------------------------------------------------------
             InteractionResult base = super.mobInteract(player, hand);
-            /* LOG.info("[RavenEntity] mobInteract: super.mobInteract result={} side={}",
+            /* LOG.debug("[RavenEntity] mobInteract: super.mobInteract result={} side={}",
                     base,
                     this.level() != null && this.level().isClientSide ? "CLIENT" : "SERVER");
              */
@@ -2734,7 +2754,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         boolean pathBlocked = rayBlocked || collisionPersistent;
 
         if (collisionPersistent && this.tickCount % 20 == 0) {
-            /* LOG.info(
+            /* LOG.debug(
                     "[RavenEntity] Persistent collision: pos={} vel={} flyTarget={} dist={} stuckTicks={} collH={} collV={} rayBlocked={}",
                     pos, vel, flyTarget,
                     String.format("%.3f", dist),
@@ -2766,7 +2786,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 stuckTicks = 0;
 
                 if (this.tickCount % 20 == 0) {
-                    //LOG.info("[RavenEntity] Replan succeeded after collision: goal={} pos={}", pathGoal, pos);
+                    //LOG.debug("[RavenEntity] Replan succeeded after collision: goal={} pos={}", pathGoal, pos);
                 }
                 return;
             }
@@ -2784,7 +2804,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 stuckTicks = 0;
 
                 if (this.tickCount % 20 == 0) {
-                    //LOG.info("[RavenEntity] Avoidance waypoint issued: {}", avoidance);
+                    //LOG.debug("[RavenEntity] Avoidance waypoint issued: {}", avoidance);
                 }
                 return;
             }
@@ -3147,7 +3167,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         usedGoal = fallbackGoal;
 
                         if (this.tickCount % 20 == 0) {
-                            /* LOG.info(
+                            /* LOG.debug(
                                     "[RavenEntity] forceRoamFlightFromThreat: primary A* failed; using fallback path. fromPos={} playerPos={} primaryGoal={} fallbackGoal={}",
                                     ravenPos,
                                     playerPos,
@@ -3157,7 +3177,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                              */
                         }
                     } else if (this.tickCount % 40 == 0) {
-                        /* LOG.info(
+                        /* LOG.debug(
                                 "[RavenEntity] forceRoamFlightFromThreat: primary+fallback A* both failed. primaryGoal={} fallbackGoal={}",
                                 fleeTarget,
                                 fallbackGoal
@@ -3165,7 +3185,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                          */
                     }
                 } else if (this.tickCount % 40 == 0) {
-                    /* LOG.info(
+                    /* LOG.debug(
                             "[RavenEntity] forceRoamFlightFromThreat: no homeCenter; primary A* failed. goal={}",
                             fleeTarget
                     );
@@ -3182,7 +3202,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // ------------------------------------------------------------------
             if (ok) {
                 if (this.tickCount % 20 == 0) {
-                    /* LOG.info(
+                    /* LOG.debug(
                             "[RavenEntity] forceRoamFlightFromThreat: path armed to goal={} fromPos={} playerPos={}",
                             usedGoal,
                             ravenPos,
@@ -3240,7 +3260,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             if (dodge) {
                 // Dodged: no damage applied.
                 if (this.tickCount % 20 == 0) {
-                    /* LOG.info("[RavenEntity] hurt: DODGED damage. amount={} src={} pos={}",
+                    /* LOG.debug("[RavenEntity] hurt: DODGED damage. amount={} src={} pos={}",
                             amount,
                             (source == null ? "null" : source.toString()),
                             this.position());
@@ -3253,7 +3273,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             boolean result = super.hurt(source, amount);
 
             if (this.tickCount % 20 == 0) {
-                /* LOG.info("[RavenEntity] hurt: took damage. applied={} amount={} src={} hpNow={} pos={}",
+                /* LOG.debug("[RavenEntity] hurt: took damage. applied={} amount={} src={} hpNow={} pos={}",
                         result,
                         amount,
                         (source == null ? "null" : source.toString()),
@@ -3283,7 +3303,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         );
 
                         if (this.tickCount % 40 == 0) {
-                            //LOG.info("[RavenEntity] hurt: spawned FEATHER hit FX at pos={} count={}", pos, count);
+                            //LOG.debug("[RavenEntity] hurt: spawned FEATHER hit FX at pos={} count={}", pos, count);
                         }
                     }
                 } catch (Throwable tFx) {
@@ -3430,7 +3450,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                                 if (this.tickCount % 20 == 0) {
                                     boolean changed = cand.distanceToSqr(rawGoal) > 1.0E-6D;
                                     if (changed) {
-                                        /* LOG.info("[RavenEntity] Goal adjusted near target: rawGoal={} -> chosenGoal={} (dx={}, dy={}, dz={}, clearance={}x{} safety=({} r, +{} -{}))",
+                                        /* LOG.debug("[RavenEntity] Goal adjusted near target: rawGoal={} -> chosenGoal={} (dx={}, dy={}, dz={}, clearance={}x{} safety=({} r, +{} -{}))",
                                                 rawGoal, cand, dx, dy, dz, clearanceXZ, clearanceH, safetyR, safetyUp, safetyDown);
                                          */
                                     } else {
@@ -3935,7 +3955,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 Vec3 nextWp = (idx + 1 >= 0 && idx + 1 < total) ? this.pathWaypoints.get(idx + 1) : null;
                 Vec3 lastWp = this.pathWaypoints.get(total - 1);
 
-                /* LOG.info(
+                /* LOG.debug(
                         "[RavenEntity] DEBUG path gizmos ({}): pos={} flyTarget={} pathGoal={} pendingGoal={} wpIdx={}/{} curWp={} nextWp={} lastWp={}",
                         callerTag,
                         pos,
@@ -4260,7 +4280,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     int pts = (this.pathWaypoints == null) ? 0 : this.pathWaypoints.size();
                     if (pts <= 0) {
                         ok = false;
-                        LOG.info("[RavenEntity] simulateAStarPathTo: ensurePathTo returned ok but waypoints empty -> treating as FAIL. goal={} reason={}",
+                        LOG.debug("[RavenEntity] simulateAStarPathTo: ensurePathTo returned ok but waypoints empty -> treating as FAIL. goal={} reason={}",
                                 goal, reason);
                     }
                 } catch (Throwable ignored) {}
@@ -4271,7 +4291,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 try {
                     pts = (this.pathWaypoints == null) ? 0 : this.pathWaypoints.size();
                 } catch (Throwable ignored) {}
-                /* LOG.info("[RavenEntity] simulateAStarPathTo: {} goal={} maxPlanTicks={} pts={} seed={} reason={}",
+                /* LOG.debug("[RavenEntity] simulateAStarPathTo: {} goal={} maxPlanTicks={} pts={} seed={} reason={}",
                         (ok ? "OK" : "FAIL"), goal, maxPlanTicks, pts, seed, reason);
                  */
             }

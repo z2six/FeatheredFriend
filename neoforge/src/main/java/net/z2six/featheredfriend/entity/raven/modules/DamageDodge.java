@@ -81,7 +81,7 @@ public final class DamageDodge {
             boolean dodge = (rnd.nextFloat() < DODGE_CHANCE);
 
             if (raven.tickCount % 20 == 0) {
-                LOG.info("[DamageDodge] handleHurt: dodge={} chance={} amount={} src={} teleportStartedOrQueued={} pos={} ai={}",
+                LOG.debug("[DamageDodge] handleHurt: dodge={} chance={} amount={} src={} teleportStartedOrQueued={} pos={} ai={}",
                         dodge, DODGE_CHANCE, amount,
                         (source == null ? "null" : source.toString()),
                         teleportStartedOrQueued,

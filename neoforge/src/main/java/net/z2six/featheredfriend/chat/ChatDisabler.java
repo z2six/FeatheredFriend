@@ -13,8 +13,8 @@ import net.neoforged.neoforge.client.event.ClientChatEvent;
 import net.neoforged.neoforge.client.event.ClientChatReceivedEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.ServerChatEvent;
+import net.z2six.featheredfriend.config.FFCalendarConfig;
 import net.z2six.featheredfriend.network.FFPayloads;
-import net.z2six.featheredfriend.world.FeatheredFriendSettingsData;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
@@ -45,12 +45,12 @@ public final class ChatDisabler {
     public static void register() {
         try {
             NeoForge.EVENT_BUS.addListener(ChatDisabler::onServerChat);
-            LOG.info("[ChatDisabler] Registered ServerChatEvent listener.");
+            LOG.debug("[ChatDisabler] Registered ServerChatEvent listener.");
 
             if (FMLEnvironment.dist == Dist.CLIENT) {
                 NeoForge.EVENT_BUS.addListener(ChatDisabler::onClientSendChat);
                 NeoForge.EVENT_BUS.addListener(ChatDisabler::onClientReceiveChat);
-                LOG.info("[ChatDisabler] Registered ClientChatEvent + ClientChatReceivedEvent listeners.");
+                LOG.debug("[ChatDisabler] Registered ClientChatEvent + ClientChatReceivedEvent listeners.");
             }
         } catch (Throwable t) {
             LOG.error("[ChatDisabler] register() failed safely", t);
@@ -66,15 +66,13 @@ public final class ChatDisabler {
             ServerPlayer sender = event.getPlayer();
             if (sender == null) return;
 
-            ServerLevel level = sender.serverLevel();
-            FeatheredFriendSettingsData settings = FeatheredFriendSettingsData.get(level);
-            if (!settings.isChatDisabled()) {
+            if (!FFCalendarConfig.isChatDisabled()) {
                 return;
             }
 
             String raw = event.getRawText();
 
-            LOG.info("[ChatDisabler] Blocking server chat from '{}' (raw='{}')",
+            LOG.debug("[ChatDisabler] Blocking server chat from '{}' (raw='{}')",
                     safePlayerName(sender), raw);
 
             event.setCanceled(true);
@@ -109,7 +107,7 @@ public final class ChatDisabler {
                 return;
             }
 
-            LOG.info("[ChatDisabler] Blocking outgoing client chat message: '{}'", message);
+            LOG.debug("[ChatDisabler] Blocking outgoing client chat message: '{}'", message);
             event.setCanceled(true);
 
             // Optional UX hint (kept very light; remove if you hate it)
@@ -184,13 +182,9 @@ public final class ChatDisabler {
             if (mc.hasSingleplayerServer()) {
                 var server = mc.getSingleplayerServer();
                 if (server != null) {
-                    ServerLevel overworld = server.overworld();
-                    if (overworld != null) {
-                        FeatheredFriendSettingsData data = FeatheredFriendSettingsData.get(overworld);
-                        boolean v = data.isChatDisabled();
-                        LOG.debug("[ChatDisabler] isChatDisabledClient: integrated server world value -> {}", v);
-                        return v;
-                    }
+                    boolean v = FFCalendarConfig.isChatDisabled();
+                    LOG.debug("[ChatDisabler] isChatDisabledClient: integrated server config value -> {}", v);
+                    return v;
                 }
             }
 

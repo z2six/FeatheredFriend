@@ -93,7 +93,7 @@ public record BreakSealPacket(
                 return;
             }
 
-            LOG.info("[BreakSealPacket] handle: player={} slotHint={} seed={} recipientUUID='{}' date='{}' sender='{}'",
+            LOG.debug("[BreakSealPacket] handle: player={} slotHint={} seed={} recipientUUID='{}' date='{}' sender='{}'",
                     serverPlayer.getGameProfile().getName(),
                     p.slotHint(),
                     p.seed(),
@@ -117,7 +117,7 @@ public record BreakSealPacket(
                 return;
             }
 
-            LOG.info("[BreakSealPacket] handle: matched sealed scroll at {} (item={})",
+            LOG.debug("[BreakSealPacket] handle: matched sealed scroll at {} (item={})",
                     target.locationDescription,
                     BuiltInRegistries.ITEM.getKey(target.stack.getItem()));
 
@@ -163,7 +163,7 @@ public record BreakSealPacket(
                 LOG.error("[BreakSealPacket] Failed to mark SealBreakGate seal broken; attachments may not deliver", tMark);
             }
 
-            LOG.info("[BreakSealPacket] Conversion complete for player {}: scroll_sealed -> scroll_opened at {}",
+            LOG.debug("[BreakSealPacket] Conversion complete for player {}: scroll_sealed -> scroll_opened at {}",
                     serverPlayer.getGameProfile().getName(),
                     target.locationDescription);
 
@@ -421,7 +421,7 @@ public record BreakSealPacket(
             if (openedSeal.contains("Attachments")) {
                 try {
                     openedSeal.remove("Attachments");
-                    LOG.info("[BreakSealPacket] Removed Attachments from opened scroll SealedScroll compound");
+                    LOG.debug("[BreakSealPacket] Removed Attachments from opened scroll SealedScroll compound");
                 } catch (Throwable tRem) {
                     LOG.error("[BreakSealPacket] Failed to remove Attachments key from SealedScroll copy", tRem);
                 }

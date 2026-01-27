@@ -34,7 +34,7 @@ public class FFNeoForgeItems {
     }
 
     public static void register(IEventBus modEventBus) {
-        LOG.info("Registering {} FeatheredFriend items with NeoForge", FFItems.ITEM_MAP.size());
+        LOG.debug("Registering {} FeatheredFriend items with NeoForge", FFItems.ITEM_MAP.size());
         ITEMS.register(modEventBus);
     }
 

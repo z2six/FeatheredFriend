@@ -41,7 +41,7 @@ public class RavenRenderer extends GeoEntityRenderer<RavenEntity> {
         }
 
         if (LOG.isInfoEnabled()) {
-            LOG.info("[RavenRenderer] Constructed (translucent+alpha override active).");
+            LOG.debug("[RavenRenderer] Constructed (translucent+alpha override active).");
         }
     }
 

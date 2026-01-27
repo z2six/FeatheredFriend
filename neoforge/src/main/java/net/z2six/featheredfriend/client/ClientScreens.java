@@ -44,13 +44,13 @@ public final class ClientScreens {
 
     @SubscribeEvent
     public static void onRegisterMenuScreens(RegisterMenuScreensEvent event) {
-        LOG.info("[ClientScreens] onRegisterMenuScreens fired for modId='{}'", Constants.MOD_ID);
+        LOG.debug("[ClientScreens] onRegisterMenuScreens fired for modId='{}'", Constants.MOD_ID);
 
         // ---------------------------------------------------------------------
         // Scroll sealing GUI
         // ---------------------------------------------------------------------
         try {
-            LOG.info("[ClientScreens] Registering screen for menu type: {} (scroll_sealing)",
+            LOG.debug("[ClientScreens] Registering screen for menu type: {} (scroll_sealing)",
                     FFNeoForgeMenus.SCROLL_SEALING_MENU.get().toString());
 
             event.register(
@@ -59,7 +59,7 @@ public final class ClientScreens {
                             new ScrollSealingScreen(menu, inv, title)
             );
 
-            LOG.info("[ClientScreens] Successfully registered ScrollSealingScreen");
+            LOG.debug("[ClientScreens] Successfully registered ScrollSealingScreen");
         } catch (Throwable t) {
             LOG.error("[ClientScreens] Failed to register ScrollSealingScreen", t);
         }
@@ -68,7 +68,7 @@ public final class ClientScreens {
         // Seal Stamp carving GUI (placeholder)
         // ---------------------------------------------------------------------
         try {
-            LOG.info("[ClientScreens] Registering screen for menu type: {} (seal_stamp)",
+            LOG.debug("[ClientScreens] Registering screen for menu type: {} (seal_stamp)",
                     FFNeoForgeMenus.SEAL_STAMP_MENU.get().toString());
 
             event.register(
@@ -77,7 +77,7 @@ public final class ClientScreens {
                             new SealStampScreen(menu, inv, title)
             );
 
-            LOG.info("[ClientScreens] Successfully registered SealStampScreen");
+            LOG.debug("[ClientScreens] Successfully registered SealStampScreen");
         } catch (Throwable t) {
             LOG.error("[ClientScreens] Failed to register SealStampScreen", t);
         }
@@ -86,7 +86,7 @@ public final class ClientScreens {
         // Scroll view GUI (placeholder for sealed / opened scrolls)
         // ---------------------------------------------------------------------
         try {
-            LOG.info("[ClientScreens] Registering screen for menu type: {} (scroll_view)",
+            LOG.debug("[ClientScreens] Registering screen for menu type: {} (scroll_view)",
                     FFNeoForgeMenus.SCROLL_VIEW_MENU.get().toString());
 
             event.register(
@@ -95,7 +95,7 @@ public final class ClientScreens {
                             new ScrollViewScreen(menu, inv, title)
             );
 
-            LOG.info("[ClientScreens] Successfully registered ScrollViewScreen");
+            LOG.debug("[ClientScreens] Successfully registered ScrollViewScreen");
         } catch (Throwable t) {
             LOG.error("[ClientScreens] Failed to register ScrollViewScreen", t);
         }

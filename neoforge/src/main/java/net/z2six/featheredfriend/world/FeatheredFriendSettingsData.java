@@ -95,10 +95,10 @@ public class FeatheredFriendSettingsData extends SavedData {
                 } catch (Throwable ignored) {
                 }
                 chatDisabled = cfgDefault;
-                LOG.info("[FeatheredFriendSettingsData] ChatDisabled missing in NBT; defaulting from config: {}", chatDisabled);
+                LOG.debug("[FeatheredFriendSettingsData] ChatDisabled missing in NBT; defaulting from config: {}", chatDisabled);
             }
 
-            LOG.info("[FeatheredFriendSettingsData] Loaded settings: chatDisabled={}", chatDisabled);
+            LOG.debug("[FeatheredFriendSettingsData] Loaded settings: chatDisabled={}", chatDisabled);
 
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendSettingsData] readFromNbt failed safely: {}", t.toString());
@@ -155,7 +155,7 @@ public class FeatheredFriendSettingsData extends SavedData {
             }
             this.autoSummonOnScroll = enabled;
             this.setDirty();
-            LOG.info("[FeatheredFriendSettingsData] (back-compat) autoSummonOnScroll set to {}", enabled);
+            LOG.debug("[FeatheredFriendSettingsData] (back-compat) autoSummonOnScroll set to {}", enabled);
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendSettingsData] setAutoSummonOnScrollEnabled failed safely: {}", t.toString());
         }
@@ -168,7 +168,7 @@ public class FeatheredFriendSettingsData extends SavedData {
             }
             this.chatDisabled = disabled;
             this.setDirty();
-            LOG.info("[FeatheredFriendSettingsData] chatDisabled set to {}", disabled);
+            LOG.debug("[FeatheredFriendSettingsData] chatDisabled set to {}", disabled);
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendSettingsData] setChatDisabled failed safely: {}", t.toString());
         }

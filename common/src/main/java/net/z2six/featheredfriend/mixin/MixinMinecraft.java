@@ -13,7 +13,7 @@ public class MixinMinecraft {
     @Inject(at = @At("TAIL"), method = "<init>")
     private void init(CallbackInfo info) {
         
-        Constants.LOG.info("This line is printed by FeatheredFriend common mixin!");
-        Constants.LOG.info("MC Version: {}", Minecraft.getInstance().getVersionType());
+        Constants.LOG.debug("This line is printed by FeatheredFriend common mixin!");
+        Constants.LOG.debug("MC Version: {}", Minecraft.getInstance().getVersionType());
     }
 }

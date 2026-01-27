@@ -247,7 +247,7 @@ public record WaxSealPacket(
                         } catch (Throwable tFlag) {
                             LOG.error("[WaxSealPacket] Failed to set suppressAttachmentRefundOnClose on provider {}", provider.getClass().getName(), tFlag);
                         }
-                        LOG.info("[WaxSealPacket] Captured {} attachment stack(s) into sealed scroll for player {}",
+                        LOG.debug("[WaxSealPacket] Captured {} attachment stack(s) into sealed scroll for player {}",
                                 nonEmptyCount, serverPlayer.getGameProfile().getName());
                     } else {
                         LOG.debug("[WaxSealPacket] No attachments found in ScrollAttachmentProvider for player {}",
@@ -288,7 +288,7 @@ public record WaxSealPacket(
                 }
             }
 
-            LOG.info("[WaxSealPacket] Delivered sealed scroll to {} (sender='{}' seed={} slices={} style={} date='{}')",
+            LOG.debug("[WaxSealPacket] Delivered sealed scroll to {} (sender='{}' seed={} slices={} style={} date='{}')",
                     serverPlayer.getGameProfile().getName(),
                     p.senderName(),
                     p.seed(),

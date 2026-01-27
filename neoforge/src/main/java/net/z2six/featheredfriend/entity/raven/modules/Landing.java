@@ -425,7 +425,7 @@ public final class Landing {
 
             if (bestCorner == null) {
                 if (ravenEntity.tickCount % 40 == 0) {
-                    LOG.info(
+                    LOG.debug(
                             "[Landing] {}: relaxedPerch=false (no corner) pos={} feetBlock={} onGround={} vColl={} phase={} landingTicks={}",
                             debugTag, ravenEntity.position(), feetBlock,
                             ravenEntity.onGround(), ravenEntity.verticalCollision, phase, landingTicks
@@ -437,7 +437,7 @@ public final class Landing {
             // Basic validity guard (cheap).
             if (!isValidPerchCornerAtTopY(bestCorner, ravenEntity)) {
                 if (ravenEntity.tickCount % 40 == 0) {
-                    LOG.info(
+                    LOG.debug(
                             "[Landing] {}: relaxedPerch=false (corner invalid) pos={} corner={} phase={} landingTicks={}",
                             debugTag, ravenEntity.position(), bestCorner, phase, landingTicks
                     );
@@ -484,7 +484,7 @@ public final class Landing {
                     this.landingLeafPos = bestCorner;
 
                     if (ravenEntity.tickCount % 20 == 0) {
-                        LOG.info(
+                        LOG.debug(
                                 "[Landing] {}: DROP-COMMIT SNAP applied dXZ={} -> 0.0 corner={} center={} posNow={} vel={} landingTicks={}",
                                 debugTag,
                                 String.format("%.3f", dXZ),
@@ -499,7 +499,7 @@ public final class Landing {
                     return true;
                 } else {
                     if (ravenEntity.tickCount % 20 == 0) {
-                        LOG.info(
+                        LOG.debug(
                                 "[Landing] {}: DROP force-commit skipped dXZ={} maxSnap={} movingSlow={} vel={} corner={} center={} landingTicks={}",
                                 debugTag,
                                 String.format("%.3f", dXZ),
@@ -517,7 +517,7 @@ public final class Landing {
             boolean ok = withinRelaxed;
 
             if (!ok && (ravenEntity.tickCount % 20 == 0)) {
-                LOG.info(
+                LOG.debug(
                         "[Landing] {}: relaxedPerch=false dXZ={} eps={} pos={} center={} corner={} onGround={} vColl={} vel={} phase={} landingTicks={}",
                         debugTag,
                         String.format("%.3f", dXZ),
@@ -532,7 +532,7 @@ public final class Landing {
                         landingTicks
                 );
             } else if (ok && (ravenEntity.tickCount % 20 == 0)) {
-                LOG.info(
+                LOG.debug(
                         "[Landing] {}: relaxedPerch=true dXZ={} eps={} pos={} center={} corner={} (will enter idle + snap)",
                         debugTag,
                         String.format("%.3f", dXZ),
@@ -712,7 +712,7 @@ public final class Landing {
 
                 if (phaseNow != Phase.NONE || this.landingLeafPos != null || landingTicksNow != 0) {
                     if (ravenEntity.tickCount % 20 == 0) {
-                        LOG.info(
+                        LOG.debug(
                                 "[Landing] skipping landing due to player avoidance; clearing landing state. phase={} pos={} leafPos={} idlePerchCorner={} landingTicks={}",
                                 phaseNow,
                                 ravenEntity.position(),
@@ -738,7 +738,7 @@ public final class Landing {
         // Extra heartbeat for debugging stuck teleport / frozen flight.
         try {
             if (ravenEntity.tickCount % 40 == 0) {
-                LOG.info(
+                LOG.debug(
                         "[Landing] HEARTBEAT: phase={} ai={} pos={} vel={} leafPos={} idlePerchCorner={} landingTicks={}",
                         phase,
                         ravenEntity.getAIState(),
@@ -870,7 +870,7 @@ public final class Landing {
                     );
 
                     if (ravenEntity.tickCount % 20 == 0) {
-                        LOG.info(
+                        LOG.debug(
                                 "[Landing] Overhead reached -> DESCEND_SLOW (leaf={} pos={} horiz={} vert={})",
                                 this.landingLeafPos,
                                 pos,
@@ -911,7 +911,7 @@ public final class Landing {
                     }
 
                     if (ravenEntity.tickCount % 20 == 0) {
-                        LOG.info(
+                        LOG.debug(
                                 "[Landing] FLY_TO_OVERHEAD acquire intent: pathOk={} overhead={} pos={} vel={}",
                                 ok,
                                 overhead,
@@ -949,7 +949,7 @@ public final class Landing {
 
                 // Extra debug when we're clearly stuck but still in this phase.
                 if (ravenEntity.tickCount % 40 == 0) {
-                    LOG.info(
+                    LOG.debug(
                             "[Landing] FLY_TO_OVERHEAD tick: pos={} vel={} overhead={} horiz={} vert={} hasFlyIntent={} hasPathIntent={} leaf={} landingTicks={}",
                             ravenEntity.position(),
                             ravenEntity.getDeltaMovement(),
@@ -1107,7 +1107,7 @@ public final class Landing {
                             final double DROP_SNAP_EPS = 1.60D;
 
                             if (ravenEntity.tickCount % 20 == 0) {
-                                LOG.info(
+                                LOG.debug(
                                         "[Landing] DROP: groundedStable={} bestCorner={} center={} pos={} dXZ={} eps={} landingLeafPos={} onGround={} vColl={} vel={}",
                                         groundedStable,
                                         bestCorner,
@@ -1242,7 +1242,7 @@ public final class Landing {
             setFieldValueSafe(ravenEntity, "pathRetryCooldownTicks", 0);
 
             if (hadAnyIntent && ravenEntity.tickCount % 20 == 0) {
-                LOG.info(
+                LOG.debug(
                         "[Landing] enterIdleFromLanding: cleared leftover path/goal intent. reason={} pos={}",
                         reason,
                         ravenEntity.position()
@@ -1354,7 +1354,7 @@ public final class Landing {
 
             if (ravenEntity.tickCount % 20 == 0) {
                 Object commitTicks = getFieldValueSafe(ravenEntity, "idleCommitTicks");
-                LOG.info(
+                LOG.debug(
                         "[Landing] ENTER IDLE: reason={} pos={} idlePerchCorner={} idleTicksRemaining={} commitTicks={}",
                         reason,
                         ravenEntity.position(),
