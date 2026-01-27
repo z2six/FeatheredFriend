@@ -46,7 +46,7 @@ public final class FFClientSettingsCache {
             canEditChat = newCanEditChat;
             lastUpdateMillis = System.currentTimeMillis();
 
-            LOG.info("[FFClientSettingsCache] Updated from server: chatDisabled={} canEditChat={}", chatDisabled, canEditChat);
+            LOG.debug("[FFClientSettingsCache] Updated from server: chatDisabled={} canEditChat={}", chatDisabled, canEditChat);
         } catch (Throwable t) {
             LOG.error("[FFClientSettingsCache] applyFromServer failed safely", t);
         }

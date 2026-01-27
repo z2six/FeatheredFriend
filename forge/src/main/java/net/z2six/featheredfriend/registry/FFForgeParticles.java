@@ -46,7 +46,7 @@ public final class FFForgeParticles {
     }
 
     public static void register(IEventBus modEventBus) {
-        LOG.info("[FFForgeParticles] Registering particle types");
+        LOG.debug("[FFForgeParticles] Registering particle types");
         try {
             PARTICLE_TYPES.register(modEventBus);
         } catch (Throwable t) {

@@ -247,7 +247,7 @@ public final class FeatherParticles {
 
             // Occasional debug so you can confirm creation without spam.
             if (level.getGameTime() % 80L == 0L) {
-                LOG.info("[FeatherParticles] Created feather particle at ({}, {}, {}) alpha={} initialRollDeg={}",
+                LOG.debug("[FeatherParticles] Created feather particle at ({}, {}, {}) alpha={} initialRollDeg={}",
                         String.format("%.2f", x),
                         String.format("%.2f", y),
                         String.format("%.2f", z),

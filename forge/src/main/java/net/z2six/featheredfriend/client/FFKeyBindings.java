@@ -38,7 +38,7 @@ public final class FFKeyBindings {
         try {
             modEventBus.addListener(FFKeyBindings::onRegisterKeyMappings);
             MinecraftForge.EVENT_BUS.addListener(FFKeyBindings::onClientTick);
-            LOG.info("[FFKeyBindings] Registered key mapping + client tick listeners.");
+            LOG.debug("[FFKeyBindings] Registered key mapping + client tick listeners.");
         } catch (Throwable t) {
             LOG.error("[FFKeyBindings] register() failed safely", t);
         }
@@ -69,7 +69,7 @@ public final class FFKeyBindings {
             event.register(OPEN_SETTINGS_KEY);
             event.register(WHISTLE_KEY);
 
-            LOG.info("[FFKeyBindings] Registered key mappings: open_settings, whistle.");
+            LOG.debug("[FFKeyBindings] Registered key mappings: open_settings, whistle.");
 
         } catch (Throwable t) {
             LOG.error("[FFKeyBindings] onRegisterKeyMappings failed safely", t);
@@ -100,7 +100,7 @@ public final class FFKeyBindings {
             if (OPEN_SETTINGS_KEY != null) {
                 while (OPEN_SETTINGS_KEY.consumeClick()) {
                     try {
-                        LOG.info("[FFKeyBindings] Open-settings key pressed by '{}'", player.getGameProfile().getName());
+                        LOG.debug("[FFKeyBindings] Open-settings key pressed by '{}'", player.getGameProfile().getName());
                         mc.setScreen(new FeatheredFriendSettingsScreen());
                     } catch (Throwable t) {
                         LOG.error("[FFKeyBindings] Failed to open settings screen", t);
@@ -134,13 +134,13 @@ public final class FFKeyBindings {
                 LOG.debug("[FFKeyBindings] Whistle key pressed: sending request to server (clientHoldingSealedScroll={}) player='{}'",
                         holdingClientSide, player.getGameProfile().getName());
             } else {
-                LOG.info("[FFKeyBindings] Whistle key pressed: sending request to server player='{}'",
+                LOG.debug("[FFKeyBindings] Whistle key pressed: sending request to server player='{}'",
                         player.getGameProfile().getName());
             }
 
             try {
                 FFNetwork.sendWhistleForRaven();
-                LOG.info("[FFKeyBindings] Sent whistle request packet for player='{}'",
+                LOG.debug("[FFKeyBindings] Sent whistle request packet for player='{}'",
                         player.getGameProfile().getName());
             } catch (Throwable netErr) {
                 LOG.error("[FFKeyBindings] Failed to send whistle packet for player='{}' (safe): {}",

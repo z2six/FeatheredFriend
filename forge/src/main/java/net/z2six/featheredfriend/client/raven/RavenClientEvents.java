@@ -19,10 +19,10 @@ public final class RavenClientEvents {
     }
 
     public static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
-        LOG.info("[RavenClientEvents] Registering Raven entity renderer");
+        LOG.debug("[RavenClientEvents] Registering Raven entity renderer");
         try {
             event.registerEntityRenderer(FFForgeEntities.RAVEN.get(), RavenRenderer::new);
-            LOG.info("[RavenClientEvents] Raven renderer registered");
+            LOG.debug("[RavenClientEvents] Raven renderer registered");
         } catch (Throwable t) {
             LOG.error("[RavenClientEvents] Failed to register Raven renderer", t);
         }

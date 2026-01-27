@@ -324,7 +324,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                         ? BuiltInRegistries.ITEM.getKey(this.sealedScrollStack.getItem())
                         : null;
 
-                LOG.info("[ScrollViewScreen] init summary: itemKey={} viewPhase={} hasAttachments={} sealBreakRequested={}",
+                LOG.debug("[ScrollViewScreen] init summary: itemKey={} viewPhase={} hasAttachments={} sealBreakRequested={}",
                         key, this.viewPhase, this.hasAttachments, this.sealBreakRequested);
             } catch (Throwable ignored) {
             }
@@ -1005,7 +1005,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             Minecraft mc = this.minecraft;
             int containerId = (this.menu != null) ? this.menu.containerId : -1;
 
-            LOG.info("[ScrollViewScreen] requestProperClose(reason='{}') containerId={} player={} (client)",
+            LOG.debug("[ScrollViewScreen] requestProperClose(reason='{}') containerId={} player={} (client)",
                     reason,
                     containerId,
                     mc != null && mc.player != null ? mc.player.getGameProfile().getName() : "null");
@@ -1013,7 +1013,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             if (mc != null && mc.player != null) {
                 try {
                     mc.player.closeContainer();
-                    LOG.info("[ScrollViewScreen] closeContainer() called (client). containerId={}", containerId);
+                    LOG.debug("[ScrollViewScreen] closeContainer() called (client). containerId={}", containerId);
                 } catch (Throwable tClose) {
                     LOG.error("[ScrollViewScreen] closeContainer() failed; falling back to setScreen(null)", tClose);
                 }
@@ -1114,7 +1114,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             }
 
             // Do NOT call closeContainer(), do NOT call onClose(). Just setScreen to overlay/alternate screen.
-            LOG.info("[ScrollViewScreen] Opening attachment inventory screen (reason={}) containerId={}", reason, this.menu.containerId);
+            LOG.debug("[ScrollViewScreen] Opening attachment inventory screen (reason={}) containerId={}", reason, this.menu.containerId);
             mc.setScreen(attachment);
             return true;
         } catch (Throwable t) {
@@ -1237,7 +1237,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
             // Attachments pearl click (only when open)
             if (button == 0 && this.viewPhase == ViewPhase.OPEN_IDLE) {
                 if (shouldShowPearlIcon() && isMouseInPearlIcon(mouseX, mouseY)) {
-                    LOG.info("[ScrollViewScreen] Pearl clicked -> open attachment inventory (client)");
+                    LOG.debug("[ScrollViewScreen] Pearl clicked -> open attachment inventory (client)");
                     if (openAttachmentInventoryScreen("pearlClick")) {
                         return true;
                     }
@@ -1261,7 +1261,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                     if (!sealBreakRequested) {
                         int slotHint = resolveHeldScrollSlotHint();
 
-                        LOG.info("[ScrollViewScreen] Seal break click -> sending BreakSealPacket (slotHint={} seed={} recipientUUID='{}' date='{}' sender='{}')",
+                        LOG.debug("[ScrollViewScreen] Seal break click -> sending BreakSealPacket (slotHint={} seed={} recipientUUID='{}' date='{}' sender='{}')",
                                 slotHint, sealedSeed, sealedRecipientUUID, sealedDateText, sealedSenderName);
 
                         // 1) Authoritative server conversion
@@ -1275,7 +1275,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
                         // 2) Immediate client-side UX conversion (server will still override if needed)
                         boolean clientSwapped = optimisticClientSwapToOpened(slotHint);
-                        LOG.info("[ScrollViewScreen] Client-side optimistic swap result={} (slotHint={})", clientSwapped, slotHint);
+                        LOG.debug("[ScrollViewScreen] Client-side optimistic swap result={} (slotHint={})", clientSwapped, slotHint);
 
                         sealBreakRequested = true;
                     } else {
@@ -1304,7 +1304,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                     keyCode == GLFW.GLFW_KEY_E ||
                     keyCode == GLFW.GLFW_KEY_R ||
                     keyCode == GLFW.GLFW_KEY_U) {
-                LOG.info("[ScrollViewScreen] keyPressed {} -> requestProperClose()", keyCode);
+                LOG.debug("[ScrollViewScreen] keyPressed {} -> requestProperClose()", keyCode);
                 requestProperClose("keyPressed:" + keyCode);
                 return true;
             }
@@ -1461,7 +1461,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                 }
             }
 
-            LOG.info("[ScrollViewScreen] optimisticClientSwapToOpened: swapped {} -> {} at {}",
+            LOG.debug("[ScrollViewScreen] optimisticClientSwapToOpened: swapped {} -> {} at {}",
                     BuiltInRegistries.ITEM.getKey(sealedItem),
                     BuiltInRegistries.ITEM.getKey(openedItem),
                     target.description);

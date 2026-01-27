@@ -30,7 +30,7 @@ public final class FFForgeEntities {
 
     public static final RegistryObject<EntityType<RavenEntity>> RAVEN =
             ENTITY_TYPES.register("raven", () -> {
-                LOG.info("[FFForgeEntities] Building Raven EntityType with hitbox w={} h={}",
+                LOG.debug("[FFForgeEntities] Building Raven EntityType with hitbox w={} h={}",
                         RAVEN_HITBOX_WIDTH, RAVEN_HITBOX_HEIGHT);
 
                 return EntityType.Builder
@@ -44,22 +44,22 @@ public final class FFForgeEntities {
     }
 
     public static void register(IEventBus modEventBus) {
-        LOG.info("[FFForgeEntities] Registering entity types");
+        LOG.debug("[FFForgeEntities] Registering entity types");
         ENTITY_TYPES.register(modEventBus);
 
         try {
             modEventBus.addListener(FFForgeEntities::onEntityAttributeCreation);
-            LOG.info("[FFForgeEntities] Hooked EntityAttributeCreationEvent listener");
+            LOG.debug("[FFForgeEntities] Hooked EntityAttributeCreationEvent listener");
         } catch (Throwable t) {
             LOG.error("[FFForgeEntities] Failed to hook EntityAttributeCreationEvent listener", t);
         }
     }
 
     private static void onEntityAttributeCreation(EntityAttributeCreationEvent event) {
-        LOG.info("[FFForgeEntities] Creating attributes for registered entities");
+        LOG.debug("[FFForgeEntities] Creating attributes for registered entities");
         try {
             event.put(RAVEN.get(), createRavenAttributes().build());
-            LOG.info("[FFForgeEntities] Registered Raven attributes");
+            LOG.debug("[FFForgeEntities] Registered Raven attributes");
         } catch (Throwable t) {
             LOG.error("[FFForgeEntities] Failed to register Raven attributes", t);
         }

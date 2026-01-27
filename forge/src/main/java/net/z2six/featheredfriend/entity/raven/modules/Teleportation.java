@@ -281,7 +281,7 @@ public final class Teleportation {
                         }
 
                         if (ravenEntity.tickCount % 20 == 0) {
-                            LOG.info("[Teleportation] TeleportSequence TELEPORTED reason={} teleported={} from={} newPos={} (holdBefore={} holdAfter={})",
+                            LOG.debug("[Teleportation] TeleportSequence TELEPORTED reason={} teleported={} from={} newPos={} (holdBefore={} holdAfter={})",
                                     teleportSeqReason, teleported, before, ravenEntity.position(), holdBefore, holdAfter);
                         }
                     }
@@ -326,7 +326,7 @@ public final class Teleportation {
                                 "[Teleportation] reissueMovementIntentAfterTeleport missing/failed");
 
                         if (ravenEntity.tickCount % 20 == 0) {
-                            LOG.info("[Teleportation] TeleportSequence END phase={} reason={} target={}", old, oldReason, oldTarget);
+                            LOG.debug("[Teleportation] TeleportSequence END phase={} reason={} target={}", old, oldReason, oldTarget);
                         }
                     }
                 }
@@ -375,7 +375,7 @@ public final class Teleportation {
             startTeleportFxServer(fxSeed, ravenEntity.position(), null, ravenEntity);
 
             if (ravenEntity.tickCount % 20 == 0) {
-                LOG.info("[Teleportation] TeleportSequence START reason={} pos={} target={} fadeOutTicks={} fadeInTicks={}",
+                LOG.debug("[Teleportation] TeleportSequence START reason={} pos={} target={} fadeOutTicks={} fadeInTicks={}",
                         reason, ravenEntity.position(), target, TELEPORT_FADE_TICKS_OUT, TELEPORT_FADE_TICKS_IN);
             }
 
@@ -487,7 +487,7 @@ public final class Teleportation {
             }
 
             if (ravenEntity.tickCount % 20 == 0) {
-                LOG.info("[Teleportation] TeleportFX scheduled: id={} bursts={} seed={} originA={} originB={}",
+                LOG.debug("[Teleportation] TeleportFX scheduled: id={} bursts={} seed={} originA={} originB={}",
                         ravenEntity.getId(), teleportFxBurstsRemaining, seed, teleportFxOriginA, teleportFxOriginB);
             }
         } catch (Throwable t) {
@@ -970,7 +970,7 @@ public final class Teleportation {
             teleportStuckSamples++;
 
             if (ravenEntity.tickCount % 20 == 0) {
-                LOG.info("[Teleportation] TeleportRecovery: stuck sample {}/3 (moved={} < {}) ai={} pos={} vel={}",
+                LOG.debug("[Teleportation] TeleportRecovery: stuck sample {}/3 (moved={} < {}) ai={} pos={} vel={}",
                         teleportStuckSamples,
                         String.format("%.3f", moved),
                         TELEPORT_MIN_MOVED_DIST,
@@ -1059,7 +1059,7 @@ public final class Teleportation {
             startTeleportSequence(end, fxSeed, reason, ravenEntity);
 
             if (ravenEntity.tickCount % 20 == 0) {
-                LOG.info("[Teleportation] TeleportRecovery armed sequence reason={} targetBlock={} endPos={} usedWaypoint={}",
+                LOG.debug("[Teleportation] TeleportRecovery armed sequence reason={} targetBlock={} endPos={} usedWaypoint={}",
                         reason, targetPos, end, usedWaypoint);
             }
 
@@ -1252,7 +1252,7 @@ public final class Teleportation {
             startTeleportSequence(end, fxSeed, why, ravenEntity);
 
             if (ravenEntity.tickCount % 20 == 0) {
-                LOG.info("[Teleportation] PanicTeleport STARTED: reason={} ravenPos={} playerPos={} behindDir=({}, {}) dist={} raw={} clamped={} targetBlock={} end={} fxSeed={}",
+                LOG.debug("[Teleportation] PanicTeleport STARTED: reason={} ravenPos={} playerPos={} behindDir=({}, {}) dist={} raw={} clamped={} targetBlock={} end={} fxSeed={}",
                         why,
                         ravenPos,
                         playerPos,
@@ -1339,7 +1339,7 @@ public final class Teleportation {
             startTeleportSequence(end, fxSeed, "damage blink: " + reasonTag, ravenEntity);
 
             if (ravenEntity.tickCount % 20 == 0) {
-                LOG.info("[Teleportation] requestDamageBlinkTeleport: STARTED reasonTag={} src={} amt={} fromPos={} toBlock={} end={} fxSeed={}",
+                LOG.debug("[Teleportation] requestDamageBlinkTeleport: STARTED reasonTag={} src={} amt={} fromPos={} toBlock={} end={} fxSeed={}",
                         reasonTag,
                         (source == null ? "null" : source.toString()),
                         amount,
@@ -1502,7 +1502,7 @@ public final class Teleportation {
             setPrivateInt(ravenEntity, "flightTeleportHardCooldownTicks", hardCd);
 
             if (ravenEntity.tickCount % 20 == 0) {
-                LOG.info("[Teleportation] FlightBlink TRIGGERED used={}/{} ai={} fromPos={} toBlock={} end={} vel={} usedWaypoint={}",
+                LOG.debug("[Teleportation] FlightBlink TRIGGERED used={}/{} ai={} fromPos={} toBlock={} end={} vel={} usedWaypoint={}",
                         used, budget, st, ravenEntity.position(), targetBlock, end, vel, usedWaypoint);
             }
 

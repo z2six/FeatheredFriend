@@ -78,12 +78,12 @@ public class SealStampItem extends Item {
 
             if (etched) {
                 // STEP 1: For now, just log. Later this will perform sealing behaviour.
-                LOG.info("[SealStampItem] Stamp is already etched; future behaviour will seal scrolls, etc.");
+                LOG.debug("[SealStampItem] Stamp is already etched; future behaviour will seal scrolls, etc.");
                 return InteractionResultHolder.success(stack);
             }
 
             // Not yet etched: open dedicated Seal Stamp placeholder GUI.
-            LOG.info("[SealStampItem] Opening Seal Stamp carving GUI (placeholder) for player={}",
+            LOG.debug("[SealStampItem] Opening Seal Stamp carving GUI (placeholder) for player={}",
                     serverPlayer.getGameProfile().getName());
 
             Services.PLATFORM.openSealStampScreen(serverPlayer);

@@ -49,7 +49,7 @@ public class ScrollViewItem extends Item {
                 return InteractionResultHolder.pass(stack);
             }
 
-            LOG.info("[ScrollViewItem] Opening scroll view GUI for player={} hand={} item={}",
+            LOG.debug("[ScrollViewItem] Opening scroll view GUI for player={} hand={} item={}",
                     serverPlayer.getGameProfile().getName(),
                     hand,
                     stack.getItem().toString());

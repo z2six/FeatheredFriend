@@ -125,7 +125,7 @@ public record SealStampCarveResultPacket(
             // Write back into the custom payload
             setCustomData(stack, root);
 
-            LOG.info(
+            LOG.debug(
                     "[SealStampCarveResultPacket] Wrote seal data to slot {} for player {} (seed={} slices={} style={} owner='{}')",
                     msg.stampSlot(),
                     player.getGameProfile().getName(),

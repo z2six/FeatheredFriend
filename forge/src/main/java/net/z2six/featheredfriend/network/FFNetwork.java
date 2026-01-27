@@ -122,7 +122,7 @@ public final class FFNetwork {
                     .consumerMainThread(FFNetwork::handleBreakSealOnServer)
                     .add();
 
-            LOG.info("[FFNetwork] Registered main messages OK (protocol={})", PROTOCOL_VERSION);
+            LOG.debug("[FFNetwork] Registered main messages OK (protocol={})", PROTOCOL_VERSION);
         } catch (Throwable t) {
             LOG.error("[FFNetwork] Failed to register main messages", t);
         }
@@ -152,7 +152,7 @@ public final class FFNetwork {
     // Kept for compatibility with older callsites
     public static void registerSimpleMessages() {
         // no-op: Forge registration happens via register(modBus) -> common setup
-        LOG.info("[FFNetwork] registerSimpleMessages() called; using SimpleChannel registration");
+        LOG.debug("[FFNetwork] registerSimpleMessages() called; using SimpleChannel registration");
     }
 
     // ---------------------------

@@ -27,7 +27,7 @@ public final class ChatDisablerClient {
         try {
             MinecraftForge.EVENT_BUS.addListener(ChatDisablerClient::onClientSendChat);
             MinecraftForge.EVENT_BUS.addListener(ChatDisablerClient::onClientReceiveChat);
-            LOG.info("[ChatDisablerClient] Registered ClientChatEvent + ClientChatReceivedEvent listeners.");
+            LOG.debug("[ChatDisablerClient] Registered ClientChatEvent + ClientChatReceivedEvent listeners.");
         } catch (Throwable t) {
             LOG.error("[ChatDisablerClient] register() failed safely", t);
         }
@@ -45,7 +45,7 @@ public final class ChatDisablerClient {
                 return;
             }
 
-            LOG.info("[ChatDisablerClient] Blocking outgoing client chat message: '{}'", message);
+            LOG.debug("[ChatDisablerClient] Blocking outgoing client chat message: '{}'", message);
             event.setCanceled(true);
 
             try {

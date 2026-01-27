@@ -83,7 +83,7 @@ public final class ClientCalendarEvents {
                 long old = lastSeenDayIndex;
                 lastSeenDayIndex = dayIndex;
 
-                LOG.info("[ClientCalendarEvents] Detected new day: oldDayIndex={} newDayIndex={}", old, dayIndex);
+                LOG.debug("[ClientCalendarEvents] Detected new day: oldDayIndex={} newDayIndex={}", old, dayIndex);
 
                 Component msg = buildDateMessage(dayIndex);
                 startPopup(msg);
@@ -164,7 +164,7 @@ public final class ClientCalendarEvents {
             currentMessage = message;
             popupAgeTicks = 0;
             popupActive = true;
-            LOG.info("[ClientCalendarEvents] Starting popup with message='{}'", message.getString());
+            LOG.debug("[ClientCalendarEvents] Starting popup with message='{}'", message.getString());
         } catch (Throwable t) {
             LOG.error("[ClientCalendarEvents] startPopup failed", t);
         }

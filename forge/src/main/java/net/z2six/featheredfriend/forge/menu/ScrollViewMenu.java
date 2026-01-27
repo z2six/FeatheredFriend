@@ -68,7 +68,7 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
         } catch (Throwable ignored) {
         }
 
-        LOG.info("[ScrollViewMenu] Constructed containerId={} player={} side={}",
+        LOG.debug("[ScrollViewMenu] Constructed containerId={} player={} side={}",
                 containerId,
                 playerName,
                 clientSide ? "CLIENT" : "SERVER");
@@ -119,7 +119,7 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
                 loadAttachmentSnapshotFromHeldScroll(playerInventory.player);
                 syncContainerFromSnapshot();
             } else {
-                LOG.info("[ScrollViewMenu] Constructor: skipping snapshot load (client-side or null player)");
+                LOG.debug("[ScrollViewMenu] Constructor: skipping snapshot load (client-side or null player)");
             }
         } catch (Throwable t) {
             LOG.error("[ScrollViewMenu] Constructor snapshot load failed", t);
@@ -154,7 +154,7 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
                 return;
             }
             sealBrokenThisSession = true;
-            LOG.info("[ScrollViewMenu] Seal marked broken (reason={}) containerId={} player={}",
+            LOG.debug("[ScrollViewMenu] Seal marked broken (reason={}) containerId={} player={}",
                     reason,
                     this.containerId,
                     playerInventory != null && playerInventory.player != null ? safePlayerName(playerInventory.player) : "null");
@@ -173,7 +173,7 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
     public boolean stillValid(Player player) {
         boolean valid = player != null && !player.isRemoved();
         if (!valid) {
-            LOG.info("[ScrollViewMenu] stillValid=false (player null/removed) containerId={}", this.containerId);
+            LOG.debug("[ScrollViewMenu] stillValid=false (player null/removed) containerId={}", this.containerId);
         }
         return valid;
     }
@@ -245,7 +245,7 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
             }
 
             boolean clientSide = player.level().isClientSide;
-            LOG.info("[ScrollViewMenu] removed() fired containerId={} player={} side={} sealBroken={} deliveredAlready={} snapshotLoaded={} snapshotSize={} carriedEmpty={}",
+            LOG.debug("[ScrollViewMenu] removed() fired containerId={} player={} side={} sealBroken={} deliveredAlready={} snapshotLoaded={} snapshotSize={} carriedEmpty={}",
                     this.containerId,
                     safePlayerName(player),
                     clientSide ? "CLIENT" : "SERVER",
@@ -260,7 +260,7 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
             }
 
             if (!sealBrokenThisSession) {
-                LOG.info("[ScrollViewMenu] removed: seal not broken -> skipping attachment delivery containerId={} player={}",
+                LOG.debug("[ScrollViewMenu] removed: seal not broken -> skipping attachment delivery containerId={} player={}",
                         this.containerId, safePlayerName(player));
                 attachmentSnapshot.clear();
                 clearAttachmentContainerServerSide();
@@ -268,7 +268,7 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
             }
 
             if (attachmentsDeliveredThisSession) {
-                LOG.info("[ScrollViewMenu] removed: already delivered this session -> skip (containerId={})", this.containerId);
+                LOG.debug("[ScrollViewMenu] removed: already delivered this session -> skip (containerId={})", this.containerId);
                 attachmentSnapshot.clear();
                 clearAttachmentContainerServerSide();
                 return;
@@ -276,7 +276,7 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
             attachmentsDeliveredThisSession = true;
 
             if (!attachmentSnapshotLoaded) {
-                LOG.info("[ScrollViewMenu] removed: late snapshot load attempt (containerId={})", this.containerId);
+                LOG.debug("[ScrollViewMenu] removed: late snapshot load attempt (containerId={})", this.containerId);
                 loadAttachmentSnapshotFromHeldScroll(player);
                 syncContainerFromSnapshot();
             }
@@ -288,7 +288,7 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
             }
 
             if (attachmentSnapshot.isEmpty()) {
-                LOG.info("[ScrollViewMenu] removed: no attachments to deliver (containerId={})", this.containerId);
+                LOG.debug("[ScrollViewMenu] removed: no attachments to deliver (containerId={})", this.containerId);
                 clearAttachmentContainerServerSide();
                 return;
             }
@@ -305,7 +305,7 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
 
                 ItemStack remaining = stack.copy();
 
-                LOG.info("[ScrollViewMenu] Deliver attempt i={} -> {} x{}",
+                LOG.debug("[ScrollViewMenu] Deliver attempt i={} -> {} x{}",
                         i,
                         BuiltInRegistries.ITEM.getKey(remaining.getItem()),
                         remaining.getCount());
@@ -314,7 +314,7 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
 
                 if (addedAll) {
                     fullyAddedStacks++;
-                    LOG.info("[ScrollViewMenu] Deliver success i={} -> added to inventory: {} x{}",
+                    LOG.debug("[ScrollViewMenu] Deliver success i={} -> added to inventory: {} x{}",
                             i,
                             BuiltInRegistries.ITEM.getKey(stack.getItem()),
                             stack.getCount());
@@ -323,7 +323,7 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
                         boolean dropped = dropOrSpawnAtPlayer(player, remaining);
                         if (dropped) {
                             droppedStacks++;
-                            LOG.info("[ScrollViewMenu] Deliver fallback i={} -> dropped remainder: {} x{}",
+                            LOG.debug("[ScrollViewMenu] Deliver fallback i={} -> dropped remainder: {} x{}",
                                     i,
                                     BuiltInRegistries.ITEM.getKey(remaining.getItem()),
                                     remaining.getCount());
@@ -335,12 +335,12 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
                         }
                     } else {
                         fullyAddedStacks++;
-                        LOG.info("[ScrollViewMenu] Deliver partial i={} -> remainder empty; effectively fully added", i);
+                        LOG.debug("[ScrollViewMenu] Deliver partial i={} -> remainder empty; effectively fully added", i);
                     }
                 }
             }
 
-            LOG.info("[ScrollViewMenu] removed: attemptedStacks={} fullyAddedStacks={} droppedStacks={} player={} sourceScrollItem={} containerId={}",
+            LOG.debug("[ScrollViewMenu] removed: attemptedStacks={} fullyAddedStacks={} droppedStacks={} player={} sourceScrollItem={} containerId={}",
                     attemptedStacks,
                     fullyAddedStacks,
                     droppedStacks,
@@ -440,14 +440,14 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
             }
 
             if (hand == null || hand.isEmpty()) {
-                LOG.info("[ScrollViewMenu] Snapshot load: both hands empty (containerId={})", this.containerId);
+                LOG.debug("[ScrollViewMenu] Snapshot load: both hands empty (containerId={})", this.containerId);
                 sourceScrollStackSnapshot = ItemStack.EMPTY;
                 return;
             }
 
             sourceScrollStackSnapshot = hand.copy();
 
-            LOG.info("[ScrollViewMenu] Snapshot load: reading from hand item={} count={} containerId={}",
+            LOG.debug("[ScrollViewMenu] Snapshot load: reading from hand item={} count={} containerId={}",
                     BuiltInRegistries.ITEM.getKey(hand.getItem()),
                     hand.getCount(),
                     this.containerId);
@@ -455,7 +455,7 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
             // ✅ CANONICAL READ: tag.<modid>.SealedScroll
             CompoundTag tag = hand.getTag();
             if (tag == null || tag.isEmpty()) {
-                LOG.info("[ScrollViewMenu] Snapshot load: root tag missing/empty");
+                LOG.debug("[ScrollViewMenu] Snapshot load: root tag missing/empty");
                 return;
             }
 
@@ -464,20 +464,20 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
                     : null;
 
             if (ff == null || ff.isEmpty() || !ff.contains("SealedScroll", Tag.TAG_COMPOUND)) {
-                LOG.info("[ScrollViewMenu] Snapshot load: SealedScroll compound missing (expected tag.{}.SealedScroll)", Constants.MOD_ID);
+                LOG.debug("[ScrollViewMenu] Snapshot load: SealedScroll compound missing (expected tag.{}.SealedScroll)", Constants.MOD_ID);
                 return;
             }
 
             CompoundTag seal = ff.getCompound("SealedScroll");
 
             if (!seal.contains("Attachments", Tag.TAG_LIST)) {
-                LOG.info("[ScrollViewMenu] Snapshot load: Attachments list missing");
+                LOG.debug("[ScrollViewMenu] Snapshot load: Attachments list missing");
                 return;
             }
 
             ListTag list = seal.getList("Attachments", Tag.TAG_COMPOUND);
             if (list == null || list.isEmpty()) {
-                LOG.info("[ScrollViewMenu] Snapshot load: Attachments list empty");
+                LOG.debug("[ScrollViewMenu] Snapshot load: Attachments list empty");
                 return;
             }
 
@@ -492,14 +492,14 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
                 attachmentSnapshot.add(rebuilt);
                 parsed++;
 
-                LOG.info("[ScrollViewMenu] Snapshot load: parsed i={} -> {} x{} hasTag={}",
+                LOG.debug("[ScrollViewMenu] Snapshot load: parsed i={} -> {} x{} hasTag={}",
                         i,
                         BuiltInRegistries.ITEM.getKey(rebuilt.getItem()),
                         rebuilt.getCount(),
                         rebuilt.hasTag());
             }
 
-            LOG.info("[ScrollViewMenu] Snapshot load complete: parsed={} snapshotSize={} containerId={}",
+            LOG.debug("[ScrollViewMenu] Snapshot load complete: parsed={} snapshotSize={} containerId={}",
                     parsed, attachmentSnapshot.size(), this.containerId);
         } catch (Throwable t) {
             LOG.error("[ScrollViewMenu] loadAttachmentSnapshotFromHeldScroll failed", t);
@@ -578,7 +578,7 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
             boolean addedSome = player.addItem(stack);
 
             if (!addedSome) {
-                LOG.info("[ScrollViewMenu] tryAddWholeStack: inventory rejected entire stack: {} x{}",
+                LOG.debug("[ScrollViewMenu] tryAddWholeStack: inventory rejected entire stack: {} x{}",
                         BuiltInRegistries.ITEM.getKey(stack.getItem()),
                         stack.getCount());
                 return false;
@@ -588,7 +588,7 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
                 return true;
             }
 
-            LOG.info("[ScrollViewMenu] tryAddWholeStack: partial insert, remainder now {} x{}",
+            LOG.debug("[ScrollViewMenu] tryAddWholeStack: partial insert, remainder now {} x{}",
                     BuiltInRegistries.ITEM.getKey(stack.getItem()),
                     stack.getCount());
             return false;
@@ -613,7 +613,7 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
             }
 
             if (ent != null) {
-                LOG.info("[ScrollViewMenu] dropOrSpawnAtPlayer: dropped via player.drop entityId={} {} x{}",
+                LOG.debug("[ScrollViewMenu] dropOrSpawnAtPlayer: dropped via player.drop entityId={} {} x{}",
                         ent.getId(),
                         BuiltInRegistries.ITEM.getKey(stack.getItem()),
                         stack.getCount());
@@ -656,7 +656,7 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
                         BuiltInRegistries.ITEM.getKey(stack.getItem()),
                         stack.getCount());
             } else {
-                LOG.info("[ScrollViewMenu] spawnItemEntityAtPlayer: spawned entityId={} {} x{}",
+                LOG.debug("[ScrollViewMenu] spawnItemEntityAtPlayer: spawned entityId={} {} x{}",
                         ent.getId(),
                         BuiltInRegistries.ITEM.getKey(stack.getItem()),
                         stack.getCount());

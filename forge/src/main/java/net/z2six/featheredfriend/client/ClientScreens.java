@@ -33,7 +33,7 @@ public final class ClientScreens {
 
     @SubscribeEvent
     public static void onClientSetup(FMLClientSetupEvent event) {
-        LOG.info("[ClientScreens] Client setup: registering menu screens");
+        LOG.debug("[ClientScreens] Client setup: registering menu screens");
 
         event.enqueueWork(() -> {
             try {
@@ -42,7 +42,7 @@ public final class ClientScreens {
                         (ScrollSealingMenu menu, net.minecraft.world.entity.player.Inventory inv, net.minecraft.network.chat.Component title) ->
                                 new ScrollSealingScreen(menu, inv, title)
                 );
-                LOG.info("[ClientScreens] Registered ScrollSealingScreen");
+                LOG.debug("[ClientScreens] Registered ScrollSealingScreen");
             } catch (Throwable t) {
                 LOG.error("[ClientScreens] Failed to register ScrollSealingScreen", t);
             }
@@ -53,7 +53,7 @@ public final class ClientScreens {
                         (SealStampMenu menu, net.minecraft.world.entity.player.Inventory inv, net.minecraft.network.chat.Component title) ->
                                 new SealStampScreen(menu, inv, title)
                 );
-                LOG.info("[ClientScreens] Registered SealStampScreen");
+                LOG.debug("[ClientScreens] Registered SealStampScreen");
             } catch (Throwable t) {
                 LOG.error("[ClientScreens] Failed to register SealStampScreen", t);
             }
@@ -64,7 +64,7 @@ public final class ClientScreens {
                         (ScrollViewMenu menu, net.minecraft.world.entity.player.Inventory inv, net.minecraft.network.chat.Component title) ->
                                 new ScrollViewScreen(menu, inv, title)
                 );
-                LOG.info("[ClientScreens] Registered ScrollViewScreen");
+                LOG.debug("[ClientScreens] Registered ScrollViewScreen");
             } catch (Throwable t) {
                 LOG.error("[ClientScreens] Failed to register ScrollViewScreen", t);
             }

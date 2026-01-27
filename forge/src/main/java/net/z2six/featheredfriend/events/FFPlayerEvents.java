@@ -29,7 +29,7 @@ public final class FFPlayerEvents {
         try {
             MinecraftForge.EVENT_BUS.addListener(FFPlayerEvents::onPlayerLoggedIn);
             REGISTERED = true;
-            LOG.info("[FFPlayerEvents] Registered PlayerLoggedInEvent listener on MinecraftForge.EVENT_BUS");
+            LOG.debug("[FFPlayerEvents] Registered PlayerLoggedInEvent listener on MinecraftForge.EVENT_BUS");
         } catch (Throwable t) {
             LOG.error("[FFPlayerEvents] register() failed safely", t);
         }
@@ -61,7 +61,7 @@ public final class FFPlayerEvents {
                 }
             }
 
-            LOG.info("[FFPlayerEvents] Login '{}' -> known players now {} (broadcasted to {} online)",
+            LOG.debug("[FFPlayerEvents] Login '{}' -> known players now {} (broadcasted to {} online)",
                     safeName(serverPlayer),
                     players.size(),
                     server.getPlayerList().getPlayers().size());

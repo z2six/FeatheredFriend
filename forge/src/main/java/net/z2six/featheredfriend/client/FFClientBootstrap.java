@@ -21,40 +21,40 @@ public final class FFClientBootstrap {
     private FFClientBootstrap() {}
 
     public static void init(IEventBus modEventBus) {
-        LOG.info("[FFClientBootstrap] Client bootstrap init");
+        LOG.debug("[FFClientBootstrap] Client bootstrap init");
 
         try {
             // Client config (safe here; client-only classpath)
             FFClientConfig.register();
-            LOG.info("[FFClientBootstrap] Registered FFClientConfig");
+            LOG.debug("[FFClientBootstrap] Registered FFClientConfig");
         } catch (Throwable t) {
             LOG.error("[FFClientBootstrap] FFClientConfig.register() failed safely", t);
         }
 
         try {
             modEventBus.addListener(RavenClientEvents::onRegisterRenderers);
-            LOG.info("[FFClientBootstrap] Hooked Raven renderer registration listener");
+            LOG.debug("[FFClientBootstrap] Hooked Raven renderer registration listener");
         } catch (Throwable t) {
             LOG.error("[FFClientBootstrap] Failed to hook Raven renderer listener", t);
         }
 
         try {
             modEventBus.addListener(FFClientParticles::onRegisterParticleProviders);
-            LOG.info("[FFClientBootstrap] Hooked particle provider registration listener");
+            LOG.debug("[FFClientBootstrap] Hooked particle provider registration listener");
         } catch (Throwable t) {
             LOG.error("[FFClientBootstrap] Failed to hook particle provider listener", t);
         }
 
         try {
             FFKeyBindings.register(modEventBus);
-            LOG.info("[FFClientBootstrap] Registered FFKeyBindings");
+            LOG.debug("[FFClientBootstrap] Registered FFKeyBindings");
         } catch (Throwable t) {
             LOG.error("[FFClientBootstrap] Failed to register FFKeyBindings", t);
         }
 
         try {
             modEventBus.addListener(FFClientBootstrap::onClientSetup);
-            LOG.info("[FFClientBootstrap] Hooked client setup listener");
+            LOG.debug("[FFClientBootstrap] Hooked client setup listener");
         } catch (Throwable t) {
             LOG.error("[FFClientBootstrap] Failed to hook client setup listener", t);
         }
@@ -69,7 +69,7 @@ public final class FFClientBootstrap {
         try {
             // Your existing client sync events (client-only). If it registers on GAME bus internally, that’s fine.
             FFClientSyncEvents.registerGameBus();
-            LOG.info("[FFClientBootstrap] Registered FFClientSyncEvents (client requests settings on connect)");
+            LOG.debug("[FFClientBootstrap] Registered FFClientSyncEvents (client requests settings on connect)");
         } catch (Throwable t) {
             LOG.error("[FFClientBootstrap] Failed to register FFClientSyncEvents", t);
         }

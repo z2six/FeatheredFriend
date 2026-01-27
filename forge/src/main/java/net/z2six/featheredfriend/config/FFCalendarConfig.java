@@ -59,6 +59,9 @@ public final class FFCalendarConfig {
     // settings
     public static final ForgeConfigSpec.BooleanValue CHAT_DISABLED_DEFAULT;
 
+    // spawning
+    public static final ForgeConfigSpec.IntValue WILD_RAVENS_PER_PLAYER;
+
     static {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
 
@@ -116,9 +119,28 @@ public final class FFCalendarConfig {
 
         builder.pop();
 
+        // -----------------------
+        // spawning
+        // -----------------------
+        builder.push("spawning");
+
+        WILD_RAVENS_PER_PLAYER = builder
+                .comment(
+                        "How many WILD (untamed) ravens FeatheredFriend may keep spawned per online (non-spectator) player.",
+                        "This is only used by FeatheredFriend's own natural spawn handler (not by vanilla biome spawns).",
+                        "",
+                        "Examples:",
+                        "- 0: disable wild raven spawning (and aggressively cull existing wild ravens near players)",
+                        "- 1: at most 1 wild raven per online player (default)",
+                        "- 2: allow up to 2 wild ravens per online player"
+                )
+                .defineInRange("wildRavensPerPlayer", 1, 0, 16);
+
+        builder.pop();
+
         SERVER_SPEC = builder.build();
 
-        LOG.debug("[FFCalendarConfig] Built SERVER config spec (calendar + settings)");
+        LOG.debug("[FFCalendarConfig] Built SERVER config spec (calendar + settings + spawning)");
     }
 
     // ---------------------------------------------------------------------
@@ -208,6 +230,18 @@ public final class FFCalendarConfig {
         } catch (Throwable t) {
             LOG.error("[FFCalendarConfig] getChatDisabledDefault failed, using default {}", DEFAULT_CHAT_DISABLED_DEFAULT, t);
             return DEFAULT_CHAT_DISABLED_DEFAULT;
+        }
+    }
+
+    public static int getWildRavensPerPlayer() {
+        try {
+            int v = WILD_RAVENS_PER_PLAYER.get();
+            if (v < 0) v = 0;
+            if (v > 16) v = 16;
+            return v;
+        } catch (Throwable t) {
+            LOG.error("[FFCalendarConfig] getWildRavensPerPlayer failed, using default 1", t);
+            return 1;
         }
     }
 

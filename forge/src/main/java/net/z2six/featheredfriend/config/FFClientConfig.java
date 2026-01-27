@@ -65,7 +65,7 @@ public final class FFClientConfig {
     public static void setAutoSummonOnScroll(boolean value) {
         try {
             AUTO_SUMMON_ON_SCROLL.set(value);
-            LOG.info("[FFClientConfig] autoSummonOnScroll set to {}", value);
+            LOG.debug("[FFClientConfig] autoSummonOnScroll set to {}", value);
         } catch (Throwable t) {
             LOG.error("[FFClientConfig] setAutoSummonOnScroll failed safely: {}", t.toString());
         }

@@ -33,7 +33,7 @@ public class FeatheredFriend {
     private static final Logger LOG = LogUtils.getLogger();
 
     public FeatheredFriend() {
-        LOG.info("[FeatheredFriend] Initializing Forge side");
+        LOG.debug("[FeatheredFriend] Initializing Forge side");
 
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
 
@@ -52,7 +52,7 @@ public class FeatheredFriend {
         try {
             // Server config (calendar + settings default)
             FFCalendarConfig.register();
-            LOG.info("[FeatheredFriend] Registered FFCalendarConfig (SERVER)");
+            LOG.debug("[FeatheredFriend] Registered FFCalendarConfig (SERVER)");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] FFCalendarConfig.register() failed", t);
         }
@@ -60,7 +60,7 @@ public class FeatheredFriend {
         try {
             // Client config (autoSummon preference). Safe to call on server; it will self-skip.
             FFClientConfig.register();
-            LOG.info("[FeatheredFriend] Registered FFClientConfig (CLIENT if applicable)");
+            LOG.debug("[FeatheredFriend] Registered FFClientConfig (CLIENT if applicable)");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] FFClientConfig.register() failed", t);
         }
@@ -75,14 +75,14 @@ public class FeatheredFriend {
 
             FFForgeParticles.register(modEventBus);
 
-            LOG.info("[FeatheredFriend] Registered registries (items/tabs/menus/particles)");
+            LOG.debug("[FeatheredFriend] Registered registries (items/tabs/menus/particles)");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to register registries", t);
         }
 
         try {
             FFForgeEntities.register(modEventBus);
-            LOG.info("[FeatheredFriend] Registered entity registries");
+            LOG.debug("[FeatheredFriend] Registered entity registries");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to register entities", t);
         }
@@ -93,7 +93,7 @@ public class FeatheredFriend {
         try {
             // Register SimpleChannel messages during FMLCommonSetupEvent
             FFNetwork.register(modEventBus);
-            LOG.info("[FeatheredFriend] Registered FFNetwork common-setup hook");
+            LOG.debug("[FeatheredFriend] Registered FFNetwork common-setup hook");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to hook FFNetwork payload registration listener", t);
         }
@@ -102,7 +102,7 @@ public class FeatheredFriend {
             // New payload system for server settings sync (chatDisabled, canEditChat, etc.)
             // This MUST be registered on the mod event bus.
             FFPayloads.register(modEventBus);
-            LOG.info("[FeatheredFriend] Registered FFPayloads (server settings sync payloads)");
+            LOG.debug("[FeatheredFriend] Registered FFPayloads (server settings sync payloads)");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to register FFPayloads", t);
         }
@@ -110,7 +110,7 @@ public class FeatheredFriend {
         try {
             // If you still rely on SimpleChannel / legacy messages in FFNetwork:
             FFNetwork.registerSimpleMessages();
-            LOG.info("[FeatheredFriend] FFNetwork.registerSimpleMessages() OK");
+            LOG.debug("[FeatheredFriend] FFNetwork.registerSimpleMessages() OK");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] FFNetwork.registerSimpleMessages() failed", t);
         }
@@ -122,15 +122,15 @@ public class FeatheredFriend {
         try {
             if (FMLEnvironment.dist == Dist.CLIENT) {
                 modEventBus.addListener(RavenClientEvents::onRegisterRenderers);
-                LOG.info("[FeatheredFriend] Hooked Raven renderer registration listener (client only)");
+                LOG.debug("[FeatheredFriend] Hooked Raven renderer registration listener (client only)");
 
                 modEventBus.addListener(FFClientParticles::onRegisterParticleProviders);
-                LOG.info("[FeatheredFriend] Hooked particle provider registration listener (client only)");
+                LOG.debug("[FeatheredFriend] Hooked particle provider registration listener (client only)");
 
                 FFKeyBindings.register(modEventBus);
-                LOG.info("[FeatheredFriend] Registered FFKeyBindings (client only)");
+                LOG.debug("[FeatheredFriend] Registered FFKeyBindings (client only)");
             } else {
-                LOG.info("[FeatheredFriend] Skipping client-only listeners on non-client dist");
+                LOG.debug("[FeatheredFriend] Skipping client-only listeners on non-client dist");
             }
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to hook client-only listeners", t);
@@ -141,35 +141,35 @@ public class FeatheredFriend {
         // ---------------------------------------------------------------------
         try {
             FFPlayerEvents.register();
-            LOG.info("[FeatheredFriend] Registered FFPlayerEvents (player login -> known-player persistence + broadcast)");
+            LOG.debug("[FeatheredFriend] Registered FFPlayerEvents (player login -> known-player persistence + broadcast)");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to register FFPlayerEvents", t);
         }
 
         try {
             RavenSpawnEvents.register();
-            LOG.info("[FeatheredFriend] Hooked RavenSpawnEvents (natural spawning)");
+            LOG.debug("[FeatheredFriend] Hooked RavenSpawnEvents (natural spawning)");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to hook RavenSpawnEvents", t);
         }
 
         try {
             TamedRavenScrollWatcher.register();
-            LOG.info("[FeatheredFriend] Registered TamedRavenScrollWatcher");
+            LOG.debug("[FeatheredFriend] Registered TamedRavenScrollWatcher");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to register TamedRavenScrollWatcher", t);
         }
 
         try {
             RavenCourierRuntime.register();
-            LOG.info("[FeatheredFriend] Registered RavenCourierRuntime");
+            LOG.debug("[FeatheredFriend] Registered RavenCourierRuntime");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to register RavenCourierRuntime", t);
         }
 
         try {
             ChatDisabler.register();
-            LOG.info("[FeatheredFriend] Registered ChatDisabler");
+            LOG.debug("[FeatheredFriend] Registered ChatDisabler");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to register ChatDisabler", t);
         }
@@ -180,7 +180,7 @@ public class FeatheredFriend {
         try {
             // Server: push settings on login (and you can reuse it anywhere else too)
             FFServerSyncEvents.registerGameBus();
-            LOG.info("[FeatheredFriend] Registered FFServerSyncEvents (server login sync)");
+            LOG.debug("[FeatheredFriend] Registered FFServerSyncEvents (server login sync)");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to register FFServerSyncEvents", t);
         }
@@ -189,9 +189,9 @@ public class FeatheredFriend {
             if (FMLEnvironment.dist == Dist.CLIENT) {
                 // Client: request settings on connect/logging-in
                 FFClientSyncEvents.registerGameBus();
-                LOG.info("[FeatheredFriend] Registered FFClientSyncEvents (client requests settings on connect)");
+                LOG.debug("[FeatheredFriend] Registered FFClientSyncEvents (client requests settings on connect)");
             } else {
-                LOG.info("[FeatheredFriend] Skipping FFClientSyncEvents on non-client dist");
+                LOG.debug("[FeatheredFriend] Skipping FFClientSyncEvents on non-client dist");
             }
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to register FFClientSyncEvents", t);
@@ -202,11 +202,11 @@ public class FeatheredFriend {
         // ---------------------------------------------------------------------
         try {
             FeatheredFriendCommands.register();
-            LOG.info("[FeatheredFriend] Registered FeatheredFriendCommands");
+            LOG.debug("[FeatheredFriend] Registered FeatheredFriendCommands");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to register FeatheredFriendCommands", t);
         }
 
-        LOG.info("[FeatheredFriend] Forge initialization complete");
+        LOG.debug("[FeatheredFriend] Forge initialization complete");
     }
 }

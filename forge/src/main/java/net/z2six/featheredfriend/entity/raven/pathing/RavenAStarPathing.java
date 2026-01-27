@@ -308,14 +308,14 @@ public final class RavenAStarPathing {
 
             if (!bounds.contains(start.cx, start.cy, start.cz)) {
                 if (DEBUG_LOGS) {
-                    LOG.info("[RavenAStarPathing] findPath#{} NO PATH: start outside bounds. start={} bounds={} gridStep={} clearance={}x{}",
+                    LOG.debug("[RavenAStarPathing] findPath#{} NO PATH: start outside bounds. start={} bounds={} gridStep={} clearance={}x{}",
                             callId, start, bounds, gridStep, clearanceXZ, clearanceH);
                 }
                 return Collections.emptyList();
             }
             if (!bounds.contains(goal.cx, goal.cy, goal.cz)) {
                 if (DEBUG_LOGS) {
-                    LOG.info("[RavenAStarPathing] findPath#{} NO PATH: goal outside bounds. goal={} bounds={} gridStep={} clearance={}x{}",
+                    LOG.debug("[RavenAStarPathing] findPath#{} NO PATH: goal outside bounds. goal={} bounds={} gridStep={} clearance={}x{}",
                             callId, goal, bounds, gridStep, clearanceXZ, clearanceH);
                 }
                 return Collections.emptyList();
@@ -333,7 +333,7 @@ public final class RavenAStarPathing {
                 if (DEBUG_LOGS) {
                     BlockPos anchor = nodeAnchorBlock(start.cx, start.cy, start.cz, gridStep);
                     String why = describeFirstBlockingBlock(level, anchor, cfg, clearanceXZ, clearanceH);
-                    LOG.info("[RavenAStarPathing] findPath#{} NO PATH: start blocked. start={} anchorBlock={} gridStep={} clearance={}x{} allowLeaves={} allowReplaceables={} firstBlocker={}",
+                    LOG.debug("[RavenAStarPathing] findPath#{} NO PATH: start blocked. start={} anchorBlock={} gridStep={} clearance={}x{} allowLeaves={} allowReplaceables={} firstBlocker={}",
                             callId, start, anchor, gridStep, clearanceXZ, clearanceH, cfg.allowLeaves, cfg.allowReplaceables, why);
                 }
                 return Collections.emptyList();
@@ -343,7 +343,7 @@ public final class RavenAStarPathing {
                 if (DEBUG_LOGS) {
                     BlockPos anchor = nodeAnchorBlock(goal.cx, goal.cy, goal.cz, gridStep);
                     String why = describeFirstBlockingBlock(level, anchor, cfg, clearanceXZ, clearanceH);
-                    LOG.info("[RavenAStarPathing] findPath#{} NO PATH: goal blocked. goal={} anchorBlock={} gridStep={} clearance={}x{} allowLeaves={} allowReplaceables={} firstBlocker={}",
+                    LOG.debug("[RavenAStarPathing] findPath#{} NO PATH: goal blocked. goal={} anchorBlock={} gridStep={} clearance={}x{} allowLeaves={} allowReplaceables={} firstBlocker={}",
                             callId, goal, anchor, gridStep, clearanceXZ, clearanceH, cfg.allowLeaves, cfg.allowReplaceables, why);
                 }
                 return Collections.emptyList();
@@ -378,7 +378,7 @@ public final class RavenAStarPathing {
             while (!open.isEmpty()) {
                 if (expanded >= cfg.maxExpanded) {
                     if (DEBUG_LOGS) {
-                        LOG.info("[RavenAStarPathing] findPath#{} NO PATH: maxExpanded reached ({}). expanded={} pushes={} stalePops={} start={} goal={} bounds={} gridStep={} clearance={}x{}",
+                        LOG.debug("[RavenAStarPathing] findPath#{} NO PATH: maxExpanded reached ({}). expanded={} pushes={} stalePops={} start={} goal={} bounds={} gridStep={} clearance={}x{}",
                                 callId, cfg.maxExpanded, expanded, pushes, stalePops, start, goal, bounds, gridStep, clearanceXZ, clearanceH);
                     }
                     break;
@@ -386,7 +386,7 @@ public final class RavenAStarPathing {
 
                 if (open.size() > cfg.maxOpen) {
                     if (DEBUG_LOGS) {
-                        LOG.info("[RavenAStarPathing] findPath#{} NO PATH: maxOpen reached ({}). expanded={} pushes={} stalePops={} start={} goal={} bounds={} gridStep={} clearance={}x{}",
+                        LOG.debug("[RavenAStarPathing] findPath#{} NO PATH: maxOpen reached ({}). expanded={} pushes={} stalePops={} start={} goal={} bounds={} gridStep={} clearance={}x{}",
                                 callId, cfg.maxOpen, expanded, pushes, stalePops, start, goal, bounds, gridStep, clearanceXZ, clearanceH);
                     }
                     break;
@@ -411,7 +411,7 @@ public final class RavenAStarPathing {
 
                     if (DEBUG_LOGS) {
                         double ms = (System.nanoTime() - t0) / 1_000_000.0;
-                        LOG.info("[RavenAStarPathing] findPath#{} PATH OK: expanded={} pushes={} stalePops={} rawPts={} outPts={} timeMs={} start={} goal={} bounds={} gridStep={} clearance={}x{}",
+                        LOG.debug("[RavenAStarPathing] findPath#{} PATH OK: expanded={} pushes={} stalePops={} rawPts={} outPts={} timeMs={} start={} goal={} bounds={} gridStep={} clearance={}x{}",
                                 callId, expanded, pushes, stalePops, raw.size(), out.size(), String.format("%.3f", ms),
                                 start, goal, bounds, gridStep, clearanceXZ, clearanceH);
                     }
@@ -485,7 +485,7 @@ public final class RavenAStarPathing {
 
             if (DEBUG_LOGS) {
                 double ms = (System.nanoTime() - t0) / 1_000_000.0;
-                LOG.info("[RavenAStarPathing] findPath#{} PATH FAIL: expanded={} pushes={} stalePops={} timeMs={} start={} goal={} bounds={} gridStep={} clearance={}x{}",
+                LOG.debug("[RavenAStarPathing] findPath#{} PATH FAIL: expanded={} pushes={} stalePops={} timeMs={} start={} goal={} bounds={} gridStep={} clearance={}x{}",
                         callId, expanded, pushes, stalePops, String.format("%.3f", ms), start, goal, bounds, gridStep, clearanceXZ, clearanceH);
             }
 
@@ -698,7 +698,7 @@ public final class RavenAStarPathing {
 
         try {
             if (FORCE_LOG_EVERY_CALL) {
-                LOG.info("[RavenAStarPathing] findPath#{} ENTER: dim={} start={} goal={} bounds={} gridStep={} clearance={}x{} allowLeaves={} allowReplaceables={} smooth={} maxExpanded={} maxOpen={} yAnchorFeet={} caller={}",
+                LOG.debug("[RavenAStarPathing] findPath#{} ENTER: dim={} start={} goal={} bounds={} gridStep={} clearance={}x{} allowLeaves={} allowReplaceables={} smooth={} maxExpanded={} maxOpen={} yAnchorFeet={} caller={}",
                         callId,
                         safeDim(level),
                         fmtVec(startWorld),
@@ -722,7 +722,7 @@ public final class RavenAStarPathing {
             long last = lastEnterLogMs;
             if ((nowMs - last) >= Math.max(0L, ENTER_LOG_MIN_INTERVAL_MS)) {
                 lastEnterLogMs = nowMs;
-                LOG.info("[RavenAStarPathing] findPath#{} ENTER(throttled): dim={} start={} goal={} bounds={} gridStep={} clearance={}x{} yAnchorFeet={} caller={}",
+                LOG.debug("[RavenAStarPathing] findPath#{} ENTER(throttled): dim={} start={} goal={} bounds={} gridStep={} clearance={}x{} yAnchorFeet={} caller={}",
                         callId,
                         safeDim(level),
                         fmtVec(startWorld),

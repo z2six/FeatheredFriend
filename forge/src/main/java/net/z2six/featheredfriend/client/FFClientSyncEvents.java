@@ -40,7 +40,7 @@ public final class FFClientSyncEvents {
             }
             MinecraftForge.EVENT_BUS.register(FFClientSyncEvents.class);
             REGISTERED = true;
-            LOG.info("[FFClientSyncEvents] Registered on MinecraftForge EVENT_BUS");
+            LOG.debug("[FFClientSyncEvents] Registered on MinecraftForge EVENT_BUS");
         } catch (Throwable t) {
             LOG.error("[FFClientSyncEvents] registerGameBus failed safely", t);
         }
@@ -58,7 +58,7 @@ public final class FFClientSyncEvents {
             } catch (Throwable ignored) {
             }
 
-            LOG.info("[FFClientSyncEvents] LoggingIn: marked settings request pending");
+            LOG.debug("[FFClientSyncEvents] LoggingIn: marked settings request pending");
         } catch (Throwable t) {
             LOG.error("[FFClientSyncEvents] onClientLoggingIn failed safely", t);
         }
@@ -76,7 +76,7 @@ public final class FFClientSyncEvents {
             } catch (Throwable ignored) {
             }
 
-            LOG.info("[FFClientSyncEvents] LoggingOut: cleared pending flags + cache");
+            LOG.debug("[FFClientSyncEvents] LoggingOut: cleared pending flags + cache");
         } catch (Throwable t) {
             LOG.error("[FFClientSyncEvents] onClientLoggingOut failed safely", t);
         }
@@ -104,7 +104,7 @@ public final class FFClientSyncEvents {
                 REQUEST_SENT_THIS_SESSION = true;
                 REQUEST_PENDING = false;
 
-                LOG.info("[FFClientSyncEvents] Sent RequestServerSettingsPayload (safe tick)");
+                LOG.debug("[FFClientSyncEvents] Sent RequestServerSettingsPayload (safe tick)");
             }
 
             // 2) Client preference sync (auto-summon)
@@ -121,7 +121,7 @@ public final class FFClientSyncEvents {
                 FFPayloads.sendClientAutoSummonPrefToServer(pref);
                 CLIENT_PREF_SENT_THIS_SESSION = true;
 
-                LOG.info("[FFClientSyncEvents] Sent ClientAutoSummonPrefPayload (autoSummonOnScroll={})", pref);
+                LOG.debug("[FFClientSyncEvents] Sent ClientAutoSummonPrefPayload (autoSummonOnScroll={})", pref);
             }
 
         } catch (Throwable t) {

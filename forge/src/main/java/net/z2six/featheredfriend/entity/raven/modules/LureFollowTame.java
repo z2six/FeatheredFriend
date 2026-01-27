@@ -220,7 +220,7 @@ public class LureFollowTame {
                     : BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
             int itemCount = (stack == null) ? -1 : stack.getCount();
 
-            LOG.info("[RavenEntity] handleTamingInteract ENTER: side={} player={} hand={} item={} {}",
+            LOG.debug("[RavenEntity] handleTamingInteract ENTER: side={} player={} hand={} item={} {}",
                     clientSide ? "CLIENT" : "SERVER",
                     player.getName().getString(),
                     hand,
@@ -231,7 +231,7 @@ public class LureFollowTame {
             // the taming interaction (no lure-based taming for multiple ravens).
             if (!clientSide && playerHasTamedRaven(player)) {
                 if (raven.tickCount % 80 == 0) {
-                    LOG.info("[RavenEntity] handleTamingInteract: player={} already has a tamed raven; taming disabled.",
+                    LOG.debug("[RavenEntity] handleTamingInteract: player={} already has a tamed raven; taming disabled.",
                             player.getName().getString());
                 }
                 return InteractionResult.PASS;
@@ -239,7 +239,7 @@ public class LureFollowTame {
 
             // CLIENT: just play the hand animation when the server accepts it.
             if (clientSide) {
-                LOG.info("[RavenEntity] handleTamingInteract: CLIENT side, returning sidedSuccess(true)");
+                LOG.debug("[RavenEntity] handleTamingInteract: CLIENT side, returning sidedSuccess(true)");
                 return InteractionResult.sidedSuccess(true);
             }
 
@@ -253,7 +253,7 @@ public class LureFollowTame {
                         ? "EMPTY"
                         : BuiltInRegistries.ITEM.getKey(after.getItem()).toString();
 
-                LOG.info("[RavenEntity] handleTamingInteract: SERVER tryFeedLureTamingNugget handled=true " +
+                LOG.debug("[RavenEntity] handleTamingInteract: SERVER tryFeedLureTamingNugget handled=true " +
                                 "(player={} before={} {} after={} {})",
                         player.getName().getString(),
                         itemCount, itemKey,
@@ -262,7 +262,7 @@ public class LureFollowTame {
                 return InteractionResult.CONSUME;
             }
 
-            LOG.info("[RavenEntity] handleTamingInteract: SERVER not handled (PASS).");
+            LOG.debug("[RavenEntity] handleTamingInteract: SERVER not handled (PASS).");
             return InteractionResult.PASS;
 
         } catch (Throwable t) {
@@ -297,7 +297,7 @@ public class LureFollowTame {
             // nuggets for a new tame.
             if (playerHasTamedRaven(player)) {
                 if (raven.tickCount % 80 == 0) {
-                    LOG.info("[RavenEntity] tryFeedLureTamingNugget: player={} already has a tamed raven; rejecting feed.",
+                    LOG.debug("[RavenEntity] tryFeedLureTamingNugget: player={} already has a tamed raven; rejecting feed.",
                             player.getName().getString());
                 }
                 return false;
@@ -325,7 +325,7 @@ public class LureFollowTame {
             // Lure-follow must be active, and player must be the current lure source.
             if (!isLureFollowActive()) {
                 if (raven.tickCount % 80 == 0) {
-                    LOG.info("[RavenEntity] tryFeedLureTamingNugget: lure not active, reject feed. pos={}", raven.position());
+                    LOG.debug("[RavenEntity] tryFeedLureTamingNugget: lure not active, reject feed. pos={}", raven.position());
                 }
                 return false;
             }
@@ -334,7 +334,7 @@ public class LureFollowTame {
                 // Someone other than the lure player is trying to feed:
                 // DO NOT consume, DO NOT advance taming.
                 if (raven.tickCount % 80 == 0) {
-                    LOG.info("[RavenEntity] tryFeedLureTamingNugget: player {} is not current lure player, rejecting feed.",
+                    LOG.debug("[RavenEntity] tryFeedLureTamingNugget: player {} is not current lure player, rejecting feed.",
                             player.getName().getString());
                 }
                 return false;
@@ -354,7 +354,7 @@ public class LureFollowTame {
             // If we've already fully paid, don't consume more; just treat as handled.
             if (tamingNuggetsPaidTotal >= goldenNuggetsRequiredToTame) {
                 if (raven.tickCount % 80 == 0) {
-                    LOG.info("[RavenEntity] tryFeedLureTamingNugget: already fully paid (paid={} / required={})",
+                    LOG.debug("[RavenEntity] tryFeedLureTamingNugget: already fully paid (paid={} / required={})",
                             tamingNuggetsPaidTotal, goldenNuggetsRequiredToTame);
                 }
                 return true;
@@ -377,7 +377,7 @@ public class LureFollowTame {
             }
 
             int countAfter = stack.getCount();
-            LOG.info("[RavenEntity] tryFeedLureTamingNugget: stack count {} -> {} (creative={}, player={})",
+            LOG.debug("[RavenEntity] tryFeedLureTamingNugget: stack count {} -> {} (creative={}, player={})",
                     countBefore, countAfter, creative, player.getName().getString());
 
             // Advance taming progress.
@@ -389,7 +389,7 @@ public class LureFollowTame {
             int remaining = Math.max(0, goldenNuggetsRequiredToTame - tamingNuggetsPaidTotal);
 
             if (raven.tickCount % 40 == 0) {
-                LOG.info("[RavenEntity] tryFeedLureTamingNugget: player={} paid=1 -> totalPaid={} / required={} remaining={}",
+                LOG.debug("[RavenEntity] tryFeedLureTamingNugget: player={} paid=1 -> totalPaid={} / required={} remaining={}",
                         player.getName().getString(),
                         tamingNuggetsPaidTotal,
                         goldenNuggetsRequiredToTame,
@@ -403,7 +403,7 @@ public class LureFollowTame {
                             raven.getTamedRavenModule();
                     if (tamed != null) {
                         if (raven.tickCount % 40 == 0) {
-                            LOG.info("[RavenEntity] tryFeedLureTamingNugget: tame cost fully paid; triggering TamedRaven.onTamingFullyPaid. pos={}",
+                            LOG.debug("[RavenEntity] tryFeedLureTamingNugget: tame cost fully paid; triggering TamedRaven.onTamingFullyPaid. pos={}",
                                     raven.position());
                         }
                         tamed.onTamingFullyPaid(player);
@@ -424,7 +424,7 @@ public class LureFollowTame {
             startHandFeedAgreeSequence(remaining, "nugget feed");
 
             if (remaining == 0 && raven.tickCount % 40 == 0) {
-                LOG.info("[RavenEntity] tryFeedLureTamingNugget: tame cost fully paid; remaining=0. pos={}", raven.position());
+                LOG.debug("[RavenEntity] tryFeedLureTamingNugget: tame cost fully paid; remaining=0. pos={}", raven.position());
             }
 
             return true;
@@ -456,18 +456,18 @@ public class LureFollowTame {
             handFeedCawCooldownTicks = 0;
 
             if (raven.level() == null || raven.level().isClientSide) {
-                LOG.info("[RavenEntity] startHandFeedAgreeSequence: abort (no level or client-side). context={} remaining={}",
+                LOG.debug("[RavenEntity] startHandFeedAgreeSequence: abort (no level or client-side). context={} remaining={}",
                         context, remainingCaws);
                 return;
             }
             if (!raven.isAlive()) {
-                LOG.info("[RavenEntity] startHandFeedAgreeSequence: abort (raven not alive). context={} remaining={}",
+                LOG.debug("[RavenEntity] startHandFeedAgreeSequence: abort (raven not alive). context={} remaining={}",
                         context, remainingCaws);
                 return;
             }
 
             if (remainingCaws <= 0) {
-                LOG.info("[RavenEntity] startHandFeedAgreeSequence: remaining<=0, cancelling. context={} remaining={} pos={}",
+                LOG.debug("[RavenEntity] startHandFeedAgreeSequence: remaining<=0, cancelling. context={} remaining={} pos={}",
                         context, remainingCaws, raven.position());
                 return;
             }
@@ -476,7 +476,7 @@ public class LureFollowTame {
             handFeedCawsRemaining = remainingCaws;
             handFeedCawCooldownTicks = 0;
 
-            LOG.info("[RavenEntity] startHandFeedAgreeSequence: START hand-feed sequence caws={} context={} pos={}",
+            LOG.debug("[RavenEntity] startHandFeedAgreeSequence: START hand-feed sequence caws={} context={} pos={}",
                     remainingCaws, context, raven.position());
 
         } catch (Throwable t) {
@@ -512,7 +512,7 @@ public class LureFollowTame {
             invokeSetFlyTarget(goal, 6 * 20); // ~6 seconds
 
             if (raven.tickCount % 40 == 0) {
-                LOG.info("[RavenEntity] LURE FALLBACK: using direct fly target={} pos={} lureFails={}",
+                LOG.debug("[RavenEntity] LURE FALLBACK: using direct fly target={} pos={} lureFails={}",
                         goal, raven.position(), consecutiveLurePathFails);
             }
 
@@ -614,7 +614,7 @@ public class LureFollowTame {
 
             if (prev != clamped) {
                 if (!raven.level().isClientSide) {
-                    LOG.info("[RavenEntity] FollowCooldown set: {} -> {} pos={} ai={}",
+                    LOG.debug("[RavenEntity] FollowCooldown set: {} -> {} pos={} ai={}",
                             prev, clamped, raven.position(), raven.getAIState());
                 }
             }
@@ -705,7 +705,7 @@ public class LureFollowTame {
             // If nothing remains to pay, do not play the "how many nuggets" sequence anymore.
             if (remaining <= 0) {
                 if (raven.tickCount % 40 == 0) {
-                    LOG.info("[RavenEntity] maybeStartLureAgreeSequence: no remaining tame cost (total={} paid={}), skipping sequence.",
+                    LOG.debug("[RavenEntity] maybeStartLureAgreeSequence: no remaining tame cost (total={} paid={}), skipping sequence.",
                             total, paid);
                 }
                 return;
@@ -873,7 +873,7 @@ public class LureFollowTame {
             }
 
             if (raven.level() == null || raven.level().isClientSide) {
-                LOG.info("[RavenEntity] tickHandFeedAgreeSequence: wrong side or no level, cancelling. side={}",
+                LOG.debug("[RavenEntity] tickHandFeedAgreeSequence: wrong side or no level, cancelling. side={}",
                         raven.level() == null ? "null" : (raven.level().isClientSide ? "CLIENT" : "SERVER"));
                 handFeedSequenceActive = false;
                 handFeedCawsRemaining = 0;
@@ -882,7 +882,7 @@ public class LureFollowTame {
             }
 
             if (!raven.isAlive()) {
-                LOG.info("[RavenEntity] tickHandFeedAgreeSequence: raven not alive, cancelling.");
+                LOG.debug("[RavenEntity] tickHandFeedAgreeSequence: raven not alive, cancelling.");
                 handFeedSequenceActive = false;
                 handFeedCawsRemaining = 0;
                 handFeedCawCooldownTicks = 0;
@@ -932,7 +932,7 @@ public class LureFollowTame {
 
             handFeedCawsRemaining--;
 
-            LOG.info("[RavenEntity] tickHandFeedAgreeSequence: played hand-feed caw (before={} after={} pos={})",
+            LOG.debug("[RavenEntity] tickHandFeedAgreeSequence: played hand-feed caw (before={} after={} pos={})",
                     before, handFeedCawsRemaining, raven.position());
 
             if (handFeedCawsRemaining <= 0) {
@@ -941,7 +941,7 @@ public class LureFollowTame {
                 handFeedCawsRemaining = 0;
                 handFeedCawCooldownTicks = 0;
 
-                LOG.info("[RavenEntity] tickHandFeedAgreeSequence: sequence COMPLETE at pos={}", raven.position());
+                LOG.debug("[RavenEntity] tickHandFeedAgreeSequence: sequence COMPLETE at pos={}", raven.position());
                 return;
             }
 
@@ -1234,7 +1234,7 @@ public class LureFollowTame {
             }
 
             if (raven.tickCount % 20 == 0) {
-                LOG.info("[RavenEntity] LURE FOLLOW armed: player={} dist={} pocket={} desiredFront={} safeGoal={} pathOk={} lureTicks={} aiState={} pos={}",
+                LOG.debug("[RavenEntity] LURE FOLLOW armed: player={} dist={} pocket={} desiredFront={} safeGoal={} pathOk={} lureTicks={} aiState={} pos={}",
                         player.getName().getString(),
                         String.format("%.2f", distToPlayer),
                         pocket,
@@ -2131,7 +2131,7 @@ public class LureFollowTame {
             if (raven.level() == null || raven.level().isClientSide) return;
             if (target == null) return;
 
-            LOG.info("[RavenEntity] onRavenArrivedAtFollowTarget: target={} usingLure={} pos={} frontGoal={}",
+            LOG.debug("[RavenEntity] onRavenArrivedAtFollowTarget: target={} usingLure={} pos={} frontGoal={}",
                     target.getName().getString(),
                     usingLure,
                     raven.position(),
@@ -2183,7 +2183,7 @@ public class LureFollowTame {
                         pitch
                 );
 
-                LOG.info("[RavenEntity] onRavenArrivedAtFollowTarget: played arrival sound={} usingLure={} pos={}",
+                LOG.debug("[RavenEntity] onRavenArrivedAtFollowTarget: played arrival sound={} usingLure={} pos={}",
                         soundId,
                         usingLure,
                         raven.position());

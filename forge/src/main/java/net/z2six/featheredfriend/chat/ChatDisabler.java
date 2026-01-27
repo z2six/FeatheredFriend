@@ -44,12 +44,12 @@ public final class ChatDisabler {
     public static void register() {
         try {
             MinecraftForge.EVENT_BUS.addListener(ChatDisabler::onServerChat);
-            LOG.info("[ChatDisabler] Registered ServerChatEvent listener.");
+            LOG.debug("[ChatDisabler] Registered ServerChatEvent listener.");
 
             if (FMLEnvironment.dist == Dist.CLIENT) {
                 MinecraftForge.EVENT_BUS.addListener(ChatDisabler::onClientSendChat);
                 MinecraftForge.EVENT_BUS.addListener(ChatDisabler::onClientReceiveChat);
-                LOG.info("[ChatDisabler] Registered ClientChatEvent + ClientChatReceivedEvent listeners.");
+                LOG.debug("[ChatDisabler] Registered ClientChatEvent + ClientChatReceivedEvent listeners.");
             }
         } catch (Throwable t) {
             LOG.error("[ChatDisabler] register() failed safely", t);
@@ -83,7 +83,7 @@ public final class ChatDisabler {
                 }
             }
 
-            LOG.info("[ChatDisabler] Blocking server chat from '{}' (raw='{}')",
+            LOG.debug("[ChatDisabler] Blocking server chat from '{}' (raw='{}')",
                     safePlayerName(sender), raw);
 
             event.setCanceled(true);
@@ -118,7 +118,7 @@ public final class ChatDisabler {
                 return;
             }
 
-            LOG.info("[ChatDisabler] Blocking outgoing client chat message: '{}'", message);
+            LOG.debug("[ChatDisabler] Blocking outgoing client chat message: '{}'", message);
             event.setCanceled(true);
 
             // Optional UX hint (kept very light; remove if you hate it)

@@ -108,7 +108,7 @@ public final class FFPayloads {
                     .consumerMainThread(FFPayloads::handleClientAutoSummonPref)
                     .add();
 
-            LOG.info("[FFPayloads] Registered settings messages OK (protocol={})", PROTOCOL_VERSION);
+            LOG.debug("[FFPayloads] Registered settings messages OK (protocol={})", PROTOCOL_VERSION);
         } catch (Throwable t) {
             LOG.error("[FFPayloads] Failed to register settings messages", t);
         }
@@ -134,7 +134,7 @@ public final class FFPayloads {
             canEditChat = newCanEditChat;
             hasSynced = true;
 
-            LOG.info("[FFPayloads.ClientState] Applied server settings: chatDisabled={} canEditChat={}",
+            LOG.debug("[FFPayloads.ClientState] Applied server settings: chatDisabled={} canEditChat={}",
                     newChatDisabled, newCanEditChat);
         }
 
@@ -142,7 +142,7 @@ public final class FFPayloads {
             hasSynced = false;
             chatDisabled = true;
             canEditChat = false;
-            LOG.info("[FFPayloads.ClientState] Cleared client cache");
+            LOG.debug("[FFPayloads.ClientState] Cleared client cache");
         }
     }
 
@@ -248,7 +248,7 @@ public final class FFPayloads {
             ServerSettingsPayload msg = new ServerSettingsPayload(chatDisabledValue, canEditChatValue);
             CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), msg);
 
-            LOG.info("[FFPayloads] Sent settings to {}: chatDisabled={} canEditChat={}",
+            LOG.debug("[FFPayloads] Sent settings to {}: chatDisabled={} canEditChat={}",
                     player.getGameProfile().getName(), chatDisabledValue, canEditChatValue);
 
         } catch (Throwable t) {
@@ -354,7 +354,7 @@ public final class FFPayloads {
                     FeatheredFriendSettingsData data = FeatheredFriendSettingsData.get(level);
                     data.setChatDisabled(payload.chatDisabled());
 
-                    LOG.info("[FFPayloads] {} set chatDisabled -> {}",
+                    LOG.debug("[FFPayloads] {} set chatDisabled -> {}",
                             sp.getGameProfile().getName(), payload.chatDisabled());
 
                     broadcastSettings(level);
@@ -390,7 +390,7 @@ public final class FFPayloads {
                     ffTag.putBoolean(PLAYER_NBT_KEY_AUTO_SUMMON_PREF, payload.autoSummonOnScroll());
                     root.put(Constants.MOD_ID, ffTag);
 
-                    LOG.info("[FFPayloads] Stored client autoSummon preference for {} -> {}",
+                    LOG.debug("[FFPayloads] Stored client autoSummon preference for {} -> {}",
                             sp.getGameProfile().getName(), payload.autoSummonOnScroll());
 
                 } catch (Throwable t) {

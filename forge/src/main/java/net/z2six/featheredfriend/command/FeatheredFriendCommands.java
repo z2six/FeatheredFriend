@@ -83,7 +83,7 @@ public final class FeatheredFriendCommands {
     public static void register() {
         try {
             MinecraftForge.EVENT_BUS.addListener(FeatheredFriendCommands::onRegisterCommands);
-            LOG.info("[FeatheredFriendCommands] Registered command listener on MinecraftForge.EVENT_BUS");
+            LOG.debug("[FeatheredFriendCommands] Registered command listener on MinecraftForge.EVENT_BUS");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendCommands] Failed to register command listener", t);
         }
@@ -145,7 +145,7 @@ public final class FeatheredFriendCommands {
 
             // Removed redundant alias: /ff_clear_tamed_raven
 
-            LOG.info("[FeatheredFriendCommands] Commands registered: " +
+            LOG.debug("[FeatheredFriendCommands] Commands registered: " +
                     "/featheredfriend clear_tamed_raven, " +
                     "/featheredfriend tamed_raven list, " +
                     "/featheredfriend tamed_raven add <player> <name>, " +
@@ -231,34 +231,34 @@ public final class FeatheredFriendCommands {
 
             CompoundTag root = player.getPersistentData();
             if (root == null) {
-                LOG.info("[FeatheredFriendCommands] clearPlayerTamedRavenData: no persistent data for player={}",
+                LOG.debug("[FeatheredFriendCommands] clearPlayerTamedRavenData: no persistent data for player={}",
                         player.getGameProfile().getName());
                 return false;
             }
 
             if (!root.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)) {
-                LOG.info("[FeatheredFriendCommands] clearPlayerTamedRavenData: no '{}' tag for player={}",
+                LOG.debug("[FeatheredFriendCommands] clearPlayerTamedRavenData: no '{}' tag for player={}",
                         Constants.MOD_ID, player.getGameProfile().getName());
                 return false;
             }
 
             CompoundTag modTag = root.getCompound(Constants.MOD_ID);
             if (modTag == null || !modTag.contains(KEY_TAMED_RAVEN, Tag.TAG_COMPOUND)) {
-                LOG.info("[FeatheredFriendCommands] clearPlayerTamedRavenData: no {} compound for player={}",
+                LOG.debug("[FeatheredFriendCommands] clearPlayerTamedRavenData: no {} compound for player={}",
                         KEY_TAMED_RAVEN, player.getGameProfile().getName());
                 return false;
             }
 
             CompoundTag tamed = modTag.getCompound(KEY_TAMED_RAVEN);
             if (tamed == null || tamed.isEmpty()) {
-                LOG.info("[FeatheredFriendCommands] clearPlayerTamedRavenData: empty {} compound for player={}",
+                LOG.debug("[FeatheredFriendCommands] clearPlayerTamedRavenData: empty {} compound for player={}",
                         KEY_TAMED_RAVEN, player.getGameProfile().getName());
                 return false;
             }
 
             boolean had = tamed.getBoolean(KEY_HAS_TAMED_RAVEN);
 
-            LOG.info("[FeatheredFriendCommands] clearPlayerTamedRavenData: BEFORE clear player={} uuid={} tag={}",
+            LOG.debug("[FeatheredFriendCommands] clearPlayerTamedRavenData: BEFORE clear player={} uuid={} tag={}",
                     player.getGameProfile().getName(), player.getUUID(), tamed);
 
             tamed.putBoolean(KEY_HAS_TAMED_RAVEN, false);
@@ -278,7 +278,7 @@ public final class FeatheredFriendCommands {
                 root.put(Constants.MOD_ID, modTag);
             }
 
-            LOG.info("[FeatheredFriendCommands] clearPlayerTamedRavenData: AFTER clear player={} uuid={} had={} nowTag={}",
+            LOG.debug("[FeatheredFriendCommands] clearPlayerTamedRavenData: AFTER clear player={} uuid={} had={} nowTag={}",
                     player.getGameProfile().getName(), player.getUUID(), had, tamed);
 
             return had;
@@ -404,7 +404,7 @@ public final class FeatheredFriendCommands {
                         () -> Component.literal("[FeatheredFriend] No stored tamed ravens found (scanned " + scannedFinal + " playerdata files)."),
                         false
                 );
-                LOG.info("[FeatheredFriendCommands] tamed_raven list: none found (scanned={} dir={})", scannedFinal, playerDataDir);
+                LOG.debug("[FeatheredFriendCommands] tamed_raven list: none found (scanned={} dir={})", scannedFinal, playerDataDir);
                 return 0;
             }
 
@@ -421,7 +421,7 @@ public final class FeatheredFriendCommands {
                 source.sendSuccess(() -> Component.literal(out), false);
             }
 
-            LOG.info("[FeatheredFriendCommands] tamed_raven list: found={} scanned={} dir={}", foundFinal, scannedFinal, playerDataDir);
+            LOG.debug("[FeatheredFriendCommands] tamed_raven list: found={} scanned={} dir={}", foundFinal, scannedFinal, playerDataDir);
             return foundFinal;
 
         } catch (Throwable t) {
@@ -470,7 +470,7 @@ public final class FeatheredFriendCommands {
         }
         String ravenName = sanitizeRavenName(rawName);
 
-        LOG.info("[FeatheredFriendCommands] tamed_raven add: request targetName='{}' uuid={} ravenName='{}' (raw='{}')",
+        LOG.debug("[FeatheredFriendCommands] tamed_raven add: request targetName='{}' uuid={} ravenName='{}' (raw='{}')",
                 targetName, targetUuid, ravenName, rawName);
 
         // 1) If online, update directly.
@@ -555,7 +555,7 @@ public final class FeatheredFriendCommands {
             modTag.put(KEY_TAMED_RAVEN, tamed);
             root.put(Constants.MOD_ID, modTag);
 
-            LOG.info("[FeatheredFriendCommands] setTamedRavenPersistentDataOnline: player={} uuid={} ravenName='{}' tagNow={}",
+            LOG.debug("[FeatheredFriendCommands] setTamedRavenPersistentDataOnline: player={} uuid={} ravenName='{}' tagNow={}",
                     safeName(player), player.getUUID(), ravenName, tamed);
 
             return true;
@@ -624,7 +624,7 @@ public final class FeatheredFriendCommands {
                 return false;
             }
 
-            LOG.info("[FeatheredFriendCommands] setTamedRavenPersistentDataOffline: wrote {} uuid={} ravenName='{}' rootKey={} tagNow={}",
+            LOG.debug("[FeatheredFriendCommands] setTamedRavenPersistentDataOffline: wrote {} uuid={} ravenName='{}' rootKey={} tagNow={}",
                     playerDat, playerUuid, ravenName, chosenRootKey, tamed);
 
             return true;

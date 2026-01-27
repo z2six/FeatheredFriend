@@ -31,7 +31,7 @@ public final class FFForgeItems {
     }
 
     public static void register(IEventBus modEventBus) {
-        LOG.info("Registering {} FeatheredFriend items with Forge", FFItems.ITEM_MAP.size());
+        LOG.debug("Registering {} FeatheredFriend items with Forge", FFItems.ITEM_MAP.size());
         ITEMS.register(modEventBus);
     }
 

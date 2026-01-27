@@ -114,7 +114,7 @@ public final class PlayerAvoidance {
                 }
 
                 if (raven.tickCount % 20 == 0) {
-                    LOG.info(
+                    LOG.debug(
                             "[PlayerAvoidance] LURE follow requested: player={} dist={} ravenPos={} playerPos={} mainHand={} offHand={} armedNow={}",
                             safeName(nearest),
                             String.format("%.2f", dist),
@@ -147,7 +147,7 @@ public final class PlayerAvoidance {
                         tp.requestPanicTeleportAwayFromPlayer(nearest, dist, raven);
 
                         if (raven.tickCount % 20 == 0) {
-                            LOG.info(
+                            LOG.debug(
                                     "[PlayerAvoidance] PANIC teleport requested: player={} dist={} ravenPos={}",
                                     safeName(nearest),
                                     String.format("%.2f", dist),
@@ -180,7 +180,7 @@ public final class PlayerAvoidance {
             }
 
             if (raven.tickCount % 20 == 0) {
-                LOG.info(
+                LOG.debug(
                         "[PlayerAvoidance] avoidance requested: player={} dist={} ravenPos={}",
                         safeName(nearest),
                         String.format("%.2f", dist),
@@ -262,7 +262,7 @@ public final class PlayerAvoidance {
             if (nearest != null) {
                 if (raven.tickCount % 40 == 0) {
                     double dist = nearest.distanceTo(raven);
-                    LOG.info(
+                    LOG.debug(
                             "[PlayerAvoidance] shouldBlockLanding: true (nearest player={} dist={}). pos={} aiState={}",
                             nearest.getName().getString(),
                             String.format("%.3f", dist),

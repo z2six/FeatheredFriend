@@ -66,7 +66,7 @@ public final class KnownPlayersClientCache {
                 kept++;
             }
 
-            LOG.info("[KnownPlayersClientCache] replaceAllFromServer: now tracking {} known players", kept);
+            LOG.debug("[KnownPlayersClientCache] replaceAllFromServer: now tracking {} known players", kept);
             refreshOnlineNow();
         } catch (Throwable t) {
             LOG.error("[KnownPlayersClientCache] replaceAllFromServer failed", t);

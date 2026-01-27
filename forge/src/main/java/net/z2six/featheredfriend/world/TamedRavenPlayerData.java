@@ -110,34 +110,34 @@ public final class TamedRavenPlayerData {
 
             CompoundTag root = player.getPersistentData();
             if (root == null) {
-                LOG.info("[TamedRavenPlayerData] clearPlayerTamedRavenData: no persistent data for player={}",
+                LOG.debug("[TamedRavenPlayerData] clearPlayerTamedRavenData: no persistent data for player={}",
                         player.getGameProfile().getName());
                 return false;
             }
 
             if (!root.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)) {
-                LOG.info("[TamedRavenPlayerData] clearPlayerTamedRavenData: no '{}' tag for player={}",
+                LOG.debug("[TamedRavenPlayerData] clearPlayerTamedRavenData: no '{}' tag for player={}",
                         Constants.MOD_ID, player.getGameProfile().getName());
                 return false;
             }
 
             CompoundTag modTag = root.getCompound(Constants.MOD_ID);
             if (modTag == null || !modTag.contains("TamedRaven", Tag.TAG_COMPOUND)) {
-                LOG.info("[TamedRavenPlayerData] clearPlayerTamedRavenData: no TamedRaven compound for player={}",
+                LOG.debug("[TamedRavenPlayerData] clearPlayerTamedRavenData: no TamedRaven compound for player={}",
                         player.getGameProfile().getName());
                 return false;
             }
 
             CompoundTag tamed = modTag.getCompound("TamedRaven");
             if (tamed == null || tamed.isEmpty()) {
-                LOG.info("[TamedRavenPlayerData] clearPlayerTamedRavenData: empty TamedRaven compound for player={}",
+                LOG.debug("[TamedRavenPlayerData] clearPlayerTamedRavenData: empty TamedRaven compound for player={}",
                         player.getGameProfile().getName());
                 return false;
             }
 
             boolean had = tamed.getBoolean("HasTamedRaven");
 
-            LOG.info("[TamedRavenPlayerData] clearPlayerTamedRavenData: BEFORE clear player={} tag={}",
+            LOG.debug("[TamedRavenPlayerData] clearPlayerTamedRavenData: BEFORE clear player={} tag={}",
                     player.getGameProfile().getName(), tamed);
 
             // Hard-reset the fields we know about.
@@ -160,7 +160,7 @@ public final class TamedRavenPlayerData {
                 root.put(Constants.MOD_ID, modTag);
             }
 
-            LOG.info("[TamedRavenPlayerData] clearPlayerTamedRavenData: AFTER clear player={} had={} nowTag={}",
+            LOG.debug("[TamedRavenPlayerData] clearPlayerTamedRavenData: AFTER clear player={} had={} nowTag={}",
                     player.getGameProfile().getName(), had, tamed);
 
             return had;

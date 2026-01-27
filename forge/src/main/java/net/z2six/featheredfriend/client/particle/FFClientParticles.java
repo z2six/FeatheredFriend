@@ -24,18 +24,18 @@ public final class FFClientParticles {
     }
 
     public static void onRegisterParticleProviders(RegisterParticleProvidersEvent event) {
-        LOG.info("[FFClientParticles] Registering particle providers");
+        LOG.debug("[FFClientParticles] Registering particle providers");
         try {
             // Enderpop
             event.registerSpriteSet(FFForgeParticles.ENDERPOP.get(), EnderpopParticle.Factory::new);
-            LOG.info("[FFClientParticles] Registered provider for ENDERPOP");
+            LOG.debug("[FFClientParticles] Registered provider for ENDERPOP");
 
             // Feather burst
             event.registerSpriteSet(
                     FFForgeParticles.FEATHER.get(),
                     FeatherParticles::createProvider
             );
-            LOG.info("[FFClientParticles] Registered provider for FEATHER");
+            LOG.debug("[FFClientParticles] Registered provider for FEATHER");
 
         } catch (Throwable t) {
             LOG.error("[FFClientParticles] Failed registering particle providers", t);
