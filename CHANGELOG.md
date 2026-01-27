@@ -3,6 +3,9 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [1.3.8]
+Several critical and minor bugfixes to taming sequence.
+
 ## [1.3.7]
 - Ravens will need a mix of iron/gold nuggets with different cawing sounds (to avoid people spam right clicking with golden nuggets in hand)
 - Fixed server config on the .toml side of things (hot loaded, now properly works with chat disabling)

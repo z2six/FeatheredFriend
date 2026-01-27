@@ -1821,7 +1821,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
 
             // ------------------------------------------------------------------
-            // FOLLOW LOGIC — DISABLED DURING PLAYER AVOIDANCE
+            // FOLLOW LOGIC – DISABLED DURING PLAYER AVOIDANCE
             //  - Special case: scroll-summoned ravens while the owner is holding
             //    the sealed scroll are HARD-LOCKED into FOLLOW_OWNER.
             //    In that case we ignore the normal follow cooldown, so they
@@ -1829,6 +1829,12 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             //    temporarily set a cooldown.
             // ------------------------------------------------------------------
             Player owner = (lureFollowTame != null) ? lureFollowTame.getOwnerPlayerServerSafe() : null;
+            boolean lureActive = false;
+            try {
+                lureActive = lureFollowTame != null && lureFollowTame.isLureFollowActive();
+            } catch (Throwable ignored) {
+                lureActive = false;
+            }
 
             // True when:
             //  - this raven is scroll-summoned, AND
@@ -1837,9 +1843,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             boolean scrollSummonFollowLock = isScrollSummonFollowLockActive();
 
             boolean canFollow =
-                    owner != null &&
-                            this.isTame() &&
-                            (scrollSummonFollowLock || getFollowCooldownTicks() <= 0);
+                    scrollSummonFollowLock
+                            || (owner != null && this.isTame() && getFollowCooldownTicks() <= 0)
+                            || lureActive;
 
             if (playerAvoidanceOverrideTicks <= 0) {
                 if (canFollow) {

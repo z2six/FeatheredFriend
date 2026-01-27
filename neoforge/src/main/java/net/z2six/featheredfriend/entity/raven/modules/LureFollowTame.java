@@ -67,6 +67,7 @@ public class LureFollowTame {
     private boolean lureAgreeSequenceActive = false;
     private int lureAgreeCawsRemaining = 0;
     private int lureAgreeCawCooldownTicks = 0;
+    private int lureAgreeSequenceCursor = 0;
 
     // Global cooldown after a full agree-caw sequence finishes.
     // While > 0, we will NOT start a new sequence even if we arrive again.
@@ -107,6 +108,9 @@ public class LureFollowTame {
     private int handFeedCawsRemaining = 0;
     private int handFeedCawCooldownTicks = 0;
     private int handFeedSequenceCursor = 0;
+
+    // Prevent multiple agree-caws in the same tick (interaction + follow tick can both fire).
+    private int lastAgreeCawTick = -10_000_000;
 
     // Tunables for how fast the hand-feed caws play.
     private static final int HAND_FEED_CAW_INTERVAL_MIN_TICKS = 6;  // ~0.3s
@@ -416,28 +420,8 @@ public class LureFollowTame {
                         remaining);
             }
 
-            // Nugget-type auditory feedback: iron = lower pitch, gold = higher pitch.
-            try {
-                float volume = 0.9F;
-                float center = isGoldStep ? 1.15F : 0.85F;
-                float pitch = center;
-                try {
-                    RandomSource rnd = raven.getRandom();
-                    if (rnd != null) {
-                        pitch = center + (rnd.nextFloat() - 0.5F) * 0.06F;
-                    }
-                } catch (Throwable ignored) {
-                }
-                RavenSoundEngine.playAt(
-                        raven.level(),
-                        TAMING_AGREE_SOUND_ID,
-                        SoundSource.NEUTRAL,
-                        raven.position(),
-                        volume,
-                        pitch
-                );
-            } catch (Throwable ignored) {
-            }
+            // IMPORTANT: do NOT play a caw directly on feed.
+            // All taming audio is the remaining-sequence playback started below.
 
             // NEW: Tamed raven flow – if fully paid, trigger naming GUI via TamedRaven module.
             if (remaining == 0) {
@@ -461,9 +445,7 @@ public class LureFollowTame {
                 }
             }
 
-            // Start / restart the per-click "countdown" agree-caw sequence.
-            // This guarantees that spam RMB cancels the previous sequence and
-            // uses the latest 'remaining' count.
+            // Start / restart the remaining-sequence playback.
             startHandFeedAgreeSequence(remaining, "nugget feed");
 
             if (remaining == 0 && raven.tickCount % 40 == 0) {
@@ -516,8 +498,16 @@ public class LureFollowTame {
                 return;
             }
 
+            // When the player feeds a nugget, the ONLY taming audio we want is the remaining-sequence playback.
+            // Cancel any arrival-based "agree" sequence so it cannot interleave.
+            lureAgreeSequenceActive = false;
+            lureAgreeCawsRemaining = 0;
+            lureAgreeCawCooldownTicks = 0;
+            lureAgreeSequenceCursor = 0;
+
             handFeedSequenceActive = true;
             handFeedCawsRemaining = remainingCaws;
+            // Start immediately: this sequence *is* the taming feedback.
             handFeedCawCooldownTicks = 0;
             handFeedSequenceCursor = Math.max(0, tameNuggetSequenceIndex);
 
@@ -853,6 +843,7 @@ public class LureFollowTame {
             lureAgreeSequenceActive = true;
             lureAgreeCawsRemaining = remaining;
             lureAgreeCawCooldownTicks = 0; // first caw as soon as possible
+            lureAgreeSequenceCursor = Math.max(0, tameNuggetSequenceIndex);
 
             if (raven.tickCount % 40 == 0) {
                 LOG.debug(
@@ -895,6 +886,12 @@ public class LureFollowTame {
                 return;
             }
 
+            // Once the player is actively hand-feeding nuggets, the hand-feed countdown is the
+            // authoritative taming audio; don't let the arrival-based sequence compete.
+            if (handFeedSequenceActive) {
+                return;
+            }
+
             if (lureAgreeCawCooldownTicks > 0) {
                 lureAgreeCawCooldownTicks--;
                 return;
@@ -902,24 +899,29 @@ public class LureFollowTame {
 
             // Play one agree caw at the raven's position via RavenSoundEngine.
             float volume = 0.9F;
-            float pitchMin = 0.95F;
-            float pitchMax = 1.05F;
-
-            float lo = pitchMin;
-            float hi = pitchMax;
-            if (lo > hi) {
-                float tmp = lo;
-                lo = hi;
-                hi = tmp;
+            float center = 1.0F;
+            try {
+                String seq = getTameNuggetSequence();
+                if (seq != null && !seq.isEmpty() && lureAgreeSequenceCursor >= 0 && lureAgreeSequenceCursor < seq.length()) {
+                    char step = seq.charAt(lureAgreeSequenceCursor);
+                    center = (step == 'G') ? 1.15F : 0.85F;
+                }
+            } catch (Throwable ignored) {
+                center = 1.0F;
             }
 
-            float pitch;
+            float pitch = center;
             try {
                 RandomSource rnd = raven.getRandom();
-                float t = (rnd == null) ? 0.5F : rnd.nextFloat();
-                pitch = lo + (hi - lo) * t;
+                if (rnd != null) {
+                    pitch = center + (rnd.nextFloat() - 0.5F) * 0.06F;
+                }
             } catch (Throwable ignored) {
-                pitch = (lo + hi) * 0.5F;
+            }
+
+            if (lastAgreeCawTick == raven.tickCount) {
+                lureAgreeCawCooldownTicks = 1;
+                return;
             }
 
             RavenSoundEngine.playAt(
@@ -930,8 +932,10 @@ public class LureFollowTame {
                     volume,
                     pitch
             );
+            lastAgreeCawTick = raven.tickCount;
 
             lureAgreeCawsRemaining--;
+            lureAgreeSequenceCursor++;
 
             if (lureAgreeCawsRemaining <= 0) {
                 // Full sequence done -> normal completion (this will start the 30s cooldown).
@@ -982,6 +986,7 @@ public class LureFollowTame {
         lureAgreeSequenceActive = false;
         lureAgreeCawsRemaining = 0;
         lureAgreeCawCooldownTicks = 0;
+        lureAgreeSequenceCursor = 0;
 
         // Only start the big cooldown when we actually completed the sequence normally.
         if (completed && LURE_AGREE_SEQUENCE_COOLDOWN_TICKS > 0) {
@@ -1036,6 +1041,11 @@ public class LureFollowTame {
             // Play one agree caw at the raven's position via RavenSoundEngine.
             int before = handFeedCawsRemaining;
             try {
+                if (lastAgreeCawTick == raven.tickCount) {
+                    handFeedCawCooldownTicks = 1;
+                    return;
+                }
+
                 float volume = 0.9F;
                 // Pitch reflects the *remaining* nugget sequence: iron=lower, gold=higher.
                 float center = 1.0F;
@@ -1066,6 +1076,7 @@ public class LureFollowTame {
                         volume,
                         pitch
                 );
+                lastAgreeCawTick = raven.tickCount;
             } catch (Throwable t) {
                 LOG.warn("[RavenEntity] tickHandFeedAgreeSequence: play failed: {}", t.toString());
             }
@@ -1369,9 +1380,14 @@ public class LureFollowTame {
                 setPrivateObject("pathPendingGoal", safeGoal);
                 invokeClearFlyTarget(); // ensure we're driven by waypoints, not a direct line
             } else {
-                // If we cannot path at all, hovering is safer than ramming into walls.
+                // If A* can't find a path, fall back to a direct fly target so we don't "freeze" in mid-air.
+                // Collision avoidance will handle tight spaces better than doing nothing.
                 invokeClearPlannedPath("lure follow: path failed");
                 invokeClearFlyTarget();
+                try {
+                    fallbackBallisticLure(safeGoal, player);
+                } catch (Throwable ignored) {
+                }
             }
 
             if (raven.tickCount % 20 == 0) {
@@ -2279,24 +2295,23 @@ public class LureFollowTame {
                     raven.position(),
                     frontGoal);
 
+            // For lure-follow, the taming audio feedback is handled by the dedicated
+            // (low/high pitch) agree-caw sequences, so we intentionally do not play
+            // an extra "arrival" caw here to avoid double-playing in the same moment.
+            if (usingLure) {
+                return;
+            }
+
             String soundId;
             float volume;
             float pitchMin;
             float pitchMax;
 
-            if (usingLure) {
-                // Lure-follow arrival: use the agree caw.
-                soundId = TAMING_AGREE_SOUND_ID;            // "featheredfriend:raven.caw_agree"
-                volume = 1.0F;
-                pitchMin = 0.98F;
-                pitchMax = 1.02F;
-            } else {
-                // Owner-follow arrival: gentle air-woosh.
-                soundId = ARRIVAL_SOUND_ID;       // "featheredfriend:raven.arrival"
-                volume = 0.8F;
-                pitchMin = 0.95F;
-                pitchMax = 1.05F;
-            }
+            // Owner-follow arrival: gentle air-woosh.
+            soundId = ARRIVAL_SOUND_ID;       // "featheredfriend:raven.arrival"
+            volume = 0.8F;
+            pitchMin = 0.95F;
+            pitchMax = 1.05F;
 
             try {
                 float lo = pitchMin;

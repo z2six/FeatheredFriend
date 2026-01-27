@@ -47,12 +47,10 @@ A lightweight, in-game status/event log using the **same event stream** as the b
 - Keep it readable (timestamps optional)
 - Optional filters (errors-only / delivery-only / combat-only)
 
-### Taming overhaul
-Currently, you can just spam RMB while holding several nuggets. This is counteractive to the intent of the taming system, which is that the player has to stop, listen and think.
-- Introduce Iron Nuggets along with Golden Nuggets
-- Each raven (on spawn) has a random sequence of 3-6 nuggets
-- Nugget sequence includes Gold & Iron
-- Different sound cues for each type of nugget
+### Raven eyes & home station
+A more fantasy version of security camera's.
+- Add a `home base` where your Raven will stay (if you choose to)
+- Allow for players to use their Raven to fly and look around their base (through the Raven's view)
 
 ---
 
