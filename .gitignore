@@ -22,3 +22,8 @@ build
 eclipse
 run
 runs
+/.vscode/launch.json
+/neoforge/.eclipse/configurations/NeoForge Client (
+/neoforge/.eclipse/configurations/NeoForge Data (
+/neoforge/.eclipse/configurations/NeoForge Server (
+/.vscode/settings.json
