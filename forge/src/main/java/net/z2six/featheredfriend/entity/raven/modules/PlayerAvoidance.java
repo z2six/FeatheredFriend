@@ -57,6 +57,11 @@ public final class PlayerAvoidance {
     public static final double AVOID_PLAYER_RADIUS = 25.0D;
     private static final double AVOID_PLAYER_RADIUS_SQR = AVOID_PLAYER_RADIUS * AVOID_PLAYER_RADIUS;
 
+    // Lure presence radius (3D). This is intentionally larger than the avoidance bubble so
+    // holding a nugget can "pull" the raven from farther away without triggering panic teleports.
+    private static final double LURE_PLAYER_RADIUS = 64.0D;
+    private static final double LURE_PLAYER_RADIUS_SQR = LURE_PLAYER_RADIUS * LURE_PLAYER_RADIUS;
+
     // Panic teleport radius (3D)
     private static final double PANIC_TELEPORT_RADIUS = 5.0D;
     private static final double PANIC_TELEPORT_RADIUS_SQR = PANIC_TELEPORT_RADIUS * PANIC_TELEPORT_RADIUS;
@@ -84,6 +89,29 @@ public final class PlayerAvoidance {
                 return;
             }
 
+            // ------------------------------------------------------------
+            // LURE OVERRIDE: if ANY nearby player is holding a lure nugget
+            // (gold OR iron), request lure-follow and completely disable
+            // avoidance/panic teleport logic for this tick.
+            // ------------------------------------------------------------
+            Player lurePlayer = findNearestPlayerWithin(raven, LURE_PLAYER_RADIUS);
+            if (lurePlayer != null) {
+                Vec3 ravenPos = raven.position();
+                Vec3 playerPos = lurePlayer.position();
+                double lureD2 = ravenPos.distanceToSqr(playerPos);
+                if (lureD2 <= LURE_PLAYER_RADIUS_SQR && isHoldingLureNugget(lurePlayer)) {
+                    double lureDist = Math.sqrt(Math.max(0.0D, lureD2));
+                    try {
+                        raven.requestLureFollowPlayer(lurePlayer, lureDist);
+                    } catch (Throwable t) {
+                        if (raven.tickCount % 40 == 0) {
+                            LOG.warn("[PlayerAvoidance] LURE follow request failed safely: {}", t.toString());
+                        }
+                    }
+                    return;
+                }
+            }
+
             Player nearest = findNearestPlayerWithin(raven, AVOID_PLAYER_RADIUS);
             if (nearest == null) return;
 
@@ -96,41 +124,19 @@ public final class PlayerAvoidance {
             double dist = Math.sqrt(Math.max(0.0D, d2));
 
             // ------------------------------------------------------------
-            // NEW: LURE FOLLOW OVERRIDE (gold nugget)
+            // LURE FOLLOW OVERRIDE (gold OR iron nugget)
             // ------------------------------------------------------------
-            boolean holdingNugget = isHoldingGoldenNugget(nearest);
-
-            if (holdingNugget) {
-                // Ask the raven to arm / maintain lure-follow.
-                boolean armed = false;
+            if (isHoldingLureNugget(nearest)) {
                 try {
                     raven.requestLureFollowPlayer(nearest, dist);
-                    armed = raven.isLureFollowActive();
                 } catch (Throwable t) {
-                    armed = false;
                     if (raven.tickCount % 40 == 0) {
                         LOG.warn("[PlayerAvoidance] LURE follow request failed safely: {}", t.toString());
                     }
                 }
-
-                if (raven.tickCount % 20 == 0) {
-                    LOG.debug(
-                            "[PlayerAvoidance] LURE follow requested: player={} dist={} ravenPos={} playerPos={} mainHand={} offHand={} armedNow={}",
-                            safeName(nearest),
-                            String.format("%.2f", dist),
-                            ravenPos,
-                            playerPos,
-                            safeItem(nearest.getMainHandItem()),
-                            safeItem(nearest.getOffhandItem()),
-                            armed
-                    );
-                }
-
-                // If lure-follow is active, we MUST NOT run avoidance/panic logic.
-                if (armed) {
-                    return;
-                }
-                // If not armed for some reason, we fall through to normal avoidance logic.
+                // If a player is holding a lure nugget, we MUST NOT run avoidance/panic logic,
+                // even if lure-follow failed to "arm" for some reason.
+                return;
             }
 
             // Panic teleport if extremely close.
@@ -285,13 +291,13 @@ public final class PlayerAvoidance {
         return false;
     }
 
-    private static boolean isHoldingGoldenNugget(Player p) {
+    private static boolean isHoldingLureNugget(Player p) {
         try {
             if (p == null) return false;
             ItemStack a = p.getMainHandItem();
-            if (a != null && !a.isEmpty() && a.is(Items.GOLD_NUGGET)) return true;
+            if (a != null && !a.isEmpty() && (a.is(Items.GOLD_NUGGET) || a.is(Items.IRON_NUGGET))) return true;
             ItemStack b = p.getOffhandItem();
-            return b != null && !b.isEmpty() && b.is(Items.GOLD_NUGGET);
+            return b != null && !b.isEmpty() && (b.is(Items.GOLD_NUGGET) || b.is(Items.IRON_NUGGET));
         } catch (Throwable t) {
             return false;
         }

@@ -1535,6 +1535,18 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
                 tag.putInt(LureFollowTame.NBT_TAME_NUGGETS_REQUIRED, v);
 
+                // Persist ordered iron/gold taming sequence + progress.
+                try {
+                    if (lureFollowTame != null) {
+                        String seq = lureFollowTame.getTameNuggetSequence();
+                        int idx = lureFollowTame.getTameNuggetSequenceIndex();
+                        if (seq != null && !seq.isEmpty()) {
+                            tag.putString(LureFollowTame.NBT_TAME_NUGGET_SEQUENCE, seq);
+                            tag.putInt(LureFollowTame.NBT_TAME_NUGGET_SEQUENCE_INDEX, idx);
+                        }
+                    }
+                } catch (Throwable ignored) {}
+
                 if (this.tickCount % 200 == 0) {
                     /* LOG.debug("[RavenEntity] Saved tame-cost: {}={}",
                             LureFollowTame.NBT_TAME_NUGGETS_REQUIRED, v);
@@ -1606,6 +1618,19 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     // Older saves: initialize safely (server side).
                     initGoldenNuggetsRequiredToTameIfNeeded("load-missingTag");
                 }
+
+                // Load ordered iron/gold sequence if present (keeps progress consistent across restarts).
+                try {
+                    if (lureFollowTame != null && tag.contains(LureFollowTame.NBT_TAME_NUGGET_SEQUENCE, net.minecraft.nbt.Tag.TAG_STRING)) {
+                        String seq = tag.getString(LureFollowTame.NBT_TAME_NUGGET_SEQUENCE);
+                        int idx = 0;
+                        if (tag.contains(LureFollowTame.NBT_TAME_NUGGET_SEQUENCE_INDEX, net.minecraft.nbt.Tag.TAG_INT)) {
+                            idx = tag.getInt(LureFollowTame.NBT_TAME_NUGGET_SEQUENCE_INDEX);
+                        }
+                        lureFollowTame.setTameNuggetSequence(seq);
+                        lureFollowTame.setTameNuggetSequenceIndex(idx);
+                    }
+                } catch (Throwable ignored) {}
             } catch (Throwable t2) {
                 if (this.tickCount % 200 == 0) {
                     //LOG.warn("[RavenEntity] Failed reading tame-cost NBT safely: {}", t2.toString());
@@ -1803,10 +1828,18 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             //  - that owner is currently holding a sealed scroll.
             boolean scrollSummonFollowLock = isScrollSummonFollowLockActive();
 
+            boolean lureActive = false;
+            try {
+                lureActive = lureFollowTame != null && lureFollowTame.isLureFollowActive();
+            } catch (Throwable ignored) {
+                lureActive = false;
+            }
+
             boolean canFollow =
-                    owner != null &&
-                            this.isTame() &&
-                            (scrollSummonFollowLock || getFollowCooldownTicks() <= 0);
+                    lureActive ||
+                            (owner != null &&
+                                    this.isTame() &&
+                                    (scrollSummonFollowLock || getFollowCooldownTicks() <= 0));
 
             if (playerAvoidanceOverrideTicks <= 0) {
                 if (canFollow) {
