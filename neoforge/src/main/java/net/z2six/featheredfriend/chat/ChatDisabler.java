@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/chat/ChatDisabler.java
+﻿// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/chat/ChatDisabler.java
 package net.z2six.featheredfriend.chat;
 
 import com.mojang.logging.LogUtils;
@@ -13,7 +13,7 @@ import net.neoforged.neoforge.client.event.ClientChatEvent;
 import net.neoforged.neoforge.client.event.ClientChatReceivedEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.ServerChatEvent;
-import net.z2six.featheredfriend.config.FFCalendarConfig;
+import net.z2six.featheredfriend.config.FFServerConfig;
 import net.z2six.featheredfriend.network.FFPayloads;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -66,7 +66,7 @@ public final class ChatDisabler {
             ServerPlayer sender = event.getPlayer();
             if (sender == null) return;
 
-            if (!FFCalendarConfig.isChatDisabled()) {
+            if (!FFServerConfig.isChatDisabled()) {
                 return;
             }
 
@@ -182,7 +182,7 @@ public final class ChatDisabler {
             if (mc.hasSingleplayerServer()) {
                 var server = mc.getSingleplayerServer();
                 if (server != null) {
-                    boolean v = FFCalendarConfig.isChatDisabled();
+                    boolean v = FFServerConfig.isChatDisabled();
                     LOG.debug("[ChatDisabler] isChatDisabledClient: integrated server config value -> {}", v);
                     return v;
                 }

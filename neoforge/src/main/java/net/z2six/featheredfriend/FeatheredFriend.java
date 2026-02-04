@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/FeatheredFriend.java
+﻿// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/FeatheredFriend.java
 package net.z2six.featheredfriend;
 
 import com.mojang.logging.LogUtils;
@@ -13,7 +13,7 @@ import net.z2six.featheredfriend.client.FFNeoForgeClient;
 import net.z2six.featheredfriend.client.particle.FFClientParticles;
 import net.z2six.featheredfriend.client.raven.RavenClientEvents;
 import net.z2six.featheredfriend.command.FeatheredFriendCommands;
-import net.z2six.featheredfriend.config.FFCalendarConfig;
+import net.z2six.featheredfriend.config.FFServerConfig;
 import net.z2six.featheredfriend.config.FFClientConfig;
 import net.z2six.featheredfriend.events.FFPlayerEvents;
 import net.z2six.featheredfriend.network.FFNetwork;
@@ -51,11 +51,11 @@ public class FeatheredFriend {
         // Configs
         // ---------------------------------------------------------------------
         try {
-            // Server config (calendar + settings default)
-            FFCalendarConfig.register();
-            LOG.debug("[FeatheredFriend] Registered FFCalendarConfig (SERVER)");
+            // Server config (settings + spawning)
+            FFServerConfig.register();
+            LOG.debug("[FeatheredFriend] Registered FFServerConfig (SERVER)");
         } catch (Throwable t) {
-            LOG.error("[FeatheredFriend] FFCalendarConfig.register() failed", t);
+            LOG.error("[FeatheredFriend] FFServerConfig.register() failed", t);
         }
 
         try {

@@ -1,11 +1,11 @@
-package net.z2six.featheredfriend.server;
+﻿package net.z2six.featheredfriend.server;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
-import net.z2six.featheredfriend.config.FFCalendarConfig;
+import net.z2six.featheredfriend.config.FFServerConfig;
 import net.z2six.featheredfriend.network.FFPayloads;
 import org.slf4j.Logger;
 
@@ -15,7 +15,7 @@ import org.slf4j.Logger;
  * Why this exists:
  * - NeoForge server config values can hot-reload from `.toml`.
  * - Clients only learn settings via payloads, so we broadcast when we detect a change.
- * - We also broadcast when settings are changed in-game (GUI) via {@link FFCalendarConfig#setChatDisabled(boolean)}.
+ * - We also broadcast when settings are changed in-game (GUI) via {@link FFServerConfig#setChatDisabled(boolean)}.
  */
 public final class FFConfigSyncEvents {
 
@@ -55,7 +55,7 @@ public final class FFConfigSyncEvents {
                 return; // check once per second
             }
 
-            boolean chatDisabledNow = FFCalendarConfig.isChatDisabled();
+            boolean chatDisabledNow = FFServerConfig.isChatDisabled();
 
             boolean changed = false;
             if (!lastInitialized) {
@@ -66,7 +66,7 @@ public final class FFConfigSyncEvents {
                 changed = true;
             }
 
-            boolean requested = FFCalendarConfig.consumeChatSettingDirty();
+            boolean requested = FFServerConfig.consumeChatSettingDirty();
 
             if (!changed && !requested) {
                 return;

@@ -73,6 +73,9 @@ To send a message, you’ll first craft and write your scroll:
 
 ## Custom Date & Calendar System
 
+Note: This feature is now provided by the standalone RPG Calendar mod.
+Install RPG Calendar alongside FeatheredFriend to enable date stamping.
+
 Feathered Friend also ships with a **fully customizable in-game date system**.  
 By default, your world starts on:
 

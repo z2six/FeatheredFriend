@@ -10,8 +10,6 @@ import net.minecraft.world.entity.player.Player;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.loading.FMLLoader;
 import net.z2six.featheredfriend.Constants;
-import net.z2six.featheredfriend.calendar.CalendarDefinition;
-import net.z2six.featheredfriend.config.FFCalendarConfig;
 import net.z2six.featheredfriend.neoforge.menu.ScrollSealingMenu;
 import net.z2six.featheredfriend.neoforge.menu.SealStampMenu;
 import net.z2six.featheredfriend.neoforge.menu.ScrollViewMenu;
@@ -92,14 +90,5 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
             LOG.error("[NeoForgePlatformHelper] Failed to open Scroll View menu", t);
         }
     }
-
-    @Override
-    public CalendarDefinition getCalendarDefinition() {
-        try {
-            return FFCalendarConfig.getCalendarDefinition();
-        } catch (Throwable t) {
-            LOG.error("[NeoForgePlatformHelper] getCalendarDefinition() failed", t);
-            return CalendarDefinition.defaultDefinition();
-        }
     }
 }

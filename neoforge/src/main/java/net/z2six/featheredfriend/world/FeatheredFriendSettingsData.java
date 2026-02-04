@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/world/FeatheredFriendSettingsData.java
+﻿// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/world/FeatheredFriendSettingsData.java
 package net.z2six.featheredfriend.world;
 
 import com.mojang.logging.LogUtils;
@@ -8,7 +8,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.saveddata.SavedData;
 import net.z2six.featheredfriend.Constants;
-import net.z2six.featheredfriend.config.FFCalendarConfig;
+import net.z2six.featheredfriend.config.FFServerConfig;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
@@ -91,7 +91,7 @@ public class FeatheredFriendSettingsData extends SavedData {
                 // NEW: config-driven default when missing.
                 boolean cfgDefault = DEFAULT_CHAT_DISABLED;
                 try {
-                    cfgDefault = FFCalendarConfig.getChatDisabledDefault();
+                    cfgDefault = FFServerConfig.getChatDisabledDefault();
                 } catch (Throwable ignored) {
                 }
                 chatDisabled = cfgDefault;

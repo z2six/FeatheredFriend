@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/world/RavenSpawnEvents.java
+﻿// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/world/RavenSpawnEvents.java
 package net.z2six.featheredfriend.world;
 
 import com.mojang.logging.LogUtils;
@@ -19,7 +19,7 @@ import net.minecraft.world.phys.AABB;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 import net.z2six.featheredfriend.Constants;
-import net.z2six.featheredfriend.config.FFCalendarConfig;
+import net.z2six.featheredfriend.config.FFServerConfig;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
@@ -34,7 +34,7 @@ import java.util.List;
  * NOTE (critical reality check):
  * - This file ONLY controls ravens spawned by THIS handler (manual addFreshEntity()).
  * - If you also added your raven to biome spawn lists (BiomeModifier / datapack add_spawns / BiomeModifications),
- *   then vanilla's mob spawner will spawn ravens normally on ground (no leaves requirement) and ignore this file’s cap.
+ *   then vanilla's mob spawner will spawn ravens normally on ground (no leaves requirement) and ignore this fileâ€™s cap.
  *
  * This implementation therefore:
  *  - Keeps the original "leaves-top spawn" behavior.
@@ -110,7 +110,7 @@ public final class RavenSpawnEvents {
 
     /**
      * Optional global safety cap: total WILD ravens allowed in this level.
-     * This prevents “runaway spawn bug” floods even if other logic is broken.
+     * This prevents â€œrunaway spawn bugâ€ floods even if other logic is broken.
      *
      * Rule of thumb: (players * 2) + buffer.
      */
@@ -123,7 +123,7 @@ public final class RavenSpawnEvents {
 
     private static int wildRavensPerPlayer() {
         try {
-            return Math.max(0, FFCalendarConfig.getWildRavensPerPlayer());
+            return Math.max(0, FFServerConfig.getWildRavensPerPlayer());
         } catch (Throwable t) {
             return 1;
         }
@@ -254,7 +254,7 @@ public final class RavenSpawnEvents {
                     continue;
                 }
 
-                // Before we actually spawn, re-check the cap to minimize “race” behavior if multiple handlers exist.
+                // Before we actually spawn, re-check the cap to minimize â€œraceâ€ behavior if multiple handlers exist.
                 final int wildCountPreSpawn = countWildRavensNearPlayer(level, player, ravenType, gameTime);
                 final int localCapNow = wildRavensPerPlayer();
                 if (wildCountPreSpawn >= localCapNow) {
@@ -443,7 +443,7 @@ public final class RavenSpawnEvents {
 
     /**
      * Hard enforcement: if >2 WILD ravens are near this player, despawn extras immediately.
-     * We remove the farthest ones first (keeps “local pair” close to player).
+     * We remove the farthest ones first (keeps â€œlocal pairâ€ close to player).
      */
     private static void cullExtraWildRavensNearPlayer(net.minecraft.server.level.ServerLevel level,
                                                       Player player,
@@ -760,7 +760,7 @@ public final class RavenSpawnEvents {
                     );
                 } catch (Throwable t) {
                     LOG.warn(
-                            "[RavenSpawnEvents] finalizeSpawn failed for raven at {} – continuing with spawned entity",
+                            "[RavenSpawnEvents] finalizeSpawn failed for raven at {} â€“ continuing with spawned entity",
                             pos,
                             t
                     );

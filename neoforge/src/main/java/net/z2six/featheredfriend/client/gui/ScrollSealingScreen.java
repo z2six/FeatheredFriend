@@ -16,11 +16,10 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.nbt.CompoundTag;
 import net.z2six.featheredfriend.Constants;
-import net.z2six.featheredfriend.client.ClientCalendarEvents;
+import org.z2six.rpgcalendar.api.RPGCalendarApi;
 import net.z2six.featheredfriend.client.gui.widget.MultiLineScrollTextWidget;
 import net.z2six.featheredfriend.client.gui.widget.RecipientOverlay;
 import net.z2six.featheredfriend.client.gui.widget.SealStampSelectionOverlay;
-import net.z2six.featheredfriend.config.FFCalendarConfig;
 import net.z2six.featheredfriend.item.SealStampItem;
 import net.z2six.featheredfriend.neoforge.menu.ScrollSealingMenu;
 import net.z2six.featheredfriend.sigil.SealSigilGenerator;
@@ -872,14 +871,8 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
             }
 
             long dayTime = mc.level.getDayTime();
-            long ticksPerDay = FFCalendarConfig.TICKS_PER_DAY;
-            if (ticksPerDay <= 0L) {
-                LOG.warn("[ScrollSealingScreen] computeCurrentDateString: FFCalendarConfig.TICKS_PER_DAY <= 0 ({}), using 24000 fallback", ticksPerDay);
-                ticksPerDay = 24000L;
-            }
-            long dayIndex = dayTime / ticksPerDay;
 
-            Component dateComponent = ClientCalendarEvents.buildDateMessage(dayIndex);
+            Component dateComponent = RPGCalendarApi.buildDateMessageFromGameTime(dayTime);
             return dateComponent.getString();
         } catch (Throwable t) {
             LOG.error("[ScrollSealingScreen] computeCurrentDateString failed", t);

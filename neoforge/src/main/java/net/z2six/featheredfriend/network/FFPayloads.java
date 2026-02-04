@@ -1,4 +1,4 @@
-// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/network/FFPayloads.java
+﻿// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/network/FFPayloads.java
 package net.z2six.featheredfriend.network;
 
 import com.mojang.logging.LogUtils;
@@ -14,7 +14,7 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import net.z2six.featheredfriend.Constants;
-import net.z2six.featheredfriend.config.FFCalendarConfig;
+import net.z2six.featheredfriend.config.FFServerConfig;
 import org.slf4j.Logger;
 
 import java.util.List;
@@ -209,7 +209,7 @@ public final class FFPayloads {
                 return;
             }
 
-            boolean chatDisabledValue = FFCalendarConfig.isChatDisabled();
+            boolean chatDisabledValue = FFServerConfig.isChatDisabled();
             boolean canEditChatValue;
             try {
                 canEditChatValue = player.hasPermissions(4);
@@ -322,7 +322,7 @@ public final class FFPayloads {
                         return;
                     }
 
-                    FFCalendarConfig.setChatDisabled(payload.chatDisabled());
+                    FFServerConfig.setChatDisabled(payload.chatDisabled());
 
                     LOG.debug("[FFPayloads] {} set chatDisabled -> {}",
                             sp.getGameProfile().getName(), payload.chatDisabled());
