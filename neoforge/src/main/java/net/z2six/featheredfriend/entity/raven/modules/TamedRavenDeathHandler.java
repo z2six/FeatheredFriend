@@ -2,12 +2,14 @@
 package net.z2six.featheredfriend.entity.raven.modules;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
+import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import net.z2six.featheredfriend.world.TamedRavenPlayerData;
 import org.slf4j.Logger;
@@ -34,6 +36,7 @@ import java.util.UUID;
 public final class TamedRavenDeathHandler {
 
     private static final Logger LOG = LogUtils.getLogger();
+    private static final String NBT_BOUND_RAVEN_ID = "BoundRavenId";
 
     /** Radius (in blocks) used to pick the "last seen nearby" player. */
     private static final double LAST_SEEN_PLAYER_RADIUS = 64.0D;
@@ -144,7 +147,9 @@ public final class TamedRavenDeathHandler {
             String entityNameTrim = ravenNameFromEntity == null ? "" : ravenNameFromEntity.trim();
 
             TamedRavenPlayerData.TamedRavenInfo info = TamedRavenPlayerData.getTamedRavenInfo(owner);
+            boolean hasStored = info != null && info.hasTamedRaven();
             String storedNameTrim = (info == null || info.ravenName() == null) ? "" : info.ravenName().trim();
+            UUID storedBoundId = (info != null) ? info.boundRavenId() : null;
 
                 String displayName = !entityNameTrim.isEmpty()
                         ? entityNameTrim
@@ -179,14 +184,52 @@ public final class TamedRavenDeathHandler {
                     }
                 }
 
-                // Clear the TamedRaven data for this owner.
-                boolean cleared = TamedRavenPlayerData.clearPlayerTamedRavenData(owner);
-                if (cleared) {
-                    LOG.debug("[TamedRavenDeathHandler] Cleared TamedRaven data for owner={} due to raven death. ravenName={}",
-                            owner.getGameProfile().getName(), displayName);
+                // Only clear if this dead raven matches the stored bound record.
+                boolean matchesStored = false;
+                UUID entityBoundId = null;
+                try {
+                    CompoundTag root = raven.getPersistentData();
+                    CompoundTag ffTag = (root == null) ? null : root.getCompound(Constants.MOD_ID);
+                    if (ffTag != null && ffTag.hasUUID(NBT_BOUND_RAVEN_ID)) {
+                        entityBoundId = ffTag.getUUID(NBT_BOUND_RAVEN_ID);
+                    }
+                } catch (Throwable ignored) {
+                }
+
+                boolean hasEntityName = raven.hasCustomName();
+                boolean nameMatches = hasEntityName && !storedNameTrim.isEmpty()
+                        && entityNameTrim.equals(storedNameTrim);
+
+                if (storedBoundId != null && entityBoundId != null) {
+                    matchesStored = storedBoundId.equals(entityBoundId);
+                } else if (storedBoundId == null && entityBoundId != null) {
+                    matchesStored = nameMatches;
+                } else if (storedBoundId != null && entityBoundId == null) {
+                    matchesStored = nameMatches;
                 } else {
-                    LOG.debug("[TamedRavenDeathHandler] Owner={} had no TamedRaven data to clear on raven death. ravenName={}",
-                            owner.getGameProfile().getName(), displayName);
+                    matchesStored = nameMatches;
+                }
+
+                if (!hasStored) {
+                    matchesStored = false;
+                }
+
+                if (matchesStored) {
+                    boolean cleared = TamedRavenPlayerData.clearPlayerTamedRavenData(owner);
+                    if (cleared) {
+                        LOG.debug("[TamedRavenDeathHandler] Cleared TamedRaven data for owner={} due to raven death. ravenName={}",
+                                owner.getGameProfile().getName(), displayName);
+                    } else {
+                        LOG.debug("[TamedRavenDeathHandler] Owner={} had no TamedRaven data to clear on raven death. ravenName={}",
+                                owner.getGameProfile().getName(), displayName);
+                    }
+                } else if (raven.tickCount % 80 == 0) {
+                    LOG.debug("[TamedRavenDeathHandler] Skipped clear; dead raven did not match stored bound record. owner={} storedName='{}' entityName='{}' storedBoundId={} entityBoundId={}",
+                            owner.getGameProfile().getName(),
+                            storedNameTrim,
+                            entityNameTrim,
+                            storedBoundId,
+                            entityBoundId);
                 }
 
                 return;

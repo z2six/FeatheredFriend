@@ -2,15 +2,14 @@
 package net.z2six.featheredfriend.entity.raven.modules;
 
 import com.mojang.logging.LogUtils;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
-import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import net.z2six.featheredfriend.registry.FFNeoForgeParticles;
+import net.z2six.featheredfriend.world.TamedRavenPlayerData;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -249,32 +248,13 @@ public final class TamedRaven {
      */
     private void storeTamedRavenForPlayer(ServerPlayer player, String ravenName) {
         try {
-            CompoundTag root = player.getPersistentData();
-            if (root == null) {
-                LOG.warn("[TamedRaven] storeTamedRavenForPlayer: player persistent data is null");
-                return;
-            }
-
-            CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
-            CompoundTag ravenTag = new CompoundTag();
-
-            ravenTag.putUUID("OwnerUUID", player.getUUID());
-            ravenTag.putString("RavenName", ravenName != null ? ravenName : "Raven");
-            ravenTag.putBoolean("HasTamedRaven", true);
-
-            // Optional: store dimension / some basic context (for future use)
+            UUID boundId = null;
             try {
-                if (player.level() != null) {
-                    ravenTag.putString("OwnerDimension", player.level().dimension().location().toString());
-                }
+                boundId = (raven != null) ? raven.getUUID() : null;
             } catch (Throwable ignored) {
             }
 
-            ffTag.put("TamedRaven", ravenTag);
-            root.put(Constants.MOD_ID, ffTag);
-
-            LOG.debug("[TamedRaven] Stored tamed raven for player={} name='{}'",
-                    player.getGameProfile().getName(), ravenName);
+            TamedRavenPlayerData.storeTamedRavenInfo(player, ravenName, boundId);
 
         } catch (Throwable t) {
             LOG.error("[TamedRaven] storeTamedRavenForPlayer failed safely", t);

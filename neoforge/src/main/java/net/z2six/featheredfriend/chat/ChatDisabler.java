@@ -1,4 +1,4 @@
-﻿// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/chat/ChatDisabler.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/chat/ChatDisabler.java
 package net.z2six.featheredfriend.chat;
 
 import com.mojang.logging.LogUtils;
@@ -210,3 +210,4 @@ public final class ChatDisabler {
         }
     }
 }
+

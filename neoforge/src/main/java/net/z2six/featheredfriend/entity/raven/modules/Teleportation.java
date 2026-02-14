@@ -18,7 +18,6 @@ import net.z2six.featheredfriend.entity.raven.RavenAnimMode;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
-import java.util.List;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.sounds.SoundEvents;
@@ -82,6 +81,7 @@ public final class Teleportation {
 
     public TeleportSeqPhase teleportSeqPhase = TeleportSeqPhase.NONE;
     private int teleportSeqTicks = 0;
+    private boolean teleportSeqSkipReissue = false;
 
     @Nullable
     private Vec3 teleportSeqTarget = null;
@@ -105,6 +105,7 @@ public final class Teleportation {
     private static final int TELEPORT_COOLDOWN_TICKS = 6 * 20;   // 6s
     private static final int TELEPORT_MAX_SEARCH_RADIUS = 6;     // blocks around current position
     private static final int TELEPORT_MAX_CANDIDATES = 48;       // cap attempts
+    private static final int TELEPORT_SEARCH_COOLDOWN_TICKS = 20; // throttle heavy searches
 
     // Sampling state
     @Nullable
@@ -113,6 +114,17 @@ public final class Teleportation {
     private int teleportSampleTicker = 0;
     private int teleportCooldownTicks = 0;
     private int teleportStuckSamples = 0;
+
+    private long lastSearchGameTime1x1 = Long.MIN_VALUE;
+    private @Nullable BlockPos lastSearchResult1x1 = null;
+    private long lastSearchGameTime3x3 = Long.MIN_VALUE;
+    private @Nullable BlockPos lastSearchResult3x3 = null;
+    private long lastSearchGameTime3x3Near = Long.MIN_VALUE;
+    private @Nullable BlockPos lastSearchResult3x3Near = null;
+    private @Nullable BlockPos lastSearchCenter3x3Near = null;
+    private int lastSearchRadius3x3Near = 0;
+    private int lastSearchCandidates3x3Near = 0;
+    private long lastSearchSeed3x3Near = 0L;
 
     // -------------------------------------------------------------------------------------------------
     // Teleport FX tuning
@@ -235,6 +247,7 @@ public final class Teleportation {
                             LOG.warn("[Teleportation] TeleportSequence TELEPORTING but target=null. Aborting.");
                         }
                         teleportSeqPhase = TeleportSeqPhase.NONE;
+                        teleportSeqSkipReissue = false;
                         setTeleportFadeAlpha(255, ravenEntity);
                         endTeleportPhase("teleport target null", ravenEntity);
                         return;
@@ -307,11 +320,13 @@ public final class Teleportation {
                         TeleportSeqPhase old = teleportSeqPhase;
                         Vec3 oldTarget = teleportSeqTarget;
                         String oldReason = teleportSeqReason;
+                        boolean skipReissue = teleportSeqSkipReissue;
 
                         teleportSeqPhase = TeleportSeqPhase.NONE;
                         teleportSeqTicks = 0;
                         teleportSeqTarget = null;
                         teleportSeqReason = null;
+                        teleportSeqSkipReissue = false;
 
                         endTeleportPhase("sequence done", ravenEntity);
 
@@ -321,9 +336,11 @@ public final class Teleportation {
                         setPrivateInt(ravenEntity, "avoidanceCooldownTicks", 0);
 
                         // Reissue intent (if RavenEntity has this method)
-                        invokeVoid1String(ravenEntity, "reissueMovementIntentAfterTeleport",
-                                (oldReason == null ? "teleport sequence" : oldReason),
-                                "[Teleportation] reissueMovementIntentAfterTeleport missing/failed");
+                        if (!skipReissue) {
+                            invokeVoid1String(ravenEntity, "reissueMovementIntentAfterTeleport",
+                                    (oldReason == null ? "teleport sequence" : oldReason),
+                                    "[Teleportation] reissueMovementIntentAfterTeleport missing/failed");
+                        }
 
                         if (ravenEntity.tickCount % 20 == 0) {
                             LOG.debug("[Teleportation] TeleportSequence END phase={} reason={} target={}", old, oldReason, oldTarget);
@@ -343,6 +360,7 @@ public final class Teleportation {
             teleportSeqTarget = null;
             teleportSeqReason = null;
             teleportSeqTicks = 0;
+            teleportSeqSkipReissue = false;
 
             setTeleportFadeAlpha(255, ravenEntity);
             endTeleportPhase("failsafe tickTeleportSequenceServer", ravenEntity);
@@ -367,6 +385,7 @@ public final class Teleportation {
             teleportSeqReason = reason;
             teleportSeqTicks = 0;
             teleportSeqPhase = TeleportSeqPhase.FADING_OUT;
+            teleportSeqSkipReissue = false;
 
             beginTeleportPhase(reason, ravenEntity);
             setTeleportFadeAlpha(255, ravenEntity);
@@ -386,9 +405,47 @@ public final class Teleportation {
             teleportSeqTarget = null;
             teleportSeqReason = null;
             teleportSeqTicks = 0;
+            teleportSeqSkipReissue = false;
 
             setTeleportFadeAlpha(255, ravenEntity);
             endTeleportPhase("failsafe startTeleportSequence", ravenEntity);
+        }
+    }
+
+    public void startFadeInOnly(String reason, RavenEntity ravenEntity) {
+        try {
+            if (ravenEntity == null) return;
+            if (ravenEntity.level() == null) return;
+            if (ravenEntity.level().isClientSide) return;
+
+            if (teleportSeqPhase != TeleportSeqPhase.NONE) {
+                if (ravenEntity.tickCount % 20 == 0) {
+                    LOG.debug("[Teleportation] startFadeInOnly ignored (already active). phase={} reason={}", teleportSeqPhase, reason);
+                }
+                return;
+            }
+
+            teleportSeqTarget = null;
+            teleportSeqReason = reason;
+            teleportSeqTicks = 0;
+            teleportSeqPhase = TeleportSeqPhase.FADING_IN;
+            teleportSeqSkipReissue = true;
+
+            beginTeleportPhase(reason, ravenEntity);
+            setTeleportFadeAlpha(0, ravenEntity);
+
+            if (ravenEntity.tickCount % 20 == 0) {
+                LOG.debug("[Teleportation] FadeInOnly START reason={} pos={} fadeInTicks={}",
+                        reason, ravenEntity.position(), TELEPORT_FADE_TICKS_IN);
+            }
+        } catch (Throwable t) {
+            LOG.error("[Teleportation] startFadeInOnly failed (reason={})", reason, t);
+            teleportSeqPhase = TeleportSeqPhase.NONE;
+            teleportSeqTarget = null;
+            teleportSeqReason = null;
+            teleportSeqTicks = 0;
+            teleportSeqSkipReissue = false;
+            setTeleportFadeAlpha(255, ravenEntity);
         }
     }
 
@@ -630,6 +687,17 @@ public final class Teleportation {
         try {
             if (ravenEntity == null || ravenEntity.level() == null) return null;
 
+            long now = ravenEntity.level().getGameTime();
+            if (lastSearchGameTime1x1 != Long.MIN_VALUE
+                    && now - lastSearchGameTime1x1 < TELEPORT_SEARCH_COOLDOWN_TICKS) {
+                if (lastSearchResult1x1 == null) {
+                    return null;
+                }
+                if (isTeleportSpotValid1x1(lastSearchResult1x1, ravenEntity)) {
+                    return lastSearchResult1x1;
+                }
+            }
+
             BlockPos base = ravenEntity.blockPosition();
             RandomSource rnd = ravenEntity.getRandom();
 
@@ -653,9 +721,13 @@ public final class Teleportation {
                     // allowed
                 }
 
+                lastSearchGameTime1x1 = now;
+                lastSearchResult1x1 = p;
                 return p;
             }
 
+            lastSearchGameTime1x1 = now;
+            lastSearchResult1x1 = null;
             return null;
 
         } catch (Throwable t) {
@@ -670,6 +742,17 @@ public final class Teleportation {
     public BlockPos findNearbyEmptyTeleportBlock3x3x3(int radiusBlocks, int maxCandidates, RavenEntity ravenEntity) {
         try {
             if (ravenEntity == null || ravenEntity.level() == null) return null;
+
+            long now = ravenEntity.level().getGameTime();
+            if (lastSearchGameTime3x3 != Long.MIN_VALUE
+                    && now - lastSearchGameTime3x3 < TELEPORT_SEARCH_COOLDOWN_TICKS) {
+                if (lastSearchResult3x3 == null) {
+                    return null;
+                }
+                if (isTeleportSpotValid3x3(lastSearchResult3x3, ravenEntity)) {
+                    return lastSearchResult3x3;
+                }
+            }
 
             int r = Math.max(1, radiusBlocks);
             int candidates = Math.max(1, maxCandidates);
@@ -693,9 +776,13 @@ public final class Teleportation {
                 boolean ok = isEmptyTeleportPocket3x3x3At(p, ravenEntity);
                 if (!ok) continue;
 
+                lastSearchGameTime3x3 = now;
+                lastSearchResult3x3 = p;
                 return p;
             }
 
+            lastSearchGameTime3x3 = now;
+            lastSearchResult3x3 = null;
             return null;
 
         } catch (Throwable t) {
@@ -711,6 +798,21 @@ public final class Teleportation {
         try {
             if (ravenEntity == null || ravenEntity.level() == null) return null;
             if (center == null) return null;
+
+            long now = ravenEntity.level().getGameTime();
+            boolean sameRequest = center.equals(lastSearchCenter3x3Near)
+                    && radiusBlocks == lastSearchRadius3x3Near
+                    && maxCandidates == lastSearchCandidates3x3Near
+                    && seed == lastSearchSeed3x3Near;
+            if (sameRequest && lastSearchGameTime3x3Near != Long.MIN_VALUE
+                    && now - lastSearchGameTime3x3Near < TELEPORT_SEARCH_COOLDOWN_TICKS) {
+                if (lastSearchResult3x3Near == null) {
+                    return null;
+                }
+                if (isTeleportSpotValid3x3(lastSearchResult3x3Near, ravenEntity)) {
+                    return lastSearchResult3x3Near;
+                }
+            }
 
             int r = Math.max(1, radiusBlocks);
             int candidates = Math.max(1, maxCandidates);
@@ -734,6 +836,12 @@ public final class Teleportation {
 
                 if (!isEmptyTeleportPocket3x3x3At(p, ravenEntity)) continue;
 
+                lastSearchGameTime3x3Near = now;
+                lastSearchResult3x3Near = p;
+                lastSearchCenter3x3Near = center;
+                lastSearchRadius3x3Near = radiusBlocks;
+                lastSearchCandidates3x3Near = maxCandidates;
+                lastSearchSeed3x3Near = seed;
                 return p;
             }
 
@@ -742,6 +850,12 @@ public final class Teleportation {
                         center, r, candidates, seed);
             }
 
+            lastSearchGameTime3x3Near = now;
+            lastSearchResult3x3Near = null;
+            lastSearchCenter3x3Near = center;
+            lastSearchRadius3x3Near = radiusBlocks;
+            lastSearchCandidates3x3Near = maxCandidates;
+            lastSearchSeed3x3Near = seed;
             return null;
 
         } catch (Throwable t) {
@@ -776,123 +890,34 @@ public final class Teleportation {
         }
     }
 
+    private boolean isTeleportSpotValid1x1(BlockPos p, RavenEntity ravenEntity) {
+        try {
+            if (p == null || ravenEntity == null || ravenEntity.level() == null) return false;
+            if (!ravenEntity.level().isEmptyBlock(p)) return false;
+            if (!ravenEntity.level().isEmptyBlock(p.above())) return false;
+            if (!ravenEntity.level().getFluidState(p).isEmpty()) return false;
+
+            Vec3 center = new Vec3(p.getX() + 0.5D, p.getY(), p.getZ() + 0.5D);
+            return !invokeIsOutOfHomeBounds(ravenEntity, center);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private boolean isTeleportSpotValid3x3(BlockPos p, RavenEntity ravenEntity) {
+        try {
+            if (p == null || ravenEntity == null || ravenEntity.level() == null) return false;
+            Vec3 center = new Vec3(p.getX() + 0.5D, p.getY(), p.getZ() + 0.5D);
+            if (invokeIsOutOfHomeBounds(ravenEntity, center)) return false;
+            return isEmptyTeleportPocket3x3x3At(p, ravenEntity);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     // -------------------------------------------------------------------------------------------------
     // Teleport recovery (stuck sampler + attempt)
     // -------------------------------------------------------------------------------------------------
-
-    /**
-     * Try to pick a teleport target based on upcoming A* waypoints, instead of a random nearby spot.
-     *
-     * - Reads RavenEntity.pathWaypoints (List<Vec3>) + pathWaypointIndex via reflection.
-     * - Chooses an index in [currentIdx+1 .. lastIdx], optionally excluding the final waypoint.
-     * - Around that waypoint, searches for a valid 3x3x3 empty pocket using your existing helper.
-     *
-     * Returns:
-     *  - BlockPos anchor for a 3x3x3 pocket if successful
-     *  - null if no suitable waypoint pocket is found (caller should fall back).
-     */
-    @Nullable
-    private BlockPos pickUpcomingPathWaypointTeleportTarget(
-            RavenEntity ravenEntity,
-            boolean excludeFinalWaypoint,
-            int radiusBlocks,
-            int maxCandidates,
-            long salt
-    ) {
-        try {
-            if (ravenEntity == null) return null;
-
-            Object wpObj = getPrivateObject(ravenEntity, "pathWaypoints");
-            if (!(wpObj instanceof List<?> rawList)) {
-                return null;
-            }
-            if (rawList.isEmpty()) {
-                return null;
-            }
-
-            int total = rawList.size();
-            int currentIdx = getPrivateInt(ravenEntity, "pathWaypointIndex", 0);
-            if (currentIdx < 0 || currentIdx >= total) {
-                currentIdx = 0;
-            }
-
-            // We only want *upcoming* waypoints (strictly ahead of currentIdx).
-            int start = currentIdx + 1;
-            int end = excludeFinalWaypoint ? (total - 2) : (total - 1);
-
-            // Not enough waypoints to pick a future one (or only final).
-            if (end < start || end < 0) {
-                return null;
-            }
-
-            // Clamp sanity
-            start = Math.max(0, Math.min(start, total - 1));
-            end = Math.max(0, Math.min(end, total - 1));
-            if (end < start) {
-                return null;
-            }
-
-            RandomSource rnd = ravenEntity.getRandom();
-            int span = end - start + 1;
-
-            // Try a few random candidates from the allowed range.
-            int attempts = Math.min(6, span);
-            for (int n = 0; n < attempts; n++) {
-                int offset = (span <= 1) ? 0 : rnd.nextInt(span);
-                int idx = start + offset;
-
-                Object v = rawList.get(idx);
-                if (!(v instanceof Vec3 wp)) {
-                    continue;
-                }
-
-                BlockPos center = BlockPos.containing(
-                        Math.floor(wp.x),
-                        Math.floor(wp.y),
-                        Math.floor(wp.z)
-                );
-
-                long seed = salt
-                        ^ ravenEntity.getUUID().getLeastSignificantBits()
-                        ^ (long) ravenEntity.tickCount
-                        ^ center.asLong()
-                        ^ idx;
-
-                BlockPos pocket = findEmptyTeleportBlock3x3x3Near(
-                        center,
-                        radiusBlocks,
-                        maxCandidates,
-                        seed,
-                        ravenEntity
-                );
-
-                if (pocket != null) {
-                    if (ravenEntity.tickCount % 40 == 0) {
-                        LOG.debug(
-                                "[Teleportation] pickUpcomingPathWaypointTeleportTarget: picked waypointIdx={} center={} pocket={} excludeFinal={} total={}",
-                                idx, center, pocket, excludeFinalWaypoint, total
-                        );
-                    }
-                    return pocket;
-                }
-            }
-
-            // No suitable pocket found around any sampled waypoint.
-            if (ravenEntity.tickCount % 80 == 0) {
-                LOG.debug(
-                        "[Teleportation] pickUpcomingPathWaypointTeleportTarget: no pocket around waypoints range=[{}..{}] total={}",
-                        start, end, total
-                );
-            }
-            return null;
-
-        } catch (Throwable t) {
-            if (ravenEntity != null && ravenEntity.tickCount % 80 == 0) {
-                LOG.warn("[Teleportation] pickUpcomingPathWaypointTeleportTarget failed safely: {}", t.toString());
-            }
-            return null;
-        }
-    }
 
     public void tickTeleportRecoverySampler(RavenEntity ravenEntity) {
         try {
@@ -1023,30 +1048,12 @@ public final class Teleportation {
                 return true; // treated as handled
             }
 
-            boolean usedWaypoint = false;
-
-            // First try: teleport to an upcoming waypoint (but never the final one),
-            // so we don't have to "do over" the entire path.
-            final long WAYPOINT_SALT = 0xA17E1EDE5L;
-            BlockPos targetPos = pickUpcomingPathWaypointTeleportTarget(
-                    ravenEntity,
-                    true,   // excludeFinalWaypoint
-                    4,      // radiusBlocks around the waypoint
-                    80,     // maxCandidates
-                    WAYPOINT_SALT
-            );
-
-            if (targetPos != null) {
-                usedWaypoint = true;
-            } else {
-                // Fallback: original random nearby empty 1x1x1 block.
-                targetPos = findNearbyEmptyTeleportBlock(ravenEntity);
-            }
+            BlockPos targetPos = findNearbyEmptyTeleportBlock(ravenEntity);
 
             if (targetPos == null) {
                 if (ravenEntity.tickCount % 20 == 0) {
-                    LOG.warn("[Teleportation] TeleportRecovery: no teleport target found near pos={} reason={} (usedWaypoint={})",
-                            ravenEntity.position(), reason, usedWaypoint);
+                    LOG.warn("[Teleportation] TeleportRecovery: no teleport target found near pos={} reason={}",
+                            ravenEntity.position(), reason);
                 }
                 return false;
             }
@@ -1059,8 +1066,8 @@ public final class Teleportation {
             startTeleportSequence(end, fxSeed, reason, ravenEntity);
 
             if (ravenEntity.tickCount % 20 == 0) {
-                LOG.debug("[Teleportation] TeleportRecovery armed sequence reason={} targetBlock={} endPos={} usedWaypoint={}",
-                        reason, targetPos, end, usedWaypoint);
+                LOG.debug("[Teleportation] TeleportRecovery armed sequence reason={} targetBlock={} endPos={}",
+                        reason, targetPos, end);
             }
 
             return true;
@@ -1072,6 +1079,7 @@ public final class Teleportation {
             teleportSeqTarget = null;
             teleportSeqReason = null;
             teleportSeqTicks = 0;
+            teleportSeqSkipReissue = false;
 
             setTeleportFadeAlpha(255, ravenEntity);
             endTeleportPhase("failsafe attemptTeleportRecovery", ravenEntity);
@@ -1231,7 +1239,6 @@ public final class Teleportation {
 
             // Cancel current movement intent via reflection
             invokeVoid0(ravenEntity, "clearFlyTarget", "[Teleportation] clearFlyTarget missing/failed");
-            invokeVoid1String(ravenEntity, "clearPlannedPath", "panic teleport", "[Teleportation] clearPlannedPath missing/failed");
 
             // Clear avoidance override state if present
             setPrivateInt(ravenEntity, "playerAvoidanceOverrideTicks", 0);
@@ -1451,29 +1458,12 @@ public final class Teleportation {
                 return;
             }
 
-            boolean usedWaypoint = false;
-
-            // Prefer blinking along the current path: pick an upcoming waypoint (not final).
-            final long BLINK_WAYPOINT_SALT = 0xB11E5EEDL;
-            BlockPos targetBlock = pickUpcomingPathWaypointTeleportTarget(
-                    ravenEntity,
-                    true,   // excludeFinalWaypoint
-                    6,      // radiusBlocks
-                    80,     // maxCandidates
-                    BLINK_WAYPOINT_SALT
-            );
-
-            if (targetBlock != null) {
-                usedWaypoint = true;
-            } else {
-                // Fallback: original behavior, random 3x3x3 pocket near current pos.
-                targetBlock = findNearbyEmptyTeleportBlock3x3x3(10, 60, ravenEntity);
-            }
+            BlockPos targetBlock = findNearbyEmptyTeleportBlock3x3x3(10, 60, ravenEntity);
 
             if (targetBlock == null) {
                 if (ravenEntity.tickCount % 40 == 0) {
-                    LOG.debug("[Teleportation] FlightBlink: no valid teleport space found near pos={} ai={} used={}/{} usedWaypoint={}",
-                            ravenEntity.position(), st, used, budget, usedWaypoint);
+                    LOG.debug("[Teleportation] FlightBlink: no valid teleport space found near pos={} ai={} used={}/{}",
+                            ravenEntity.position(), st, used, budget);
                 }
                 return;
             }
@@ -1481,8 +1471,8 @@ public final class Teleportation {
             Vec3 end = new Vec3(targetBlock.getX() + 0.5D, targetBlock.getY(), targetBlock.getZ() + 0.5D);
             if (invokeIsOutOfHomeBounds(ravenEntity, end)) {
                 if (ravenEntity.tickCount % 40 == 0) {
-                    LOG.debug("[Teleportation] FlightBlink: candidate out of home bounds end={} basePos={} usedWaypoint={}",
-                            end, ravenEntity.position(), usedWaypoint);
+                    LOG.debug("[Teleportation] FlightBlink: candidate out of home bounds end={} basePos={}",
+                            end, ravenEntity.position());
                 }
                 return;
             }
@@ -1502,8 +1492,8 @@ public final class Teleportation {
             setPrivateInt(ravenEntity, "flightTeleportHardCooldownTicks", hardCd);
 
             if (ravenEntity.tickCount % 20 == 0) {
-                LOG.debug("[Teleportation] FlightBlink TRIGGERED used={}/{} ai={} fromPos={} toBlock={} end={} vel={} usedWaypoint={}",
-                        used, budget, st, ravenEntity.position(), targetBlock, end, vel, usedWaypoint);
+                LOG.debug("[Teleportation] FlightBlink TRIGGERED used={}/{} ai={} fromPos={} toBlock={} end={} vel={}",
+                        used, budget, st, ravenEntity.position(), targetBlock, end, vel);
             }
 
         } catch (Throwable t) {

@@ -268,6 +268,7 @@ public final class FeatheredFriendCommands {
             tamed.remove(KEY_RAVEN_NAME);
             tamed.remove(KEY_OWNER_UUID);
             tamed.remove(KEY_OWNER_DIMENSION);
+            tamed.remove("BoundRavenId");
 
             if (tamed.isEmpty()) {
                 modTag.remove(KEY_TAMED_RAVEN);

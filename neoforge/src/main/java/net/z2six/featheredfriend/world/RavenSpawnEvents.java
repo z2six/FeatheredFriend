@@ -1,9 +1,10 @@
-﻿// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/world/RavenSpawnEvents.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/world/RavenSpawnEvents.java
 package net.z2six.featheredfriend.world;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.util.RandomSource;
@@ -14,6 +15,7 @@ import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.neoforged.neoforge.common.NeoForge;
@@ -24,7 +26,12 @@ import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * neoforge/src/main/java/net/z2six/featheredfriend/world/RavenSpawnEvents.java
@@ -121,6 +128,18 @@ public final class RavenSpawnEvents {
      */
     private static final int GLOBAL_WILD_RAVEN_BUFFER = 0;
 
+    private static final int WILD_RAVEN_SCAN_CACHE_TICKS = 20;
+    private static final double WILD_RAVEN_SCAN_CACHE_MOVE_DIST_SQR = 8.0D * 8.0D;
+
+    private static final Map<UUID, WildRavenScanCache> WILD_RAVEN_SCAN_CACHE = new HashMap<>();
+
+    private static final class WildRavenScanCache {
+        long lastGameTime;
+        BlockPos lastPlayerPos;
+        ResourceKey<Level> lastLevelKey;
+        List<Entity> wildRavens;
+    }
+
     private static int wildRavensPerPlayer() {
         try {
             return Math.max(0, FFServerConfig.getWildRavensPerPlayer());
@@ -180,6 +199,16 @@ public final class RavenSpawnEvents {
             final List<? extends Player> players = level.players();
             if (players.isEmpty()) {
                 return;
+            }
+
+            Set<UUID> activePlayers = new HashSet<>();
+            for (Player p : players) {
+                if (p != null) {
+                    activePlayers.add(p.getUUID());
+                }
+            }
+            if (!WILD_RAVEN_SCAN_CACHE.isEmpty()) {
+                WILD_RAVEN_SCAN_CACHE.keySet().removeIf(id -> !activePlayers.contains(id));
             }
 
             // Defense-in-depth: global cap for WILD ravens.
@@ -405,6 +434,56 @@ public final class RavenSpawnEvents {
         }
     }
 
+    private static List<Entity> getWildRavensNearPlayerCached(net.minecraft.server.level.ServerLevel level,
+                                                              Player player,
+                                                              EntityType<?> ravenType,
+                                                              long gameTime) {
+        try {
+            UUID playerId = player.getUUID();
+            BlockPos pos = player.blockPosition();
+
+            WildRavenScanCache cache = WILD_RAVEN_SCAN_CACHE.get(playerId);
+            if (cache != null && cache.wildRavens != null && cache.lastPlayerPos != null) {
+                long dt = gameTime - cache.lastGameTime;
+                boolean sameLevel = cache.lastLevelKey != null && cache.lastLevelKey.equals(level.dimension());
+                double dx = pos.getX() - cache.lastPlayerPos.getX();
+                double dy = pos.getY() - cache.lastPlayerPos.getY();
+                double dz = pos.getZ() - cache.lastPlayerPos.getZ();
+                double distSqr = dx * dx + dy * dy + dz * dz;
+                if (sameLevel && dt >= 0 && dt <= WILD_RAVEN_SCAN_CACHE_TICKS && distSqr <= WILD_RAVEN_SCAN_CACHE_MOVE_DIST_SQR) {
+                    cache.wildRavens.removeIf(e -> e == null || !e.isAlive() || !isWildRaven(e, ravenType));
+                    return cache.wildRavens;
+                }
+            }
+
+            final AABB box = player.getBoundingBox().inflate(LOCAL_RAVEN_RADIUS);
+            List<Entity> matches = level.getEntitiesOfClass(
+                    Entity.class,
+                    box,
+                    e -> isWildRaven(e, ravenType)
+            );
+
+            if (matches == null) {
+                matches = new ArrayList<>();
+            } else {
+                matches.removeIf(e -> e == null || !e.isAlive() || !isWildRaven(e, ravenType));
+            }
+
+            if (cache == null) {
+                cache = new WildRavenScanCache();
+                WILD_RAVEN_SCAN_CACHE.put(playerId, cache);
+            }
+            cache.lastGameTime = gameTime;
+            cache.lastPlayerPos = pos;
+            cache.lastLevelKey = level.dimension();
+            cache.wildRavens = matches;
+
+            return matches;
+        } catch (Throwable t) {
+            return new ArrayList<>();
+        }
+    }
+
     /**
      * Count WILD ravens within LOCAL_RAVEN_RADIUS of player.
      */
@@ -413,15 +492,7 @@ public final class RavenSpawnEvents {
                                                  EntityType<?> ravenType,
                                                  long gameTime) {
         try {
-            final AABB box = player.getBoundingBox().inflate(LOCAL_RAVEN_RADIUS);
-
-            // Use getEntitiesOfClass(Entity.class) to avoid overload ambiguity and keep broad compatibility.
-            final List<Entity> matches = level.getEntitiesOfClass(
-                    Entity.class,
-                    box,
-                    e -> isWildRaven(e, ravenType)
-            );
-
+            final List<Entity> matches = getWildRavensNearPlayerCached(level, player, ravenType, gameTime);
             final int count = (matches == null) ? 0 : matches.size();
 
             if ((gameTime % DEBUG_LOG_INTERVAL_TICKS) == 0L) {
@@ -450,16 +521,11 @@ public final class RavenSpawnEvents {
                                                       EntityType<?> ravenType,
                                                       long gameTime) {
         try {
-            final AABB box = player.getBoundingBox().inflate(LOCAL_RAVEN_RADIUS);
-
-            final List<Entity> wildRavens = level.getEntitiesOfClass(
-                    Entity.class,
-                    box,
-                    e -> isWildRaven(e, ravenType)
-            );
+            final List<Entity> cached = getWildRavensNearPlayerCached(level, player, ravenType, gameTime);
+            final List<Entity> wildRavens = (cached == null) ? new ArrayList<>() : new ArrayList<>(cached);
 
             int localCap = wildRavensPerPlayer();
-            if (wildRavens == null || wildRavens.size() <= localCap) {
+            if (wildRavens.size() <= localCap) {
                 return;
             }
 
@@ -527,8 +593,7 @@ public final class RavenSpawnEvents {
             for (Player p : players) {
                 if (p == null || p.isSpectator()) continue;
 
-                final AABB box = p.getBoundingBox().inflate(LOCAL_RAVEN_RADIUS);
-                List<Entity> local = level.getEntitiesOfClass(Entity.class, box, e -> isWildRaven(e, ravenType));
+                List<Entity> local = getWildRavensNearPlayerCached(level, p, ravenType, gameTime);
                 if (local != null && !local.isEmpty()) {
                     gathered.addAll(local);
                 }

@@ -16,7 +16,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.nbt.CompoundTag;
 import net.z2six.featheredfriend.Constants;
-import org.z2six.rpgcalendar.api.RPGCalendarApi;
+import net.z2six.featheredfriend.platform.Services;
 import net.z2six.featheredfriend.client.gui.widget.MultiLineScrollTextWidget;
 import net.z2six.featheredfriend.client.gui.widget.RecipientOverlay;
 import net.z2six.featheredfriend.client.gui.widget.SealStampSelectionOverlay;
@@ -61,6 +61,8 @@ import java.util.UUID;
 public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMenu> {
 
     private static final Logger LOG = LogUtils.getLogger();
+    private static final String TIMELINE_MOD_ID = "rpgtimeline";
+    private static final String TIMELINE_API_CLASS = "org.z2six.rpgtimeline.api.RPGTimelineApi";
 
     // Legacy single-frame texture (kept as ultimate fallback)
     private static final ResourceLocation SCROLL_GUI_TEXTURE =
@@ -872,12 +874,40 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
 
             long dayTime = mc.level.getDayTime();
 
-            Component dateComponent = RPGCalendarApi.buildDateMessageFromGameTime(dayTime);
-            return dateComponent.getString();
+            Component dateComponent = tryBuildTimelineDate(dayTime);
+            if (dateComponent != null) {
+                return dateComponent.getString();
+            }
+            return buildFallbackDateString(dayTime);
         } catch (Throwable t) {
             LOG.error("[ScrollSealingScreen] computeCurrentDateString failed", t);
             return "Unknown Date";
         }
+    }
+
+    private Component tryBuildTimelineDate(long dayTime) {
+        try {
+            if (!Services.PLATFORM.isModLoaded(TIMELINE_MOD_ID)) {
+                return null;
+            }
+            Class<?> api = Class.forName(TIMELINE_API_CLASS);
+            java.lang.reflect.Method method = api.getMethod("buildDateMessageFromGameTime", long.class);
+            Object value = method.invoke(null, dayTime);
+            if (value instanceof Component) {
+                return (Component) value;
+            }
+        } catch (Throwable t) {
+            if (Minecraft.getInstance() != null && Minecraft.getInstance().level != null) {
+                LOG.warn("[ScrollSealingScreen] Timeline API unavailable, using fallback date: {}", t.toString());
+            }
+        }
+        return null;
+    }
+
+    private String buildFallbackDateString(long dayTime) {
+        long dayIndex = Math.floorDiv(dayTime, 24000L);
+        long dayNumber = Math.max(1L, dayIndex + 1L);
+        return "Day " + dayNumber;
     }
 
     private void fillDateWidgetIfNeeded() {
@@ -1557,6 +1587,19 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                     }
                     return true;
                 }
+            }
+
+            if (button == 1
+                    && this.sealStampTargetMode
+                    && this.sealStampSlotIndex >= 0
+                    && this.sealStampStackForRender != null
+                    && !this.sealStampStackForRender.isEmpty()) {
+                LOG.debug("[ScrollSealingScreen] Deselecting seal stamp via RMB (global)");
+                this.sealStampTargetMode = false;
+                this.sealStampSlotIndex = -1;
+                this.sealStampStackForRender = ItemStack.EMPTY;
+                this.hoverSigilPattern = null;
+                return true;
             }
 
             // SEALED phase stamping logic: only the ZOOM gizmo can place the seal

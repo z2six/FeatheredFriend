@@ -53,6 +53,7 @@ public class RavenCourierData extends SavedData {
         public final String recipientName;
         public final CompoundTag sealedScrollNbt;
         public final String ravenName;
+        public @Nullable UUID courierRavenUuid;
 
         /**
          * Runtime-only: courier raven currently spawned for this job.
@@ -79,6 +80,7 @@ public class RavenCourierData extends SavedData {
                            @NotNull CompoundTag sealedScrollNbt,
                            boolean inFlight,
                            @NotNull String ravenName,
+                           @Nullable UUID courierRavenUuid,
                            boolean failed,
                            int failureCount,
                            long lastFailureGameTime,
@@ -91,6 +93,7 @@ public class RavenCourierData extends SavedData {
             this.sealedScrollNbt = sealedScrollNbt;
             this.inFlight = inFlight;
             this.ravenName = ravenName;
+            this.courierRavenUuid = courierRavenUuid;
 
             this.failed = failed;
             this.failureCount = failureCount;
@@ -193,6 +196,9 @@ public class RavenCourierData extends SavedData {
                     int failureCount = jobTag.contains("FailureCount", Tag.TAG_INT) ? jobTag.getInt("FailureCount") : 0;
                     long lastFailureGameTime = jobTag.contains("LastFailureGameTime", Tag.TAG_LONG) ? jobTag.getLong("LastFailureGameTime") : 0L;
                     String lastFailureReason = jobTag.contains("LastFailureReason", Tag.TAG_STRING) ? jobTag.getString("LastFailureReason") : "";
+                    UUID courierRavenUuid = jobTag.hasUUID("CourierRavenUUID")
+                            ? jobTag.getUUID("CourierRavenUUID")
+                            : parseUuidSafe(jobTag.getString("CourierRavenUUIDStr"));
 
                     if (senderUuid == null || recipientUuid == null || sealedScrollNbt.isEmpty()) {
                         LOG.warn("[RavenCourierData] Skipping malformed job entry at index {} (missing UUIDs or SealedScroll).", i);
@@ -208,6 +214,7 @@ public class RavenCourierData extends SavedData {
                             sealedScrollNbt.copy(),
                             inFlight,
                             ravenName,
+                            courierRavenUuid,
                             failed,
                             Math.max(0, failureCount),
                             Math.max(0L, lastFailureGameTime),
@@ -276,6 +283,11 @@ public class RavenCourierData extends SavedData {
                     jobTag.putBoolean("InFlight", job.inFlight);
 
                     jobTag.putString("RavenName", job.ravenName == null ? "" : job.ravenName);
+
+                    if (job.courierRavenUuid != null) {
+                        jobTag.putUUID("CourierRavenUUID", job.courierRavenUuid);
+                        jobTag.putString("CourierRavenUUIDStr", job.courierRavenUuid.toString());
+                    }
 
                     // NEW persisted failure fields
                     jobTag.putBoolean("Failed", job.failed);
@@ -426,6 +438,7 @@ public class RavenCourierData extends SavedData {
                     sealed.copy(),
                     false,
                     ravenName,
+                    null,
                     false,     // failed
                     0,         // failureCount
                     0L,        // lastFailureGameTime

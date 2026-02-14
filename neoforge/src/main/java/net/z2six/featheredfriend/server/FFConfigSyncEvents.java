@@ -1,4 +1,4 @@
-﻿package net.z2six.featheredfriend.server;
+package net.z2six.featheredfriend.server;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.server.MinecraftServer;

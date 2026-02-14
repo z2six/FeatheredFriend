@@ -25,6 +25,7 @@ public final class FFClientConfig {
 
     public static final ModConfigSpec CLIENT_SPEC;
     public static final ModConfigSpec.BooleanValue AUTO_SUMMON_ON_SCROLL;
+    public static final ModConfigSpec.ConfigValue<String> FAVORITE_STAMP_KEY;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -37,6 +38,13 @@ public final class FFClientConfig {
                         "If false, you must whistle manually."
                 )
                 .define("autoSummonOnScroll", DEFAULT_AUTO_SUMMON_ON_SCROLL);
+
+        FAVORITE_STAMP_KEY = builder
+                .comment(
+                        "Favorite seal stamp key (client-only).",
+                        "Format: owner|seed|slices|shapeSet (empty means no favorite)."
+                )
+                .define("favoriteStampKey", "");
 
         builder.pop();
 
@@ -85,6 +93,24 @@ public final class FFClientConfig {
             LOG.debug("[FFClientConfig] Saved client config to disk");
         } catch (Throwable t) {
             LOG.error("[FFClientConfig] save() failed safely", t);
+        }
+    }
+
+    public static String getFavoriteStampKey() {
+        try {
+            return FAVORITE_STAMP_KEY.get();
+        } catch (Throwable t) {
+            LOG.error("[FFClientConfig] getFavoriteStampKey failed safely", t);
+            return "";
+        }
+    }
+
+    public static void setFavoriteStampKey(String value) {
+        try {
+            FAVORITE_STAMP_KEY.set(value == null ? "" : value);
+            LOG.debug("[FFClientConfig] favoriteStampKey set to {}", value);
+        } catch (Throwable t) {
+            LOG.error("[FFClientConfig] setFavoriteStampKey failed safely: {}", t.toString());
         }
     }
 

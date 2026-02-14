@@ -11,6 +11,7 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
+import net.z2six.featheredfriend.config.FFClientConfig;
 import net.z2six.featheredfriend.item.SealStampItem;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -120,6 +121,7 @@ public final class SealStampSelectionOverlay {
      * Single client-side favourite, remembered for the lifetime of the game session.
      */
     private static FavoriteStampKey GLOBAL_FAVORITE = null;
+    private static boolean FAVORITE_LOADED = false;
 
     // ---------------------------------------------------------------------
     // Entry list
@@ -210,6 +212,8 @@ public final class SealStampSelectionOverlay {
             entries.clear();
             selectedIndex = -1;
             hoverIndex = -1;
+
+            ensureFavoriteLoaded();
 
             Player player = minecraft.player;
             if (player == null) {
@@ -407,6 +411,7 @@ public final class SealStampSelectionOverlay {
                                 LOG.debug("[SealStampSelectionOverlay] Favourite set to: {}", key);
                                 GLOBAL_FAVORITE = key;
                             }
+                            persistFavorite();
                         }
                     }
                     return true;
@@ -430,6 +435,61 @@ public final class SealStampSelectionOverlay {
         }
         FavoriteStampKey key = extractFavoriteKey(entry.stack);
         return key != null && key.equals(GLOBAL_FAVORITE);
+    }
+
+    private void ensureFavoriteLoaded() {
+        if (FAVORITE_LOADED) {
+            return;
+        }
+        FAVORITE_LOADED = true;
+
+        String raw = FFClientConfig.getFavoriteStampKey();
+        if (raw == null || raw.isBlank()) {
+            GLOBAL_FAVORITE = null;
+            return;
+        }
+
+        FavoriteStampKey key = parseFavoriteKey(raw);
+        if (key == null) {
+            LOG.warn("[SealStampSelectionOverlay] Failed to parse favoriteStampKey; clearing.");
+            GLOBAL_FAVORITE = null;
+            FFClientConfig.setFavoriteStampKey("");
+            FFClientConfig.save();
+            return;
+        }
+
+        GLOBAL_FAVORITE = key;
+    }
+
+    private void persistFavorite() {
+        try {
+            String encoded = (GLOBAL_FAVORITE == null) ? "" : serializeFavoriteKey(GLOBAL_FAVORITE);
+            FFClientConfig.setFavoriteStampKey(encoded);
+            FFClientConfig.save();
+        } catch (Throwable t) {
+            LOG.warn("[SealStampSelectionOverlay] persistFavorite failed safely: {}", t.toString());
+        }
+    }
+
+    private FavoriteStampKey parseFavoriteKey(String raw) {
+        try {
+            String[] parts = raw.split("\\|", -1);
+            if (parts.length != 4) {
+                return null;
+            }
+            String owner = parts[0];
+            long seed = Long.parseLong(parts[1]);
+            int slices = Integer.parseInt(parts[2]);
+            int shapeSet = Integer.parseInt(parts[3]);
+            return new FavoriteStampKey(owner.isEmpty() ? null : owner, seed, slices, shapeSet);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private String serializeFavoriteKey(@NotNull FavoriteStampKey key) {
+        String owner = (key.owner == null) ? "" : key.owner.replace("|", "/");
+        return owner + "|" + key.seed + "|" + key.slices + "|" + key.shapeSet;
     }
 
     private FavoriteStampKey extractFavoriteKey(@NotNull ItemStack stack) {

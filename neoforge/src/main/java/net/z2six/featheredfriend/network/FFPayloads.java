@@ -1,4 +1,4 @@
-﻿// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/network/FFPayloads.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/network/FFPayloads.java
 package net.z2six.featheredfriend.network;
 
 import com.mojang.logging.LogUtils;

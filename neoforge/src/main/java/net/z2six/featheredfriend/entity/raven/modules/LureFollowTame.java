@@ -12,7 +12,6 @@ import net.minecraft.world.phys.Vec3;
 import net.z2six.featheredfriend.entity.raven.RavenAIState;
 import net.z2six.featheredfriend.entity.raven.RavenAnimMode;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
-import net.z2six.featheredfriend.entity.raven.pathing.RavenAStarPathing;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import net.minecraft.world.item.ItemStack;
@@ -20,19 +19,22 @@ import net.minecraft.world.item.Items;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.sounds.SoundSource;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.world.TamedRavenPlayerData;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerPlayer;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class LureFollowTame {
 
     private static final Logger LOG = LogUtils.getLogger();
+    private static final int FOLLOW_DIRECT_REARM_TICKS = 10;
+    private static final int FOLLOW_DIRECT_TTL_TICKS = 20;
 
     /**
      * Owning raven instance. All Minecraft-facing state & methods are delegated to this.
@@ -129,12 +131,8 @@ public class LureFollowTame {
     private static final int LURE_FOLLOW_GRACE_TICKS = 10; // 0.5s
     private static final int LURE_FOLLOW_REFRESH_TICKS = 3 * 20; // keep active for 3s per refresh
 
-    // Follow goal stability (prevents constant re-path + vertical "hops")
-    private @Nullable Vec3 followCachedGoal = null;
-    private @Nullable Vec3 followCachedOwnerPos = null;
-    private @Nullable Vec3 followCachedOwnerLook = null;
-    private int followGoalTtlTicks = 0;
-    private int followRepathCooldownTicks = 0;
+    // Follow goal stability (prevents constant re-target + vertical "hops")
+    private int followDirectRearmTicks = 0;
 
     // Follow: desired distance band
     private static final double FOLLOW_MIN_DIST = 3.0D;
@@ -147,10 +145,6 @@ public class LureFollowTame {
     // Synced follow cooldown
     public static final EntityDataAccessor<Integer> DATA_FOLLOW_COOLDOWN_TICKS =
             RavenEntity.DATA_FOLLOW_COOLDOWN_TICKS;
-
-    // Lure-follow path failure tracking (to trigger ballistic fallback)
-    private int consecutiveLurePathFails = 0;
-    private int lastLurePathFailTick = 0;
 
     // NBT Key
     public static final String NBT_FOLLOW_CD = "RavenFollowCooldown";
@@ -183,19 +177,8 @@ public class LureFollowTame {
             if (!(player instanceof ServerPlayer serverPlayer)) {
                 return false;
             }
-
-            CompoundTag root = serverPlayer.getPersistentData();
-            if (root == null) {
-                return false;
-            }
-
-            CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
-            if (!ffTag.contains("TamedRaven", Tag.TAG_COMPOUND)) {
-                return false;
-            }
-
-            CompoundTag ravenTag = ffTag.getCompound("TamedRaven");
-            boolean has = ravenTag.getBoolean("HasTamedRaven");
+            TamedRavenPlayerData.TamedRavenInfo info = TamedRavenPlayerData.getTamedRavenInfo(serverPlayer);
+            boolean has = info != null && info.hasTamedRaven();
 
             if (has && raven.tickCount % 200 == 0) {
                 LOG.debug("[RavenEntity] playerHasTamedRaven: player={} hasBoundRaven=true",
@@ -383,8 +366,42 @@ public class LureFollowTame {
             // Check the required nugget type for this step (I=iron, G=gold).
             char required = seq.charAt(Math.max(0, tameNuggetSequenceIndex));
             boolean isGoldStep = required == 'G';
-            if (isGoldStep && !stack.is(Items.GOLD_NUGGET)) return false;
-            if (!isGoldStep && !stack.is(Items.IRON_NUGGET)) return false;
+            boolean wrongNugget =
+                    (isGoldStep && !stack.is(Items.GOLD_NUGGET))
+                            || (!isGoldStep && !stack.is(Items.IRON_NUGGET));
+            if (wrongNugget) {
+                if (!creative) {
+                    try {
+                        stack.shrink(1);
+                    } catch (Throwable t) {
+                        LOG.warn("[RavenEntity] tryFeedLureTamingNugget: failed to shrink wrong-nugget stack: {}", t.toString());
+                    }
+                    try {
+                        player.setItemInHand(hand, stack);
+                    } catch (Throwable t) {
+                        LOG.warn("[RavenEntity] tryFeedLureTamingNugget: setItemInHand failed after wrong nugget: {}", t.toString());
+                    }
+                }
+
+                try {
+                    if (raven.level() instanceof ServerLevel serverLevel && player instanceof ServerPlayer serverPlayer) {
+                        net.z2six.featheredfriend.entity.raven.modules.TamedRaven tamed = raven.getTamedRavenModule();
+                        if (tamed != null) {
+                            tamed.beginDespawnWithFx(serverLevel, serverPlayer, "Raven");
+                        } else {
+                            raven.discard();
+                        }
+                    } else {
+                        raven.discard();
+                    }
+                } catch (Throwable t) {
+                    LOG.warn("[RavenEntity] tryFeedLureTamingNugget: wrong-nugget despawn failed safely: {}", t.toString());
+                    raven.discard();
+                }
+
+                clearLureFollowState("wrong nugget despawn");
+                return true;
+            }
 
             // Consume ONE nugget (unless creative / insta-build).
             if (!creative) {
@@ -524,47 +541,12 @@ public class LureFollowTame {
     }
 
     /**
-     * If A* repeatedly fails during lure-follow, fall back to a direct fly target
-     * in front of the player so the generic avoidance / collision logic can
-     * try to maneuver through tight spaces (like a 3x3 corridor).
-     */
-    private void fallbackBallisticLure(@Nullable Vec3 desiredGoal, Player target) {
-        try {
-            if (target == null || !target.isAlive() || target.isSpectator()) {
-                return;
-            }
-
-            Vec3 goal = desiredGoal;
-            if (goal == null) {
-                goal = computeFollowFrontPosition(target);
-            }
-            if (goal == null) {
-                return;
-            }
-
-            // Clear any broken A* plan and explicitly set a fly target.
-            invokeClearPlannedPath("lure follow: A* failed, ballistic fallback");
-            invokeSetFlyTarget(goal, 6 * 20); // ~6 seconds
-
-            if (raven.tickCount % 40 == 0) {
-                LOG.debug("[RavenEntity] LURE FALLBACK: using direct fly target={} pos={} lureFails={}",
-                        goal, raven.position(), consecutiveLurePathFails);
-            }
-
-        } catch (Throwable t) {
-            if (raven.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] fallbackBallisticLure failed safely: {}", t.toString());
-            }
-        }
-    }
-
-    /**
      * Try to keep the hover height under low ceilings from causing "bounce"
      * by nudging the target Y slightly downward until we get a 2-block tall
      * air column, without going below the player's feet.
      *
      * This is ONLY used for follow / lure goals and does not change the core
-     * A* algorithm. It just gives A* a more realistic altitude to aim for.
+     * flight behavior. It just gives a more realistic hover altitude to aim for.
      */
     private double computeSafeHoverYUnderCeiling(double x, double preferredY, double z, Player player) {
         try {
@@ -866,7 +848,7 @@ public class LureFollowTame {
     /**
      * Advance the agree-caw sequence once per tick.
      * Called unconditionally from tickFollowOwner so once started it keeps going,
-     * even if the player rotates and causes re-pathing.
+     * even if the player rotates and causes re-targeting.
      */
     private void tickLureAgreeSequenceProgress() {
         try {
@@ -1343,61 +1325,17 @@ public class LureFollowTame {
             // Desired final follow position: in front of player's face.
             Vec3 desiredFront = computeFollowFrontPosition(player);
 
-            // Use the same “safe goal” logic you already have for A*.
-            RavenAStarPathing.Config cfg = new RavenAStarPathing.Config();
-            cfg.allowLeaves = false;
-            cfg.allowReplaceables = false;
-            cfg.clearanceHeight = 2;
-            cfg.cellSize = 1;
-
-            Vec3 safeGoal = invokeComputeSafePathingGoal(desiredFront, cfg);
-
-            long seed =
-                    player.getUUID().getLeastSignificantBits()
-                            ^ raven.getUUID().getMostSignificantBits()
-                            ^ (long) raven.tickCount
-                            ^ 0xF011000DL; // valid hex salt
-
-            boolean pathOk;
-            try {
-                pathOk = invokeEnsurePathToWithFlags(
-                        safeGoal,
-                        true,
-                        8 * 20,
-                        seed,
-                        "lure follow (front-of-player): player=" + player.getName().getString()
-                                + " dist=" + String.format("%.2f", distToPlayer)
-                );
-            } catch (Throwable t) {
-                if (raven.tickCount % 40 == 0) {
-                    LOG.warn("[RavenEntity] requestLureFollowPlayer ensurePathTo failed safely: {}", t.toString());
-                }
-                pathOk = false;
-            }
-
-            if (pathOk) {
-                // A* path is in charge; do NOT "fly straight at the player".
-                setPrivateObject("pathPendingGoal", safeGoal);
-                invokeClearFlyTarget(); // ensure we're driven by waypoints, not a direct line
-            } else {
-                // If A* can't find a path, fall back to a direct fly target so we don't "freeze" in mid-air.
-                // Collision avoidance will handle tight spaces better than doing nothing.
-                invokeClearPlannedPath("lure follow: path failed");
-                invokeClearFlyTarget();
-                try {
-                    fallbackBallisticLure(safeGoal, player);
-                } catch (Throwable ignored) {
-                }
-            }
+            Vec3 safeGoal = computeSafeFollowGoalXZLockedY(desiredFront);
+            invokeSetFlyTargetNoClamp(safeGoal, FOLLOW_DIRECT_TTL_TICKS);
+            followDirectRearmTicks = FOLLOW_DIRECT_REARM_TICKS;
 
             if (raven.tickCount % 20 == 0) {
-                LOG.debug("[RavenEntity] LURE FOLLOW armed: player={} dist={} pocket={} desiredFront={} safeGoal={} pathOk={} lureTicks={} aiState={} pos={}",
+                LOG.debug("[RavenEntity] LURE FOLLOW armed: player={} dist={} pocket={} desiredFront={} safeGoal={} lureTicks={} aiState={} pos={}",
                         player.getName().getString(),
                         String.format("%.2f", distToPlayer),
                         pocket,
                         desiredFront,
                         safeGoal,
-                        pathOk,
                         this.lureFollowTicks,
                         raven.getAIState(),
                         raven.position());
@@ -1421,14 +1359,16 @@ public class LureFollowTame {
     // ---------------------------------------------------------------------------------------------
 
     public void tickFollowOwner() {
+        tickFollowOwnerDirect();
+    }
+
+    private void tickFollowOwnerDirect() {
         try {
-            // Flight posture
             raven.setNoGravity(true);
             if (raven.getAnimMode() != RavenAnimMode.IN_AIR) {
                 raven.setAnimMode(RavenAnimMode.IN_AIR);
             }
 
-            // Tick down global agree-sequence cooldown (server-side only)
             try {
                 if (!raven.level().isClientSide && lureAgreeSequenceGlobalCooldownTicks > 0) {
                     lureAgreeSequenceGlobalCooldownTicks--;
@@ -1436,23 +1376,18 @@ public class LureFollowTame {
             } catch (Throwable ignored) {
             }
 
-            // Drive the taming "agree caw" sequences every tick:
-            //  - Arrival-based sequence (global cooldown)
-            //  - Hand-feed countdown sequence (per RMB nugget)
             tickLureAgreeSequenceProgress();
             tickHandFeedAgreeSequence();
 
-            invokeResetLandingState("follow");
+            invokeResetLandingState("follow-direct");
             setPrivateInt("idleLockTicks", 0);
             setPrivateInt("idleLeafLossTicks", 0);
 
-            // Tick lure timer down (server-side only)
             try {
                 if (!raven.level().isClientSide) {
                     if (lureFollowTicks > 0) {
                         lureFollowTicks--;
                     }
-                    // If timer fully expires while we still remember a lure player, clear the state.
                     if (lureFollowTicks <= 0 && lureFollowPlayerUuid != null) {
                         clearLureFollowState("follow: lure timer expired");
                     }
@@ -1460,9 +1395,6 @@ public class LureFollowTame {
             } catch (Throwable ignored) {
             }
 
-            // Decide follow target:
-            //  - If tamed: owner
-            //  - Else (or if owner missing): lure player (gold nugget)
             Player target = null;
             boolean usingLure = false;
 
@@ -1484,33 +1416,24 @@ public class LureFollowTame {
                 }
             }
 
-            // If no target, bail out
             if (target == null) {
                 if (isLureFollowActive()) {
                     clearLureFollowState("follow: target missing");
                 }
-                // We are no longer "at goal" for lure, so reset the arrival flag.
                 wasAtLureGoalLastTick = false;
                 wasAtFollowGoalLastTick = false;
 
                 raven.setAIState(RavenAIState.IDLE_GROUND);
                 setPrivateInt("idleTicksRemaining", 0);
-                invokeClearPlannedPath("follow lost target");
                 invokeClearFlyTarget();
                 setPrivateInt("roamTicksRemaining", 0);
                 return;
             }
 
-            // If we're following the owner (not lure), drop the follow override.
             if (!usingLure && followOverrideActive) {
-                if (raven.tickCount % 40 == 0) {
-                    LOG.debug("[RavenEntity] tickFollowOwner: clearing followOverrideActive (not using lure). pos={} ai={}",
-                            raven.position(), raven.getAIState());
-                }
                 followOverrideActive = false;
             }
 
-            // While lure-following: make sure lure timer never drops below the small grace window
             if (usingLure) {
                 try {
                     if (lureFollowTicks < LURE_FOLLOW_GRACE_TICKS && lureFollowPlayerUuid != null) {
@@ -1520,22 +1443,13 @@ public class LureFollowTame {
                 }
             }
 
-            // Home bounds guard
             if (invokeIsOutOfHomeBounds(target.position())) {
                 triggerFollowCooldownAndReturn();
                 return;
             }
 
-            // --------------------------------------------
-            // AGGRESSIVE FOLLOW: stable front-of-player goal (A* ONLY)
-            // --------------------------------------------
-            if (followGoalTtlTicks > 0) followGoalTtlTicks--;
-            if (followRepathCooldownTicks > 0) followRepathCooldownTicks--;
-
-            // ARRIVAL CHECK: when already at the follow spot, stop fighting movement.
             boolean atGoal = false;
             Vec3 computedFront = null;
-
             try {
                 computedFront = computeFollowFrontPosition(target);
                 atGoal = isCloseEnoughToFollowPlayer(target);
@@ -1543,12 +1457,9 @@ public class LureFollowTame {
                 atGoal = false;
             }
 
-            // Detect first arrival in *any* follow mode (owner or lure).
             boolean firstArrivalAny = atGoal && !wasAtFollowGoalLastTick;
             wasAtFollowGoalLastTick = atGoal;
 
-            // Detect the moment we *first* arrive in lure-follow mode,
-            // so we only trigger the taming agree-caw sequence once per arrival.
             boolean shouldStartAgreeSequence = false;
             if (usingLure && atGoal && !wasAtLureGoalLastTick && lureAgreeSequenceGlobalCooldownTicks <= 0) {
                 shouldStartAgreeSequence = true;
@@ -1556,285 +1467,19 @@ public class LureFollowTame {
             wasAtLureGoalLastTick = usingLure && atGoal;
 
             if (atGoal) {
-                // Fire generic arrival hook once per arrival (owner or lure).
                 if (firstArrivalAny) {
                     onRavenArrivedAtFollowTarget(target, usingLure, computedFront);
                 }
-
-                // If we're lure-following (gold nugget) and just arrived,
-                // start the taming agree-caw sequence.
                 if (shouldStartAgreeSequence) {
                     maybeStartLureAgreeSequence();
                 }
-
-                // We consider ourselves "parked" in front of the player.
-                invokeClearPlannedPath("follow: arrived");
                 invokeClearFlyTarget();
-
-                // gentle hover damping to avoid jitter when player rotates
                 raven.setDeltaMovement(raven.getDeltaMovement().scale(0.6D));
-
-                // Reset cached goal so next meaningful player move triggers a clean refresh
-                followCachedGoal = null;
-                followCachedOwnerPos = null;
-                followCachedOwnerLook = null;
-                followGoalTtlTicks = 0;
-
-                // Reset lure path failure tracking on success
-                consecutiveLurePathFails = 0;
-                lastLurePathFailTick = 0;
-
-                // Still tick common mechanics
-                int flyTtl = getPrivateInt("flyTargetTimeoutTicks", 0);
-                if (flyTtl > 0) {
-                    setPrivateInt("flyTargetTimeoutTicks", flyTtl - 1);
-                }
-
-                // We still let the generic avoidance fix any minor path issues,
-                // but it's mostly a no-op once we're hovering.
-                invokeMaybeAvoidOrRetargetDuringFlight(raven.getRandom());
-
-                if (raven.tickCount % 40 == 0) {
-                    LOG.debug("[RavenEntity] tickFollowOwner: ARRIVED target={} usingLure={} pos={} frontGoal={}",
-                            target.getName().getString(),
-                            usingLure,
-                            raven.position(),
-                            computedFront);
-                }
                 return;
             }
 
-            Vec3 ownerPosNow = target.position();
-            Vec3 ownerLookNow = target.getLookAngle();
-
-            boolean needNewGoal = (followCachedGoal == null) || (followGoalTtlTicks <= 0);
-
-            if (!needNewGoal) {
-                // moved enough?
-                double moved2 = (followCachedOwnerPos == null)
-                        ? Double.MAX_VALUE
-                        : ownerPosNow.distanceToSqr(followCachedOwnerPos);
-
-                // turned enough? (XZ dot)
-                boolean turned = false;
-                if (followCachedOwnerLook != null) {
-                    double ax = followCachedOwnerLook.x;
-                    double az = followCachedOwnerLook.z;
-                    double bx = ownerLookNow.x;
-                    double bz = ownerLookNow.z;
-
-                    double al = Math.sqrt(ax * ax + az * az);
-                    double bl = Math.sqrt(bx * bx + bz * bz);
-
-                    if (al > 1.0E-4D && bl > 1.0E-4D) {
-                        ax /= al;
-                        az /= al;
-                        bx /= bl;
-                        bz /= bl;
-                        double dot = ax * bx + az * bz;
-                        turned = dot < 0.92D; // ~>23 degrees
-                    }
-                }
-
-                Vec3 currentFlyTarget = getFlyTargetField();
-                int flyTtl = getPrivateInt("flyTargetTimeoutTicks", 0);
-                List<Vec3> waypoints = getPathWaypoints();
-                int wpIndex = getPrivateInt("pathWaypointIndex", 0);
-                int stuckTicks = getPrivateInt("stuckTicks", 0);
-                int stuckThreshold = getStuckTicksThreshold();
-
-                boolean hasFlyIntent = (currentFlyTarget != null && flyTtl > 0);
-                boolean hasPathIntent = (waypoints != null && !waypoints.isEmpty() && wpIndex < waypoints.size());
-                boolean hasAnyIntent = hasFlyIntent || hasPathIntent;
-
-                boolean stuckOrColliding =
-                        (raven.horizontalCollision || raven.verticalCollision || stuckTicks >= stuckThreshold);
-
-                if (moved2 >= (0.75D * 0.75D)) needNewGoal = true;
-                if (turned) needNewGoal = true;
-                if (!hasAnyIntent || stuckOrColliding) needNewGoal = true;
-            }
-
-            // Hard repath cooldown (prevents "micro replan" jitter)
-            if (needNewGoal && followRepathCooldownTicks > 0) {
-                needNewGoal = false;
-            }
-
-            Vec3 desiredGoal = followCachedGoal;
-            Vec3 effectivePathGoal = null;
-            boolean pathOk = false;
-
-            if (needNewGoal) {
-                // 1) compute strict “front of player at eye height”
-                Vec3 rawFront = computeFollowFrontPosition(target);
-
-                // 2) apply XZ-only safety adjuster that LOCKS Y (no vertical hop)
-                Vec3 lockedSafe = computeSafeFollowGoalXZLockedY(rawFront);
-                lockedSafe = invokeClampTargetToHomeBounds(lockedSafe);
-
-                followCachedGoal = lockedSafe;
-                desiredGoal = lockedSafe;
-
-                followCachedOwnerPos = ownerPosNow;
-                followCachedOwnerLook = ownerLookNow;
-
-                // short TTL so it tracks smoothly but doesn’t spam replans
-                followGoalTtlTicks = 12;         // ~0.6s
-                followRepathCooldownTicks = 10;  // ~0.5s min between replans
-
-                // Clear A* intent before replanning so path-vs-fly doesn't fight
-                invokeClearPlannedPath("follow: new goal");
-                invokeClearFlyTarget();
-
-                long seed = target.getUUID().getLeastSignificantBits()
-                        ^ raven.getUUID().getMostSignificantBits()
-                        ^ (long) raven.tickCount
-                        ^ 0xF0110BEEFL;
-
-                String reason = usingLure ? "follow lure player (aggressive)" : "follow owner (aggressive)";
-
-                // For lure-follow we reuse the corridor-friendly config you use in requestLureFollowPlayer.
-                if (usingLure) {
-                    RavenAStarPathing.Config cfg = new RavenAStarPathing.Config();
-                    cfg.allowLeaves = false;
-                    cfg.allowReplaceables = false;
-                    cfg.clearanceHeight = 2;
-                    cfg.cellSize = 1;
-
-                    effectivePathGoal = invokeComputeSafePathingGoal(desiredGoal, cfg);
-                } else {
-                    effectivePathGoal = desiredGoal;
-                }
-
-                try {
-                    if (usingLure) {
-                        // Use the flags-aware variant so we stay consistent with lure-arm behavior.
-                        pathOk = invokeEnsurePathToWithFlags(
-                                effectivePathGoal,
-                                false,          // allowLeaves = false
-                                5 * 20,
-                                seed,
-                                reason
-                        );
-                    } else {
-                        pathOk = invokeEnsurePathTo(effectivePathGoal, 5 * 20, seed, reason);
-                    }
-                } catch (Throwable t) {
-                    pathOk = false;
-                    if (raven.tickCount % 40 == 0) {
-                        LOG.warn("[RavenEntity] tickFollowOwner ensurePathTo failed safely: {}", t.toString());
-                    }
-                }
-
-                if (pathOk) {
-                    setPrivateObject("pathPendingGoal", effectivePathGoal);
-                    invokeClearFlyTarget(); // force navigation via waypoints, not straight-line
-
-                    // reset failure tracking on success
-                    if (usingLure) {
-                        consecutiveLurePathFails = 0;
-                        lastLurePathFailTick = 0;
-                    }
-                } else {
-                    // Path failed: better to hover than to try a ballistic line that ignores maze walls
-                    invokeClearPlannedPath("follow: path failed");
-                    invokeClearFlyTarget();
-
-                    // Track consecutive failures for lure-follow and maybe trigger fallback
-                    if (usingLure) {
-                        if (raven.tickCount != lastLurePathFailTick) {
-                            lastLurePathFailTick = raven.tickCount;
-                            consecutiveLurePathFails++;
-                        }
-
-                        if (consecutiveLurePathFails >= 3) {
-                            fallbackBallisticLure(desiredGoal, target);
-                        }
-                    }
-                }
-
-            } else {
-                // no replan requested: if ALL path/fly intent disappeared while the cached goal is still valid,
-                // we very gently try to re-assert the PATH (not a straight-line target).
-                Vec3 currentFlyTarget = getFlyTargetField();
-                int flyTtl = getPrivateInt("flyTargetTimeoutTicks", 0);
-                List<Vec3> waypoints = getPathWaypoints();
-                int wpIndex = getPrivateInt("pathWaypointIndex", 0);
-
-                boolean hasFlyIntent = (currentFlyTarget != null && flyTtl > 0);
-                boolean hasPathIntent = (waypoints != null && !waypoints.isEmpty() && wpIndex < waypoints.size());
-
-                if (!hasFlyIntent && !hasPathIntent && desiredGoal != null) {
-                    long seed2 = target.getUUID().getLeastSignificantBits()
-                            ^ raven.getUUID().getMostSignificantBits()
-                            ^ (long) raven.tickCount
-                            ^ 0xF0110C0DEL;
-
-                    String reason2 = usingLure ? "follow lure player (reassert path)"
-                            : "follow owner (reassert path)";
-
-                    Vec3 reassertGoal = desiredGoal;
-                    if (usingLure) {
-                        RavenAStarPathing.Config cfg2 = new RavenAStarPathing.Config();
-                        cfg2.allowLeaves = false;
-                        cfg2.allowReplaceables = false;
-                        cfg2.clearanceHeight = 2;
-                        cfg2.cellSize = 1;
-
-                        reassertGoal = invokeComputeSafePathingGoal(desiredGoal, cfg2);
-                    }
-
-                    boolean ok2 = false;
-                    try {
-                        if (usingLure) {
-                            ok2 = invokeEnsurePathToWithFlags(
-                                    reassertGoal,
-                                    false,
-                                    5 * 20,
-                                    seed2,
-                                    reason2
-                            );
-                        } else {
-                            ok2 = invokeEnsurePathTo(reassertGoal, 5 * 20, seed2, reason2);
-                        }
-                    } catch (Throwable t) {
-                        if (raven.tickCount % 40 == 0) {
-                            LOG.warn("[RavenEntity] tickFollowOwner reassert ensurePathTo failed safely: {}", t.toString());
-                        }
-                        ok2 = false;
-                    }
-
-                    if (ok2) {
-                        setPrivateObject("pathPendingGoal", reassertGoal);
-                        invokeClearFlyTarget();
-
-                        if (usingLure) {
-                            consecutiveLurePathFails = 0;
-                            lastLurePathFailTick = 0;
-                        }
-                    } else {
-                        // Still no path – safest behavior is to just hover.
-                        invokeClearPlannedPath("follow: reassert path failed");
-                        invokeClearFlyTarget();
-
-                        if (usingLure) {
-                            if (raven.tickCount != lastLurePathFailTick) {
-                                lastLurePathFailTick = raven.tickCount;
-                                consecutiveLurePathFails++;
-                            }
-
-                            if (consecutiveLurePathFails >= 3) {
-                                fallbackBallisticLure(desiredGoal, target);
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Original safety guard
-            if (invokeIsOutOfHomeBounds(raven.position())) {
-                triggerFollowCooldownAndReturn();
-                return;
+            if (followDirectRearmTicks > 0) {
+                followDirectRearmTicks--;
             }
 
             int flyTimeout = getPrivateInt("flyTargetTimeoutTicks", 0);
@@ -1842,62 +1487,18 @@ public class LureFollowTame {
                 setPrivateInt("flyTargetTimeoutTicks", flyTimeout - 1);
             }
 
-            // Let A* drive movement while lure-following so we don't fight the planned route.
-            // But if we are clearly colliding / stuck, allow avoidance to help even in lure mode.
-            if (!usingLure) {
-                invokeMaybeAvoidOrRetargetDuringFlight(raven.getRandom());
-            } else {
-                Vec3 currentFly = getFlyTargetField();
-                List<Vec3> currentPath = getPathWaypoints();
-                boolean hasPathIntent = currentPath != null && !currentPath.isEmpty();
-                boolean hasFlyIntent = currentFly != null && getPrivateInt("flyTargetTimeoutTicks", 0) > 0;
-
-                int stuckTicks = getPrivateInt("stuckTicks", 0);
-                int stuckThreshold = getStuckTicksThreshold();
-                boolean collidingOrStuck =
-                        raven.horizontalCollision || raven.verticalCollision || stuckTicks >= stuckThreshold;
-
-                // If we have no path/fly intent at all OR we're colliding/stuck, let avoidance try to fix it.
-                if (!hasPathIntent && !hasFlyIntent) {
-                    invokeMaybeAvoidOrRetargetDuringFlight(raven.getRandom());
-                } else if (collidingOrStuck) {
-                    invokeMaybeAvoidOrRetargetDuringFlight(raven.getRandom());
-                }
+            Vec3 currentFlyTarget = getFlyTargetField();
+            if (currentFlyTarget == null || getPrivateInt("flyTargetTimeoutTicks", 0) <= 0 || followDirectRearmTicks <= 0) {
+                Vec3 desired = (computedFront != null) ? computeSafeFollowGoalXZLockedY(computedFront) : target.position();
+                invokeSetFlyTargetNoClamp(desired, FOLLOW_DIRECT_TTL_TICKS);
+                followDirectRearmTicks = FOLLOW_DIRECT_REARM_TICKS;
             }
 
-            Vec3 flyTargetNow = getFlyTargetField();
-            if (flyTargetNow != null) {
-                double speed = getFlySpeedBase();
-                invokeFlyTowardTarget(speed);
-            }
-
-            List<Vec3> wpNow = getPathWaypoints();
-            if (wpNow != null && !wpNow.isEmpty()) {
-                invokeAdvanceWaypointIfNeeded(5 * 20, usingLure ? "follow lure player" : "follow owner");
-            }
-
-            if (raven.tickCount % 40 == 0) {
-                Vec3 logFlyTarget = getFlyTargetField();
-                List<Vec3> logWaypoints = getPathWaypoints();
-                int logIdx = getPrivateInt("pathWaypointIndex", 0);
-                int logPts = (logWaypoints == null ? 0 : logWaypoints.size());
-
-                LOG.debug("[RavenEntity] tickFollowOwner: target={} usingLure={} goal={} ttl={} repathCd={} flyTarget={} pathPts={} pathIdx={} pos={} vel={} lureFails={}",
-                        target.getName().getString(),
-                        usingLure,
-                        desiredGoal,
-                        followGoalTtlTicks,
-                        followRepathCooldownTicks,
-                        logFlyTarget,
-                        logPts,
-                        logIdx,
-                        raven.position(),
-                        raven.getDeltaMovement(),
-                        consecutiveLurePathFails);
-            }
+            invokeMaybeAvoidOrRetargetDuringFlight(raven.getRandom());
+            invokeFlyTowardTarget(getFlySpeedBase());
 
         } catch (Throwable t) {
-            LOG.error("[RavenEntity] tickFollowOwner failed safely", t);
+            LOG.error("[RavenEntity] tickFollowOwnerDirect failed safely", t);
         }
     }
 
@@ -1914,13 +1515,8 @@ public class LureFollowTame {
 
             raven.setAIState(RavenAIState.ROAM_FLY);
 
-            invokeClearPlannedPath("follow cooldown return");
             Vec3 ret = invokeHomeCenterReturnTarget();
-            long seed = raven.getUUID().getMostSignificantBits() ^ (long) raven.tickCount ^ 0xA11CE5EDL;
-            boolean ok = invokeEnsurePathTo(ret, 10 * 20, seed, "follow cooldown return");
-            if (!ok) {
-                invokeSetFlyTarget(ret, 10 * 20);
-            }
+            invokeSetFlyTarget(ret, 10 * 20);
 
             setPrivateInt("roamTicksRemaining", 0);
 
@@ -1928,15 +1524,7 @@ public class LureFollowTame {
             setPrivateInt("idleLockTicks", 0);
             setPrivateInt("idleLeafLossTicks", 0);
 
-            // beginRoamFlightWindow is presumably non-private (no compile error previously),
-            // so we can call it directly.
-            raven.beginRoamFlightWindow("follow cooldown -> roam");
-
-            invokeClearPlannedPath("override roam window with return");
-            boolean ok2 = invokeEnsurePathTo(ret, 10 * 20, seed ^ 0x55AA55AAL, "follow cooldown return (post-roam window)");
-            if (!ok2) {
-                invokeSetFlyTarget(ret, 10 * 20);
-            }
+            followDirectRearmTicks = 0;
 
             // Leaving follow mode due to bounds -> stop the taming agree-caw sequence for this session.
             stopLureAgreeSequence("follow cooldown");
@@ -2275,7 +1863,7 @@ public class LureFollowTame {
                 return out;
             }
 
-            // Fallback: return raw goal (A* may still route around).
+            // Fallback: return raw goal after clamping.
             return invokeClampTargetToHomeBounds(new Vec3(baseX, rawGoal.y, baseZ));
 
         } catch (Throwable t) {
@@ -2390,7 +1978,7 @@ public class LureFollowTame {
             }
 
             // "Right in front of it (about a block between raven and player)"
-            final double FOLLOW_FRONT_DISTANCE = 1.15D;
+            final double FOLLOW_FRONT_DISTANCE = 3.0D;
 
             double tx = playerPos.x + lx * FOLLOW_FRONT_DISTANCE;
             double tz = playerPos.z + lz * FOLLOW_FRONT_DISTANCE;
@@ -2464,10 +2052,71 @@ public class LureFollowTame {
     // REFLECTION HELPERS INTO RavenEntity PRIVATES ------------------------------------------------
     // ---------------------------------------------------------------------------------------------
 
-    private void setPrivateInt(String fieldName, int value) {
+    private static final Map<String, Field> FIELD_CACHE = new ConcurrentHashMap<>();
+    private static final Set<String> FIELD_MISS_CACHE = ConcurrentHashMap.newKeySet();
+    private static final Map<String, Method> METHOD_CACHE = new ConcurrentHashMap<>();
+    private static final Set<String> METHOD_MISS_CACHE = ConcurrentHashMap.newKeySet();
+
+    @Nullable
+    private static Field getCachedField(String fieldName) {
+        if (fieldName == null) return null;
+        if (FIELD_MISS_CACHE.contains(fieldName)) return null;
+
+        Field cached = FIELD_CACHE.get(fieldName);
+        if (cached != null) return cached;
+
         try {
             Field f = RavenEntity.class.getDeclaredField(fieldName);
             f.setAccessible(true);
+            FIELD_CACHE.put(fieldName, f);
+            return f;
+        } catch (NoSuchFieldException ex) {
+            FIELD_MISS_CACHE.add(fieldName);
+            return null;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static String buildMethodKey(String name, Class<?>... params) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(name == null ? "" : name);
+        sb.append('#').append(params == null ? 0 : params.length).append(':');
+        if (params != null) {
+            for (int i = 0; i < params.length; i++) {
+                if (i > 0) sb.append(',');
+                sb.append(params[i] == null ? "null" : params[i].getName());
+            }
+        }
+        return sb.toString();
+    }
+
+    @Nullable
+    private static Method getCachedMethod(String methodName, Class<?>... params) {
+        if (methodName == null) return null;
+        String key = buildMethodKey(methodName, params);
+        if (METHOD_MISS_CACHE.contains(key)) return null;
+
+        Method cached = METHOD_CACHE.get(key);
+        if (cached != null) return cached;
+
+        try {
+            Method m = RavenEntity.class.getDeclaredMethod(methodName, params);
+            m.setAccessible(true);
+            METHOD_CACHE.put(key, m);
+            return m;
+        } catch (NoSuchMethodException ex) {
+            METHOD_MISS_CACHE.add(key);
+            return null;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private void setPrivateInt(String fieldName, int value) {
+        try {
+            Field f = getCachedField(fieldName);
+            if (f == null) return;
             f.setInt(raven, value);
         } catch (Throwable t) {
             if (raven.tickCount % 80 == 0) {
@@ -2478,8 +2127,8 @@ public class LureFollowTame {
 
     private int getPrivateInt(String fieldName, int fallback) {
         try {
-            Field f = RavenEntity.class.getDeclaredField(fieldName);
-            f.setAccessible(true);
+            Field f = getCachedField(fieldName);
+            if (f == null) return fallback;
             return f.getInt(raven);
         } catch (Throwable t) {
             if (raven.tickCount % 80 == 0) {
@@ -2491,8 +2140,8 @@ public class LureFollowTame {
 
     private int getPrivateStaticInt(String fieldName, int fallback) {
         try {
-            Field f = RavenEntity.class.getDeclaredField(fieldName);
-            f.setAccessible(true);
+            Field f = getCachedField(fieldName);
+            if (f == null) return fallback;
             return f.getInt(null);
         } catch (Throwable t) {
             if (raven.tickCount % 80 == 0) {
@@ -2504,8 +2153,8 @@ public class LureFollowTame {
 
     private double getPrivateStaticDouble(String fieldName, double fallback) {
         try {
-            Field f = RavenEntity.class.getDeclaredField(fieldName);
-            f.setAccessible(true);
+            Field f = getCachedField(fieldName);
+            if (f == null) return fallback;
             return f.getDouble(null);
         } catch (Throwable t) {
             if (raven.tickCount % 80 == 0) {
@@ -2515,39 +2164,10 @@ public class LureFollowTame {
         }
     }
 
-    private void setPrivateObject(String fieldName, Object value) {
-        try {
-            Field f = RavenEntity.class.getDeclaredField(fieldName);
-            f.setAccessible(true);
-            f.set(raven, value);
-        } catch (Throwable t) {
-            if (raven.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] LureFollowTame.setPrivateObject({}) failed: {}", fieldName, t.toString());
-            }
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<Vec3> getPathWaypoints() {
-        try {
-            Field f = RavenEntity.class.getDeclaredField("pathWaypoints");
-            f.setAccessible(true);
-            Object v = f.get(raven);
-            if (v instanceof List) {
-                return (List<Vec3>) v;
-            }
-        } catch (Throwable t) {
-            if (raven.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] LureFollowTame.getPathWaypoints failed: {}", t.toString());
-            }
-        }
-        return null;
-    }
-
     private Vec3 getFlyTargetField() {
         try {
-            Field f = RavenEntity.class.getDeclaredField("flyTarget");
-            f.setAccessible(true);
+            Field f = getCachedField("flyTarget");
+            if (f == null) return null;
             Object v = f.get(raven);
             if (v instanceof Vec3) {
                 return (Vec3) v;
@@ -2570,9 +2190,10 @@ public class LureFollowTame {
 
     private void invokeResetLandingState(String reason) {
         try {
-            Method m = RavenEntity.class.getDeclaredMethod("resetLandingState", String.class);
-            m.setAccessible(true);
-            m.invoke(raven, reason);
+            Method m = getCachedMethod("resetLandingState", String.class);
+            if (m != null) {
+                m.invoke(raven, reason);
+            }
         } catch (Throwable t) {
             if (raven.tickCount % 80 == 0) {
                 LOG.warn("[RavenEntity] LureFollowTame.invokeResetLandingState failed: {}", t.toString());
@@ -2580,23 +2201,12 @@ public class LureFollowTame {
         }
     }
 
-    private void invokeClearPlannedPath(String reason) {
-        try {
-            Method m = RavenEntity.class.getDeclaredMethod("clearPlannedPath", String.class);
-            m.setAccessible(true);
-            m.invoke(raven, reason);
-        } catch (Throwable t) {
-            if (raven.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] LureFollowTame.invokeClearPlannedPath failed: {}", t.toString());
-            }
-        }
-    }
-
     private void invokeClearFlyTarget() {
         try {
-            Method m = RavenEntity.class.getDeclaredMethod("clearFlyTarget");
-            m.setAccessible(true);
-            m.invoke(raven);
+            Method m = getCachedMethod("clearFlyTarget");
+            if (m != null) {
+                m.invoke(raven);
+            }
         } catch (Throwable t) {
             if (raven.tickCount % 80 == 0) {
                 LOG.warn("[RavenEntity] LureFollowTame.invokeClearFlyTarget failed: {}", t.toString());
@@ -2606,11 +2216,12 @@ public class LureFollowTame {
 
     private int invokeClampYToHomeBounds(int y) {
         try {
-            Method m = RavenEntity.class.getDeclaredMethod("clampYToHomeBounds", int.class);
-            m.setAccessible(true);
-            Object res = m.invoke(raven, y);
-            if (res instanceof Integer) {
-                return (Integer) res;
+            Method m = getCachedMethod("clampYToHomeBounds", int.class);
+            if (m != null) {
+                Object res = m.invoke(raven, y);
+                if (res instanceof Integer) {
+                    return (Integer) res;
+                }
             }
         } catch (Throwable t) {
             if (raven.tickCount % 80 == 0) {
@@ -2622,11 +2233,12 @@ public class LureFollowTame {
 
     private Vec3 invokeClampTargetToHomeBounds(Vec3 in) {
         try {
-            Method m = RavenEntity.class.getDeclaredMethod("clampTargetToHomeBounds", Vec3.class);
-            m.setAccessible(true);
-            Object res = m.invoke(raven, in);
-            if (res instanceof Vec3) {
-                return (Vec3) res;
+            Method m = getCachedMethod("clampTargetToHomeBounds", Vec3.class);
+            if (m != null) {
+                Object res = m.invoke(raven, in);
+                if (res instanceof Vec3) {
+                    return (Vec3) res;
+                }
             }
         } catch (Throwable t) {
             if (raven.tickCount % 80 == 0) {
@@ -2636,74 +2248,14 @@ public class LureFollowTame {
         return in;
     }
 
-    private Vec3 invokeComputeSafePathingGoal(Vec3 rawGoal, RavenAStarPathing.Config cfg) {
-        try {
-            Method m = RavenEntity.class.getDeclaredMethod("computeSafePathingGoal", Vec3.class, RavenAStarPathing.Config.class);
-            m.setAccessible(true);
-            Object res = m.invoke(raven, rawGoal, cfg);
-            if (res instanceof Vec3) {
-                return (Vec3) res;
-            }
-        } catch (Throwable t) {
-            if (raven.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] LureFollowTame.invokeComputeSafePathingGoal failed: {}", t.toString());
-            }
-        }
-        return rawGoal;
-    }
-
-    private boolean invokeEnsurePathToWithFlags(Vec3 goal, boolean allowLeaves, int ttlTicks, long seed, String reason) {
-        try {
-            Method m = RavenEntity.class.getDeclaredMethod(
-                    "ensurePathTo",
-                    Vec3.class,
-                    boolean.class,
-                    int.class,
-                    long.class,
-                    String.class
-            );
-            m.setAccessible(true);
-            Object res = m.invoke(raven, goal, allowLeaves, ttlTicks, seed, reason);
-            if (res instanceof Boolean) {
-                return (Boolean) res;
-            }
-        } catch (Throwable t) {
-            if (raven.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] LureFollowTame.invokeEnsurePathToWithFlags failed: {}", t.toString());
-            }
-        }
-        return false;
-    }
-
-    private boolean invokeEnsurePathTo(Vec3 goal, int ttlTicks, long seed, String reason) {
-        try {
-            Method m = RavenEntity.class.getDeclaredMethod(
-                    "ensurePathTo",
-                    Vec3.class,
-                    int.class,
-                    long.class,
-                    String.class
-            );
-            m.setAccessible(true);
-            Object res = m.invoke(raven, goal, ttlTicks, seed, reason);
-            if (res instanceof Boolean) {
-                return (Boolean) res;
-            }
-        } catch (Throwable t) {
-            if (raven.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] LureFollowTame.invokeEnsurePathTo failed: {}", t.toString());
-            }
-        }
-        return false;
-    }
-
     private boolean invokeIsOutOfHomeBounds(Vec3 pos) {
         try {
-            Method m = RavenEntity.class.getDeclaredMethod("isOutOfHomeBounds", Vec3.class);
-            m.setAccessible(true);
-            Object res = m.invoke(raven, pos);
-            if (res instanceof Boolean) {
-                return (Boolean) res;
+            Method m = getCachedMethod("isOutOfHomeBounds", Vec3.class);
+            if (m != null) {
+                Object res = m.invoke(raven, pos);
+                if (res instanceof Boolean) {
+                    return (Boolean) res;
+                }
             }
         } catch (Throwable t) {
             if (raven.tickCount % 80 == 0) {
@@ -2715,11 +2267,12 @@ public class LureFollowTame {
 
     private Vec3 invokeHomeCenterReturnTarget() {
         try {
-            Method m = RavenEntity.class.getDeclaredMethod("homeCenterReturnTarget");
-            m.setAccessible(true);
-            Object res = m.invoke(raven);
-            if (res instanceof Vec3) {
-                return (Vec3) res;
+            Method m = getCachedMethod("homeCenterReturnTarget");
+            if (m != null) {
+                Object res = m.invoke(raven);
+                if (res instanceof Vec3) {
+                    return (Vec3) res;
+                }
             }
         } catch (Throwable t) {
             if (raven.tickCount % 80 == 0) {
@@ -2732,9 +2285,10 @@ public class LureFollowTame {
 
     private void invokeSetFlyTarget(Vec3 target, int ttlTicks) {
         try {
-            Method m = RavenEntity.class.getDeclaredMethod("setFlyTarget", Vec3.class, int.class);
-            m.setAccessible(true);
-            m.invoke(raven, target, ttlTicks);
+            Method m = getCachedMethod("setFlyTarget", Vec3.class, int.class);
+            if (m != null) {
+                m.invoke(raven, target, ttlTicks);
+            }
         } catch (Throwable t) {
             if (raven.tickCount % 80 == 0) {
                 LOG.warn("[RavenEntity] LureFollowTame.invokeSetFlyTarget failed: {}", t.toString());
@@ -2742,11 +2296,25 @@ public class LureFollowTame {
         }
     }
 
+    private void invokeSetFlyTargetNoClamp(Vec3 target, int ttlTicks) {
+        try {
+            Method m = getCachedMethod("setFlyTargetNoClamp", Vec3.class, int.class);
+            if (m != null) {
+                m.invoke(raven, target, ttlTicks);
+            }
+        } catch (Throwable t) {
+            if (raven.tickCount % 80 == 0) {
+                LOG.warn("[RavenEntity] LureFollowTame.invokeSetFlyTargetNoClamp failed: {}", t.toString());
+            }
+        }
+    }
+
     private void invokeMaybeAvoidOrRetargetDuringFlight(RandomSource rnd) {
         try {
-            Method m = RavenEntity.class.getDeclaredMethod("maybeAvoidOrRetargetDuringFlight", RandomSource.class);
-            m.setAccessible(true);
-            m.invoke(raven, rnd);
+            Method m = getCachedMethod("maybeAvoidOrRetargetDuringFlight", RandomSource.class);
+            if (m != null) {
+                m.invoke(raven, rnd);
+            }
         } catch (Throwable t) {
             if (raven.tickCount % 80 == 0) {
                 LOG.warn("[RavenEntity] LureFollowTame.invokeMaybeAvoidOrRetargetDuringFlight failed: {}", t.toString());
@@ -2756,9 +2324,10 @@ public class LureFollowTame {
 
     private void invokeFlyTowardTarget(double speed) {
         try {
-            Method m = RavenEntity.class.getDeclaredMethod("flyTowardTarget", double.class);
-            m.setAccessible(true);
-            m.invoke(raven, speed);
+            Method m = getCachedMethod("flyTowardTarget", double.class);
+            if (m != null) {
+                m.invoke(raven, speed);
+            }
         } catch (Throwable t) {
             if (raven.tickCount % 80 == 0) {
                 LOG.warn("[RavenEntity] LureFollowTame.invokeFlyTowardTarget failed: {}", t.toString());
@@ -2766,15 +2335,4 @@ public class LureFollowTame {
         }
     }
 
-    private void invokeAdvanceWaypointIfNeeded(int ttlTicks, String debugTag) {
-        try {
-            Method m = RavenEntity.class.getDeclaredMethod("advanceWaypointIfNeeded", int.class, String.class);
-            m.setAccessible(true);
-            m.invoke(raven, ttlTicks, debugTag);
-        } catch (Throwable t) {
-            if (raven.tickCount % 80 == 0) {
-                LOG.warn("[RavenEntity] LureFollowTame.invokeAdvanceWaypointIfNeeded failed: {}", t.toString());
-            }
-        }
-    }
 }

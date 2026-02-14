@@ -90,5 +90,4 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
             LOG.error("[NeoForgePlatformHelper] Failed to open Scroll View menu", t);
         }
     }
-    }
 }

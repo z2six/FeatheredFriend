@@ -96,6 +96,12 @@ public final class RavenCourierRuntime {
     private static final int DISPATCH_INTERVAL_TICKS = 20;
 
     /**
+     * How often we do a full world scan to reconcile courier ravens with jobs.
+     * This is intentionally much slower than the dispatch cadence.
+     */
+    private static final int FULL_RECONCILE_INTERVAL_TICKS = 200; // 10s
+
+    /**
      * Hard cap on how many new courier ravens we will spawn in a single dispatch pass.
      */
     private static final int MAX_NEW_DISPATCHES_PER_PASS = 4;
@@ -160,7 +166,7 @@ public final class RavenCourierRuntime {
                 LOG.debug("[RavenCourierRuntime] requestRetryDelivery: sender={} requested retry for jobId={}", senderUuid, jobId);
                 try {
                     // Best-effort: dispatch immediately so UI feels responsive.
-                    dispatchPendingDeliveries(server);
+                    dispatchPendingDeliveries(server, false);
                 } catch (Throwable dispatchErr) {
                     LOG.warn("[RavenCourierRuntime] requestRetryDelivery: immediate dispatch failed safely: {}", dispatchErr.toString());
                 }
@@ -191,14 +197,15 @@ public final class RavenCourierRuntime {
                 return;
             }
 
-            dispatchPendingDeliveries(server);
+            boolean doFullScan = (serverTickCounter % FULL_RECONCILE_INTERVAL_TICKS) == 0;
+            dispatchPendingDeliveries(server, doFullScan);
 
         } catch (Throwable t) {
             LOG.error("[RavenCourierRuntime] onServerTick failed safely", t);
         }
     }
 
-    private static void dispatchPendingDeliveries(@NotNull MinecraftServer server) {
+    private static void dispatchPendingDeliveries(@NotNull MinecraftServer server, boolean fullScan) {
         try {
             ServerLevel overworld = server.overworld();
             if (overworld == null) {
@@ -212,7 +219,11 @@ public final class RavenCourierRuntime {
             Set<UUID> busySenders = new HashSet<>();
             Set<UUID> busyRecipients = new HashSet<>();
 
-            reconcileJobsWithExistingCourierRavens(server, overworld, data, allJobs, busySenders, busyRecipients);
+            if (allJobs.isEmpty() && !fullScan) {
+                return;
+            }
+
+            reconcileJobsWithExistingCourierRavens(server, overworld, data, allJobs, busySenders, busyRecipients, fullScan);
 
             // Respect jobs marked inFlight
             for (RavenCourierData.DeliveryJob job : allJobs) {
@@ -283,25 +294,13 @@ public final class RavenCourierRuntime {
                     continue;
                 }
 
-                if (hasActiveCourierRavenForJob(server, job.jobId)) {
-                    job.inFlight = true;
-                    data.setDirty();
-
-                    if (senderId != null) {
-                        busySenders.add(senderId);
-                    }
-                    busyRecipients.add(recipientId);
-
-                    LOG.warn("[RavenCourierRuntime] dispatch: jobId={} already has an active courier raven; skipping duplicate spawn.", job.jobId);
-                    continue;
-                }
-
                 RavenEntity raven = spawnCourierRavenForJob(targetLevel, recipient, job);
                 if (raven == null) {
                     continue;
                 }
 
                 job.inFlight = true;
+                job.courierRavenUuid = raven.getUUID();
                 data.setDirty();
 
                 if (senderId != null) {
@@ -328,48 +327,6 @@ public final class RavenCourierRuntime {
     // Courier raven spawn helpers
     // ---------------------------------------------------------------------
 
-    private static boolean hasActiveCourierRavenForJob(@NotNull MinecraftServer server, long jobId) {
-        try {
-            if (jobId <= 0L) {
-                return false;
-            }
-
-            for (ServerLevel level : server.getAllLevels()) {
-                try {
-                    double minX = level.getWorldBorder().getMinX() - 16.0D;
-                    double minZ = level.getWorldBorder().getMinZ() - 16.0D;
-                    double maxX = level.getWorldBorder().getMaxX() + 16.0D;
-                    double maxZ = level.getWorldBorder().getMaxZ() + 16.0D;
-                    double minY = level.getMinBuildHeight() - 1;
-                    double maxY = level.getMaxBuildHeight() + 1;
-
-                    AABB worldBox = new AABB(minX, minY, minZ, maxX, maxY, maxZ);
-
-                    List<RavenEntity> ravens = level.getEntitiesOfClass(
-                            RavenEntity.class,
-                            worldBox,
-                            e -> e != null && e.isAlive() && !e.isRemoved()
-                    );
-
-                    for (RavenEntity raven : ravens) {
-                        if (!isCourierRaven(raven)) {
-                            continue;
-                        }
-                        long ravenJobId = getCourierJobIdFromRaven(raven);
-                        if (ravenJobId == jobId) {
-                            return true;
-                        }
-                    }
-                } catch (Throwable levelErr) {
-                    LOG.warn("[RavenCourierRuntime] hasActiveCourierRavenForJob: level scan failed safely: {}", levelErr.toString());
-                }
-            }
-        } catch (Throwable t) {
-            LOG.warn("[RavenCourierRuntime] hasActiveCourierRavenForJob failed safely for jobId={}: {}", jobId, t.toString());
-        }
-        return false;
-    }
-
     /**
      * Timeout/failure (non-death) handling:
      *  - Mark job as failed in RavenCourierData (persisted).
@@ -389,6 +346,7 @@ public final class RavenCourierRuntime {
             if (!marked) {
                 LOG.warn("[RavenCourierRuntime] handleCourierRavenTimeout: failed to mark jobId={} as failed (still despawning raven).", job.jobId);
             }
+            job.courierRavenUuid = null;
 
             // Find a context player for despawn FX (recipient -> sender -> any).
             ServerPlayer contextPlayer = findBestContextPlayer(level.getServer(), job.senderUuid, job.recipientUuid);
@@ -440,14 +398,89 @@ public final class RavenCourierRuntime {
                                                                @NotNull RavenCourierData data,
                                                                @NotNull List<RavenCourierData.DeliveryJob> allJobs,
                                                                @NotNull Set<UUID> busySenders,
-                                                               @NotNull Set<UUID> busyRecipients) {
+                                                               @NotNull Set<UUID> busyRecipients,
+                                                               boolean fullScan) {
         try {
+            boolean dirty = false;
+
+            if (!fullScan) {
+                for (RavenCourierData.DeliveryJob job : allJobs) {
+                    if (job == null) {
+                        continue;
+                    }
+
+                    if (job.courierRavenUuid == null) {
+                        job.inFlight = false;
+                        continue;
+                    }
+
+                    RavenEntity raven = findCourierRavenByUuid(server, job.courierRavenUuid);
+                    if (raven == null || !raven.isAlive() || raven.isRemoved()) {
+                        job.courierRavenUuid = null;
+                        job.inFlight = false;
+                        dirty = true;
+                        continue;
+                    }
+
+                    if (!isCourierRaven(raven)) {
+                        job.courierRavenUuid = null;
+                        job.inFlight = false;
+                        dirty = true;
+                        continue;
+                    }
+
+                    long jobId = getCourierJobIdFromRaven(raven);
+                    if (jobId != job.jobId) {
+                        job.courierRavenUuid = null;
+                        job.inFlight = false;
+                        dirty = true;
+                        continue;
+                    }
+
+                    ServerLevel ravenLevel = (raven.level() instanceof ServerLevel level) ? level : overworld;
+
+                    if (job.failed) {
+                        ServerPlayer ctx = findBestContextPlayer(server, job.senderUuid, job.recipientUuid);
+                        job.inFlight = false;
+                        if (job.courierRavenUuid != null) {
+                            job.courierRavenUuid = null;
+                            dirty = true;
+                        }
+
+                        if (ctx != null) {
+                            LOG.warn("[RavenCourierRuntime] reconcile: jobId={} is failed but courier raven id={} exists; despawning raven.",
+                                    job.jobId, raven.getId());
+                            despawnCourierRaven(ravenLevel, ctx, raven, "job already failed (cleanup)");
+                        } else {
+                            LOG.warn("[RavenCourierRuntime] reconcile: jobId={} failed; discarding courier raven id={} silently (no context player).",
+                                    job.jobId, raven.getId());
+                            clearCourierFlags(raven);
+                            raven.discard();
+                        }
+                        continue;
+                    }
+
+                    if (checkCourierLifetime(ravenLevel, data, raven, job)) {
+                        continue;
+                    }
+
+                    markJobInFlight(job, busySenders, busyRecipients);
+                }
+
+                if (dirty) {
+                    data.setDirty();
+                }
+                return;
+            }
+
             Map<Long, RavenCourierData.DeliveryJob> jobsById = new HashMap<>();
             for (RavenCourierData.DeliveryJob job : allJobs) {
                 if (job != null) {
                     jobsById.put(job.jobId, job);
                 }
             }
+
+            Set<Long> matchedJobIds = new HashSet<>();
 
             for (ServerLevel level : server.getAllLevels()) {
                 try {
@@ -487,13 +520,23 @@ public final class RavenCourierRuntime {
                             continue;
                         }
 
-                        // If job is already failed, we should not keep a courier raven alive.
+                        matchedJobIds.add(jobId);
+
+                        if (job.courierRavenUuid == null || !job.courierRavenUuid.equals(raven.getUUID())) {
+                            job.courierRavenUuid = raven.getUUID();
+                            dirty = true;
+                        }
+
                         if (job.failed) {
-                            ServerPlayer ctx = findBestContextPlayer(level.getServer(), job.senderUuid, job.recipientUuid);
+                            ServerPlayer ctx = findBestContextPlayer(server, job.senderUuid, job.recipientUuid);
+                            job.inFlight = false;
+                            if (job.courierRavenUuid != null) {
+                                job.courierRavenUuid = null;
+                                dirty = true;
+                            }
+
                             if (ctx != null) {
                                 LOG.warn("[RavenCourierRuntime] reconcile: jobId={} is failed but courier raven id={} exists; despawning raven.", job.jobId, raven.getId());
-                                job.inFlight = false;
-                                data.setDirty();
                                 despawnCourierRaven(level, ctx, raven, "job already failed (cleanup)");
                             } else {
                                 LOG.warn("[RavenCourierRuntime] reconcile: jobId={} failed; discarding courier raven id={} silently (no context player).", job.jobId, raven.getId());
@@ -503,54 +546,100 @@ public final class RavenCourierRuntime {
                             continue;
                         }
 
-                        try {
-                            CompoundTag root = raven.getPersistentData();
-                            CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
-
-                            long now = level.getGameTime();
-                            long despawnAt = ffTag.getLong(NBT_COURIER_DESPAWN_AT);
-
-                            if (despawnAt <= 0L) {
-                                despawnAt = now + COURIER_LIFETIME_TICKS;
-                                ffTag.putLong(NBT_COURIER_DESPAWN_AT, despawnAt);
-                                root.put(Constants.MOD_ID, ffTag);
-
-                                if (LOG.isDebugEnabled()) {
-                                    LOG.debug("[RavenCourierRuntime] reconcile: initializing lifetime for courier raven id={} jobId={} now={} despawnAt={}",
-                                            raven.getId(), job.jobId, now, despawnAt);
-                                }
-                            }
-
-                            if (now >= despawnAt) {
-                                LOG.debug("[RavenCourierRuntime] reconcile: lifetime expired for courier raven id={} jobId={} now={} despawnAt={}",
-                                        raven.getId(), job.jobId, now, despawnAt);
-
-                                // NEW semantics: mark job failed; do NOT remove; do NOT drop scroll.
-                                handleCourierRavenTimeout(level, data, raven, job);
-                                continue;
-                            }
-                        } catch (Throwable lifetimeErr) {
-                            LOG.warn("[RavenCourierRuntime] reconcile: lifetime check failed safely for raven id={} jobId={}: {}",
-                                    raven.getId(), job.jobId, lifetimeErr.toString());
+                        if (checkCourierLifetime(level, data, raven, job)) {
+                            continue;
                         }
 
-                        // Still active -> mark in-flight and update busy sets.
-                        job.inFlight = true;
-
-                        if (job.senderUuid != null) {
-                            busySenders.add(job.senderUuid);
-                        }
-                        if (job.recipientUuid != null) {
-                            busyRecipients.add(job.recipientUuid);
-                        }
+                        markJobInFlight(job, busySenders, busyRecipients);
                     }
 
                 } catch (Throwable levelErr) {
                     LOG.warn("[RavenCourierRuntime] reconcile: level scan failed safely: {}", levelErr.toString());
                 }
             }
+
+            for (RavenCourierData.DeliveryJob job : allJobs) {
+                if (job == null) {
+                    continue;
+                }
+                if (job.courierRavenUuid != null && !matchedJobIds.contains(job.jobId)) {
+                    job.courierRavenUuid = null;
+                    job.inFlight = false;
+                    dirty = true;
+                } else if (job.courierRavenUuid == null) {
+                    job.inFlight = false;
+                }
+            }
+
+            if (dirty) {
+                data.setDirty();
+            }
         } catch (Throwable t) {
             LOG.error("[RavenCourierRuntime] reconcileJobsWithExistingCourierRavens failed safely", t);
+        }
+    }
+
+    @Nullable
+    private static RavenEntity findCourierRavenByUuid(@NotNull MinecraftServer server, @NotNull UUID uuid) {
+        try {
+            for (ServerLevel level : server.getAllLevels()) {
+                Entity entity = level.getEntity(uuid);
+                if (entity instanceof RavenEntity raven) {
+                    return raven;
+                }
+            }
+        } catch (Throwable t) {
+            LOG.warn("[RavenCourierRuntime] findCourierRavenByUuid failed safely for uuid={}: {}", uuid, t.toString());
+        }
+        return null;
+    }
+
+    private static boolean checkCourierLifetime(@NotNull ServerLevel level,
+                                                @NotNull RavenCourierData data,
+                                                @NotNull RavenEntity raven,
+                                                @NotNull RavenCourierData.DeliveryJob job) {
+        try {
+            CompoundTag root = raven.getPersistentData();
+            CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
+
+            long now = level.getGameTime();
+            long despawnAt = ffTag.getLong(NBT_COURIER_DESPAWN_AT);
+
+            if (despawnAt <= 0L) {
+                despawnAt = now + COURIER_LIFETIME_TICKS;
+                ffTag.putLong(NBT_COURIER_DESPAWN_AT, despawnAt);
+                root.put(Constants.MOD_ID, ffTag);
+
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("[RavenCourierRuntime] reconcile: initializing lifetime for courier raven id={} jobId={} now={} despawnAt={}",
+                            raven.getId(), job.jobId, now, despawnAt);
+                }
+            }
+
+            if (now >= despawnAt) {
+                LOG.debug("[RavenCourierRuntime] reconcile: lifetime expired for courier raven id={} jobId={} now={} despawnAt={}",
+                        raven.getId(), job.jobId, now, despawnAt);
+
+                // NEW semantics: mark job failed; do NOT remove; do NOT drop scroll.
+                handleCourierRavenTimeout(level, data, raven, job);
+                return true;
+            }
+        } catch (Throwable lifetimeErr) {
+            LOG.warn("[RavenCourierRuntime] reconcile: lifetime check failed safely for raven id={} jobId={}: {}",
+                    raven.getId(), job.jobId, lifetimeErr.toString());
+        }
+        return false;
+    }
+
+    private static void markJobInFlight(@NotNull RavenCourierData.DeliveryJob job,
+                                        @NotNull Set<UUID> busySenders,
+                                        @NotNull Set<UUID> busyRecipients) {
+        job.inFlight = true;
+        if (job.senderUuid != null) {
+            busySenders.add(job.senderUuid);
+        }
+        if (job.recipientUuid != null) {
+            busyRecipients.add(job.recipientUuid);
         }
     }
 
@@ -565,16 +654,10 @@ public final class RavenCourierRuntime {
                 return null;
             }
 
-            // EXACT SAME 6-STEP SPAWN LOGIC as scroll summon:
-            // 1) ceiling scan within 15 above player
-            // 2) if ceiling, find safe 3x3 pocket under ceiling (not 1 below ceiling)
-            // 3) spawn in center of that pocket
-            // 4) else fallback to pocket +15
-            // 5) simulate A* from spawn -> player
-            // 6) if sim fails, do not spawn
-            Vec3 spawnPos = findCourierSpawnPos(level, recipient, raven, job.jobId);
+            // Spawn right by the recipient (no path simulation).
+            Vec3 spawnPos = findSpawnNearPlayer(level, recipient);
             if (spawnPos == null) {
-                LOG.warn("[RavenCourierRuntime] spawnCourierRavenForJob: no valid spawn (or simulated path failed) for recipient='{}' jobId={} -> not spawning.",
+                LOG.warn("[RavenCourierRuntime] spawnCourierRavenForJob: no valid nearby spawn for recipient='{}' jobId={} -> not spawning.",
                         safePlayerName(recipient), job.jobId);
                 return null;
             }
@@ -603,6 +686,16 @@ public final class RavenCourierRuntime {
 
             attachCourierJobToRaven(level, raven, job);
 
+            try {
+                Teleportation tp = raven.getTeleportation();
+                if (tp != null) {
+                    tp.startFadeInOnly("courier spawn", raven);
+                }
+            } catch (Throwable t) {
+                LOG.warn("[RavenCourierRuntime] spawnCourierRavenForJob: startFadeInOnly failed safely for jobId={}: {}",
+                        job.jobId, t.toString());
+            }
+
             level.addFreshEntity(raven);
 
             playCourierSpawnFx(level, recipient, raven);
@@ -616,6 +709,78 @@ public final class RavenCourierRuntime {
             LOG.error("[RavenCourierRuntime] spawnCourierRavenForJob failed safely for jobId={}", job.jobId, t);
             return null;
         }
+    }
+
+    @Nullable
+    private static Vec3 findSpawnNearPlayer(@NotNull ServerLevel level, @NotNull ServerPlayer target) {
+        try {
+            int minY = level.getMinBuildHeight() + 1;
+            int maxY = level.getMaxBuildHeight() - 2;
+
+            int baseY = Mth.clamp(target.blockPosition().getY() + 1, minY, maxY);
+
+            Vec3 look = target.getLookAngle();
+            double lx = look.x;
+            double lz = look.z;
+            double len = Math.sqrt(lx * lx + lz * lz);
+            if (len < 1.0E-4D) {
+                lx = 1.0D;
+                lz = 0.0D;
+            } else {
+                lx /= len;
+                lz /= len;
+            }
+
+            double frontDist = 2.8D;
+            int frontX = Mth.floor(target.getX() + lx * frontDist);
+            int frontZ = Mth.floor(target.getZ() + lz * frontDist);
+            Vec3 frontSpawn = findSpawnNearBase(level, frontX, baseY, frontZ, minY, maxY);
+            if (frontSpawn != null) {
+                return frontSpawn;
+            }
+
+            BlockPos base = target.blockPosition();
+            return findSpawnNearBase(level, base.getX(), baseY, base.getZ(), minY, maxY);
+        } catch (Throwable t) {
+            LOG.warn("[RavenCourierRuntime] findSpawnNearPlayer failed safely: {}", t.toString());
+        }
+        return null;
+    }
+
+    @Nullable
+    private static Vec3 findSpawnNearBase(@NotNull ServerLevel level,
+                                          int baseX,
+                                          int baseY,
+                                          int baseZ,
+                                          int minY,
+                                          int maxY) {
+        try {
+            int[][] offsets = new int[][]{
+                    {0, 0, 0},
+                    {1, 0, 0},
+                    {-1, 0, 0},
+                    {0, 0, 1},
+                    {0, 0, -1},
+                    {1, 0, 1},
+                    {-1, 0, -1},
+                    {1, 0, -1},
+                    {-1, 0, 1},
+                    {0, 1, 0},
+                    {0, 2, 0}
+            };
+
+            for (int[] o : offsets) {
+                BlockPos pos = new BlockPos(baseX + o[0], Mth.clamp(baseY + o[1], minY, maxY), baseZ + o[2]);
+                if (!level.getWorldBorder().isWithinBounds(pos)) {
+                    continue;
+                }
+                if (level.isEmptyBlock(pos) && level.isEmptyBlock(pos.above())) {
+                    return new Vec3(pos.getX() + 0.5D, pos.getY(), pos.getZ() + 0.5D);
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
     }
 
     private static void attachCourierJobToRaven(@NotNull ServerLevel level,
@@ -739,16 +904,8 @@ public final class RavenCourierRuntime {
                 if (pocketUnderCeiling != null) {
                     LOG.debug("[RavenCourierRuntime] findCourierSpawnPos: CEILING FOUND at y={} -> pocketUnderCeiling={} jobId={} player='{}'",
                             ceilingY, pocketUnderCeiling, jobId, safePlayerName(player));
-
-                    // Step 5/6: Simulated A* check from spawn to player
-                    if (canSimulatePathToPlayer(level, player, pocketUnderCeiling, simRaven, jobId, "courier-under-ceiling")) {
-                        // Step 3: Spawn in center of pocket
-                        return pocketUnderCeiling;
-                    }
-
-                    LOG.warn("[RavenCourierRuntime] findCourierSpawnPos: simulated path FAILED -> not spawning. candidate={} jobId={} player='{}'",
-                            pocketUnderCeiling, jobId, safePlayerName(player));
-                    return null;
+                    // Step 3: Spawn in center of pocket
+                    return pocketUnderCeiling;
                 }
 
                 // Step 4: If no pocket under ceiling, fall through to +15 fallback.
@@ -772,14 +929,7 @@ public final class RavenCourierRuntime {
             if (pocket != null) {
                 LOG.debug("[RavenCourierRuntime] findCourierSpawnPos: fallback +15 pocket={} jobId={} player='{}'",
                         pocket, jobId, safePlayerName(player));
-
-                if (canSimulatePathToPlayer(level, player, pocket, simRaven, jobId, "courier-fallback+15")) {
-                    return pocket;
-                }
-
-                LOG.warn("[RavenCourierRuntime] findCourierSpawnPos: simulated path FAILED -> not spawning. candidate={} jobId={} player='{}'",
-                        pocket, jobId, safePlayerName(player));
-                return null;
+                return pocket;
             }
 
             LOG.warn("[RavenCourierRuntime] findCourierSpawnPos: no pocket found (ceilingY={}, baseY={}) jobId={} player='{}' feet={}",
@@ -933,60 +1083,6 @@ public final class RavenCourierRuntime {
         }
     }
 
-    private static boolean canSimulatePathToPlayer(@NotNull ServerLevel level,
-                                                   @NotNull ServerPlayer player,
-                                                   @NotNull Vec3 spawnPos,
-                                                   @NotNull RavenEntity simRaven,
-                                                   long jobId,
-                                                   @NotNull String reasonTag) {
-        try {
-            // Place the simulation raven at start position (not added to world; pure planning).
-            try {
-                simRaven.moveTo(spawnPos.x, spawnPos.y, spawnPos.z, player.getYRot(), 0.0F);
-            } catch (Throwable t) {
-                LOG.warn("[RavenCourierRuntime] canSimulatePathToPlayer: moveTo failed safely. player='{}' spawnPos={} jobId={} err={}",
-                        safePlayerName(player), spawnPos, jobId, t.toString());
-                return false;
-            }
-
-            Vec3 goal = player.position();
-
-            long seed;
-            try {
-                seed =
-                        player.getUUID().getMostSignificantBits()
-                                ^ player.getUUID().getLeastSignificantBits()
-                                ^ (long) level.getGameTime()
-                                ^ jobId
-                                ^ 0xC0092813;
-            } catch (Throwable t) {
-                seed = (long) level.getGameTime() ^ jobId ^ 0xC0092813;
-            }
-
-            boolean ok;
-            try {
-                ok = simRaven.simulateAStarPathTo(goal, 6 * 20, seed, "courier(" + jobId + "): " + reasonTag);
-            } catch (Throwable t) {
-                ok = false;
-                LOG.warn("[RavenCourierRuntime] canSimulatePathToPlayer: simulateAStarPathTo threw. player='{}' spawnPos={} goal={} jobId={} err={}",
-                        safePlayerName(player), spawnPos, goal, jobId, t.toString());
-            }
-
-            if (ok) {
-                LOG.debug("[RavenCourierRuntime] canSimulatePathToPlayer: A* simulation OK player='{}' spawnPos={} goal={} jobId={}",
-                        safePlayerName(player), spawnPos, goal, jobId);
-            } else {
-                LOG.debug("[RavenCourierRuntime] canSimulatePathToPlayer: A* simulation FAIL player='{}' spawnPos={} goal={} jobId={}",
-                        safePlayerName(player), spawnPos, goal, jobId);
-            }
-
-            return ok;
-
-        } catch (Throwable t) {
-            LOG.error("[RavenCourierRuntime] canSimulatePathToPlayer failed safely (jobId={})", jobId, t);
-            return false;
-        }
-    }
 
     // ---------------------------------------------------------------------
     // Player RMB retrieval (courier raven -> sealed scroll)

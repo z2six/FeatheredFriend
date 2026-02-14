@@ -17,7 +17,6 @@ import org.slf4j.Logger;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.List;
 
 public final class Landing {
 
@@ -47,11 +46,14 @@ public final class Landing {
 
     @Nullable
     public BlockPos idlePerchCorner = null; // NW corner of the 2x2 perch footprint we are committed to during IDLE_GROUND
+    private long lastLandingSearchGameTime = Long.MIN_VALUE;
+    private @Nullable BlockPos lastLandingSearchResult = null;
 
     // Target selection search
     private static final int LAND_SEARCH_RADIUS = 18;
     private static final int LAND_SEARCH_ATTEMPTS = 60;
     private static final int LAND_SCAN_DOWN = 32;
+    private static final int LAND_SEARCH_COOLDOWN_TICKS = 40; // throttle heavy leaf scans
 
     // REQUIRED: always require 10 blocks of air above the leaves block.
     public static final int LAND_REQUIRED_AIR_ABOVE = 10;
@@ -556,29 +558,7 @@ public final class Landing {
     private boolean isPerchFootprintStillSupported(BlockPos cornerTop, RavenEntity ravenEntity) {
         try {
             if (cornerTop == null) return false;
-
-            int cx = cornerTop.getX();
-            int cz = cornerTop.getZ();
-            int topY = cornerTop.getY();
-
-            boolean anyAtTop = false;
-
-            for (int ox = 0; ox < PERCH_FOOTPRINT_SIZE; ox++) {
-                for (int oz = 0; oz < PERCH_FOOTPRINT_SIZE; oz++) {
-                    int x = cx + ox;
-                    int z = cz + oz;
-
-                    boolean atTop = isLeavesAt(x, topY, z, ravenEntity);
-                    boolean atStep = isLeavesAt(x, topY - 1, z, ravenEntity);
-
-                    if (!atTop && !atStep) {
-                        return false;
-                    }
-                    if (atTop) anyAtTop = true;
-                }
-            }
-
-            return anyAtTop;
+            return isLeavesPlateau2x2At(cornerTop, ravenEntity);
         } catch (Throwable t) {
             if (ravenEntity.tickCount % 80 == 0) {
                 LOG.warn("[Landing] isPerchFootprintStillSupported failed safely: {}", t.toString());
@@ -587,98 +567,35 @@ public final class Landing {
         }
     }
 
+    private boolean isLeavesPlateau2x2At(BlockPos cornerTop, RavenEntity ravenEntity) {
+        if (cornerTop == null) {
+            return false;
+        }
+        int cx = cornerTop.getX();
+        int cz = cornerTop.getZ();
+        int y = cornerTop.getY();
+
+        for (int ox = 0; ox < PERCH_FOOTPRINT_SIZE; ox++) {
+            for (int oz = 0; oz < PERCH_FOOTPRINT_SIZE; oz++) {
+                int x = cx + ox;
+                int z = cz + oz;
+                if (!isLeavesAt(x, y, z, ravenEntity)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
     public PerchValidity validatePerchCornerAtTopY(BlockPos cornerTop, RavenEntity ravenEntity) {
         try {
             if (cornerTop == null) {
                 return PerchValidity.fail("cornerTop=null", "");
             }
-
-            int cx = cornerTop.getX();
-            int cz = cornerTop.getZ();
-            int topY = cornerTop.getY();
-
-            boolean anyAtTop = false;
-
-            // Footprint check: each cell must have leaves at topY or topY-1, and at least one must be at topY.
-            for (int ox = 0; ox < PERCH_FOOTPRINT_SIZE; ox++) {
-                for (int oz = 0; oz < PERCH_FOOTPRINT_SIZE; oz++) {
-                    int x = cx + ox;
-                    int z = cz + oz;
-
-                    boolean atTop = isLeavesAt(x, topY, z, ravenEntity);
-                    boolean atStep = isLeavesAt(x, topY - 1, z, ravenEntity);
-
-                    if (!atTop && !atStep) {
-                        return PerchValidity.fail(
-                                "footprint_missing_leaves",
-                                "cell=(" + x + "," + topY + "," + z + ") top=" + atTop + " step=" + atStep
-                        );
-                    }
-                    if (atTop) anyAtTop = true;
-                }
+            if (!isLeavesPlateau2x2At(cornerTop, ravenEntity)) {
+                return PerchValidity.fail("footprint_missing_leaves", "corner=" + cornerTop);
             }
-
-            if (!anyAtTop) {
-                return PerchValidity.fail(
-                        "footprint_no_top_layer",
-                        "topY=" + topY + " (all 4 cells only at topY-1)"
-                );
-            }
-
-            // Air column check: 10 blocks above each of 4 top-layer columns.
-            for (int ox = 0; ox < PERCH_FOOTPRINT_SIZE; ox++) {
-                for (int oz = 0; oz < PERCH_FOOTPRINT_SIZE; oz++) {
-                    BlockPos start = new BlockPos(cx + ox, topY + 1, cz + oz);
-                    if (!hasAirColumn(start, LAND_REQUIRED_AIR_ABOVE, ravenEntity)) {
-                        int blockedAtY = Integer.MIN_VALUE;
-                        BlockPos blockedPos = null;
-                        for (int i = 0; i < LAND_REQUIRED_AIR_ABOVE; i++) {
-                            BlockPos p = start.above(i);
-                            if (!ravenEntity.level().isEmptyBlock(p)) {
-                                blockedAtY = p.getY();
-                                blockedPos = p;
-                                break;
-                            }
-                        }
-
-                        String extra = "";
-                        if (blockedPos != null) {
-                            BlockState st = ravenEntity.level().getBlockState(blockedPos);
-                            extra = " blockedPos=" + blockedPos + " block=" + (st == null ? "null" : st.getBlock().toString());
-                        }
-
-                        return PerchValidity.fail(
-                                "air_column_blocked",
-                                "col=(" + (cx + ox) + "," + (cz + oz) + ") startY=" + (topY + 1)
-                                        + " need=" + LAND_REQUIRED_AIR_ABOVE
-                                        + " firstBlockedY=" + (blockedAtY == Integer.MIN_VALUE ? "?" : blockedAtY)
-                                        + extra
-                        );
-                    }
-                }
-            }
-
-            // Neighbor canopy check around topY plane
-            int neighbors = 0;
-            for (int ox = -1; ox <= 2; ox++) {
-                for (int oz = -1; oz <= 2; oz++) {
-                    if (ox >= 0 && ox <= 1 && oz >= 0 && oz <= 1) continue;
-
-                    BlockState st = ravenEntity.level().getBlockState(new BlockPos(cx + ox, topY, cz + oz));
-                    if (st != null && st.is(BlockTags.LEAVES)) {
-                        neighbors++;
-                    }
-                }
-            }
-
-            int requiredNeighbors = Math.max(2, CANOPY_NEIGHBOR_LEAVES_REQUIRED - 2);
-            if (neighbors < requiredNeighbors) {
-                return PerchValidity.fail(
-                        "canopy_neighbors_low",
-                        "neighbors=" + neighbors + " required=" + requiredNeighbors + " topY=" + topY + " corner=(" + cx + "," + cz + ")"
-                );
-            }
-
             return PerchValidity.ok();
 
         } catch (Throwable t) {
@@ -688,8 +605,8 @@ public final class Landing {
 
     /**
      * Landing state machine (refactored):
-     * - FLY_TO_OVERHEAD uses coarse A* waypoint pathing to reach the overhead point without punching through canopy/structures.
-     * - DESCEND_SLOW and DROP remain local/physics-driven (no A*), unchanged in behavior.
+     * - FLY_TO_OVERHEAD uses direct flight to reach the overhead point without punching through canopy/structures.
+     * - DESCEND_SLOW and DROP remain local/physics-driven, unchanged in behavior.
      *
      * IMPORTANT: landingPhase / landingTicks are stored on RavenEntity.
      * We *only* read/write those via reflection here so that tickRoamFly() and Teleportation
@@ -752,7 +669,7 @@ public final class Landing {
         } catch (Throwable ignored) {
         }
 
-        // FIX: Do NOT allow "I’m on a perch" shortcut while we’re still in flight pathing.
+        // FIX: Do NOT allow "I’m on a perch" shortcut while we’re still in flight.
         // Otherwise, passing near the 2x2 center during FLY_TO_OVERHEAD can trigger enterIdleFromLanding(),
         // which can then snap (setPos) and look like a silent teleport.
         try {
@@ -787,14 +704,8 @@ public final class Landing {
         switch (phase) {
             case NONE -> {
                 // If tickLandingStateMachine is called while Raven thinks landingPhase=NONE,
-                // we just ensure local state is clean and clear any leftover path.
+                // we just ensure local state is clean and clear any leftover intent.
                 resetLandingState("tickLandingStateMachine called with NONE", ravenEntity);
-                invokeVoidMethodSafe(
-                        ravenEntity,
-                        "clearPlannedPath",
-                        new Class<?>[]{String.class},
-                        new Object[]{"landing NONE"}
-                );
             }
 
             case FLY_TO_OVERHEAD -> {
@@ -805,12 +716,6 @@ public final class Landing {
 
                 if (this.landingLeafPos == null) {
                     resetLandingState("FLY_TO_OVERHEAD missing leaf", ravenEntity);
-                    invokeVoidMethodSafe(
-                            ravenEntity,
-                            "clearPlannedPath",
-                            new Class<?>[]{String.class},
-                            new Object[]{"FLY_TO_OVERHEAD missing leaf"}
-                    );
                     return;
                 }
 
@@ -826,10 +731,8 @@ public final class Landing {
                     }
                 }
 
-                // 2) Detect whether we already have path/fly intent.
+                // 2) Detect whether we already have flight intent.
                 boolean hasFlyIntent = false;
-                boolean hasPathIntent = false;
-
                 try {
                     Object ft = getFieldValueSafe(ravenEntity, "flyTarget");
                     Object ftt = getFieldValueSafe(ravenEntity, "flyTargetTimeoutTicks");
@@ -842,32 +745,15 @@ public final class Landing {
                     hasFlyIntent = false;
                 }
 
-                try {
-                    Object wp = getFieldValueSafe(ravenEntity, "pathWaypoints");
-                    Object wpi = getFieldValueSafe(ravenEntity, "pathWaypointIndex");
-                    if (wp instanceof List<?> list) {
-                        int idx = (wpi instanceof Integer) ? (Integer) wpi : 0;
-                        hasPathIntent = !list.isEmpty() && idx < list.size();
-                    }
-                } catch (Throwable ignored) {
-                    hasPathIntent = false;
-                }
-
                 Vec3 pos = ravenEntity.position();
                 double horizNow = horizontalDistanceTo(pos, overhead);
                 double vertNow = Math.abs(pos.y - overhead.y);
 
-                // 3) Overhead reached -> transition to DESCEND_SLOW and clean up path/fly intent.
+                // 3) Overhead reached -> transition to DESCEND_SLOW and clean up flight intent.
                 if (horizNow <= OVERHEAD_HORIZONTAL_EPS && vertNow <= OVERHEAD_VERTICAL_EPS) {
                     setPhaseOnRaven(ravenEntity, Phase.DESCEND_SLOW);
 
                     invokeVoidMethodSafe(ravenEntity, "clearFlyTarget", new Class<?>[]{}, new Object[]{});
-                    invokeVoidMethodSafe(
-                            ravenEntity,
-                            "clearPlannedPath",
-                            new Class<?>[]{String.class},
-                            new Object[]{"overhead reached -> descent"}
-                    );
 
                     if (ravenEntity.tickCount % 20 == 0) {
                         LOG.debug(
@@ -881,39 +767,19 @@ public final class Landing {
                     return;
                 }
 
-                // 4) Only compute a new path if we don't already have one.
-                if (!hasFlyIntent && !hasPathIntent) {
-                    long seed = ravenEntity.getUUID().getLeastSignificantBits()
-                            ^ (long) ravenEntity.tickCount
-                            ^ this.landingLeafPos.asLong();
-
-                    boolean ok = false;
+                // 4) Only compute a new target if we don't already have one.
+                if (!hasFlyIntent) {
                     try {
-                        ok = ravenEntity.landingEnsurePathTo(overhead, 6 * 20, seed, "FLY_TO_OVERHEAD");
+                        ravenEntity.landingSetFlyTarget(overhead, 6 * 20);
                     } catch (Throwable t) {
-                        ok = false;
                         if (ravenEntity.tickCount % 40 == 0) {
-                            LOG.warn(
-                                    "[Landing] ensurePathTo failed safely (will fallback to setFlyTarget): {}",
-                                    t.toString()
-                            );
-                        }
-                    }
-
-                    if (!ok) {
-                        try {
-                            ravenEntity.landingSetFlyTarget(overhead, 6 * 20);
-                        } catch (Throwable t) {
-                            if (ravenEntity.tickCount % 40 == 0) {
-                                LOG.warn("[Landing] setFlyTarget fallback failed safely: {}", t.toString());
-                            }
+                            LOG.warn("[Landing] setFlyTarget failed safely: {}", t.toString());
                         }
                     }
 
                     if (ravenEntity.tickCount % 20 == 0) {
                         LOG.debug(
-                                "[Landing] FLY_TO_OVERHEAD acquire intent: pathOk={} overhead={} pos={} vel={}",
-                                ok,
+                                "[Landing] FLY_TO_OVERHEAD acquire intent: overhead={} pos={} vel={}",
                                 overhead,
                                 pos,
                                 ravenEntity.getDeltaMovement()
@@ -939,25 +805,16 @@ public final class Landing {
                     }
                 }
 
-                try {
-                    ravenEntity.landingAdvanceWaypointIfNeeded(6 * 20, "FLY_TO_OVERHEAD");
-                } catch (Throwable t) {
-                    if (ravenEntity.tickCount % 80 == 0) {
-                        LOG.warn("[Landing] advanceWaypointIfNeeded failed safely: {}", t.toString());
-                    }
-                }
-
                 // Extra debug when we're clearly stuck but still in this phase.
                 if (ravenEntity.tickCount % 40 == 0) {
                     LOG.debug(
-                            "[Landing] FLY_TO_OVERHEAD tick: pos={} vel={} overhead={} horiz={} vert={} hasFlyIntent={} hasPathIntent={} leaf={} landingTicks={}",
+                            "[Landing] FLY_TO_OVERHEAD tick: pos={} vel={} overhead={} horiz={} vert={} hasFlyIntent={} leaf={} landingTicks={}",
                             ravenEntity.position(),
                             ravenEntity.getDeltaMovement(),
                             overhead,
                             String.format("%.3f", horizNow),
                             String.format("%.3f", vertNow),
                             hasFlyIntent,
-                            hasPathIntent,
                             this.landingLeafPos,
                             landingTicks
                     );
@@ -967,12 +824,6 @@ public final class Landing {
             case DESCEND_SLOW -> {
                 if (this.landingLeafPos == null) {
                     resetLandingState("DESCEND_SLOW missing leaf", ravenEntity);
-                    invokeVoidMethodSafe(
-                            ravenEntity,
-                            "clearPlannedPath",
-                            new Class<?>[]{String.class},
-                            new Object[]{"DESCEND_SLOW missing leaf"}
-                    );
                     return;
                 }
 
@@ -1043,12 +894,6 @@ public final class Landing {
             case DROP -> {
                 if (this.landingLeafPos == null) {
                     resetLandingState("DROP missing leaf", ravenEntity);
-                    invokeVoidMethodSafe(
-                            ravenEntity,
-                            "clearPlannedPath",
-                            new Class<?>[]{String.class},
-                            new Object[]{"DROP missing leaf"}
-                    );
                     return;
                 }
 
@@ -1157,12 +1002,6 @@ public final class Landing {
                         );
                     }
                     resetLandingState("drop missed", ravenEntity);
-                    invokeVoidMethodSafe(
-                            ravenEntity,
-                            "clearPlannedPath",
-                            new Class<?>[]{String.class},
-                            new Object[]{"drop missed"}
-                    );
                 } else if (ravenEntity.tickCount % 40 == 0) {
                     LOG.debug(
                             "[Landing] DROP tick pos={} vel={} leafTopY={} landingTicks={}",
@@ -1206,13 +1045,7 @@ public final class Landing {
 
     public void enterIdleFromLanding(String reason, RavenEntity ravenEntity) {
         try {
-            // Best-effort: clear path + fly target
-            invokeVoidMethodSafe(
-                    ravenEntity,
-                    "clearPlannedPath",
-                    new Class<?>[]{String.class},
-                    new Object[]{"enter idle: " + reason}
-            );
+            // Best-effort: clear fly target
             invokeVoidMethodSafe(
                     ravenEntity,
                     "clearFlyTarget",
@@ -1225,29 +1058,6 @@ public final class Landing {
             setFieldValueSafe(ravenEntity, "stuckTicks", 0);
             setFieldValueSafe(ravenEntity, "lastDistToTarget", Double.NaN);
 
-            boolean hadAnyIntent = false;
-            try {
-                Object pg = getFieldValueSafe(ravenEntity, "pathGoal");
-                Object ppg = getFieldValueSafe(ravenEntity, "pathPendingGoal");
-                Object wp = getFieldValueSafe(ravenEntity, "pathWaypoints");
-                if (pg != null || ppg != null) hadAnyIntent = true;
-                if (wp instanceof List<?> list && !list.isEmpty()) hadAnyIntent = true;
-            } catch (Throwable ignored) {
-            }
-
-            setFieldValueSafe(ravenEntity, "pathGoal", null);
-            setFieldValueSafe(ravenEntity, "pathPendingGoal", null);
-            setFieldValueSafe(ravenEntity, "pathWaypoints", null);
-            setFieldValueSafe(ravenEntity, "pathWaypointIndex", 0);
-            setFieldValueSafe(ravenEntity, "pathRetryCooldownTicks", 0);
-
-            if (hadAnyIntent && ravenEntity.tickCount % 20 == 0) {
-                LOG.debug(
-                        "[Landing] enterIdleFromLanding: cleared leftover path/goal intent. reason={} pos={}",
-                        reason,
-                        ravenEntity.position()
-                );
-            }
 
             BlockPos committedCorner = this.landingLeafPos;
             if (committedCorner == null) {
@@ -1261,6 +1071,7 @@ public final class Landing {
 
             resetLandingState("enter idle: " + reason, ravenEntity);
             this.idlePerchCorner = committedCorner;
+            ravenEntity.recordPerchCorner(committedCorner);
 
             ravenEntity.setAIState(RavenAIState.IDLE_GROUND);
 
@@ -1273,8 +1084,8 @@ public final class Landing {
                 int idleTicksRemaining = (itr instanceof Integer) ? (Integer) itr : 0;
                 if (idleTicksRemaining <= 0) {
                     RandomSource rnd = ravenEntity.getRandom();
-                    int IDLE_MIN_TICKS = 15 * 20;
-                    int IDLE_MAX_TICKS = 30 * 20;
+                    int IDLE_MIN_TICKS = 30 * 20;
+                    int IDLE_MAX_TICKS = 60 * 20;
                     int newTicks = IDLE_MIN_TICKS + rnd.nextInt(Math.max(1, IDLE_MAX_TICKS - IDLE_MIN_TICKS + 1));
                     setFieldValueSafe(ravenEntity, "idleTicksRemaining", newTicks);
                     setFieldValueSafe(ravenEntity, "idleTargetYaw", ravenEntity.getYRot());
@@ -1418,39 +1229,22 @@ public final class Landing {
         }
 
         try {
-            BlockPos homePos = null;
-            try {
-                Object hp = getFieldValueSafe(ravenEntity, "homePos");
-                if (hp instanceof BlockPos) homePos = (BlockPos) hp;
-            } catch (Throwable ignored) {
+            long now = ravenEntity.level().getGameTime();
+            if (lastLandingSearchGameTime != Long.MIN_VALUE
+                    && now - lastLandingSearchGameTime < LAND_SEARCH_COOLDOWN_TICKS) {
+                if (lastLandingSearchResult == null) {
+                    return null;
+                }
+                if (isValidPerchCornerAtTopY(lastLandingSearchResult, ravenEntity)) {
+                    return lastLandingSearchResult;
+                }
             }
 
-            if (homePos == null) {
-                homePos = ravenEntity.blockPosition();
-            }
-
-            double hx = homePos.getX() + 0.5D;
-            double hz = homePos.getZ() + 0.5D;
-
-            double angle = rnd.nextDouble() * (Math.PI * 2.0D);
-
-            int HOME_RADIUS_BLOCKS = 50;
-            try {
-                Object hr = getFieldValueSafe(ravenEntity, "HOME_RADIUS_BLOCKS");
-                if (hr instanceof Integer) HOME_RADIUS_BLOCKS = (Integer) hr;
-            } catch (Throwable ignored) {
-            }
-
-            double radius = 4.0D + rnd.nextDouble() * (HOME_RADIUS_BLOCKS - 4.0D);
-
-            int cx = Mth.floor(hx + Math.cos(angle) * radius);
-            int cz = Mth.floor(hz + Math.sin(angle) * radius);
-
-            int baseY = homePos.getY();
-            int clampedY = baseY; // we skip clampYToHomeBounds here for safety
-
-            BlockPos center = new BlockPos(cx, clampedY, cz);
-            return pickLandingLeafBlockNear(center, rnd, ravenEntity);
+            BlockPos center = ravenEntity.blockPosition();
+            BlockPos result = pickLandingLeafBlockNear(center, rnd, ravenEntity);
+            lastLandingSearchGameTime = now;
+            lastLandingSearchResult = result;
+            return result;
         } catch (Throwable t) {
             LOG.error("[Landing] pickLandingLeafBlock failed", t);
             return null;
@@ -1474,48 +1268,8 @@ public final class Landing {
                     continue;
                 }
 
-                int scanMinY = Math.max(ravenEntity.level().getMinBuildHeight(), topY - LAND_SCAN_DOWN);
-                for (int y = topY; y >= scanMinY; y--) {
-                    BlockPos probe = new BlockPos(x, y, z);
-                    BlockState state = ravenEntity.level().getBlockState(probe);
-                    if (state == null || !state.is(BlockTags.LEAVES)) {
-                        continue;
-                    }
-
-                    BlockPos perchCorner = findValidPerchCornerNearXZ(probe.getX(), probe.getZ(), ravenEntity);
-                    if (perchCorner == null) {
-                        continue;
-                    }
-
-                    Vec3 perchCenter = perchCenterTop(perchCorner, ravenEntity);
-
-                    boolean out = false;
-                    try {
-                        Method m = null;
-                        Class<?> c = ravenEntity.getClass();
-                        while (c != null && m == null) {
-                            try {
-                                m = c.getDeclaredMethod("isOutOfHomeBounds", Vec3.class);
-                            } catch (NoSuchMethodException ignored) {
-                                c = c.getSuperclass();
-                            }
-                        }
-                        if (m != null) {
-                            m.setAccessible(true);
-                            Object res = m.invoke(ravenEntity, perchCenter);
-                            if (res instanceof Boolean) out = (Boolean) res;
-                        }
-                    } catch (Throwable ignored) {
-                        out = false;
-                    }
-                    if (out) {
-                        continue;
-                    }
-
-                    if (!isValidPerchCornerAtTopY(perchCorner, ravenEntity)) {
-                        continue;
-                    }
-
+                BlockPos perchCorner = findValidPerchCornerNearXZ(x, z, ravenEntity);
+                if (perchCorner != null) {
                     return perchCorner;
                 }
             }
@@ -1581,6 +1335,14 @@ public final class Landing {
     @Nullable
     public BlockPos findValidPerchCornerNearXZ(int x, int z, RavenEntity ravenEntity) {
         try {
+            int topY;
+            try {
+                topY = ravenEntity.level().getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
+            } catch (Throwable t) {
+                return null;
+            }
+
+            int[] yCandidates = new int[]{topY, topY - 1};
             int[][] corners = new int[][]{
                     {x, z},
                     {x - 1, z},
@@ -1591,14 +1353,11 @@ public final class Landing {
             for (int[] c : corners) {
                 int cx = c[0];
                 int cz = c[1];
-
-                Integer topY = computePerchTopY(cx, cz, ravenEntity);
-                if (topY == null) continue;
-
-                BlockPos cornerTop = new BlockPos(cx, topY, cz);
-
-                if (isValidPerchCornerAtTopY(cornerTop, ravenEntity)) {
-                    return cornerTop;
+                for (int y : yCandidates) {
+                    BlockPos cornerTop = new BlockPos(cx, y, cz);
+                    if (isLeavesPlateau2x2At(cornerTop, ravenEntity)) {
+                        return cornerTop;
+                    }
                 }
             }
 

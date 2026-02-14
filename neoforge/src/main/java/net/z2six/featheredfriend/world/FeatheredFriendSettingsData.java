@@ -1,4 +1,4 @@
-﻿// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/world/FeatheredFriendSettingsData.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/world/FeatheredFriendSettingsData.java
 package net.z2six.featheredfriend.world;
 
 import com.mojang.logging.LogUtils;

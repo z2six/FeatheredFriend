@@ -11,7 +11,7 @@ import org.slf4j.Logger;
  * Per-entity command wrapper for RavenEntity.
  *
  * Why per-entity?
- *  - Each entity instance has its own navigation, AI, and GeckoLib state.
+ *  - Each entity instance has its own movement, AI, and GeckoLib state.
  *  - Sharing a single controller across multiple entities is not a sane pattern in Minecraft.
  *
  * This is intentionally thin: it exposes a stable API surface for future AI/interaction logic.
@@ -79,10 +79,10 @@ public final class RavenControl {
     // -----------------
 
     /**
-     * Command the raven to pathfind to a target block position using vanilla navigation.
-     * This does NOT disable AI; it uses the same pathing system AI uses.
+     * Command the raven to move toward a target block position using direct flight.
+     * This does NOT disable AI; it simply arms a movement intent.
      *
-     * @return true if navigation accepted the request
+     * @return true if movement intent was accepted
      */
     public boolean moveTo(BlockPos pos, double speed) {
         try {

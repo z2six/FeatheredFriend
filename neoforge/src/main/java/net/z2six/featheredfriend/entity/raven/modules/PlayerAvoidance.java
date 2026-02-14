@@ -8,7 +8,6 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.z2six.featheredfriend.entity.raven.RavenAIState;
 import net.z2six.featheredfriend.entity.raven.RavenAnimMode;
@@ -66,7 +65,7 @@ public final class PlayerAvoidance {
 
     // IMPORTANT: check every tick so panic teleport triggers immediately when you rush into it.
     // (We keep a cheap nearest-player scan; RavenEntity itself has its own anti-spam for panic teleports.)
-    private static final int RECHECK_COOLDOWN_TICKS = 1;
+    private static final int RECHECK_COOLDOWN_TICKS = 20;
 
     /**
      * Call this from tickRoamFly() and tickIdleGround().
@@ -215,7 +214,7 @@ public final class PlayerAvoidance {
      *    avoidance bubble, the raven will not try to perch until the player backs off.
      *
      * This is deliberately conservative: it can return true even when we did not
-     * actually arm a special avoidance path, because the user wants:
+     * actually arm special avoidance behavior, because the user wants:
      *
      *      "Avoidance should never be interrupted by landing."
      */
@@ -325,24 +324,14 @@ public final class PlayerAvoidance {
             Vec3 pos = raven.position();
             double r = Math.max(0.1D, radius);
 
-            AABB box = new AABB(
-                    pos.x - r, pos.y - r, pos.z - r,
-                    pos.x + r, pos.y + r, pos.z + r
-            );
-
-            List<Player> players = raven.level().getEntitiesOfClass(Player.class, box, p -> {
-                try {
-                    return p != null && p.isAlive() && !p.isSpectator();
-                } catch (Throwable ignored) {
-                    return false;
-                }
-            });
-
             Player best = null;
             double bestD2 = Double.MAX_VALUE;
 
+            List<? extends Player> players = raven.level().players();
             for (Player p : players) {
-                if (p == null) continue;
+                if (p == null || !p.isAlive() || p.isSpectator()) {
+                    continue;
+                }
                 double d2 = p.position().distanceToSqr(pos);
                 if (d2 <= (r * r) && d2 < bestD2) {
                     bestD2 = d2;
@@ -557,7 +546,7 @@ public final class PlayerAvoidance {
             // ------------------------------------------------------------------
             // AVOIDANCE RE-ARM GUARD:
             // If an avoidance override is already active AND we still have a
-            // path or a flyTarget intent, do NOT clear / re-plan every tick.
+            // flyTarget intent, do NOT clear / re-plan every tick.
             // Just extend the override window and bail.
             // ------------------------------------------------------------------
             boolean overrideActive = ravenEntity.getPlayerAvoidanceOverrideTicks() > 0;
@@ -566,17 +555,7 @@ public final class PlayerAvoidance {
             int flyTtl = ravenEntity.getFlyTargetTimeoutTicks();
             boolean hasFlyIntent = (currentFly != null && flyTtl > 0);
 
-            List<Vec3> waypoints = ravenEntity.getPathWaypoints();
-            int pathPts = (waypoints == null ? 0 : waypoints.size());
-
-            int pathIdx = ravenEntity.getPathWaypointIndex();
-            boolean hasPathIntent =
-                    (waypoints != null
-                            && !waypoints.isEmpty()
-                            && pathIdx >= 0
-                            && pathIdx < pathPts);
-
-            if (overrideActive && (hasFlyIntent || hasPathIntent)) {
+            if (overrideActive && hasFlyIntent) {
                 int minOverride = 80; // ~4s
                 ravenEntity.setPlayerAvoidanceOverrideTicks(
                         Math.max(ravenEntity.getPlayerAvoidanceOverrideTicks(), minOverride)
@@ -592,16 +571,13 @@ public final class PlayerAvoidance {
                         name = "unknown";
                     }
 
-                    RavenEntity.getSharedLogger().info(
-                            "[RavenEntity] Player avoidance re-arm skipped (already have intent). player={} dist={} overrideTicks={} hasFlyIntent={} hasPathIntent={} flyTarget={} pathPts={} pathIdx={}",
+                    RavenEntity.getSharedLogger().debug(
+                            "[RavenEntity] Player avoidance re-arm skipped (already have intent). player={} dist={} overrideTicks={} hasFlyIntent={} flyTarget={}",
                             name,
                             String.format("%.2f", distance),
                             ravenEntity.getPlayerAvoidanceOverrideTicks(),
                             hasFlyIntent,
-                            hasPathIntent,
-                            currentFly,
-                            pathPts,
-                            pathIdx
+                            currentFly
                     );
                 }
                 return;
@@ -616,7 +592,7 @@ public final class PlayerAvoidance {
             Vec3 fleeTarget = null;
 
             // ------------------------------------------------------------------
-            // 1) ONLY use the path-friendly avoidance target (A*-aware).
+            // 1) Compute a flee target that keeps us away from the player.
             // ------------------------------------------------------------------
             try {
                 fleeTarget = computePlayerAvoidanceFleeTarget(player, ravenEntity);
@@ -630,7 +606,7 @@ public final class PlayerAvoidance {
                 }
             }
 
-            // If we could not compute a proper A*-friendly flee target, abort.
+            // If we could not compute a flee target, abort.
             if (fleeTarget == null) {
                 if (ravenEntity.tickCount % 40 == 0) {
                     String name;
@@ -642,7 +618,7 @@ public final class PlayerAvoidance {
                         name = "unknown";
                     }
                     RavenEntity.getSharedLogger().warn(
-                            "[RavenEntity] requestPlayerAvoidanceFleeTarget: no A*-based flee target (computePlayerAvoidanceFleeTarget returned null). " +
+                            "[RavenEntity] requestPlayerAvoidanceFleeTarget: no flee target (computePlayerAvoidanceFleeTarget returned null). " +
                                     "Skipping avoidance. player={} dist={} pos={}",
                             name,
                             String.format("%.2f", distance),
@@ -653,7 +629,7 @@ public final class PlayerAvoidance {
             }
 
             // ------------------------------------------------------------------
-            // 2) Use the A*-aware helper so avoidance can leverage full pathing.
+            // 2) Arm avoidance flight intent.
             // ------------------------------------------------------------------
             try {
                 ravenEntity.forceRoamFlightFromThreat(fleeTarget, player);
@@ -711,23 +687,16 @@ public final class PlayerAvoidance {
                     name = "unknown";
                 }
 
-                List<Vec3> logWaypoints = ravenEntity.getPathWaypoints();
-                int logPathPts = (logWaypoints == null ? 0 : logWaypoints.size());
-                int logPathIdx = ravenEntity.getPathWaypointIndex();
-                Vec3 pathGoalNow = ravenEntity.getPathGoal();
-                Vec3 pendingGoalNow = ravenEntity.getPathPendingGoal();
+                Vec3 flyTargetNow = ravenEntity.getFlyTarget();
 
-                RavenEntity.getSharedLogger().info(
-                        "[RavenEntity] Player avoidance flee: player={} dist={} fromPos={} fleeTarget={} overrideTicks={} pathPts={} pathIdx={} pathGoal={} pendingGoal={}",
+                RavenEntity.getSharedLogger().debug(
+                        "[RavenEntity] Player avoidance flee: player={} dist={} fromPos={} fleeTarget={} overrideTicks={} flyTarget={}",
                         name,
                         String.format("%.2f", distance),
                         ravenPos,
                         fleeTarget,
                         ravenEntity.getPlayerAvoidanceOverrideTicks(),
-                        logPathPts,
-                        logPathIdx,
-                        pathGoalNow,
-                        pendingGoalNow
+                        flyTargetNow
                 );
             }
 
