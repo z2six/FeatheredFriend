@@ -16,6 +16,7 @@ import net.minecraft.world.entity.player.Inventory;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.widget.MultiLineScrollTextWidget;
+import net.z2six.featheredfriend.config.FFClientConfig;
 import net.z2six.featheredfriend.item.SealStampItem;
 import net.z2six.featheredfriend.item.SealStampCarveLogic;
 import net.z2six.featheredfriend.neoforge.menu.SealStampMenu;
@@ -206,6 +207,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     private Button styleButton;
     private Button carveButton;
     private AbstractWidget scaleButton;
+    private boolean useVanillaFontForGothicText = FFClientConfig.isUseVanillaFontForGothicText();
 
     private int currentSlices = 6; // default
     private int currentStyleIndex = 0; // "Medieval"
@@ -306,7 +308,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                 SECRET_MAX_LINES,
                 gothic("Secret passphrase")
         );
-        this.secretField.setCustomFontId(GOTHIC_FONT_ID);
+        this.secretField.setCustomFontId(getScrollFontId());
         this.secretField.setEditable(true);
 
         // make placeholder almost-white and typed text pure white
@@ -613,6 +615,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     protected void containerTick() {
         super.containerTick();
         try {
+            refreshFontPreferenceIfNeeded();
             if (this.secretField != null) {
                 this.secretField.tick();
 
@@ -888,6 +891,9 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
     private Component gothic(String text) {
         try {
+            if (useVanillaFontForGothicText) {
+                return Component.literal(text);
+            }
             MutableComponent c = Component.literal(text);
             Style style = c.getStyle().withFont(GOTHIC_FONT_ID);
             c.setStyle(style);
@@ -896,6 +902,24 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             LOG.error("[SealStampScreen] gothic() failed, falling back to plain text", t);
             return Component.literal(text);
         }
+    }
+
+    private ResourceLocation getScrollFontId() {
+        return useVanillaFontForGothicText ? null : GOTHIC_FONT_ID;
+    }
+
+    private void refreshFontPreferenceIfNeeded() {
+        boolean now = FFClientConfig.isUseVanillaFontForGothicText();
+        if (now == useVanillaFontForGothicText) {
+            return;
+        }
+        useVanillaFontForGothicText = now;
+
+        if (this.secretField != null) {
+            this.secretField.setCustomFontId(getScrollFontId());
+        }
+        updateButtonLabels();
+        updateScaleButtonLabelFromOptions();
     }
 
     private String safeString(String s) {

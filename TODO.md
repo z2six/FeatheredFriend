@@ -65,11 +65,5 @@ A more fantasy version of security camera's.
 ### More stealing RP
 - When raven gets hit (and doesn't dodge), drop scroll and go into panick mode (playerAvoidance) or despawn
 
-### Dedicated client-sided "favourite" stamp storage
-- Currently, the favouriting of Seal Stamps is not stored therefore resets each client restart.
-
-### Configurable months
-- Allow users to configure the amount of months per year
-
 ### Font change client-sided config
 Allow clients to switch back to Vanilla fonts

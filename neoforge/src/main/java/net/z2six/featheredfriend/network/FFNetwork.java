@@ -98,13 +98,19 @@ public final class FFNetwork {
             );
 
             registrar.playToServer(
+                    RavenNameCancelledPacket.TYPE,
+                    RavenNameCancelledPacket.STREAM_CODEC,
+                    FFNetwork::handleRavenNameCancelledOnServer
+            );
+
+            registrar.playToServer(
                     WhistleForRavenPacket.TYPE,
                     WhistleForRavenPacket.STREAM_CODEC,
                     FFNetwork::handleWhistleForRavenOnServer
             );
 
             LOG.debug("[FFNetwork] Registered payload channels: known_players, request_known_players, open_raven_name_screen, " +
-                    "seal_stamp_carve_result, wax_seal, break_seal, raven_name_chosen, whistle_for_raven");
+                    "seal_stamp_carve_result, wax_seal, break_seal, raven_name_chosen, raven_name_cancelled, whistle_for_raven");
 
         } catch (Throwable t) {
             LOG.error("[FFNetwork] Failed to register payload handlers", t);
@@ -276,6 +282,23 @@ public final class FFNetwork {
         });
     }
 
+    private static void handleRavenNameCancelledOnServer(@NotNull RavenNameCancelledPacket payload,
+                                                         @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                if (!(context.player() instanceof ServerPlayer serverPlayer)) {
+                    LOG.error("[FFNetwork] handleRavenNameCancelledOnServer: context.player() is not a ServerPlayer");
+                    return;
+                }
+
+                RavenNameCancelledPacket.handle(payload, serverPlayer);
+
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] Failed to handle RavenNameCancelledPacket on server", t);
+            }
+        });
+    }
+
     // ---------------------------
     // Send helpers
     // ---------------------------
@@ -290,6 +313,17 @@ public final class FFNetwork {
                     ravenEntityId, safeName.length());
         } catch (Throwable t) {
             LOG.error("[FFNetwork] sendRavenNameChosenToServer failed", t);
+        }
+    }
+
+    public static void sendRavenNameCancelledToServer(int ravenEntityId) {
+        try {
+            RavenNameCancelledPacket p = new RavenNameCancelledPacket(ravenEntityId);
+            PacketDistributor.sendToServer(p);
+            LOG.debug("[FFNetwork] Sent RavenNameCancelledPacket to server (ravenEntityId={})",
+                    ravenEntityId);
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendRavenNameCancelledToServer failed", t);
         }
     }
 

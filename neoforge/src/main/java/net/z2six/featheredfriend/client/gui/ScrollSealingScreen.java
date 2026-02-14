@@ -16,6 +16,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.nbt.CompoundTag;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.config.FFClientConfig;
 import net.z2six.featheredfriend.platform.Services;
 import net.z2six.featheredfriend.client.gui.widget.MultiLineScrollTextWidget;
 import net.z2six.featheredfriend.client.gui.widget.RecipientOverlay;
@@ -105,6 +106,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     }
 
     private ScrollAnimPhase scrollAnimPhase = ScrollAnimPhase.OPENING;
+    private boolean useVanillaFontForGothicText = FFClientConfig.isUseVanillaFontForGothicText();
 
     // ---------------------------------------------------------------------
     // Pearl animation configuration
@@ -316,7 +318,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 DATE_MAX_CHARS,
                 1,
                 Component.literal("Date"),
-                GOTHIC_FONT_ID,
+                getScrollFontId(),
                 false
         );
         this.dateWidget.setEditable(false);
@@ -333,7 +335,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 RECIPIENT_MAX_CHARS,
                 1,
                 Component.literal("Dear Recipient"),
-                GOTHIC_FONT_ID,
+                getScrollFontId(),
                 false
         );
         this.addRenderableWidget(this.recipientField);
@@ -348,7 +350,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 MESSAGE_MAX_CHARS,
                 MESSAGE_MAX_LINES,
                 Component.literal("Click here to write your message..."),
-                GOTHIC_FONT_ID,
+                getScrollFontId(),
                 true
         );
         this.addRenderableWidget(this.messageWidget);
@@ -363,7 +365,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 SIGNATURE_MAX_CHARS,
                 2,
                 Component.literal("Signature"),
-                GOTHIC_FONT_ID,
+                getScrollFontId(),
                 false
         );
         this.signatureWidget.setText("");
@@ -1178,6 +1180,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
     protected void containerTick() {
         super.containerTick();
         try {
+            refreshFontPreferenceIfNeeded();
             if (this.dateWidget != null) this.dateWidget.tick();
             if (this.recipientField != null) this.recipientField.tick();
             if (this.messageWidget != null) this.messageWidget.tick();
@@ -1213,6 +1216,23 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         } catch (Throwable t) {
             LOG.error("[ScrollSealingScreen] containerTick failed", t);
         }
+    }
+
+    private ResourceLocation getScrollFontId() {
+        return useVanillaFontForGothicText ? null : GOTHIC_FONT_ID;
+    }
+
+    private void refreshFontPreferenceIfNeeded() {
+        boolean now = FFClientConfig.isUseVanillaFontForGothicText();
+        if (now == useVanillaFontForGothicText) {
+            return;
+        }
+        useVanillaFontForGothicText = now;
+        ResourceLocation fontId = getScrollFontId();
+        if (this.dateWidget != null) this.dateWidget.setCustomFontId(fontId);
+        if (this.recipientField != null) this.recipientField.setCustomFontId(fontId);
+        if (this.messageWidget != null) this.messageWidget.setCustomFontId(fontId);
+        if (this.signatureWidget != null) this.signatureWidget.setCustomFontId(fontId);
     }
 
     // ---------------------------------------------------------------------

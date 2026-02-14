@@ -149,6 +149,37 @@ public final class TamedRaven {
     }
 
     /**
+     * Called when the player cancels the naming GUI.
+     * Despawns the raven with the usual FX, without storing any tamed data.
+     */
+    public void onNamingCancelled(ServerPlayer player) {
+        try {
+            if (player == null) return;
+            if (raven == null) return;
+            if (raven.level() == null) return;
+            if (!(raven.level() instanceof ServerLevel serverLevel)) return;
+
+            if (pendingOwnerUuid == null || !pendingOwnerUuid.equals(player.getUUID())) {
+                if (raven.tickCount % 40 == 0) {
+                    LOG.warn("[TamedRaven] onNamingCancelled: owner mismatch or no pending owner. expected={} got={}",
+                            pendingOwnerUuid, player.getUUID());
+                }
+                return;
+            }
+
+            this.namingGuiRequested = false;
+            this.tamingCompleted = false;
+            this.pendingOwnerUuid = null;
+
+            String name = buildDefaultName(player);
+            beginDespawnWithFx(serverLevel, player, name);
+
+        } catch (Throwable t) {
+            LOG.error("[TamedRaven] onNamingCancelled failed safely", t);
+        }
+    }
+
+    /**
      * Server-side tick: drives the "fade out and then despawn" sequence
      * after naming is completed or when scroll-despawn requests FX.
      *

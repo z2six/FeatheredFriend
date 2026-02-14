@@ -157,6 +157,22 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
         reflowLines();
     }
 
+    public void setCustomFontId(@Nullable ResourceLocation fontId) {
+        try {
+            if (this.customFontId == null && fontId == null) {
+                return;
+            }
+            if (this.customFontId != null && this.customFontId.equals(fontId)) {
+                return;
+            }
+            this.customFontId = fontId;
+            this.charWidthCache.clear();
+            reflowLines();
+        } catch (Throwable t) {
+            LOG.error("[MultiLineScrollTextWidget] setCustomFontId failed", t);
+        }
+    }
+
     // ---------------------------------------------------------------------
     // Public API
     // ---------------------------------------------------------------------
@@ -184,19 +200,6 @@ public class MultiLineScrollTextWidget extends AbstractWidget {
 
     public void setEditable(boolean editable) {
         this.editable = editable;
-    }
-
-    public void setCustomFontId(@Nullable ResourceLocation fontId) {
-        this.customFontId = fontId;
-
-        // NEW: invalidate caches because width measurement depends on custom font.
-        try {
-            this.charWidthCache.clear();
-        } catch (Throwable t) {
-            LOG.error("[MultiLineScrollTextWidget] Failed to clear font caches", t);
-        }
-
-        LOG.debug("[MultiLineScrollTextWidget] setCustomFontId -> {}", fontId);
     }
 
     /**

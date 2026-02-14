@@ -25,6 +25,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
 
     // client-only preference
     private boolean autoSummonOnScroll;
+    private boolean useVanillaFontForGothicText;
 
     // server-owned + synced
     private boolean chatDisabled;
@@ -32,6 +33,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
     private boolean canEditChat = false;
 
     private Button autoSummonButton;
+    private Button gothicFontButton;
     private Button chatDisabledButton;
 
     public FeatheredFriendSettingsScreen() {
@@ -66,6 +68,27 @@ public class FeatheredFriendSettingsScreen extends Screen {
                 .bounds(centerX - 100, y, 200, 20)
                 .build();
         this.addRenderableWidget(this.autoSummonButton);
+
+        y += 24;
+
+        this.gothicFontButton = Button.builder(
+                        textForGothicFont(),
+                        btn -> {
+                            useVanillaFontForGothicText = !useVanillaFontForGothicText;
+                            btn.setMessage(textForGothicFont());
+
+                            try {
+                                FFClientConfig.setUseVanillaFontForGothicText(useVanillaFontForGothicText);
+                                FFClientConfig.save();
+                                LOG.debug("[FeatheredFriendSettingsScreen] Updated client config useVanillaFontForGothicText -> {}",
+                                        useVanillaFontForGothicText);
+                            } catch (Throwable t) {
+                                LOG.error("[FeatheredFriendSettingsScreen] Failed to update useVanillaFontForGothicText client config", t);
+                            }
+                        })
+                .bounds(centerX - 100, y, 200, 20)
+                .build();
+        this.addRenderableWidget(this.gothicFontButton);
 
         y += 24;
 
@@ -125,6 +148,10 @@ public class FeatheredFriendSettingsScreen extends Screen {
                 this.autoSummonButton.setMessage(textForAutoSummon());
             }
 
+            if (this.gothicFontButton != null) {
+                this.gothicFontButton.setMessage(textForGothicFont());
+            }
+
             if (this.chatDisabledButton != null) {
                 this.chatDisabledButton.setMessage(textForChatDisabled());
                 this.chatDisabledButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
@@ -179,6 +206,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
         try {
             // client-only preference
             autoSummonOnScroll = FFClientConfig.isAutoSummonOnScroll();
+            useVanillaFontForGothicText = FFClientConfig.isUseVanillaFontForGothicText();
 
             // server synced
             this.hasServerSettings = FFPayloads.ClientState.hasSynced();
@@ -224,6 +252,10 @@ public class FeatheredFriendSettingsScreen extends Screen {
 
     private Component textForAutoSummon() {
         return Component.literal("Auto-summon raven on scroll: " + (autoSummonOnScroll ? "ON" : "OFF"));
+    }
+
+    private Component textForGothicFont() {
+        return Component.literal("Use vanilla font for scroll text: " + (useVanillaFontForGothicText ? "ON" : "OFF"));
     }
 
     private Component textForChatDisabled() {

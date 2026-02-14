@@ -22,9 +22,11 @@ public final class FFClientConfig {
     private static final Logger LOG = LogUtils.getLogger();
 
     public static final boolean DEFAULT_AUTO_SUMMON_ON_SCROLL = true;
+    public static final boolean DEFAULT_USE_VANILLA_FONT_FOR_GOTHIC_TEXT = false;
 
     public static final ModConfigSpec CLIENT_SPEC;
     public static final ModConfigSpec.BooleanValue AUTO_SUMMON_ON_SCROLL;
+    public static final ModConfigSpec.BooleanValue USE_VANILLA_FONT_FOR_GOTHIC_TEXT;
     public static final ModConfigSpec.ConfigValue<String> FAVORITE_STAMP_KEY;
 
     static {
@@ -38,6 +40,13 @@ public final class FFClientConfig {
                         "If false, you must whistle manually."
                 )
                 .define("autoSummonOnScroll", DEFAULT_AUTO_SUMMON_ON_SCROLL);
+
+        USE_VANILLA_FONT_FOR_GOTHIC_TEXT = builder
+                .comment(
+                        "If true, use the default Minecraft font instead of the gothic12 font in scroll/stamp UIs.",
+                        "If false, keep the gothic12 font."
+                )
+                .define("useVanillaFontForGothicText", DEFAULT_USE_VANILLA_FONT_FOR_GOTHIC_TEXT);
 
         FAVORITE_STAMP_KEY = builder
                 .comment(
@@ -84,6 +93,25 @@ public final class FFClientConfig {
             LOG.debug("[FFClientConfig] autoSummonOnScroll set to {}", value);
         } catch (Throwable t) {
             LOG.error("[FFClientConfig] setAutoSummonOnScroll failed safely: {}", t.toString());
+        }
+    }
+
+    public static boolean isUseVanillaFontForGothicText() {
+        try {
+            return USE_VANILLA_FONT_FOR_GOTHIC_TEXT.get();
+        } catch (Throwable t) {
+            LOG.error("[FFClientConfig] isUseVanillaFontForGothicText failed, returning default {}",
+                    DEFAULT_USE_VANILLA_FONT_FOR_GOTHIC_TEXT, t);
+            return DEFAULT_USE_VANILLA_FONT_FOR_GOTHIC_TEXT;
+        }
+    }
+
+    public static void setUseVanillaFontForGothicText(boolean value) {
+        try {
+            USE_VANILLA_FONT_FOR_GOTHIC_TEXT.set(value);
+            LOG.debug("[FFClientConfig] useVanillaFontForGothicText set to {}", value);
+        } catch (Throwable t) {
+            LOG.error("[FFClientConfig] setUseVanillaFontForGothicText failed safely: {}", t.toString());
         }
     }
 

@@ -182,6 +182,7 @@ public class RavenNamingScreen extends Screen {
     private void onCancel() {
         try {
             LOG.debug("[RavenNamingScreen] onCancel: closing without sending name (ravenEntityId={})", ravenEntityId);
+            FFNetwork.sendRavenNameCancelledToServer(ravenEntityId);
             this.onClose();
         } catch (Throwable t) {
             LOG.error("[RavenNamingScreen] onCancel failed", t);

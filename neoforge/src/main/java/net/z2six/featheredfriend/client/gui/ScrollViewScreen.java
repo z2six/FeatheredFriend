@@ -22,6 +22,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.CustomData;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.config.FFClientConfig;
 import net.z2six.featheredfriend.client.gui.widget.MultiLineScrollTextWidget;
 import net.z2six.featheredfriend.neoforge.menu.ScrollViewMenu;
 import net.z2six.featheredfriend.network.FFNetwork;
@@ -93,6 +94,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
     private ViewPhase viewPhase = ViewPhase.CLOSED_IDLE;
     private int viewPhaseTicks = 0;
+    private boolean useVanillaFontForGothicText = FFClientConfig.isUseVanillaFontForGothicText();
 
     private static final int OPENING_ANIM_TICKS = 20;
 
@@ -462,7 +464,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                     DATE_MAX_CHARS,
                     1,
                     Component.literal("Date"),
-                    GOTHIC_FONT_ID,
+                    getScrollFontId(),
                     false
             );
             this.dateWidget.setEditable(false);
@@ -478,7 +480,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                     RECIPIENT_MAX_CHARS,
                     1,
                     Component.literal("Dear Recipient"),
-                    GOTHIC_FONT_ID,
+                    getScrollFontId(),
                     false
             );
             this.recipientWidget.setEditable(false);
@@ -494,7 +496,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                     MESSAGE_MAX_CHARS,
                     MESSAGE_MAX_LINES,
                     Component.literal(""),
-                    GOTHIC_FONT_ID,
+                    getScrollFontId(),
                     true
             );
             this.messageWidget.setEditable(false);
@@ -510,7 +512,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                     SIGNATURE_MAX_CHARS,
                     2,
                     Component.literal("Signature"),
-                    GOTHIC_FONT_ID,
+                    getScrollFontId(),
                     false
             );
             this.signatureWidget.setEditable(false);
@@ -572,6 +574,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     protected void containerTick() {
         super.containerTick();
         try {
+            refreshFontPreferenceIfNeeded();
             if (this.dateWidget != null) this.dateWidget.tick();
             if (this.recipientWidget != null) this.recipientWidget.tick();
             if (this.messageWidget != null) this.messageWidget.tick();
@@ -581,6 +584,23 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         } catch (Throwable t) {
             LOG.error("[ScrollViewScreen] containerTick failed", t);
         }
+    }
+
+    private ResourceLocation getScrollFontId() {
+        return useVanillaFontForGothicText ? null : GOTHIC_FONT_ID;
+    }
+
+    private void refreshFontPreferenceIfNeeded() {
+        boolean now = FFClientConfig.isUseVanillaFontForGothicText();
+        if (now == useVanillaFontForGothicText) {
+            return;
+        }
+        useVanillaFontForGothicText = now;
+        ResourceLocation fontId = getScrollFontId();
+        if (this.dateWidget != null) this.dateWidget.setCustomFontId(fontId);
+        if (this.recipientWidget != null) this.recipientWidget.setCustomFontId(fontId);
+        if (this.messageWidget != null) this.messageWidget.setCustomFontId(fontId);
+        if (this.signatureWidget != null) this.signatureWidget.setCustomFontId(fontId);
     }
 
     private void tickViewPhase() {
