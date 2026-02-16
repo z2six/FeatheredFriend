@@ -22,6 +22,7 @@ import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.debug.RavenChestPerchDebugService;
 import net.z2six.featheredfriend.world.RavenCourierData;
 import org.slf4j.Logger;
 
@@ -144,6 +145,17 @@ public final class FeatheredFriendCommands {
                                             )
                                     )
                             )
+                            // -----------------------------------------------------------------
+                            // /featheredfriend raven_chest_debug ...
+                            // -----------------------------------------------------------------
+                            .then(Commands.literal("raven_chest_debug")
+                                    .then(Commands.literal("start")
+                                            .executes(FeatheredFriendCommands::executeRavenChestDebugStart)
+                                    )
+                                    .then(Commands.literal("stop")
+                                            .executes(FeatheredFriendCommands::executeRavenChestDebugStop)
+                                    )
+                            )
             );
 
             // Removed redundant alias: /ff_clear_tamed_raven
@@ -153,7 +165,8 @@ public final class FeatheredFriendCommands {
                     "/featheredfriend tamed_raven list, " +
                     "/featheredfriend tamed_raven add <player> <name>, " +
                     "/featheredfriend courier list [player], " +
-                    "/featheredfriend courier clear [player]");
+                    "/featheredfriend courier clear [player], " +
+                    "/featheredfriend raven_chest_debug start|stop");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendCommands] onRegisterCommands failed", t);
         }
@@ -179,7 +192,7 @@ public final class FeatheredFriendCommands {
         } catch (CommandSyntaxException ex) {
             LOG.warn("[FeatheredFriendCommands] clear_tamed_raven: source is not a player (name={})",
                     source.getTextName());
-            source.sendFailure(Component.literal("[FeatheredFriend] This command must be run by a player."));
+            source.sendFailure(Component.translatable("message.featheredfriend.command.player_only"));
             throw ex;
         }
 
@@ -187,22 +200,19 @@ public final class FeatheredFriendCommands {
         if (server == null) {
             LOG.warn("[FeatheredFriendCommands] clear_tamed_raven: server is null for player={}",
                     player.getGameProfile().getName());
-            source.sendFailure(Component.literal("[FeatheredFriend] Internal error: server is null."));
+            source.sendFailure(Component.translatable("message.featheredfriend.command.internal_server_null"));
             return 0;
         }
 
         boolean cleared = clearPlayerTamedRavenData(player);
         final boolean clearedFinal = cleared;
 
-        source.sendSuccess(
-                () -> Component.literal(
-                        "[FeatheredFriend] "
-                                + (clearedFinal
-                                ? "Cleared tamed raven data for " + player.getGameProfile().getName()
-                                : "Found no tamed raven data to clear for " + player.getGameProfile().getName())
-                ),
-                true
-        );
+        source.sendSuccess(() -> Component.translatable(
+                clearedFinal
+                        ? "message.featheredfriend.command.clear_tamed_raven.cleared"
+                        : "message.featheredfriend.command.clear_tamed_raven.none",
+                player.getGameProfile().getName()
+        ), true);
 
         return cleared ? 1 : 0;
     }
@@ -308,19 +318,19 @@ public final class FeatheredFriendCommands {
         try {
             MinecraftServer server = source.getServer();
             if (server == null) {
-                source.sendFailure(Component.literal("[FeatheredFriend] Internal error: server is null."));
+                source.sendFailure(Component.translatable("message.featheredfriend.command.internal_server_null"));
                 LOG.warn("[FeatheredFriendCommands] tamed_raven list: source.getServer() was null");
                 return 0;
             }
 
             Path playerDataDir = getPlayerDataDir(server);
             if (playerDataDir == null) {
-                source.sendFailure(Component.literal("[FeatheredFriend] Could not locate playerdata directory (see server log)."));
+                source.sendFailure(Component.translatable("message.featheredfriend.command.playerdata_dir_missing"));
                 return 0;
             }
 
             if (!Files.exists(playerDataDir) || !Files.isDirectory(playerDataDir)) {
-                source.sendFailure(Component.literal("[FeatheredFriend] playerdata directory not found: " + playerDataDir));
+                source.sendFailure(Component.translatable("message.featheredfriend.command.playerdata_dir_not_found", playerDataDir));
                 LOG.warn("[FeatheredFriendCommands] tamed_raven list: playerdata dir missing/not directory: {}", playerDataDir);
                 return 0;
             }
@@ -335,7 +345,7 @@ public final class FeatheredFriendCommands {
                 LOG.warn("[FeatheredFriendCommands] tamed_raven list: failed building online name map: {}", t.toString());
             }
 
-            List<String> lines = new ArrayList<>();
+            List<Component> lines = new ArrayList<>();
             int scanned = 0;
 
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(playerDataDir, "*.dat")) {
@@ -380,34 +390,36 @@ public final class FeatheredFriendCommands {
 
                     String ravenName = tamed.contains(KEY_RAVEN_NAME, Tag.TAG_STRING) ? tamed.getString(KEY_RAVEN_NAME) : "";
                     if (ravenName == null) ravenName = "";
-                    if (ravenName.isBlank()) ravenName = "(unnamed)";
+                    if (ravenName.isBlank()) ravenName = Component.translatable("message.featheredfriend.command.tamed_raven.unnamed").getString();
 
                     String ownerName = onlineNameByUuid.get(playerUuid);
                     if (ownerName == null || ownerName.isBlank()) {
                         ownerName = safeGuessNameFromPlayerRoot(playerRoot);
                     }
                     if (ownerName == null || ownerName.isBlank()) {
-                        ownerName = "(unknown)";
+                        ownerName = Component.translatable("message.featheredfriend.command.tamed_raven.unknown_owner").getString();
                     }
 
                     String ownerDim = tamed.contains(KEY_OWNER_DIMENSION, Tag.TAG_STRING) ? tamed.getString(KEY_OWNER_DIMENSION) : "";
                     if (ownerDim == null) ownerDim = "";
 
-                    lines.add(String.format(" - owner='%s' [%s] ravenName='%s' ownerDim='%s'",
-                            ownerName, playerUuid, ravenName, ownerDim));
+                    lines.add(Component.translatable(
+                            "message.featheredfriend.command.tamed_raven.entry",
+                            ownerName, String.valueOf(playerUuid), ravenName, ownerDim
+                    ));
                 }
             } catch (Throwable t) {
                 LOG.error("[FeatheredFriendCommands] tamed_raven list: directory scan failed for dir={}", playerDataDir, t);
-                source.sendFailure(Component.literal("[FeatheredFriend] Error scanning playerdata directory; see log."));
+                source.sendFailure(Component.translatable("message.featheredfriend.command.tamed_raven.scan_error"));
                 return 0;
             }
 
             if (lines.isEmpty()) {
                 final int scannedFinal = scanned;
-                source.sendSuccess(
-                        () -> Component.literal("[FeatheredFriend] No stored tamed ravens found (scanned " + scannedFinal + " playerdata files)."),
-                        false
-                );
+                source.sendSuccess(() -> Component.translatable(
+                        "message.featheredfriend.command.tamed_raven.none",
+                        scannedFinal
+                ), false);
                 LOG.debug("[FeatheredFriendCommands] tamed_raven list: none found (scanned={} dir={})", scannedFinal, playerDataDir);
                 return 0;
             }
@@ -415,14 +427,14 @@ public final class FeatheredFriendCommands {
             final int scannedFinal = scanned;
             final int foundFinal = lines.size();
 
-            source.sendSuccess(
-                    () -> Component.literal("[FeatheredFriend] Stored tamed ravens: " + foundFinal + " (scanned " + scannedFinal + " playerdata files)"),
-                    false
-            );
+            source.sendSuccess(() -> Component.translatable(
+                    "message.featheredfriend.command.tamed_raven.summary",
+                    foundFinal, scannedFinal
+            ), false);
 
-            for (String line : lines) {
-                final String out = line;
-                source.sendSuccess(() -> Component.literal(out), false);
+            for (Component line : lines) {
+                final Component out = line;
+                source.sendSuccess(() -> out, false);
             }
 
             LOG.debug("[FeatheredFriendCommands] tamed_raven list: found={} scanned={} dir={}", foundFinal, scannedFinal, playerDataDir);
@@ -430,7 +442,7 @@ public final class FeatheredFriendCommands {
 
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendCommands] executeTamedRavenListAll failed", t);
-            source.sendFailure(Component.literal("[FeatheredFriend] Error while listing stored tamed ravens; see log."));
+            source.sendFailure(Component.translatable("message.featheredfriend.command.tamed_raven.list_error"));
             return 0;
         }
     }
@@ -447,14 +459,14 @@ public final class FeatheredFriendCommands {
 
         MinecraftServer server = source.getServer();
         if (server == null) {
-            source.sendFailure(Component.literal("[FeatheredFriend] Internal error: server is null."));
+            source.sendFailure(Component.translatable("message.featheredfriend.command.internal_server_null"));
             LOG.warn("[FeatheredFriendCommands] tamed_raven add: source.getServer() was null");
             return 0;
         }
 
         Collection<GameProfile> profiles = GameProfileArgument.getGameProfiles(ctx, "player");
         if (profiles == null || profiles.isEmpty()) {
-            source.sendFailure(Component.literal("[FeatheredFriend] No matching player found."));
+            source.sendFailure(Component.translatable("message.featheredfriend.command.no_matching_player"));
             return 0;
         }
 
@@ -462,7 +474,7 @@ public final class FeatheredFriendCommands {
         UUID targetUuid = profile.getId();
         String targetName = profile.getName();
         if (targetUuid == null) {
-            source.sendFailure(Component.literal("[FeatheredFriend] Target player's UUID is null (cannot proceed)."));
+            source.sendFailure(Component.translatable("message.featheredfriend.command.target_uuid_null_cannot_proceed"));
             LOG.warn("[FeatheredFriendCommands] tamed_raven add: profile had null UUID (name={})", targetName);
             return 0;
         }
@@ -482,10 +494,13 @@ public final class FeatheredFriendCommands {
         if (online != null) {
             boolean ok = setTamedRavenPersistentDataOnline(online, ravenName);
             if (ok) {
-                source.sendSuccess(() -> Component.literal("[FeatheredFriend] Set tamed raven for online player '" + online.getGameProfile().getName() + "' to '" + ravenName + "'."), true);
+                source.sendSuccess(() -> Component.translatable(
+                        "message.featheredfriend.command.tamed_raven.add.online_success",
+                        online.getGameProfile().getName(), ravenName
+                ), true);
                 return 1;
             } else {
-                source.sendFailure(Component.literal("[FeatheredFriend] Failed to set tamed raven for online player; see log."));
+                source.sendFailure(Component.translatable("message.featheredfriend.command.tamed_raven.add.online_failure"));
                 return 0;
             }
         }
@@ -493,13 +508,16 @@ public final class FeatheredFriendCommands {
         // 2) Offline: edit playerdata file on disk.
         Path playerDataDir = getPlayerDataDir(server);
         if (playerDataDir == null) {
-            source.sendFailure(Component.literal("[FeatheredFriend] Could not locate playerdata directory (see server log)."));
+            source.sendFailure(Component.translatable("message.featheredfriend.command.playerdata_dir_missing"));
             return 0;
         }
 
         Path playerDat = playerDataDir.resolve(targetUuid.toString() + ".dat");
         if (!Files.exists(playerDat)) {
-            source.sendFailure(Component.literal("[FeatheredFriend] Playerdata file not found for " + (targetName != null ? targetName : targetUuid) + " (" + playerDat + ")."));
+            source.sendFailure(Component.translatable(
+                    "message.featheredfriend.command.tamed_raven.add.playerdata_not_found",
+                    (targetName != null ? targetName : targetUuid), playerDat
+            ));
             LOG.warn("[FeatheredFriendCommands] tamed_raven add: offline playerdat missing: {}", playerDat);
             return 0;
         }
@@ -507,10 +525,13 @@ public final class FeatheredFriendCommands {
         boolean wrote = setTamedRavenPersistentDataOffline(playerDat, targetUuid, ravenName);
         if (wrote) {
             String display = (targetName == null || targetName.isBlank()) ? targetUuid.toString() : targetName;
-            source.sendSuccess(() -> Component.literal("[FeatheredFriend] Set tamed raven for offline player '" + display + "' to '" + ravenName + "'."), true);
+            source.sendSuccess(() -> Component.translatable(
+                    "message.featheredfriend.command.tamed_raven.add.offline_success",
+                    display, ravenName
+            ), true);
             return 1;
         } else {
-            source.sendFailure(Component.literal("[FeatheredFriend] Failed to set tamed raven for offline player; see log."));
+            source.sendFailure(Component.translatable("message.featheredfriend.command.tamed_raven.add.offline_failure"));
             return 0;
         }
     }
@@ -641,14 +662,14 @@ public final class FeatheredFriendCommands {
     private static String sanitizeRavenName(String raw) {
         try {
             String s = raw == null ? "" : raw.trim();
-            if (s.isEmpty()) s = "Raven";
+            if (s.isEmpty()) s = Component.translatable("entity.featheredfriend.raven").getString();
             if (s.length() > MAX_RAVEN_NAME_CHARS) {
                 s = s.substring(0, MAX_RAVEN_NAME_CHARS);
             }
             return s;
         } catch (Throwable t) {
             LOG.warn("[FeatheredFriendCommands] sanitizeRavenName failed safely: {}", t.toString());
-            return "Raven";
+            return Component.translatable("entity.featheredfriend.raven").getString();
         }
     }
 
@@ -818,6 +839,50 @@ public final class FeatheredFriendCommands {
     }
 
     // ---------------------------------------------------------------------
+    // Raven chest perch debug commands
+    // ---------------------------------------------------------------------
+
+    private static int executeRavenChestDebugStart(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        CommandSourceStack source = ctx.getSource();
+        ServerPlayer player;
+        try {
+            player = source.getPlayerOrException();
+        } catch (CommandSyntaxException ex) {
+            source.sendFailure(Component.translatable("message.featheredfriend.command.player_only"));
+            throw ex;
+        }
+
+        boolean started = RavenChestPerchDebugService.startFor(player);
+        if (started) {
+            source.sendSuccess(() -> Component.translatable("message.featheredfriend.command.raven_chest_debug.start_success"), false);
+            return 1;
+        }
+
+        source.sendFailure(Component.translatable("message.featheredfriend.command.raven_chest_debug.start_failure"));
+        return 0;
+    }
+
+    private static int executeRavenChestDebugStop(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        CommandSourceStack source = ctx.getSource();
+        ServerPlayer player;
+        try {
+            player = source.getPlayerOrException();
+        } catch (CommandSyntaxException ex) {
+            source.sendFailure(Component.translatable("message.featheredfriend.command.player_only"));
+            throw ex;
+        }
+
+        boolean stopped = RavenChestPerchDebugService.stopFor(player, true);
+        if (stopped) {
+            source.sendSuccess(() -> Component.translatable("message.featheredfriend.command.raven_chest_debug.stop_success"), false);
+            return 1;
+        }
+
+        source.sendFailure(Component.translatable("message.featheredfriend.command.raven_chest_debug.stop_none"));
+        return 0;
+    }
+
+    // ---------------------------------------------------------------------
     // Courier commands
     // ---------------------------------------------------------------------
 
@@ -834,41 +899,36 @@ public final class FeatheredFriendCommands {
 
             List<RavenCourierData.DeliveryJob> jobs = data.getAllJobsFlat();
             if (jobs.isEmpty()) {
-                source.sendSuccess(
-                        () -> Component.literal("[FeatheredFriend] No pending raven courier jobs found."),
-                        false
-                );
+                source.sendSuccess(() -> Component.translatable("message.featheredfriend.command.courier.none"), false);
                 return 0;
             }
 
-            source.sendSuccess(
-                    () -> Component.literal("[FeatheredFriend] Pending raven courier jobs: " + jobs.size()),
-                    false
-            );
+            source.sendSuccess(() -> Component.translatable(
+                    "message.featheredfriend.command.courier.summary", jobs.size()
+            ), false);
 
             for (RavenCourierData.DeliveryJob job : jobs) {
                 if (job == null) continue;
 
-                final String line = String.format(
-                        " - id=%d sender='%s' [%s] -> recipient='%s' [%s] inFlight=%s failed=%s failureCount=%d lastFailTime=%d lastFailReason='%s'",
+                source.sendSuccess(() -> Component.translatable(
+                        "message.featheredfriend.command.courier.entry",
                         job.jobId,
                         job.senderName,
-                        job.senderUuid,
+                        String.valueOf(job.senderUuid),
                         job.recipientName,
-                        job.recipientUuid,
+                        String.valueOf(job.recipientUuid),
                         job.inFlight,
                         job.failed,
                         job.failureCount,
                         job.lastFailureGameTime,
                         (job.lastFailureReason == null ? "" : job.lastFailureReason)
-                );
-                source.sendSuccess(() -> Component.literal(line), false);
+                ), false);
             }
 
             return jobs.size();
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendCommands] executeCourierListAll failed", t);
-            source.sendFailure(Component.literal("[FeatheredFriend] Error while listing courier jobs; see log."));
+            source.sendFailure(Component.translatable("message.featheredfriend.command.courier.list_error"));
             return 0;
         }
     }
@@ -883,7 +943,7 @@ public final class FeatheredFriendCommands {
         try {
             Collection<GameProfile> profiles = GameProfileArgument.getGameProfiles(ctx, "player");
             if (profiles.isEmpty()) {
-                source.sendFailure(Component.literal("[FeatheredFriend] No matching player found."));
+                source.sendFailure(Component.translatable("message.featheredfriend.command.no_matching_player"));
                 return 0;
             }
 
@@ -892,7 +952,7 @@ public final class FeatheredFriendCommands {
             String targetName = profile.getName();
 
             if (targetUuid == null) {
-                source.sendFailure(Component.literal("[FeatheredFriend] Target player UUID is null."));
+                source.sendFailure(Component.translatable("message.featheredfriend.command.target_uuid_null"));
                 return 0;
             }
 
@@ -901,38 +961,37 @@ public final class FeatheredFriendCommands {
 
             List<RavenCourierData.DeliveryJob> jobs = data.getJobsForPlayer(targetUuid);
             if (jobs.isEmpty()) {
-                source.sendSuccess(
-                        () -> Component.literal("[FeatheredFriend] No courier jobs found for player '" + targetName + "'."),
-                        false
-                );
+                source.sendSuccess(() -> Component.translatable(
+                        "message.featheredfriend.command.courier.player_none",
+                        targetName
+                ), false);
                 return 0;
             }
 
-            source.sendSuccess(
-                    () -> Component.literal("[FeatheredFriend] Courier jobs for '" + targetName + "': " + jobs.size()),
-                    false
-            );
+            source.sendSuccess(() -> Component.translatable(
+                    "message.featheredfriend.command.courier.player_summary",
+                    targetName, jobs.size()
+            ), false);
 
             for (RavenCourierData.DeliveryJob job : jobs) {
                 if (job == null) continue;
 
-                final String line = String.format(
-                        " - id=%d sender='%s' [%s] -> recipient='%s' [%s] inFlight=%s failed=%s",
+                source.sendSuccess(() -> Component.translatable(
+                        "message.featheredfriend.command.courier.player_entry",
                         job.jobId,
                         job.senderName,
-                        job.senderUuid,
+                        String.valueOf(job.senderUuid),
                         job.recipientName,
-                        job.recipientUuid,
+                        String.valueOf(job.recipientUuid),
                         job.inFlight,
                         job.failed
-                );
-                source.sendSuccess(() -> Component.literal(line), false);
+                ), false);
             }
 
             return jobs.size();
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendCommands] executeCourierListPlayer failed", t);
-            source.sendFailure(Component.literal("[FeatheredFriend] Error while listing courier jobs for player; see log."));
+            source.sendFailure(Component.translatable("message.featheredfriend.command.courier.player_list_error"));
             return 0;
         }
     }
@@ -949,14 +1008,14 @@ public final class FeatheredFriendCommands {
             RavenCourierData data = RavenCourierData.get(level);
 
             int removed = data.clearAllJobs();
-            source.sendSuccess(
-                    () -> Component.literal("[FeatheredFriend] Cleared " + removed + " raven courier job(s) from the world."),
-                    true
-            );
+            source.sendSuccess(() -> Component.translatable(
+                    "message.featheredfriend.command.courier.clear_all_success",
+                    removed
+            ), true);
             return removed > 0 ? 1 : 0;
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendCommands] executeCourierClearAll failed", t);
-            source.sendFailure(Component.literal("[FeatheredFriend] Error while clearing courier jobs; see log."));
+            source.sendFailure(Component.translatable("message.featheredfriend.command.courier.clear_error"));
             return 0;
         }
     }
@@ -971,7 +1030,7 @@ public final class FeatheredFriendCommands {
         try {
             Collection<GameProfile> profiles = GameProfileArgument.getGameProfiles(ctx, "player");
             if (profiles.isEmpty()) {
-                source.sendFailure(Component.literal("[FeatheredFriend] No matching player found."));
+                source.sendFailure(Component.translatable("message.featheredfriend.command.no_matching_player"));
                 return 0;
             }
 
@@ -980,7 +1039,7 @@ public final class FeatheredFriendCommands {
             String targetName = profile.getName();
 
             if (targetUuid == null) {
-                source.sendFailure(Component.literal("[FeatheredFriend] Target player UUID is null."));
+                source.sendFailure(Component.translatable("message.featheredfriend.command.target_uuid_null"));
                 return 0;
             }
 
@@ -989,21 +1048,15 @@ public final class FeatheredFriendCommands {
 
             int removed = data.clearJobsForPlayer(targetUuid);
 
-            source.sendSuccess(
-                    () -> Component.literal(
-                            "[FeatheredFriend] Cleared "
-                                    + removed
-                                    + " raven courier job(s) for player '"
-                                    + targetName
-                                    + "'."
-                    ),
-                    true
-            );
+            source.sendSuccess(() -> Component.translatable(
+                    "message.featheredfriend.command.courier.clear_player_success",
+                    removed, targetName
+            ), true);
 
             return removed > 0 ? 1 : 0;
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendCommands] executeCourierClearPlayer failed", t);
-            source.sendFailure(Component.literal("[FeatheredFriend] Error while clearing courier jobs for player; see log."));
+            source.sendFailure(Component.translatable("message.featheredfriend.command.courier.clear_player_error"));
             return 0;
         }
     }

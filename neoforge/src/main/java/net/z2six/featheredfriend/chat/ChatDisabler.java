@@ -41,7 +41,6 @@ public final class ChatDisabler {
     private ChatDisabler() {
         // no-op
     }
-
     public static void register() {
         try {
             NeoForge.EVENT_BUS.addListener(ChatDisabler::onServerChat);
@@ -78,9 +77,7 @@ public final class ChatDisabler {
             event.setCanceled(true);
 
             try {
-                sender.sendSystemMessage(Component.literal(
-                        "[FeatheredFriend] Global player chat is disabled on this server."
-                ));
+                sender.sendSystemMessage(Component.translatable("message.featheredfriend.chat_disabled.server"));
             } catch (Throwable msgErr) {
                 LOG.warn("[ChatDisabler] Failed to message sender='{}': {}",
                         safePlayerName(sender), msgErr.toString());
@@ -115,7 +112,7 @@ public final class ChatDisabler {
                 Minecraft mc = Minecraft.getInstance();
                 if (mc != null && mc.player != null) {
                     mc.player.displayClientMessage(
-                            Component.literal("[FeatheredFriend] Chat is disabled on this server."), true
+                            Component.translatable("message.featheredfriend.chat_disabled.client"), true
                     );
                 }
             } catch (Throwable ignored) {
@@ -164,8 +161,8 @@ public final class ChatDisabler {
     private static boolean isChatDisabledClient() {
         try {
             if (FMLEnvironment.dist != Dist.CLIENT) {
-                // Should never be called on server, but be conservative.
-                return true;
+                // Should never be called on server.
+                return false;
             }
 
             // If we have synced server settings, ALWAYS use them.
@@ -176,7 +173,7 @@ public final class ChatDisabler {
             }
 
             Minecraft mc = Minecraft.getInstance();
-            if (mc == null) return true;
+            if (mc == null) return false;
 
             // Integrated server: we can read the true world-owned setting.
             if (mc.hasSingleplayerServer()) {
@@ -188,13 +185,13 @@ public final class ChatDisabler {
                 }
             }
 
-            // Dedicated server, but not yet synced: conservative behavior is "disabled" until we know.
-            LOG.debug("[ChatDisabler] isChatDisabledClient: not synced yet -> default true");
-            return true;
+            // Dedicated server, but not yet synced: default to enabled.
+            LOG.debug("[ChatDisabler] isChatDisabledClient: not synced yet -> default false");
+            return false;
 
         } catch (Throwable t) {
             LOG.error("[ChatDisabler] isChatDisabledClient failed safely", t);
-            return true;
+            return false;
         }
     }
 
@@ -210,4 +207,3 @@ public final class ChatDisabler {
         }
     }
 }
-

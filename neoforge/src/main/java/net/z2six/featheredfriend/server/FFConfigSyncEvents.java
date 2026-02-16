@@ -25,6 +25,7 @@ public final class FFConfigSyncEvents {
 
     private static int tickCounter = 0;
     private static boolean lastChatDisabled = true;
+    private static int lastRavenChestsPerPlayer = 0;
     private static boolean lastInitialized = false;
 
     private FFConfigSyncEvents() {
@@ -56,17 +57,25 @@ public final class FFConfigSyncEvents {
             }
 
             boolean chatDisabledNow = FFServerConfig.isChatDisabled();
+            int ravenChestsPerPlayerNow = FFServerConfig.getRavenChestsPerPlayer();
 
             boolean changed = false;
             if (!lastInitialized) {
                 lastInitialized = true;
                 lastChatDisabled = chatDisabledNow;
-            } else if (lastChatDisabled != chatDisabledNow) {
-                lastChatDisabled = chatDisabledNow;
-                changed = true;
+                lastRavenChestsPerPlayer = ravenChestsPerPlayerNow;
+            } else {
+                if (lastChatDisabled != chatDisabledNow) {
+                    lastChatDisabled = chatDisabledNow;
+                    changed = true;
+                }
+                if (lastRavenChestsPerPlayer != ravenChestsPerPlayerNow) {
+                    lastRavenChestsPerPlayer = ravenChestsPerPlayerNow;
+                    changed = true;
+                }
             }
 
-            boolean requested = FFServerConfig.consumeChatSettingDirty();
+            boolean requested = FFServerConfig.consumeSettingsDirty();
 
             if (!changed && !requested) {
                 return;
@@ -80,12 +89,11 @@ public final class FFConfigSyncEvents {
             FFPayloads.broadcastSettings(overworld);
 
             if (LOG.isDebugEnabled()) {
-                LOG.debug("[FFConfigSyncEvents] Broadcast settings due to {} (chatDisabled={})",
-                        changed ? "config-change" : "request", chatDisabledNow);
+                LOG.debug("[FFConfigSyncEvents] Broadcast settings due to {} (chatDisabled={} ravenChestsPerPlayer={})",
+                        changed ? "config-change" : "request", chatDisabledNow, ravenChestsPerPlayerNow);
             }
         } catch (Throwable t) {
             LOG.error("[FFConfigSyncEvents] onServerTick failed safely", t);
         }
     }
 }
-

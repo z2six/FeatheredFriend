@@ -10,9 +10,11 @@ import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.ScrollSealingScreen;
 import net.z2six.featheredfriend.client.gui.SealStampScreen;
 import net.z2six.featheredfriend.client.gui.ScrollViewScreen;
-import net.z2six.featheredfriend.neoforge.menu.ScrollSealingMenu;
-import net.z2six.featheredfriend.neoforge.menu.SealStampMenu;
-import net.z2six.featheredfriend.neoforge.menu.ScrollViewMenu;
+import net.z2six.featheredfriend.client.gui.EnderpackScreen;
+import net.z2six.featheredfriend.menu.EnderpackMenu;
+import net.z2six.featheredfriend.menu.ScrollSealingMenu;
+import net.z2six.featheredfriend.menu.SealStampMenu;
+import net.z2six.featheredfriend.menu.ScrollViewMenu;
 import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
 import org.slf4j.Logger;
 
@@ -98,6 +100,24 @@ public final class ClientScreens {
             LOG.debug("[ClientScreens] Successfully registered ScrollViewScreen");
         } catch (Throwable t) {
             LOG.error("[ClientScreens] Failed to register ScrollViewScreen", t);
+        }
+
+        // ---------------------------------------------------------------------
+        // Enderpack GUI (vanilla chest screen over EnderpackMenu)
+        // ---------------------------------------------------------------------
+        try {
+            LOG.debug("[ClientScreens] Registering screen for menu type: {} (enderpack)",
+                    FFNeoForgeMenus.ENDERPACK_MENU.get().toString());
+
+            event.register(
+                    FFNeoForgeMenus.ENDERPACK_MENU.get(),
+                    (EnderpackMenu menu, net.minecraft.world.entity.player.Inventory inv, net.minecraft.network.chat.Component title) ->
+                            new EnderpackScreen(menu, inv, title)
+            );
+
+            LOG.debug("[ClientScreens] Successfully registered Enderpack chest screen");
+        } catch (Throwable t) {
+            LOG.error("[ClientScreens] Failed to register Enderpack screen", t);
         }
     }
 }

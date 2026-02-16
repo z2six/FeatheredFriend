@@ -3,10 +3,15 @@ package net.z2six.featheredfriend.client.network;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.z2six.featheredfriend.client.knownplayers.KnownPlayersClientCache;
+import net.z2six.featheredfriend.client.screen.RavenChestLabelScreen;
+import net.z2six.featheredfriend.client.screen.RavenChestPerchDebugScreen;
+import net.z2six.featheredfriend.client.screen.RavenChestSelectScreen;
 import net.z2six.featheredfriend.client.screen.RavenNamingScreen;
 import net.z2six.featheredfriend.network.FFNetwork;
+import net.z2six.featheredfriend.network.RavenChestSelectAction;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
@@ -41,6 +46,63 @@ public final class FFNetworkClientHandlers {
             mc.setScreen(new RavenNamingScreen(id));
         } catch (Throwable t) {
             LOG.error("[FFNetworkClientHandlers] handleOpenRavenNameScreenOnClient failed", t);
+        }
+    }
+
+    public static void handleOpenRavenChestPerchDebugScreenOnClient(@NotNull FFNetwork.OpenRavenChestPerchDebugScreenPayload payload,
+                                                                     @NotNull IPayloadContext context) {
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null || mc.player == null || mc.level == null) {
+                return;
+            }
+
+            BlockPos chestPos = BlockPos.of(payload.chestPos());
+            mc.setScreen(new RavenChestPerchDebugScreen(
+                    payload.ravenEntityId(),
+                    chestPos,
+                    payload.offsetX(),
+                    payload.offsetY(),
+                    payload.offsetZ(),
+                    payload.yaw(),
+                    payload.pitch()
+            ));
+        } catch (Throwable t) {
+            LOG.error("[FFNetworkClientHandlers] handleOpenRavenChestPerchDebugScreenOnClient failed", t);
+        }
+    }
+
+    public static void handleOpenRavenChestLabelScreenOnClient(@NotNull FFNetwork.OpenRavenChestLabelScreenPayload payload,
+                                                                @NotNull IPayloadContext context) {
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null || mc.player == null || mc.level == null) {
+                return;
+            }
+            mc.setScreen(new RavenChestLabelScreen(
+                    payload.dimensionId(),
+                    payload.blockPos(),
+                    payload.currentLabel()
+            ));
+        } catch (Throwable t) {
+            LOG.error("[FFNetworkClientHandlers] handleOpenRavenChestLabelScreenOnClient failed", t);
+        }
+    }
+
+    public static void handleOpenRavenChestSelectScreenOnClient(@NotNull FFNetwork.OpenRavenChestSelectScreenPayload payload,
+                                                                 @NotNull IPayloadContext context) {
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null || mc.player == null || mc.level == null) {
+                return;
+            }
+            mc.setScreen(new RavenChestSelectScreen(
+                    payload.ravenEntityId(),
+                    payload.choices(),
+                    RavenChestSelectAction.fromId(payload.actionId())
+            ));
+        } catch (Throwable t) {
+            LOG.error("[FFNetworkClientHandlers] handleOpenRavenChestSelectScreenOnClient failed", t);
         }
     }
 }

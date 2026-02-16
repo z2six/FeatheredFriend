@@ -9,6 +9,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.registry.FFParticles;
 import org.slf4j.Logger;
 
 /**
@@ -27,26 +28,10 @@ public final class FFNeoForgeParticles {
             DeferredRegister.create(Registries.PARTICLE_TYPE, Constants.MOD_ID);
 
     public static final DeferredHolder<ParticleType<?>, SimpleParticleType> ENDERPOP =
-            PARTICLE_TYPES.register("enderpop", () -> {
-                try {
-                    // true = always show (ignore distance culling)
-                    return new SimpleParticleType(true);
-                } catch (Throwable t) {
-                    LOG.error("[FFNeoForgeParticles] Failed creating SimpleParticleType(enderpop); falling back", t);
-                    return new SimpleParticleType(true);
-                }
-            });
+            PARTICLE_TYPES.register(FFParticles.ENDERPOP_ID, () -> new SimpleParticleType(true));
 
     public static final DeferredHolder<ParticleType<?>, SimpleParticleType> FEATHER =
-            PARTICLE_TYPES.register("feather", () -> {
-                try {
-                    // true = always show (ignore distance culling)
-                    return new SimpleParticleType(true);
-                } catch (Throwable t) {
-                    LOG.error("[FFNeoForgeParticles] Failed creating SimpleParticleType(feather); falling back", t);
-                    return new SimpleParticleType(true);
-                }
-            });
+            PARTICLE_TYPES.register(FFParticles.FEATHER_ID, () -> new SimpleParticleType(true));
 
     private FFNeoForgeParticles() {
         // no instances

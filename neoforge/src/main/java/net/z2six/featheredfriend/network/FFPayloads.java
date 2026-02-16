@@ -28,9 +28,10 @@ import java.util.List;
  *
  * What we sync (server-owned, must be consistent for all clients):
  * - chatDisabled (global)
+ * - maxRavenChestsPerPlayer (global)
  * - canEditChat (per-player permission check, computed server-side)
  *
- * Client-only preference "autoSummonOnScroll" is handled by FFClientConfig (not server-owned).
+ * Client-only preferences are handled by FFClientConfig (not server-owned).
  */
 public final class FFPayloads {
 
@@ -80,6 +81,12 @@ public final class FFPayloads {
                     FFPayloads::handleSetChatDisabled
             );
 
+            registrar.playToServer(
+                    SetMaxRavenChestsPerPlayerPayload.TYPE,
+                    SetMaxRavenChestsPerPlayerPayload.STREAM_CODEC,
+                    FFPayloads::handleSetMaxRavenChestsPerPlayer
+            );
+
             LOG.debug("[FFPayloads] Registered settings payloads OK (protocol={})", PROTOCOL_VERSION);
         } catch (Throwable t) {
             LOG.error("[FFPayloads] onRegisterPayloadHandlers failed safely", t);
@@ -92,7 +99,8 @@ public final class FFPayloads {
 
     public static final class ClientState {
         private static volatile boolean hasSynced = false;
-        private static volatile boolean chatDisabled = true;
+        private static volatile boolean chatDisabled = false;
+        private static volatile int maxRavenChestsPerPlayer = 0;
         private static volatile boolean canEditChat = false;
 
         private ClientState() {
@@ -111,18 +119,26 @@ public final class FFPayloads {
             return canEditChat;
         }
 
-        private static void applyFromServer(boolean newChatDisabled, boolean newCanEditChat) {
+        public static int maxRavenChestsPerPlayer() {
+            return maxRavenChestsPerPlayer;
+        }
+
+        private static void applyFromServer(boolean newChatDisabled,
+                                            int newMaxRavenChestsPerPlayer,
+                                            boolean newCanEditChat) {
             chatDisabled = newChatDisabled;
+            maxRavenChestsPerPlayer = Math.max(0, newMaxRavenChestsPerPlayer);
             canEditChat = newCanEditChat;
             hasSynced = true;
 
-            LOG.debug("[FFPayloads.ClientState] Applied server settings: chatDisabled={} canEditChat={}",
-                    newChatDisabled, newCanEditChat);
+            LOG.debug("[FFPayloads.ClientState] Applied server settings: chatDisabled={} maxRavenChestsPerPlayer={} canEditChat={}",
+                    newChatDisabled, maxRavenChestsPerPlayer, newCanEditChat);
         }
 
         public static void clear() {
             hasSynced = false;
-            chatDisabled = true;
+            chatDisabled = false;
+            maxRavenChestsPerPlayer = 0;
             canEditChat = false;
             LOG.debug("[FFPayloads.ClientState] Cleared client cache");
         }
@@ -154,7 +170,7 @@ public final class FFPayloads {
     /**
      * Server -> Client: settings snapshot.
      */
-    public record ServerSettingsPayload(boolean chatDisabled, boolean canEditChat)
+    public record ServerSettingsPayload(boolean chatDisabled, int maxRavenChestsPerPlayer, boolean canEditChat)
             implements net.minecraft.network.protocol.common.custom.CustomPacketPayload {
 
         public static final ResourceLocation ID =
@@ -165,6 +181,7 @@ public final class FFPayloads {
         public static final StreamCodec<RegistryFriendlyByteBuf, ServerSettingsPayload> STREAM_CODEC =
                 StreamCodec.composite(
                         ByteBufCodecs.BOOL, ServerSettingsPayload::chatDisabled,
+                        ByteBufCodecs.VAR_INT, ServerSettingsPayload::maxRavenChestsPerPlayer,
                         ByteBufCodecs.BOOL, ServerSettingsPayload::canEditChat,
                         ServerSettingsPayload::new
                 );
@@ -198,6 +215,29 @@ public final class FFPayloads {
         }
     }
 
+    /**
+     * Client -> Server: set raven chest cap. Requires permission on server.
+     */
+    public record SetMaxRavenChestsPerPlayerPayload(int value)
+            implements net.minecraft.network.protocol.common.custom.CustomPacketPayload {
+
+        public static final ResourceLocation ID =
+                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "set_max_raven_chests_per_player_v1");
+
+        public static final Type<SetMaxRavenChestsPerPlayerPayload> TYPE = new Type<>(ID);
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, SetMaxRavenChestsPerPlayerPayload> STREAM_CODEC =
+                StreamCodec.composite(
+                        ByteBufCodecs.VAR_INT, SetMaxRavenChestsPerPlayerPayload::value,
+                        SetMaxRavenChestsPerPlayerPayload::new
+                );
+
+        @Override
+        public Type<? extends net.minecraft.network.protocol.common.custom.CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
     // ---------------------------------------------------------------------
     // Server-side send helpers
     // ---------------------------------------------------------------------
@@ -210,6 +250,7 @@ public final class FFPayloads {
             }
 
             boolean chatDisabledValue = FFServerConfig.isChatDisabled();
+            int maxRavenChestsPerPlayerValue = FFServerConfig.getRavenChestsPerPlayer();
             boolean canEditChatValue;
             try {
                 canEditChatValue = player.hasPermissions(4);
@@ -217,11 +258,11 @@ public final class FFPayloads {
                 canEditChatValue = false;
             }
 
-            ServerSettingsPayload msg = new ServerSettingsPayload(chatDisabledValue, canEditChatValue);
+            ServerSettingsPayload msg = new ServerSettingsPayload(chatDisabledValue, maxRavenChestsPerPlayerValue, canEditChatValue);
             PacketDistributor.sendToPlayer(player, msg);
 
-            LOG.debug("[FFPayloads] Sent settings to {}: chatDisabled={} canEditChat={}",
-                    player.getGameProfile().getName(), chatDisabledValue, canEditChatValue);
+            LOG.debug("[FFPayloads] Sent settings to {}: chatDisabled={} maxRavenChestsPerPlayer={} canEditChat={}",
+                    player.getGameProfile().getName(), chatDisabledValue, maxRavenChestsPerPlayerValue, canEditChatValue);
 
         } catch (Throwable t) {
             LOG.error("[FFPayloads] sendSettingsToPlayer failed safely", t);
@@ -283,7 +324,11 @@ public final class FFPayloads {
         try {
             context.enqueueWork(() -> {
                 try {
-                    ClientState.applyFromServer(payload.chatDisabled(), payload.canEditChat());
+                    ClientState.applyFromServer(
+                            payload.chatDisabled(),
+                            payload.maxRavenChestsPerPlayer(),
+                            payload.canEditChat()
+                    );
                 } catch (Throwable t) {
                     LOG.error("[FFPayloads] handleServerSettingsSync work failed safely", t);
                 }
@@ -335,6 +380,51 @@ public final class FFPayloads {
             });
         } catch (Throwable t) {
             LOG.error("[FFPayloads] handleSetChatDisabled failed safely", t);
+        }
+    }
+
+    private static void handleSetMaxRavenChestsPerPlayer(SetMaxRavenChestsPerPlayerPayload payload, IPayloadContext context) {
+        try {
+            context.enqueueWork(() -> {
+                try {
+                    if (!(context.player() instanceof ServerPlayer sp)) {
+                        LOG.warn("[FFPayloads] SetMaxRavenChestsPerPlayer from non-ServerPlayer; ignoring");
+                        return;
+                    }
+
+                    ServerLevel level = sp.serverLevel();
+                    if (level == null) {
+                        LOG.warn("[FFPayloads] SetMaxRavenChestsPerPlayer: serverLevel null; ignoring");
+                        return;
+                    }
+
+                    boolean allowed;
+                    try {
+                        allowed = sp.hasPermissions(4);
+                    } catch (Throwable ignored) {
+                        allowed = false;
+                    }
+
+                    if (!allowed) {
+                        LOG.warn("[FFPayloads] {} tried to SetMaxRavenChestsPerPlayer without permission; denied",
+                                sp.getGameProfile().getName());
+                        sendSettingsToPlayer(level, sp);
+                        return;
+                    }
+
+                    int clamped = Math.max(0, Math.min(64, payload.value()));
+                    FFServerConfig.setRavenChestsPerPlayer(clamped);
+
+                    LOG.debug("[FFPayloads] {} set maxRavenChestsPerPlayer -> {}",
+                            sp.getGameProfile().getName(), clamped);
+
+                    broadcastSettings(level);
+                } catch (Throwable t) {
+                    LOG.error("[FFPayloads] handleSetMaxRavenChestsPerPlayer work failed safely", t);
+                }
+            });
+        } catch (Throwable t) {
+            LOG.error("[FFPayloads] handleSetMaxRavenChestsPerPlayer failed safely", t);
         }
     }
 }

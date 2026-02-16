@@ -1,0 +1,17 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "featheredfriend:block/raven_chest"
+    },
+    "facing=south": {
+      "model": "featheredfriend:block/raven_chest"
+    },
+    "facing=west": {
+      "model": "featheredfriend:block/raven_chest"
+    },
+    "facing=east": {
+      "model": "featheredfriend:block/raven_chest"
+    }
+  }
+}
+

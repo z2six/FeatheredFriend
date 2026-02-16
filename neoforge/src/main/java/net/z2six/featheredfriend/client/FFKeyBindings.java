@@ -21,8 +21,8 @@ import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 
 import net.minecraft.network.chat.Component;
-import net.z2six.featheredfriend.world.TamedRavenScrollWatcher;
 import net.z2six.featheredfriend.network.FFNetwork;
+import net.z2six.featheredfriend.platform.Services;
 
 /**
  * neoforge/src/main/java/net/z2six/featheredfriend/client/FFKeyBindings.java
@@ -41,6 +41,7 @@ public final class FFKeyBindings {
 
     private static KeyMapping OPEN_SETTINGS_KEY;
     private static KeyMapping WHISTLE_KEY;
+    private static KeyMapping OPEN_ENDERPACK_KEY;
 
     private FFKeyBindings() {
         // no-op
@@ -81,10 +82,18 @@ public final class FFKeyBindings {
                     category
             );
 
+            OPEN_ENDERPACK_KEY = new KeyMapping(
+                    "key." + Constants.MOD_ID + ".open_enderpack",
+                    InputConstants.Type.KEYSYM,
+                    GLFW.GLFW_KEY_UNKNOWN,
+                    category
+            );
+
             event.register(OPEN_SETTINGS_KEY);
             event.register(WHISTLE_KEY);
+            event.register(OPEN_ENDERPACK_KEY);
 
-            LOG.debug("[FFKeyBindings] Registered key mappings: open_settings, whistle.");
+            LOG.debug("[FFKeyBindings] Registered key mappings: open_settings, whistle, open_enderpack.");
 
         } catch (Throwable t) {
             LOG.error("[FFKeyBindings] onRegisterKeyMappings failed safely", t);
@@ -126,6 +135,12 @@ public final class FFKeyBindings {
                 }
             }
 
+            if (OPEN_ENDERPACK_KEY != null) {
+                while (OPEN_ENDERPACK_KEY.consumeClick()) {
+                    Services.PLATFORM.sendOpenEnderpackToServer();
+                }
+            }
+
         } catch (Throwable t) {
             LOG.error("[FFKeyBindings] onClientTick failed safely", t);
         }
@@ -133,23 +148,8 @@ public final class FFKeyBindings {
 
     private static void handleWhistleKey(@NotNull Minecraft mc, @NotNull LocalPlayer player) {
         try {
-            // Client should NOT decide eligibility (holding scroll vs failed jobs).
-            // Always send request; server validates and will message player if denied.
-            boolean holdingClientSide = false;
-            try {
-                holdingClientSide = TamedRavenScrollWatcher.isHoldingSealedScroll(player);
-            } catch (Throwable t) {
-                LOG.warn("[FFKeyBindings] Whistle: failed to check isHoldingSealedScroll client-side for player='{}': {}",
-                        player.getGameProfile().getName(), t.toString());
-            }
-
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("[FFKeyBindings] Whistle key pressed: sending request to server (clientHoldingSealedScroll={}) player='{}'",
-                        holdingClientSide, player.getGameProfile().getName());
-            } else {
-                LOG.debug("[FFKeyBindings] Whistle key pressed: sending request to server player='{}'",
-                        player.getGameProfile().getName());
-            }
+            LOG.debug("[FFKeyBindings] Whistle key pressed: sending request to server player='{}'",
+                    player.getGameProfile().getName());
 
             try {
                 FFNetwork.sendWhistleForRaven();
@@ -161,7 +161,7 @@ public final class FFKeyBindings {
 
                 try {
                     player.displayClientMessage(
-                            Component.literal("[FeatheredFriend] Failed to whistle for your raven (network error)."),
+                            Component.translatable("message.featheredfriend.whistle.network_error"),
                             true
                     );
                 } catch (Throwable msgErr) {

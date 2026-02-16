@@ -28,14 +28,19 @@ public final class FFServerConfig {
 
     /**
      * Server-authoritative global chat toggle.
-     * Kept as "disabled by default" to preserve existing intent.
+     * Chat is enabled by default.
      */
-    public static final boolean DEFAULT_CHAT_DISABLED_DEFAULT = true;
+    public static final boolean DEFAULT_CHAT_DISABLED_DEFAULT = false;
 
     /**
      * Default maximum wild ravens per online player.
      */
     public static final int DEFAULT_WILD_RAVENS_PER_PLAYER = 1;
+
+    /**
+     * Default max placed Raven Chests per player.
+     */
+    public static final int DEFAULT_RAVEN_CHESTS_PER_PLAYER = 3;
 
     // ---------------------------------------------------------------------
     // Spec + entries
@@ -45,6 +50,7 @@ public final class FFServerConfig {
 
     // settings
     public static final ModConfigSpec.BooleanValue CHAT_DISABLED_DEFAULT;
+    public static final ModConfigSpec.IntValue RAVEN_CHESTS_PER_PLAYER;
 
     // spawning
     public static final ModConfigSpec.IntValue WILD_RAVENS_PER_PLAYER;
@@ -67,6 +73,16 @@ public final class FFServerConfig {
                         "Note: older versions stored chatDisabled in world SavedData; this config now drives the behavior directly."
                 )
                 .define("chatDisabledDefault", DEFAULT_CHAT_DISABLED_DEFAULT);
+
+        RAVEN_CHESTS_PER_PLAYER = builder
+                .comment(
+                        "Maximum number of Raven Chests a single player may have placed.",
+                        "Hot-reloadable and server-authoritative.",
+                        "",
+                        "If reduced below currently placed counts, existing chests are not removed,",
+                        "but additional placements are blocked until the player is back within limit."
+                )
+                .defineInRange("ravenChestsPerPlayer", DEFAULT_RAVEN_CHESTS_PER_PLAYER, 0, 64);
 
         builder.pop();
 
@@ -139,7 +155,7 @@ public final class FFServerConfig {
             boolean before = isChatDisabled();
             CHAT_DISABLED_DEFAULT.set(disabled);
             if (before != disabled) {
-                markChatSettingDirty();
+                markSettingsDirty();
             }
             try {
                 SERVER_SPEC.save();
@@ -155,18 +171,18 @@ public final class FFServerConfig {
     // Hot-reload -> re-sync plumbing
     // ---------------------------------------------------------------------
 
-    private static volatile boolean CHAT_SETTING_DIRTY = false;
+    private static volatile boolean SETTINGS_DIRTY = false;
 
-    public static void markChatSettingDirty() {
-        CHAT_SETTING_DIRTY = true;
+    public static void markSettingsDirty() {
+        SETTINGS_DIRTY = true;
     }
 
     /**
      * @return true if a broadcast is needed (and clears the flag).
      */
-    public static boolean consumeChatSettingDirty() {
-        if (!CHAT_SETTING_DIRTY) return false;
-        CHAT_SETTING_DIRTY = false;
+    public static boolean consumeSettingsDirty() {
+        if (!SETTINGS_DIRTY) return false;
+        SETTINGS_DIRTY = false;
         return true;
     }
 
@@ -179,6 +195,37 @@ public final class FFServerConfig {
         } catch (Throwable t) {
             LOG.error("[FFServerConfig] getWildRavensPerPlayer failed, using default {}", DEFAULT_WILD_RAVENS_PER_PLAYER, t);
             return DEFAULT_WILD_RAVENS_PER_PLAYER;
+        }
+    }
+
+    public static int getRavenChestsPerPlayer() {
+        try {
+            int v = RAVEN_CHESTS_PER_PLAYER.get();
+            if (v < 0) v = 0;
+            if (v > 64) v = 64;
+            return v;
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] getRavenChestsPerPlayer failed, using default {}", DEFAULT_RAVEN_CHESTS_PER_PLAYER, t);
+            return DEFAULT_RAVEN_CHESTS_PER_PLAYER;
+        }
+    }
+
+    public static void setRavenChestsPerPlayer(int value) {
+        try {
+            int clamped = Math.max(0, Math.min(64, value));
+            int before = getRavenChestsPerPlayer();
+            RAVEN_CHESTS_PER_PLAYER.set(clamped);
+            if (before != clamped) {
+                markSettingsDirty();
+            }
+            try {
+                SERVER_SPEC.save();
+            } catch (Throwable saveErr) {
+                LOG.warn("[FFServerConfig] Failed to save SERVER config to disk after raven chest cap update: {}",
+                        saveErr.toString());
+            }
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] setRavenChestsPerPlayer failed", t);
         }
     }
 

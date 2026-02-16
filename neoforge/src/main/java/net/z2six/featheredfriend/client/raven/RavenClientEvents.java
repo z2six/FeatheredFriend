@@ -3,7 +3,9 @@ package net.z2six.featheredfriend.client.raven;
 
 import com.mojang.logging.LogUtils;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
+import net.z2six.featheredfriend.client.block.ravenchest.render.RavenChestBlockRenderer;
 import net.z2six.featheredfriend.client.raven.render.RavenRenderer;
+import net.z2six.featheredfriend.registry.FFNeoForgeBlockEntities;
 import net.z2six.featheredfriend.registry.FFNeoForgeEntities;
 import org.slf4j.Logger;
 
@@ -29,6 +31,13 @@ public final class RavenClientEvents {
             LOG.debug("[RavenClientEvents] Raven renderer registered");
         } catch (Throwable t) {
             LOG.error("[RavenClientEvents] Failed to register Raven renderer", t);
+        }
+
+        try {
+            event.registerBlockEntityRenderer(FFNeoForgeBlockEntities.RAVEN_CHEST.get(), RavenChestBlockRenderer::new);
+            LOG.debug("[RavenClientEvents] Raven chest block entity renderer registered");
+        } catch (Throwable t) {
+            LOG.error("[RavenClientEvents] Failed to register raven chest block entity renderer", t);
         }
     }
 }

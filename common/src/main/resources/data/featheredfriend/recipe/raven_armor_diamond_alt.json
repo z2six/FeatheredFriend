@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "YYY",
+    " YY",
+    "   "
+  ],
+  "key": {
+    "Y": { "item": "minecraft:diamond" }
+  },
+  "result": {
+    "id": "featheredfriend:raven_armor_diamond",
+    "count": 1
+  }
+}
+

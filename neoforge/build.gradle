@@ -64,6 +64,12 @@ dependencies {
 
     // GeckoLib (NeoForge 1.21.1)
     implementation "software.bernie.geckolib:geckolib-neoforge-1.21.1:4.8.2"
+
+    // Optional integration APIs (resolved from local dev run/mods jars).
+    // Keep these in run/mods for compilation:
+    //  - Jade-*.jar
+    //  - curios-neoforge-*.jar
+    compileOnly fileTree(dir: 'run/mods', include: ['Jade-*.jar', 'curios-neoforge-*.jar'])
 }
 
 // Groovy Gradle syntax

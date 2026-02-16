@@ -9,6 +9,7 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
@@ -19,6 +20,9 @@ import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.menu.ScrollAttachmentProvider;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * // common/src/main/java/net/z2six/featheredfriend/network/WaxSealPacket.java
@@ -138,23 +142,70 @@ public record WaxSealPacket(
 
     public static void handle(@NotNull WaxSealPacket p, @NotNull ServerPlayer serverPlayer) {
         try {
-            // 1) Remove one unsealed scroll
-            ItemStack removed = removeOneUnsealedScroll(serverPlayer);
-            if (removed == null) {
-                LOG.warn("[WaxSealPacket] Player {} tried sealing but has no featheredfriend:scroll_unsealed",
-                        serverPlayer.getGameProfile().getName());
-                return;
-            }
-
-            // 2) Resolve sealed scroll item by ID (no hard dependency on registry wrapper)
+            // 1) Resolve sealed scroll item by ID (no hard dependency on registry wrapper)
             Item sealedItem = resolveItemByPath("scroll_sealed");
             if (sealedItem == null || sealedItem == Items.AIR) {
                 LOG.error("[WaxSealPacket] sealed scroll item featheredfriend:scroll_sealed not found; aborting");
                 return;
             }
 
-            ItemStack sealed = new ItemStack(sealedItem, 1);
+            // 2) Snapshot attachments before mutating anything.
+            ScrollAttachmentProvider provider = (serverPlayer.containerMenu instanceof ScrollAttachmentProvider pvd)
+                    ? pvd
+                    : null;
+            List<Integer> attachmentSlotIndexes = new ArrayList<>();
+            ListTag attachmentsList = new ListTag();
 
+            if (provider != null) {
+                int slotCount = provider.getAttachmentSlotCount();
+                for (int i = 0; i < slotCount; i++) {
+                    ItemStack stack = provider.getAttachmentStack(i);
+                    if (stack == null || stack.isEmpty()) {
+                        continue;
+                    }
+
+                    CompoundTag stackTag = serializeAttachmentStack(stack, i);
+                    if (stackTag == null || stackTag.isEmpty()) {
+                        continue;
+                    }
+
+                    attachmentsList.add(stackTag);
+                    attachmentSlotIndexes.add(i);
+                }
+            }
+
+            boolean hasAttachments = !attachmentSlotIndexes.isEmpty();
+            if (hasAttachments && !hasEnderPearl(serverPlayer)) {
+                notifyMissingEnderPearl(serverPlayer);
+                LOG.warn("[WaxSealPacket] {} attempted sealing with attachments but has no Ender Pearl",
+                        serverPlayer.getGameProfile().getName());
+                return;
+            }
+
+            // 3) Remove one unsealed scroll.
+            ItemStack removedUnsealed = removeOneUnsealedScroll(serverPlayer);
+            if (removedUnsealed == null) {
+                LOG.warn("[WaxSealPacket] Player {} tried sealing but has no featheredfriend:scroll_unsealed",
+                        serverPlayer.getGameProfile().getName());
+                return;
+            }
+
+            // 4) Reserve one Ender Pearl only if attachments are present.
+            ItemStack reservedPearl = ItemStack.EMPTY;
+            if (hasAttachments) {
+                ItemStack removedPearl = removeOneEnderPearl(serverPlayer);
+                if (removedPearl == null) {
+                    refundStack(serverPlayer, removedUnsealed);
+                    notifyMissingEnderPearl(serverPlayer);
+                    LOG.warn("[WaxSealPacket] {} failed to reserve Ender Pearl while sealing attachments; refunded unsealed scroll",
+                            serverPlayer.getGameProfile().getName());
+                    return;
+                }
+                reservedPearl = removedPearl;
+            }
+
+            // 5) Build sealed scroll payload.
+            ItemStack sealed = new ItemStack(sealedItem, 1);
             CompoundTag root = new CompoundTag();
             CompoundTag seal = new CompoundTag();
 
@@ -169,98 +220,8 @@ public record WaxSealPacket(
             seal.putInt("Slices", p.slices());
             seal.putInt("Style", p.style());
 
-            // -----------------------------------------------------------------
-            // Attachments: capture from current container if supported
-            // -----------------------------------------------------------------
-            try {
-                if (serverPlayer.containerMenu instanceof ScrollAttachmentProvider provider) {
-                    int slotCount = provider.getAttachmentSlotCount();
-                    ListTag attachmentsList = new ListTag();
-                    int nonEmptyCount = 0;
-
-                    for (int i = 0; i < slotCount; i++) {
-                        ItemStack stack = provider.getAttachmentStack(i);
-                        if (stack == null || stack.isEmpty()) {
-                            continue;
-                        }
-
-                        CompoundTag stackTag = new CompoundTag();
-                        try {
-                            // Explicit minimal encoding instead of ItemStack#save(...),
-                            // because in 1.21+ / NeoForge that was giving us empty compounds.
-                            // We store:
-                            //   - "id": full item ID (e.g. "minecraft:oak_log")
-                            //   - "Count": stack size
-                            //   - "CustomData": copy of minecraft:custom_data (if present)
-                            ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
-                            if (itemId == null) {
-                                LOG.warn("[WaxSealPacket] Attachment slot {} has item with null registry key; skipping", i);
-                                continue;
-                            }
-
-                            stackTag.putString("id", itemId.toString());
-                            stackTag.putInt("Count", stack.getCount());
-
-                            try {
-                                CustomData cd = stack.get(DataComponents.CUSTOM_DATA);
-                                if (cd != null) {
-                                    CompoundTag customDataTag = cd.copyTag();
-                                    if (customDataTag != null && !customDataTag.isEmpty()) {
-                                        stackTag.put("CustomData", customDataTag);
-                                    }
-                                }
-                            } catch (Throwable tCd) {
-                                LOG.error("[WaxSealPacket] Failed to copy CustomData for attachment slot {}", i, tCd);
-                            }
-
-                            if (stackTag.isEmpty()) {
-                                // Shouldn't normally happen, but avoid adding pointless {}
-                                LOG.warn("[WaxSealPacket] Attachment stackTag ended up empty for slot {}; skipping", i);
-                                continue;
-                            }
-
-                            attachmentsList.add(stackTag);
-                            nonEmptyCount++;
-
-                            LOG.debug(
-                                    "[WaxSealPacket] Captured attachment slot {} -> id='{}' Count={} hasCustomData={}",
-                                    i,
-                                    itemId,
-                                    stack.getCount(),
-                                    stackTag.contains("CustomData")
-                            );
-
-                            try {
-                                provider.clearAttachmentSlot(i);
-                            } catch (Throwable tClear) {
-                                LOG.error("[WaxSealPacket] Failed to clear attachment slot {}", i, tClear);
-                            }
-                        } catch (Throwable tSave) {
-                            LOG.error("[WaxSealPacket] Failed to serialize attachment stack at index {}", i, tSave);
-                        }
-                    }
-
-                    if (nonEmptyCount > 0) {
-                        seal.put("Attachments", attachmentsList);
-                        try {
-                            provider.setSuppressAttachmentRefundOnClose(true);
-                        } catch (Throwable tFlag) {
-                            LOG.error("[WaxSealPacket] Failed to set suppressAttachmentRefundOnClose on provider {}", provider.getClass().getName(), tFlag);
-                        }
-                        LOG.debug("[WaxSealPacket] Captured {} attachment stack(s) into sealed scroll for player {}",
-                                nonEmptyCount, serverPlayer.getGameProfile().getName());
-                    } else {
-                        LOG.debug("[WaxSealPacket] No attachments found in ScrollAttachmentProvider for player {}",
-                                serverPlayer.getGameProfile().getName());
-                    }
-                } else {
-                    LOG.debug("[WaxSealPacket] Player containerMenu is not a ScrollAttachmentProvider: {}",
-                            serverPlayer.containerMenu != null
-                                    ? serverPlayer.containerMenu.getClass().getName()
-                                    : "null");
-                }
-            } catch (Throwable tAttach) {
-                LOG.error("[WaxSealPacket] Failed while capturing attachments into sealed scroll NBT", tAttach);
+            if (hasAttachments) {
+                seal.put("Attachments", attachmentsList);
             }
 
             root.put("SealedScroll", seal);
@@ -272,19 +233,48 @@ public record WaxSealPacket(
                 LOG.error("[WaxSealPacket] Failed to attach CustomData to sealed scroll", tSet);
             }
 
-            // 3) Add/deliver sealed scroll
+            // 6) Add/deliver sealed scroll.
             boolean added = false;
+            boolean delivered = false;
             try {
                 added = serverPlayer.getInventory().add(sealed);
+                delivered = added;
             } catch (Throwable tAdd) {
                 LOG.error("[WaxSealPacket] Error while adding sealed scroll to inventory", tAdd);
             }
 
             if (!added) {
                 try {
-                    serverPlayer.drop(sealed, false);
+                    delivered = (serverPlayer.drop(sealed, false) != null);
                 } catch (Throwable tDrop) {
                     LOG.error("[WaxSealPacket] Failed to drop sealed scroll at player", tDrop);
+                }
+            }
+
+            if (!delivered) {
+                refundStack(serverPlayer, removedUnsealed);
+                if (!reservedPearl.isEmpty()) {
+                    refundStack(serverPlayer, reservedPearl);
+                }
+                LOG.error("[WaxSealPacket] Failed to deliver sealed scroll; refunded inputs for player {}",
+                        serverPlayer.getGameProfile().getName());
+                return;
+            }
+
+            // 7) Finalize attachment side-effects only after successful sealing.
+            if (hasAttachments && provider != null) {
+                for (Integer slotIndex : attachmentSlotIndexes) {
+                    try {
+                        provider.clearAttachmentSlot(slotIndex);
+                    } catch (Throwable tClear) {
+                        LOG.error("[WaxSealPacket] Failed to clear attachment slot {}", slotIndex, tClear);
+                    }
+                }
+                try {
+                    provider.setSuppressAttachmentRefundOnClose(true);
+                } catch (Throwable tFlag) {
+                    LOG.error("[WaxSealPacket] Failed to set suppressAttachmentRefundOnClose on provider {}",
+                            provider.getClass().getName(), tFlag);
                 }
             }
 
@@ -304,6 +294,71 @@ public record WaxSealPacket(
     // Helpers
     // ---------------------------------------------------------------------
 
+    private static CompoundTag serializeAttachmentStack(@NotNull ItemStack stack, int index) {
+        CompoundTag stackTag = new CompoundTag();
+        try {
+            ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
+            if (itemId == null) {
+                LOG.warn("[WaxSealPacket] Attachment slot {} has item with null registry key; skipping", index);
+                return null;
+            }
+
+            stackTag.putString("id", itemId.toString());
+            stackTag.putInt("Count", stack.getCount());
+
+            try {
+                CustomData cd = stack.get(DataComponents.CUSTOM_DATA);
+                if (cd != null) {
+                    CompoundTag customDataTag = cd.copyTag();
+                    if (customDataTag != null && !customDataTag.isEmpty()) {
+                        stackTag.put("CustomData", customDataTag);
+                    }
+                }
+            } catch (Throwable tCd) {
+                LOG.error("[WaxSealPacket] Failed to copy CustomData for attachment slot {}", index, tCd);
+            }
+
+            if (stackTag.isEmpty()) {
+                LOG.warn("[WaxSealPacket] Attachment stackTag ended up empty for slot {}; skipping", index);
+                return null;
+            }
+
+            LOG.debug(
+                    "[WaxSealPacket] Captured attachment slot {} -> id='{}' Count={} hasCustomData={}",
+                    index,
+                    itemId,
+                    stack.getCount(),
+                    stackTag.contains("CustomData")
+            );
+            return stackTag;
+        } catch (Throwable tSave) {
+            LOG.error("[WaxSealPacket] Failed to serialize attachment stack at index {}", index, tSave);
+            return null;
+        }
+    }
+
+    private static boolean hasEnderPearl(@NotNull ServerPlayer player) {
+        try {
+            for (ItemStack stack : player.getInventory().items) {
+                if (stack != null && !stack.isEmpty() && stack.is(Items.ENDER_PEARL)) {
+                    return true;
+                }
+            }
+            for (ItemStack stack : player.getInventory().offhand) {
+                if (stack != null && !stack.isEmpty() && stack.is(Items.ENDER_PEARL)) {
+                    return true;
+                }
+            }
+        } catch (Throwable t) {
+            LOG.error("[WaxSealPacket] hasEnderPearl failed", t);
+        }
+        return false;
+    }
+
+    private static ItemStack removeOneEnderPearl(@NotNull ServerPlayer player) {
+        return removeOneItem(player, Items.ENDER_PEARL);
+    }
+
     /**
      * Attempts to remove exactly one featheredfriend:scroll_unsealed from
      * the player's main inventory. Returns a copy of the removed stack (count=1),
@@ -316,23 +371,62 @@ public record WaxSealPacket(
                 LOG.error("[WaxSealPacket] Unsealed scroll item featheredfriend:scroll_unsealed not found in registry");
                 return null;
             }
-
-            for (int i = 0; i < player.getInventory().items.size(); i++) {
-                ItemStack s = player.getInventory().items.get(i);
-                if (!s.isEmpty() && s.getItem() == unsealed) {
-                    ItemStack taken = s.copyWithCount(1);
-                    try {
-                        s.shrink(1);
-                    } catch (Throwable tShrink) {
-                        LOG.error("[WaxSealPacket] Failed to shrink unsealed scroll stack at slot {}", i, tShrink);
-                    }
-                    return taken;
-                }
-            }
+            return removeOneItem(player, unsealed);
         } catch (Throwable t) {
             LOG.error("[WaxSealPacket] removeOneUnsealedScroll failed", t);
         }
         return null;
+    }
+
+    private static ItemStack removeOneItem(@NotNull ServerPlayer player, @NotNull Item item) {
+        try {
+            for (int i = 0; i < player.getInventory().items.size(); i++) {
+                ItemStack s = player.getInventory().items.get(i);
+                if (!s.isEmpty() && s.is(item)) {
+                    ItemStack taken = s.copyWithCount(1);
+                    s.shrink(1);
+                    return taken;
+                }
+            }
+
+            for (int i = 0; i < player.getInventory().offhand.size(); i++) {
+                ItemStack s = player.getInventory().offhand.get(i);
+                if (!s.isEmpty() && s.is(item)) {
+                    ItemStack taken = s.copyWithCount(1);
+                    s.shrink(1);
+                    return taken;
+                }
+            }
+        } catch (Throwable t) {
+            LOG.error("[WaxSealPacket] removeOneItem failed for {}",
+                    BuiltInRegistries.ITEM.getKey(item), t);
+        }
+        return null;
+    }
+
+    private static void refundStack(@NotNull ServerPlayer player, @NotNull ItemStack stack) {
+        if (stack.isEmpty()) {
+            return;
+        }
+        try {
+            ItemStack toRefund = stack.copy();
+            if (!player.getInventory().add(toRefund)) {
+                player.drop(toRefund, false);
+            }
+        } catch (Throwable t) {
+            LOG.error("[WaxSealPacket] Failed to refund stack {}", stack, t);
+        }
+    }
+
+    private static void notifyMissingEnderPearl(@NotNull ServerPlayer player) {
+        try {
+            player.displayClientMessage(
+                    Component.translatable("message.featheredfriend.scroll_sealing.attachments.requires_ender_pearl"),
+                    true
+            );
+        } catch (Throwable t) {
+            LOG.error("[WaxSealPacket] notifyMissingEnderPearl failed", t);
+        }
     }
 
     /**

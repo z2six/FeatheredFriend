@@ -2,6 +2,7 @@
 package net.z2six.featheredfriend.network;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -67,6 +68,24 @@ public final class FFNetwork {
                     FFNetwork::handleOpenRavenNameScreenOnClientProxy
             );
 
+            registrar.playToClient(
+                    OpenRavenChestPerchDebugScreenPayload.TYPE,
+                    OpenRavenChestPerchDebugScreenPayload.STREAM_CODEC,
+                    FFNetwork::handleOpenRavenChestPerchDebugScreenOnClientProxy
+            );
+
+            registrar.playToClient(
+                    OpenRavenChestLabelScreenPayload.TYPE,
+                    OpenRavenChestLabelScreenPayload.STREAM_CODEC,
+                    FFNetwork::handleOpenRavenChestLabelScreenOnClientProxy
+            );
+
+            registrar.playToClient(
+                    OpenRavenChestSelectScreenPayload.TYPE,
+                    OpenRavenChestSelectScreenPayload.STREAM_CODEC,
+                    FFNetwork::handleOpenRavenChestSelectScreenOnClientProxy
+            );
+
             registrar.playToServer(
                     RequestKnownPlayersPacket.TYPE,
                     RequestKnownPlayersPacket.STREAM_CODEC,
@@ -109,8 +128,34 @@ public final class FFNetwork {
                     FFNetwork::handleWhistleForRavenOnServer
             );
 
+            registrar.playToServer(
+                    OpenEnderpackRequestPacket.TYPE,
+                    OpenEnderpackRequestPacket.STREAM_CODEC,
+                    FFNetwork::handleOpenEnderpackOnServer
+            );
+
+            registrar.playToServer(
+                    RavenChestPerchDebugAdjustPacket.TYPE,
+                    RavenChestPerchDebugAdjustPacket.STREAM_CODEC,
+                    FFNetwork::handleRavenChestPerchDebugAdjustOnServer
+            );
+
+            registrar.playToServer(
+                    SetRavenChestLabelPacket.TYPE,
+                    SetRavenChestLabelPacket.STREAM_CODEC,
+                    FFNetwork::handleSetRavenChestLabelOnServer
+            );
+
+            registrar.playToServer(
+                    ConfirmRavenChestDepositPacket.TYPE,
+                    ConfirmRavenChestDepositPacket.STREAM_CODEC,
+                    FFNetwork::handleConfirmRavenChestDepositOnServer
+            );
+
             LOG.debug("[FFNetwork] Registered payload channels: known_players, request_known_players, open_raven_name_screen, " +
-                    "seal_stamp_carve_result, wax_seal, break_seal, raven_name_chosen, raven_name_cancelled, whistle_for_raven");
+                    "open_raven_chest_perch_debug_screen, seal_stamp_carve_result, wax_seal, break_seal, " +
+                    "raven_name_chosen, raven_name_cancelled, whistle_for_raven, open_enderpack_request, raven_chest_perch_debug_adjust, " +
+                    "open_raven_chest_label_screen, open_raven_chest_select_screen, set_raven_chest_label, confirm_raven_chest_deposit");
 
         } catch (Throwable t) {
             LOG.error("[FFNetwork] Failed to register payload handlers", t);
@@ -139,6 +184,17 @@ public final class FFNetwork {
                 dispatchToClientHandler("handleOpenRavenNameScreenOnClient", payload, context);
             } catch (Throwable t) {
                 LOG.error("[FFNetwork] handleOpenRavenNameScreenOnClientProxy failed", t);
+            }
+        });
+    }
+
+    private static void handleOpenRavenChestPerchDebugScreenOnClientProxy(@NotNull OpenRavenChestPerchDebugScreenPayload payload,
+                                                                           @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                dispatchToClientHandler("handleOpenRavenChestPerchDebugScreenOnClient", payload, context);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] handleOpenRavenChestPerchDebugScreenOnClientProxy failed", t);
             }
         });
     }
@@ -213,6 +269,99 @@ public final class FFNetwork {
 
             } catch (Throwable t) {
                 LOG.error("[FFNetwork] Failed to handle WhistleForRavenPacket on server", t);
+            }
+        });
+    }
+
+    private static void handleOpenEnderpackOnServer(@NotNull OpenEnderpackRequestPacket payload,
+                                                    @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                if (!(context.player() instanceof ServerPlayer serverPlayer)) {
+                    LOG.error("[FFNetwork] handleOpenEnderpackOnServer: context.player() is not a ServerPlayer");
+                    return;
+                }
+                net.z2six.featheredfriend.platform.Services.PLATFORM.openEnderpackScreen(serverPlayer);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] Failed to handle OpenEnderpackRequestPacket on server", t);
+            }
+        });
+    }
+
+    private static void handleOpenRavenChestLabelScreenOnClientProxy(@NotNull OpenRavenChestLabelScreenPayload payload,
+                                                                      @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                dispatchToClientHandler("handleOpenRavenChestLabelScreenOnClient", payload, context);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] handleOpenRavenChestLabelScreenOnClientProxy failed", t);
+            }
+        });
+    }
+
+    private static void handleOpenRavenChestSelectScreenOnClientProxy(@NotNull OpenRavenChestSelectScreenPayload payload,
+                                                                       @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                dispatchToClientHandler("handleOpenRavenChestSelectScreenOnClient", payload, context);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] handleOpenRavenChestSelectScreenOnClientProxy failed", t);
+            }
+        });
+    }
+
+    private static void handleRavenChestPerchDebugAdjustOnServer(@NotNull RavenChestPerchDebugAdjustPacket payload,
+                                                                 @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                if (!(context.player() instanceof ServerPlayer serverPlayer)) {
+                    LOG.error("[FFNetwork] handleRavenChestPerchDebugAdjustOnServer: context.player() is not a ServerPlayer");
+                    return;
+                }
+                net.z2six.featheredfriend.debug.RavenChestPerchDebugService.applyAdjustment(serverPlayer, payload);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] Failed to handle RavenChestPerchDebugAdjustPacket on server", t);
+            }
+        });
+    }
+
+    private static void handleSetRavenChestLabelOnServer(@NotNull SetRavenChestLabelPacket payload,
+                                                          @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                if (!(context.player() instanceof ServerPlayer serverPlayer)) {
+                    LOG.error("[FFNetwork] handleSetRavenChestLabelOnServer: context.player() is not a ServerPlayer");
+                    return;
+                }
+                net.z2six.featheredfriend.world.TamedRavenScrollWatcher.handleRavenChestLabelSubmission(
+                        serverPlayer,
+                        payload.dimensionId(),
+                        payload.blockPos(),
+                        payload.label()
+                );
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] Failed to handle SetRavenChestLabelPacket on server", t);
+            }
+        });
+    }
+
+    private static void handleConfirmRavenChestDepositOnServer(@NotNull ConfirmRavenChestDepositPacket payload,
+                                                                @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                if (!(context.player() instanceof ServerPlayer serverPlayer)) {
+                    LOG.error("[FFNetwork] handleConfirmRavenChestDepositOnServer: context.player() is not a ServerPlayer");
+                    return;
+                }
+                net.z2six.featheredfriend.world.TamedRavenScrollWatcher.handleConfirmRavenChestDeposit(
+                        serverPlayer,
+                        payload.ravenEntityId(),
+                        payload.dimensionId(),
+                        payload.blockPos(),
+                        RavenChestSelectAction.fromId(payload.actionId())
+                );
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] Failed to handle ConfirmRavenChestDepositPacket on server", t);
             }
         });
     }
@@ -395,6 +544,74 @@ public final class FFNetwork {
         }
     }
 
+    public static void sendOpenRavenChestPerchDebugScreen(@NotNull ServerPlayer player,
+                                                          int ravenEntityId,
+                                                          @NotNull BlockPos chestPos,
+                                                          double offsetX,
+                                                          double offsetY,
+                                                          double offsetZ,
+                                                          float yaw,
+                                                          float pitch) {
+        try {
+            OpenRavenChestPerchDebugScreenPayload payload = new OpenRavenChestPerchDebugScreenPayload(
+                    ravenEntityId,
+                    chestPos.asLong(),
+                    offsetX,
+                    offsetY,
+                    offsetZ,
+                    yaw,
+                    pitch
+            );
+            PacketDistributor.sendToPlayer(player, payload);
+            LOG.debug("[FFNetwork] Sent OpenRavenChestPerchDebugScreenPayload to {} (ravenEntityId={}, chestPos={})",
+                    player.getGameProfile().getName(), ravenEntityId, chestPos);
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendOpenRavenChestPerchDebugScreen failed for player={}",
+                    player.getGameProfile().getName(), t);
+        }
+    }
+
+    public static void sendOpenRavenChestLabelScreen(@NotNull ServerPlayer player,
+                                                      @NotNull String dimensionId,
+                                                      long blockPos,
+                                                      @NotNull String currentLabel) {
+        try {
+            PacketDistributor.sendToPlayer(player, new OpenRavenChestLabelScreenPayload(
+                    dimensionId,
+                    blockPos,
+                    currentLabel
+            ));
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendOpenRavenChestLabelScreen failed for player={}",
+                    player.getGameProfile().getName(), t);
+        }
+    }
+
+    public static void sendOpenRavenChestSelectScreen(@NotNull ServerPlayer player,
+                                                       int ravenEntityId,
+                                                       @NotNull List<RavenChestChoiceInfo> choices) {
+        sendOpenRavenChestSelectScreen(player, ravenEntityId, choices, RavenChestSelectAction.ENDERPACK_DEPOSIT);
+    }
+
+    public static void sendOpenRavenChestSelectScreen(@NotNull ServerPlayer player,
+                                                       int ravenEntityId,
+                                                       @NotNull List<RavenChestChoiceInfo> choices,
+                                                       @NotNull RavenChestSelectAction action) {
+        try {
+            PacketDistributor.sendToPlayer(
+                    player,
+                    new OpenRavenChestSelectScreenPayload(
+                            ravenEntityId,
+                            choices,
+                            action == null ? RavenChestSelectAction.ENDERPACK_DEPOSIT.id() : action.id()
+                    )
+            );
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendOpenRavenChestSelectScreen failed for player={}",
+                    player.getGameProfile().getName(), t);
+        }
+    }
+
     public static void sendWhistleForRaven() {
         try {
             WhistleForRavenPacket p = new WhistleForRavenPacket();
@@ -412,6 +629,68 @@ public final class FFNetwork {
             LOG.debug("[FFNetwork] Sent RequestKnownPlayersPacket to server");
         } catch (Throwable t) {
             LOG.error("[FFNetwork] sendRequestKnownPlayersToServer failed safely", t);
+        }
+    }
+
+    public static void sendOpenEnderpackToServer() {
+        try {
+            PacketDistributor.sendToServer(new OpenEnderpackRequestPacket());
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendOpenEnderpackToServer failed safely", t);
+        }
+    }
+
+    public static void sendRavenChestPerchDebugAdjustToServer(int ravenEntityId,
+                                                              double offsetX,
+                                                              double offsetY,
+                                                              double offsetZ,
+                                                              float yaw,
+                                                              float pitch) {
+        try {
+            PacketDistributor.sendToServer(new RavenChestPerchDebugAdjustPacket(
+                    ravenEntityId, offsetX, offsetY, offsetZ, yaw, pitch
+            ));
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendRavenChestPerchDebugAdjustToServer failed safely", t);
+        }
+    }
+
+    public static void sendSetRavenChestLabelToServer(@NotNull String dimensionId,
+                                                       long blockPos,
+                                                       @NotNull String label) {
+        try {
+            PacketDistributor.sendToServer(new SetRavenChestLabelPacket(dimensionId, blockPos, label));
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendSetRavenChestLabelToServer failed safely", t);
+        }
+    }
+
+    public static void sendConfirmRavenChestDepositToServer(int ravenEntityId,
+                                                             @NotNull String dimensionId,
+                                                             long blockPos) {
+        sendConfirmRavenChestDepositToServer(
+                ravenEntityId,
+                dimensionId,
+                blockPos,
+                RavenChestSelectAction.ENDERPACK_DEPOSIT
+        );
+    }
+
+    public static void sendConfirmRavenChestDepositToServer(int ravenEntityId,
+                                                             @NotNull String dimensionId,
+                                                             long blockPos,
+                                                             @NotNull RavenChestSelectAction action) {
+        try {
+            PacketDistributor.sendToServer(
+                    new ConfirmRavenChestDepositPacket(
+                            ravenEntityId,
+                            dimensionId,
+                            blockPos,
+                            action == null ? RavenChestSelectAction.ENDERPACK_DEPOSIT.id() : action.id()
+                    )
+            );
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendConfirmRavenChestDepositToServer failed safely", t);
         }
     }
 
@@ -497,7 +776,36 @@ public final class FFNetwork {
         }
     }
 
-    public record KnownPlayerInfo(@NotNull UUID uuid, @NotNull String name) {
+    public record OpenEnderpackRequestPacket() implements CustomPacketPayload {
+
+        public static final Type<OpenEnderpackRequestPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "open_enderpack_request"));
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, OpenEnderpackRequestPacket> STREAM_CODEC =
+                StreamCodec.of(OpenEnderpackRequestPacket::encode, OpenEnderpackRequestPacket::decode);
+
+        private static void encode(@NotNull RegistryFriendlyByteBuf buf,
+                                   @NotNull OpenEnderpackRequestPacket payload) {
+            try {
+                // no fields
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] OpenEnderpackRequestPacket encode failed", t);
+            }
+        }
+
+        private static @NotNull OpenEnderpackRequestPacket decode(@NotNull RegistryFriendlyByteBuf buf) {
+            try {
+                return new OpenEnderpackRequestPacket();
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] OpenEnderpackRequestPacket decode failed", t);
+                return new OpenEnderpackRequestPacket();
+            }
+        }
+
+        @Override
+        public @NotNull Type<OpenEnderpackRequestPacket> type() {
+            return TYPE;
+        }
     }
 
     public record KnownPlayersPayload(List<KnownPlayerInfo> players) implements CustomPacketPayload {
@@ -592,6 +900,251 @@ public final class FFNetwork {
 
         @Override
         public @NotNull Type<OpenRavenNameScreenPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record OpenRavenChestPerchDebugScreenPayload(int ravenEntityId,
+                                                        long chestPos,
+                                                        double offsetX,
+                                                        double offsetY,
+                                                        double offsetZ,
+                                                        float yaw,
+                                                        float pitch) implements CustomPacketPayload {
+
+        public static final Type<OpenRavenChestPerchDebugScreenPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "open_raven_chest_perch_debug_screen"));
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, OpenRavenChestPerchDebugScreenPayload> STREAM_CODEC =
+                StreamCodec.of(OpenRavenChestPerchDebugScreenPayload::encode, OpenRavenChestPerchDebugScreenPayload::decode);
+
+        private static void encode(@NotNull RegistryFriendlyByteBuf buf,
+                                   @NotNull OpenRavenChestPerchDebugScreenPayload payload) {
+            try {
+                buf.writeVarInt(payload.ravenEntityId());
+                buf.writeLong(payload.chestPos());
+                buf.writeDouble(payload.offsetX());
+                buf.writeDouble(payload.offsetY());
+                buf.writeDouble(payload.offsetZ());
+                buf.writeFloat(payload.yaw());
+                buf.writeFloat(payload.pitch());
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] OpenRavenChestPerchDebugScreenPayload encode failed", t);
+            }
+        }
+
+        private static @NotNull OpenRavenChestPerchDebugScreenPayload decode(@NotNull RegistryFriendlyByteBuf buf) {
+            try {
+                return new OpenRavenChestPerchDebugScreenPayload(
+                        buf.readVarInt(),
+                        buf.readLong(),
+                        buf.readDouble(),
+                        buf.readDouble(),
+                        buf.readDouble(),
+                        buf.readFloat(),
+                        buf.readFloat()
+                );
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] OpenRavenChestPerchDebugScreenPayload decode failed", t);
+                return new OpenRavenChestPerchDebugScreenPayload(-1, BlockPos.ZERO.asLong(), 0.5D, 1.6D, 0.5D, 0.0F, 0.0F);
+            }
+        }
+
+        @Override
+        public @NotNull Type<OpenRavenChestPerchDebugScreenPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record OpenRavenChestLabelScreenPayload(@NotNull String dimensionId,
+                                                   long blockPos,
+                                                   @NotNull String currentLabel) implements CustomPacketPayload {
+
+        public static final Type<OpenRavenChestLabelScreenPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "open_raven_chest_label_screen"));
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, OpenRavenChestLabelScreenPayload> STREAM_CODEC =
+                StreamCodec.of(OpenRavenChestLabelScreenPayload::encode, OpenRavenChestLabelScreenPayload::decode);
+
+        private static void encode(@NotNull RegistryFriendlyByteBuf buf,
+                                   @NotNull OpenRavenChestLabelScreenPayload payload) {
+            try {
+                buf.writeUtf(payload.dimensionId(), 128);
+                buf.writeLong(payload.blockPos());
+                buf.writeUtf(payload.currentLabel(), 128);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] OpenRavenChestLabelScreenPayload encode failed", t);
+            }
+        }
+
+        private static @NotNull OpenRavenChestLabelScreenPayload decode(@NotNull RegistryFriendlyByteBuf buf) {
+            try {
+                return new OpenRavenChestLabelScreenPayload(
+                        buf.readUtf(128),
+                        buf.readLong(),
+                        buf.readUtf(128)
+                );
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] OpenRavenChestLabelScreenPayload decode failed", t);
+                return new OpenRavenChestLabelScreenPayload("minecraft:overworld", BlockPos.ZERO.asLong(), "");
+            }
+        }
+
+        @Override
+        public @NotNull Type<OpenRavenChestLabelScreenPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record OpenRavenChestSelectScreenPayload(int ravenEntityId,
+                                                    @NotNull List<RavenChestChoiceInfo> choices,
+                                                    int actionId) implements CustomPacketPayload {
+
+        public static final Type<OpenRavenChestSelectScreenPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "open_raven_chest_select_screen"));
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, OpenRavenChestSelectScreenPayload> STREAM_CODEC =
+                StreamCodec.of(OpenRavenChestSelectScreenPayload::encode, OpenRavenChestSelectScreenPayload::decode);
+
+        private static void encode(@NotNull RegistryFriendlyByteBuf buf,
+                                   @NotNull OpenRavenChestSelectScreenPayload payload) {
+            try {
+                buf.writeVarInt(payload.ravenEntityId());
+                buf.writeVarInt(payload.actionId());
+                List<RavenChestChoiceInfo> list = payload.choices() == null ? List.of() : payload.choices();
+                buf.writeVarInt(list.size());
+                for (RavenChestChoiceInfo c : list) {
+                    if (c == null) {
+                        buf.writeUtf("minecraft:overworld", 128);
+                        buf.writeLong(BlockPos.ZERO.asLong());
+                        buf.writeUtf("", 128);
+                        buf.writeBoolean(false);
+                        continue;
+                    }
+                    buf.writeUtf(c.dimensionId(), 128);
+                    buf.writeLong(c.blockPos());
+                    buf.writeUtf(c.label(), 128);
+                    buf.writeBoolean(c.available());
+                }
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] OpenRavenChestSelectScreenPayload encode failed", t);
+            }
+        }
+
+        private static @NotNull OpenRavenChestSelectScreenPayload decode(@NotNull RegistryFriendlyByteBuf buf) {
+            try {
+                int ravenId = buf.readVarInt();
+                int actionId = buf.readVarInt();
+                int size = Math.max(0, Math.min(1024, buf.readVarInt()));
+                List<RavenChestChoiceInfo> list = new ArrayList<>(size);
+                for (int i = 0; i < size; i++) {
+                    String dim = buf.readUtf(128);
+                    long pos = buf.readLong();
+                    String label = buf.readUtf(128);
+                    boolean available = buf.readBoolean();
+                    list.add(new RavenChestChoiceInfo(dim, pos, label, available));
+                }
+                return new OpenRavenChestSelectScreenPayload(ravenId, list, actionId);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] OpenRavenChestSelectScreenPayload decode failed", t);
+                return new OpenRavenChestSelectScreenPayload(
+                        -1,
+                        List.of(),
+                        RavenChestSelectAction.ENDERPACK_DEPOSIT.id()
+                );
+            }
+        }
+
+        @Override
+        public @NotNull Type<OpenRavenChestSelectScreenPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record SetRavenChestLabelPacket(@NotNull String dimensionId,
+                                           long blockPos,
+                                           @NotNull String label) implements CustomPacketPayload {
+
+        public static final Type<SetRavenChestLabelPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "set_raven_chest_label"));
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, SetRavenChestLabelPacket> STREAM_CODEC =
+                StreamCodec.of(SetRavenChestLabelPacket::encode, SetRavenChestLabelPacket::decode);
+
+        private static void encode(@NotNull RegistryFriendlyByteBuf buf,
+                                   @NotNull SetRavenChestLabelPacket payload) {
+            try {
+                buf.writeUtf(payload.dimensionId(), 128);
+                buf.writeLong(payload.blockPos());
+                buf.writeUtf(payload.label(), 128);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] SetRavenChestLabelPacket encode failed", t);
+            }
+        }
+
+        private static @NotNull SetRavenChestLabelPacket decode(@NotNull RegistryFriendlyByteBuf buf) {
+            try {
+                return new SetRavenChestLabelPacket(
+                        buf.readUtf(128),
+                        buf.readLong(),
+                        buf.readUtf(128)
+                );
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] SetRavenChestLabelPacket decode failed", t);
+                return new SetRavenChestLabelPacket("minecraft:overworld", BlockPos.ZERO.asLong(), "");
+            }
+        }
+
+        @Override
+        public @NotNull Type<SetRavenChestLabelPacket> type() {
+            return TYPE;
+        }
+    }
+
+    public record ConfirmRavenChestDepositPacket(int ravenEntityId,
+                                                 @NotNull String dimensionId,
+                                                 long blockPos,
+                                                 int actionId) implements CustomPacketPayload {
+
+        public static final Type<ConfirmRavenChestDepositPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "confirm_raven_chest_deposit"));
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, ConfirmRavenChestDepositPacket> STREAM_CODEC =
+                StreamCodec.of(ConfirmRavenChestDepositPacket::encode, ConfirmRavenChestDepositPacket::decode);
+
+        private static void encode(@NotNull RegistryFriendlyByteBuf buf,
+                                   @NotNull ConfirmRavenChestDepositPacket payload) {
+            try {
+                buf.writeVarInt(payload.ravenEntityId());
+                buf.writeUtf(payload.dimensionId(), 128);
+                buf.writeLong(payload.blockPos());
+                buf.writeVarInt(payload.actionId());
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] ConfirmRavenChestDepositPacket encode failed", t);
+            }
+        }
+
+        private static @NotNull ConfirmRavenChestDepositPacket decode(@NotNull RegistryFriendlyByteBuf buf) {
+            try {
+                return new ConfirmRavenChestDepositPacket(
+                        buf.readVarInt(),
+                        buf.readUtf(128),
+                        buf.readLong(),
+                        buf.readVarInt()
+                );
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] ConfirmRavenChestDepositPacket decode failed", t);
+                return new ConfirmRavenChestDepositPacket(
+                        -1,
+                        "minecraft:overworld",
+                        BlockPos.ZERO.asLong(),
+                        RavenChestSelectAction.ENDERPACK_DEPOSIT.id()
+                );
+            }
+        }
+
+        @Override
+        public @NotNull Type<ConfirmRavenChestDepositPacket> type() {
             return TYPE;
         }
     }

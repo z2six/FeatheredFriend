@@ -2,6 +2,7 @@
 package net.z2six.featheredfriend.item;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -168,12 +169,13 @@ public class SealStampItem extends Item {
         try {
             if (isEtched(stack)) {
                 // Placeholder text – later we'll resolve and show the actual owner.
-                tooltip.add(Component.literal("§7Etched seal"));
+                tooltip.add(Component.translatable("tooltip.featheredfriend.seal_stamp.etched").withStyle(ChatFormatting.GRAY));
             } else {
-                tooltip.add(Component.literal("§7Uncarved"));
+                tooltip.add(Component.translatable("tooltip.featheredfriend.seal_stamp.uncarved").withStyle(ChatFormatting.GRAY));
             }
         } catch (Throwable t) {
             LOG.error("[SealStampItem] appendHoverText failed", t);
         }
     }
 }
+

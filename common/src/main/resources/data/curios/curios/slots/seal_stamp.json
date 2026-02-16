@@ -1,0 +1,9 @@
+{
+  "order": 10,
+  "size": 1,
+  "use_native_gui": true,
+  "icon": "featheredfriend:item/stamp/seal_stamp_curios",
+  "validators": [
+    "curios:tag"
+  ]
+}
