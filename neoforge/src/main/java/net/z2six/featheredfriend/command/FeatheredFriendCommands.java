@@ -22,7 +22,6 @@ import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.z2six.featheredfriend.Constants;
-import net.z2six.featheredfriend.debug.RavenChestPerchDebugService;
 import net.z2six.featheredfriend.world.RavenCourierData;
 import org.slf4j.Logger;
 
@@ -145,17 +144,6 @@ public final class FeatheredFriendCommands {
                                             )
                                     )
                             )
-                            // -----------------------------------------------------------------
-                            // /featheredfriend raven_chest_debug ...
-                            // -----------------------------------------------------------------
-                            .then(Commands.literal("raven_chest_debug")
-                                    .then(Commands.literal("start")
-                                            .executes(FeatheredFriendCommands::executeRavenChestDebugStart)
-                                    )
-                                    .then(Commands.literal("stop")
-                                            .executes(FeatheredFriendCommands::executeRavenChestDebugStop)
-                                    )
-                            )
             );
 
             // Removed redundant alias: /ff_clear_tamed_raven
@@ -165,8 +153,7 @@ public final class FeatheredFriendCommands {
                     "/featheredfriend tamed_raven list, " +
                     "/featheredfriend tamed_raven add <player> <name>, " +
                     "/featheredfriend courier list [player], " +
-                    "/featheredfriend courier clear [player], " +
-                    "/featheredfriend raven_chest_debug start|stop");
+                    "/featheredfriend courier clear [player]");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendCommands] onRegisterCommands failed", t);
         }
@@ -836,50 +823,6 @@ public final class FeatheredFriendCommands {
             LOG.error("[FeatheredFriendCommands] writePlayerDatSafe failed for {}: {}", path, t.toString());
             return false;
         }
-    }
-
-    // ---------------------------------------------------------------------
-    // Raven chest perch debug commands
-    // ---------------------------------------------------------------------
-
-    private static int executeRavenChestDebugStart(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
-        CommandSourceStack source = ctx.getSource();
-        ServerPlayer player;
-        try {
-            player = source.getPlayerOrException();
-        } catch (CommandSyntaxException ex) {
-            source.sendFailure(Component.translatable("message.featheredfriend.command.player_only"));
-            throw ex;
-        }
-
-        boolean started = RavenChestPerchDebugService.startFor(player);
-        if (started) {
-            source.sendSuccess(() -> Component.translatable("message.featheredfriend.command.raven_chest_debug.start_success"), false);
-            return 1;
-        }
-
-        source.sendFailure(Component.translatable("message.featheredfriend.command.raven_chest_debug.start_failure"));
-        return 0;
-    }
-
-    private static int executeRavenChestDebugStop(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
-        CommandSourceStack source = ctx.getSource();
-        ServerPlayer player;
-        try {
-            player = source.getPlayerOrException();
-        } catch (CommandSyntaxException ex) {
-            source.sendFailure(Component.translatable("message.featheredfriend.command.player_only"));
-            throw ex;
-        }
-
-        boolean stopped = RavenChestPerchDebugService.stopFor(player, true);
-        if (stopped) {
-            source.sendSuccess(() -> Component.translatable("message.featheredfriend.command.raven_chest_debug.stop_success"), false);
-            return 1;
-        }
-
-        source.sendFailure(Component.translatable("message.featheredfriend.command.raven_chest_debug.stop_none"));
-        return 0;
     }
 
     // ---------------------------------------------------------------------

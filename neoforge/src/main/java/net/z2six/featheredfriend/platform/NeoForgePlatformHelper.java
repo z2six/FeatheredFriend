@@ -317,6 +317,16 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public @NotNull String getRavenLogViewSettingsRaw() {
+        return FFClientConfig.getRavenLogViewSettingsRaw();
+    }
+
+    @Override
+    public void setRavenLogViewSettingsRaw(@NotNull String value) {
+        FFClientConfig.setRavenLogViewSettingsRaw(value);
+    }
+
+    @Override
     public void sendOpenRavenNamingScreen(@NotNull ServerPlayer player, int ravenEntityId) {
         FFNetwork.sendOpenRavenNamingScreen(player, ravenEntityId);
     }
@@ -384,25 +394,18 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
-    public void sendRavenChestPerchDebugAdjustToServer(int ravenEntityId,
-                                                       double offsetX,
-                                                       double offsetY,
-                                                       double offsetZ,
-                                                       float yaw,
-                                                       float pitch) {
-        FFNetwork.sendRavenChestPerchDebugAdjustToServer(
-                ravenEntityId,
-                offsetX,
-                offsetY,
-                offsetZ,
-                yaw,
-                pitch
-        );
+    public void sendOpenEnderpackToServer() {
+        FFNetwork.sendOpenEnderpackToServer();
     }
 
     @Override
-    public void sendOpenEnderpackToServer() {
-        FFNetwork.sendOpenEnderpackToServer();
+    public void sendOpenRavenLogToServer() {
+        FFNetwork.sendOpenRavenLogToServer();
+    }
+
+    @Override
+    public void sendClearRavenLogToServer() {
+        FFNetwork.sendClearRavenLogToServer();
     }
 
     @Override
@@ -512,6 +515,26 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public int getRavenLogRetentionMinutesClient() {
+        return FFPayloads.ClientState.ravenLogRetentionMinutes();
+    }
+
+    @Override
+    public int getRavenLogMaxBytesPerPlayerClient() {
+        return FFPayloads.ClientState.ravenLogMaxBytesPerPlayer();
+    }
+
+    @Override
+    public int getEnderpackDepositCooldownSecondsClient() {
+        return FFPayloads.ClientState.enderpackDepositCooldownSeconds();
+    }
+
+    @Override
+    public int getScrollDeliveryCooldownSecondsClient() {
+        return FFPayloads.ClientState.scrollDeliveryCooldownSeconds();
+    }
+
+    @Override
     public void requestServerSettingsSync() {
         PacketDistributor.sendToServer(new FFPayloads.RequestServerSettingsPayload());
     }
@@ -527,8 +550,48 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public void sendSetRavenLogRetentionMinutes(int value) {
+        PacketDistributor.sendToServer(new FFPayloads.SetRavenLogRetentionMinutesPayload(value));
+    }
+
+    @Override
+    public void sendSetRavenLogMaxBytesPerPlayer(int value) {
+        PacketDistributor.sendToServer(new FFPayloads.SetRavenLogMaxBytesPerPlayerPayload(value));
+    }
+
+    @Override
+    public void sendSetEnderpackDepositCooldownSeconds(int value) {
+        PacketDistributor.sendToServer(new FFPayloads.SetEnderpackDepositCooldownSecondsPayload(value));
+    }
+
+    @Override
+    public void sendSetScrollDeliveryCooldownSeconds(int value) {
+        PacketDistributor.sendToServer(new FFPayloads.SetScrollDeliveryCooldownSecondsPayload(value));
+    }
+
+    @Override
     public int getMaxRavenChestsPerPlayer() {
         return FFServerConfig.getRavenChestsPerPlayer();
+    }
+
+    @Override
+    public int getRavenLogRetentionMinutes() {
+        return FFServerConfig.getRavenLogRetentionMinutes();
+    }
+
+    @Override
+    public int getRavenLogMaxBytesPerPlayer() {
+        return FFServerConfig.getRavenLogMaxBytesPerPlayer();
+    }
+
+    @Override
+    public int getEnderpackDepositCooldownSeconds() {
+        return FFServerConfig.getEnderpackDepositCooldownSeconds();
+    }
+
+    @Override
+    public int getScrollDeliveryCooldownSeconds() {
+        return FFServerConfig.getScrollDeliveryCooldownSeconds();
     }
 
     // ---------------------------------------------------------------------

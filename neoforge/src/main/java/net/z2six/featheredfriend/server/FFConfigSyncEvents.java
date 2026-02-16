@@ -7,6 +7,7 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.z2six.featheredfriend.config.FFServerConfig;
 import net.z2six.featheredfriend.network.FFPayloads;
+import net.z2six.featheredfriend.world.RavenLogService;
 import org.slf4j.Logger;
 
 /**
@@ -26,6 +27,10 @@ public final class FFConfigSyncEvents {
     private static int tickCounter = 0;
     private static boolean lastChatDisabled = true;
     private static int lastRavenChestsPerPlayer = 0;
+    private static int lastRavenLogRetentionMinutes = 0;
+    private static int lastRavenLogMaxBytesPerPlayer = 0;
+    private static int lastEnderpackDepositCooldownSeconds = 0;
+    private static int lastScrollDeliveryCooldownSeconds = 0;
     private static boolean lastInitialized = false;
 
     private FFConfigSyncEvents() {
@@ -58,12 +63,20 @@ public final class FFConfigSyncEvents {
 
             boolean chatDisabledNow = FFServerConfig.isChatDisabled();
             int ravenChestsPerPlayerNow = FFServerConfig.getRavenChestsPerPlayer();
+            int ravenLogRetentionMinutesNow = FFServerConfig.getRavenLogRetentionMinutes();
+            int ravenLogMaxBytesPerPlayerNow = FFServerConfig.getRavenLogMaxBytesPerPlayer();
+            int enderpackDepositCooldownSecondsNow = FFServerConfig.getEnderpackDepositCooldownSeconds();
+            int scrollDeliveryCooldownSecondsNow = FFServerConfig.getScrollDeliveryCooldownSeconds();
 
             boolean changed = false;
             if (!lastInitialized) {
                 lastInitialized = true;
                 lastChatDisabled = chatDisabledNow;
                 lastRavenChestsPerPlayer = ravenChestsPerPlayerNow;
+                lastRavenLogRetentionMinutes = ravenLogRetentionMinutesNow;
+                lastRavenLogMaxBytesPerPlayer = ravenLogMaxBytesPerPlayerNow;
+                lastEnderpackDepositCooldownSeconds = enderpackDepositCooldownSecondsNow;
+                lastScrollDeliveryCooldownSeconds = scrollDeliveryCooldownSecondsNow;
             } else {
                 if (lastChatDisabled != chatDisabledNow) {
                     lastChatDisabled = chatDisabledNow;
@@ -73,15 +86,39 @@ public final class FFConfigSyncEvents {
                     lastRavenChestsPerPlayer = ravenChestsPerPlayerNow;
                     changed = true;
                 }
+                if (lastRavenLogRetentionMinutes != ravenLogRetentionMinutesNow) {
+                    lastRavenLogRetentionMinutes = ravenLogRetentionMinutesNow;
+                    changed = true;
+                }
+                if (lastRavenLogMaxBytesPerPlayer != ravenLogMaxBytesPerPlayerNow) {
+                    lastRavenLogMaxBytesPerPlayer = ravenLogMaxBytesPerPlayerNow;
+                    changed = true;
+                }
+                if (lastEnderpackDepositCooldownSeconds != enderpackDepositCooldownSecondsNow) {
+                    lastEnderpackDepositCooldownSeconds = enderpackDepositCooldownSecondsNow;
+                    changed = true;
+                }
+                if (lastScrollDeliveryCooldownSeconds != scrollDeliveryCooldownSecondsNow) {
+                    lastScrollDeliveryCooldownSeconds = scrollDeliveryCooldownSecondsNow;
+                    changed = true;
+                }
             }
 
             boolean requested = FFServerConfig.consumeSettingsDirty();
+
+            ServerLevel overworld = server.overworld();
+            if (overworld != null) {
+                try {
+                    RavenLogService.pruneAll(overworld);
+                } catch (Throwable t) {
+                    LOG.warn("[FFConfigSyncEvents] RavenLog prune failed safely: {}", t.toString());
+                }
+            }
 
             if (!changed && !requested) {
                 return;
             }
 
-            ServerLevel overworld = server.overworld();
             if (overworld == null) {
                 return;
             }
@@ -89,8 +126,14 @@ public final class FFConfigSyncEvents {
             FFPayloads.broadcastSettings(overworld);
 
             if (LOG.isDebugEnabled()) {
-                LOG.debug("[FFConfigSyncEvents] Broadcast settings due to {} (chatDisabled={} ravenChestsPerPlayer={})",
-                        changed ? "config-change" : "request", chatDisabledNow, ravenChestsPerPlayerNow);
+                LOG.debug("[FFConfigSyncEvents] Broadcast settings due to {} (chatDisabled={} ravenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={})",
+                        changed ? "config-change" : "request",
+                        chatDisabledNow,
+                        ravenChestsPerPlayerNow,
+                        ravenLogRetentionMinutesNow,
+                        ravenLogMaxBytesPerPlayerNow,
+                        enderpackDepositCooldownSecondsNow,
+                        scrollDeliveryCooldownSecondsNow);
             }
         } catch (Throwable t) {
             LOG.error("[FFConfigSyncEvents] onServerTick failed safely", t);

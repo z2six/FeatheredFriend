@@ -15,12 +15,16 @@ import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.AgeableMob;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
+import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -34,7 +38,9 @@ import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.block.RavenChestBlock;
 import net.z2six.featheredfriend.registry.FFItems;
 import net.z2six.featheredfriend.item.RavenArmorStats;
+import net.z2six.featheredfriend.log.RavenLogCategory;
 import net.z2six.featheredfriend.world.TamedRavenPlayerData;
+import net.z2six.featheredfriend.world.RavenLogService;
 import net.z2six.featheredfriend.entity.raven.modules.*;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -57,6 +63,9 @@ import org.jetbrains.annotations.NotNull;
 import net.z2six.featheredfriend.platform.Services;
 import net.z2six.featheredfriend.entity.raven.modules.TamedRavenDeathHandler;
 
+import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -270,6 +279,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
     private int flyTargetTimeoutTicks = 0;
     private int deliveryRearmTicks = 0;
+    private int ravenChestPerchThreatCheckCooldownTicks = 0;
+    private final Map<UUID, String> ravenChestPerchSeenHostiles = new HashMap<>();
+    private boolean ravenFeatherDeathDropDone = false;
 
     // Idle timer + turning
     private int idleTicksRemaining = 0;
@@ -1108,6 +1120,10 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         tickPassiveHealthRegen();
                     } catch (Throwable ignored) {
                     }
+                    try {
+                        tickRavenChestPerchThreatLogging();
+                    } catch (Throwable ignored) {
+                    }
                     if (teleportation.teleportSeqPhase != Teleportation.TeleportSeqPhase.NONE) {
                         teleportation.teleportSeqPhase = Teleportation.TeleportSeqPhase.NONE;
                         teleportation.setTeleportFadeAlpha(255, this);
@@ -1117,6 +1133,11 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             } catch (Throwable ignored) {
             }
             return;
+        }
+
+        if (!this.ravenChestPerchSeenHostiles.isEmpty() || this.ravenChestPerchThreatCheckCooldownTicks > 0) {
+            this.ravenChestPerchSeenHostiles.clear();
+            this.ravenChestPerchThreatCheckCooldownTicks = 0;
         }
 
         if (this.level().isClientSide) {
@@ -2054,6 +2075,40 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 return InteractionResult.sidedSuccess(this.level().isClientSide);
             }
 
+            if ((stack == null || stack.isEmpty()) && player.isCrouching()) {
+                boolean isOwnerRaven = false;
+                try {
+                    isOwnerRaven = this.isTame() && this.isOwnedBy(player);
+                } catch (Throwable ignored) {
+                    isOwnerRaven = false;
+                }
+
+                if (!isOwnerRaven) {
+                    return InteractionResult.PASS;
+                }
+
+                if (!this.level().isClientSide && player instanceof ServerPlayer serverPlayer) {
+                    try {
+                        RavenArmorVisual equippedBefore = this.getRavenArmorVisual();
+                        if (equippedBefore != RavenArmorVisual.NONE) {
+                            this.setRavenArmorVisual(RavenArmorVisual.NONE);
+                            TamedRavenPlayerData.setEquippedArmorVisual(serverPlayer, RavenArmorVisual.NONE);
+
+                            ItemStack previousArmor = FFItems.createRavenArmorStack(equippedBefore);
+                            if (!previousArmor.isEmpty()) {
+                                boolean added = player.getInventory().add(previousArmor);
+                                if (!added) {
+                                    this.spawnAtLocation(previousArmor);
+                                }
+                            }
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                }
+
+                return InteractionResult.sidedSuccess(this.level().isClientSide);
+            }
+
             // ----------------------------------------------------------------------
             // FIRST: sealed scroll -> delegate to TamedRavenScrollWatcher
             // Only consumes the interaction when:
@@ -2557,6 +2612,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     private record RavenChestPerchAssignment(@NotNull String dimensionId, long blockPos) {
     }
 
+    private record DamageAttackerInfo(boolean player, @NotNull String label) {
+    }
+
     private @Nullable RavenChestPerchAssignment readAssignedRavenChestPerch() {
         try {
             CompoundTag root = Services.PLATFORM.getEntityPersistentData(this);
@@ -2641,6 +2699,11 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 this.setAIState(RavenAIState.IDLE_GROUND);
             }
             this.setNoGravity(false);
+            RavenLogService.logForRavenOwnerKey(
+                    this,
+                    RavenLogCategory.PERCH,
+                    "log.featheredfriend.perch.assignment_cleared_invalid"
+            );
             return;
         }
 
@@ -2682,6 +2745,89 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         }
     }
 
+    private void tickRavenChestPerchThreatLogging() {
+        if (this.level().isClientSide) {
+            return;
+        }
+        if (!(this.level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        if (this.getAIState() != RavenAIState.RAVEN_CHEST_PERCH) {
+            return;
+        }
+
+        if (this.ravenChestPerchThreatCheckCooldownTicks > 0) {
+            this.ravenChestPerchThreatCheckCooldownTicks--;
+            return;
+        }
+        this.ravenChestPerchThreatCheckCooldownTicks = 20;
+
+        double detectionRadius = Math.max(0.0D, this.getEffectiveThreatDetectionRadiusBlocks());
+        if (detectionRadius <= 0.0D) {
+            if (!this.ravenChestPerchSeenHostiles.isEmpty()) {
+                this.ravenChestPerchSeenHostiles.clear();
+                RavenLogService.logForRavenOwnerKey(
+                        this,
+                        RavenLogCategory.PERCH,
+                        "log.featheredfriend.perch.threat_state_cleared"
+                );
+            }
+            return;
+        }
+
+        List<Mob> hostiles = serverLevel.getEntitiesOfClass(
+                Mob.class,
+                this.getBoundingBox().inflate(detectionRadius, detectionRadius, detectionRadius),
+                mob -> mob != null
+                        && mob.isAlive()
+                        && !mob.isRemoved()
+                        && mob instanceof Enemy
+                        && mob.distanceToSqr(this) <= (detectionRadius * detectionRadius)
+        );
+
+        Map<UUID, String> current = new HashMap<>();
+        if (hostiles != null) {
+            for (Mob hostile : hostiles) {
+                if (hostile == null) {
+                    continue;
+                }
+                current.put(hostile.getUUID(), hostile.getType().getDescription().getString());
+            }
+        }
+
+        if (!current.isEmpty()) {
+            for (Map.Entry<UUID, String> e : current.entrySet()) {
+                if (this.ravenChestPerchSeenHostiles.containsKey(e.getKey())) {
+                    continue;
+                }
+                RavenLogService.logForRavenOwnerKey(
+                        this,
+                        RavenLogCategory.PERCH,
+                        "log.featheredfriend.perch.threat_detected",
+                        String.format("%.1f", detectionRadius),
+                        e.getValue()
+                );
+            }
+        }
+
+        if (!this.ravenChestPerchSeenHostiles.isEmpty()) {
+            for (Map.Entry<UUID, String> e : this.ravenChestPerchSeenHostiles.entrySet()) {
+                if (current.containsKey(e.getKey())) {
+                    continue;
+                }
+                RavenLogService.logForRavenOwnerKey(
+                        this,
+                        RavenLogCategory.PERCH,
+                        "log.featheredfriend.perch.threat_ended_enemy",
+                        e.getValue()
+                );
+            }
+        }
+
+        this.ravenChestPerchSeenHostiles.clear();
+        this.ravenChestPerchSeenHostiles.putAll(current);
+    }
+
     private @NotNull String getSafeRavenNameForDespawn() {
         try {
             if (this.getCustomName() != null) {
@@ -2712,6 +2858,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     Services.PLATFORM.handleCourierRavenLandedHit(this);
                 } catch (Throwable ignored) {
                 }
+                logPerchedHit(source, false);
+            } else {
+                logPerchedHit(source, true);
             }
 
             try {
@@ -2728,6 +2877,12 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 }
                 this.discard();
             }
+
+            RavenLogService.logForRavenOwnerKey(
+                    this,
+                    RavenLogCategory.PERCH,
+                    "log.featheredfriend.perch.despawned_after_attack"
+            );
 
             if (this.tickCount % 20 == 0) {
                 LOG.debug("[RavenEntity] handleAssignedRavenChestPerchHit: dodged={} amount={} src={}",
@@ -2747,6 +2902,10 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     @Override
     public boolean hurt(net.minecraft.world.damagesource.DamageSource source, float amount) {
         try {
+            if (!this.level().isClientSide && isSuffocationDamage(source)) {
+                return handleSuffocationDespawn(source);
+            }
+
             if (isAssignedRavenChestPerch()) {
                 if (this.level().isClientSide) {
                     return false;
@@ -2758,15 +2917,24 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             // (Note: even if invulnerable, we still might want to teleport; requirement says ALWAYS teleport on hit,
             // but if hurt() is never called, we can't. Here, hurt() *is* called, so we can do it.)
             if (this.isInvulnerableTo(source)) {
-                // Still attempt the damage blink (server-side).
-                try {
-                    if (!this.level().isClientSide) {
-                        // force post-teleport roam even if we don't take damage
-                        teleportation.requestDamageBlinkTeleport(source, amount, "invulnerable-hurt", this);
+                if (isEntityAttackSource(source)) {
+                    // For direct combat sources, still run custom dodge/hit handling.
+                } else {
+                    // Still attempt the damage blink (server-side).
+                    try {
+                        if (!this.level().isClientSide) {
+                            // force post-teleport roam even if we don't take damage
+                            teleportation.requestDamageBlinkTeleport(source, amount, "invulnerable-hurt", this);
+                        }
+                    } catch (Throwable ignored) {
                     }
-                } catch (Throwable ignored) {
+                    RavenLogService.logForRavenOwnerKey(
+                            this,
+                            RavenLogCategory.COMBAT,
+                            "log.featheredfriend.combat.hit_ignored_invulnerable"
+                    );
+                    return false;
                 }
-                return false;
             }
 
             // Our combat blink logic (server authoritative).
@@ -2789,6 +2957,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             if (dodge) {
                 // Dodged: no damage applied.
+                logCombatHit(source, true);
                 if (this.tickCount % 20 == 0) {
                     /* LOG.debug("[RavenEntity] hurt: DODGED damage. amount={} src={} pos={}",
                             amount,
@@ -2801,6 +2970,17 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             // Not dodged: each landed hit counts as one hit-point regardless of incoming amount.
             boolean result = super.hurt(source, DAMAGE_PER_LANDED_HIT);
+            if (!result && !this.level().isClientSide) {
+                float before = this.getHealth();
+                float after = Math.max(0.0F, before - DAMAGE_PER_LANDED_HIT);
+                if (after < before) {
+                    this.setHealth(after);
+                    if (after <= 0.0F) {
+                        this.die(source);
+                    }
+                    result = true;
+                }
+            }
 
             if (result && !this.level().isClientSide) {
                 if (this.level() instanceof ServerLevel serverLevel) {
@@ -2810,6 +2990,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     Services.PLATFORM.handleCourierRavenLandedHit(this);
                 } catch (Throwable ignored) {
                 }
+                logCombatHit(source, false);
             }
 
             if (this.tickCount % 20 == 0) {
@@ -2843,6 +3024,77 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         }
     }
 
+    private boolean isEntityAttackSource(@Nullable DamageSource source) {
+        try {
+            Entity e = source == null ? null : source.getEntity();
+            if (e instanceof LivingEntity) {
+                return true;
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            Entity d = source == null ? null : source.getDirectEntity();
+            return d instanceof LivingEntity;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private boolean isSuffocationDamage(@Nullable DamageSource source) {
+        if (source == null) {
+            return false;
+        }
+        try {
+            String id = source.getMsgId();
+            if (id != null) {
+                String s = id.trim().toLowerCase(java.util.Locale.ROOT);
+                if (s.equals("inwall") || s.equals("in_wall") || s.contains("suffocat")) {
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
+
+    private boolean handleSuffocationDespawn(@Nullable DamageSource source) {
+        try {
+            if (!(this.level() instanceof ServerLevel serverLevel)) {
+                return false;
+            }
+            if (!this.isAlive()) {
+                return false;
+            }
+
+            RavenLogService.logForRavenOwnerKey(
+                    this,
+                    RavenLogCategory.COMBAT,
+                    "log.featheredfriend.combat.suffocation_despawn"
+            );
+
+            try {
+                TamedRaven tamed = this.getTamedRavenModule();
+                tamed.beginDespawnWithFx(
+                        serverLevel,
+                        resolveOwnerPlayerServerSafe(),
+                        getSafeRavenNameForDespawn(),
+                        false
+                );
+            } catch (Throwable t) {
+                if (this.tickCount % 40 == 0) {
+                    LOG.warn("[RavenEntity] handleSuffocationDespawn: despawn FX failed safely: {}", t.toString());
+                }
+                this.discard();
+            }
+            return true;
+        } catch (Throwable t) {
+            if (this.tickCount % 40 == 0) {
+                LOG.warn("[RavenEntity] handleSuffocationDespawn failed safely: {}", t.toString());
+            }
+            return false;
+        }
+    }
+
     private void spawnSuccessfulDamageFeatherBurst(@NotNull ServerLevel serverLevel) {
         try {
             Vec3 pos = this.position();
@@ -2862,6 +3114,118 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         }
     }
 
+    private void logPerchedHit(@Nullable DamageSource source, boolean dodged) {
+        DamageAttackerInfo attacker = resolveDamageAttacker(source);
+        if (dodged) {
+            if (attacker.player()) {
+                RavenLogService.logForRavenOwnerKey(
+                        this,
+                        RavenLogCategory.COMBAT,
+                        "log.featheredfriend.combat.perched_hit_dodged_by_player"
+                );
+            } else {
+                RavenLogService.logForRavenOwnerKey(
+                        this,
+                        RavenLogCategory.COMBAT,
+                        "log.featheredfriend.combat.perched_hit_dodged_by_entity",
+                        attacker.label()
+                );
+            }
+            return;
+        }
+
+        if (attacker.player()) {
+            RavenLogService.logForRavenOwnerKey(
+                    this,
+                    RavenLogCategory.COMBAT,
+                    "log.featheredfriend.combat.perched_hit_landed_by_player"
+            );
+        } else {
+            RavenLogService.logForRavenOwnerKey(
+                    this,
+                    RavenLogCategory.COMBAT,
+                    "log.featheredfriend.combat.perched_hit_landed_by_entity",
+                    attacker.label()
+            );
+        }
+    }
+
+    private void logCombatHit(@Nullable DamageSource source, boolean dodged) {
+        DamageAttackerInfo attacker = resolveDamageAttacker(source);
+        if (dodged) {
+            if (attacker.player()) {
+                RavenLogService.logForRavenOwnerKey(
+                        this,
+                        RavenLogCategory.COMBAT,
+                        "log.featheredfriend.combat.hit_dodged_by_player"
+                );
+            } else {
+                RavenLogService.logForRavenOwnerKey(
+                        this,
+                        RavenLogCategory.COMBAT,
+                        "log.featheredfriend.combat.hit_dodged_by_entity",
+                        attacker.label()
+                );
+            }
+            return;
+        }
+
+        String healthNow = String.format("%.2f", this.getHealth());
+        String healthMax = String.format("%.2f", this.getMaxHealth());
+        if (attacker.player()) {
+            RavenLogService.logForRavenOwnerKey(
+                    this,
+                    RavenLogCategory.COMBAT,
+                    "log.featheredfriend.combat.hit_landed_health_by_player",
+                    healthNow,
+                    healthMax
+            );
+        } else {
+            RavenLogService.logForRavenOwnerKey(
+                    this,
+                    RavenLogCategory.COMBAT,
+                    "log.featheredfriend.combat.hit_landed_health_by_entity",
+                    attacker.label(),
+                    healthNow,
+                    healthMax
+            );
+        }
+    }
+
+    private @NotNull DamageAttackerInfo resolveDamageAttacker(@Nullable DamageSource source) {
+        try {
+            Entity attacker = source == null ? null : source.getEntity();
+            if (attacker instanceof Player) {
+                return new DamageAttackerInfo(true, "player");
+            }
+            if (attacker != null) {
+                String label = attacker.getType().getDescription().getString();
+                if (label != null && !label.isBlank()) {
+                    return new DamageAttackerInfo(false, label);
+                }
+            }
+
+            Entity direct = source == null ? null : source.getDirectEntity();
+            if (direct instanceof Player) {
+                return new DamageAttackerInfo(true, "player");
+            }
+            if (direct != null) {
+                String label = direct.getType().getDescription().getString();
+                if (label != null && !label.isBlank()) {
+                    return new DamageAttackerInfo(false, label);
+                }
+            }
+
+            String fallback = source == null ? "unknown" : source.getMsgId();
+            if (fallback == null || fallback.isBlank()) {
+                fallback = "unknown";
+            }
+            return new DamageAttackerInfo(false, fallback);
+        } catch (Throwable ignored) {
+            return new DamageAttackerInfo(false, "unknown");
+        }
+    }
+
     @Override
     public void die(net.minecraft.world.damagesource.DamageSource source) {
         try {
@@ -2874,10 +3238,25 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
         }
 
+        try {
+            if (!this.level().isClientSide && !this.ravenFeatherDeathDropDone) {
+                this.ravenFeatherDeathDropDone = true;
+                this.spawnAtLocation(new ItemStack(FFItems.RAVEN_FEATHER.get()));
+            }
+        } catch (Throwable ignored) {
+        }
+
         // Fire TamedRaven death logic on the server side only.
         try {
             if (!this.level().isClientSide) {
                 net.z2six.featheredfriend.entity.raven.modules.TamedRavenDeathHandler.onRavenDeath(this, source);
+                String reason = source == null ? "unknown" : source.getMsgId();
+                RavenLogService.logForRavenOwnerKey(
+                        this,
+                        RavenLogCategory.COMBAT,
+                        "log.featheredfriend.combat.raven_died_cause",
+                        reason
+                );
             }
         } catch (Throwable t) {
             if (this.tickCount % 40 == 0) {

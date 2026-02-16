@@ -134,6 +134,14 @@ public interface IPlatformHelper {
         // no-op
     }
 
+    default @NotNull String getRavenLogViewSettingsRaw() {
+        return "";
+    }
+
+    default void setRavenLogViewSettingsRaw(@NotNull String value) {
+        // no-op
+    }
+
     // ---------------------------------------------------------------------
     // Client <-> server payload helpers (loader-specific networking)
     // ---------------------------------------------------------------------
@@ -184,16 +192,15 @@ public interface IPlatformHelper {
         // no-op
     }
 
-    default void sendRavenChestPerchDebugAdjustToServer(int ravenEntityId,
-                                                        double offsetX,
-                                                        double offsetY,
-                                                        double offsetZ,
-                                                        float yaw,
-                                                        float pitch) {
+    default void sendOpenEnderpackToServer() {
         // no-op
     }
 
-    default void sendOpenEnderpackToServer() {
+    default void sendOpenRavenLogToServer() {
+        // no-op
+    }
+
+    default void sendClearRavenLogToServer() {
         // no-op
     }
 
@@ -272,6 +279,22 @@ public interface IPlatformHelper {
         return 0;
     }
 
+    default int getRavenLogRetentionMinutesClient() {
+        return 0;
+    }
+
+    default int getRavenLogMaxBytesPerPlayerClient() {
+        return 0;
+    }
+
+    default int getEnderpackDepositCooldownSecondsClient() {
+        return 0;
+    }
+
+    default int getScrollDeliveryCooldownSecondsClient() {
+        return 0;
+    }
+
     default void requestServerSettingsSync() {
         // no-op
     }
@@ -284,7 +307,39 @@ public interface IPlatformHelper {
         // no-op
     }
 
+    default void sendSetRavenLogRetentionMinutes(int value) {
+        // no-op
+    }
+
+    default void sendSetRavenLogMaxBytesPerPlayer(int value) {
+        // no-op
+    }
+
+    default void sendSetEnderpackDepositCooldownSeconds(int value) {
+        // no-op
+    }
+
+    default void sendSetScrollDeliveryCooldownSeconds(int value) {
+        // no-op
+    }
+
     default int getMaxRavenChestsPerPlayer() {
+        return 0;
+    }
+
+    default int getRavenLogRetentionMinutes() {
+        return 60 * 24 * 7;
+    }
+
+    default int getRavenLogMaxBytesPerPlayer() {
+        return 262_144;
+    }
+
+    default int getEnderpackDepositCooldownSeconds() {
+        return 0;
+    }
+
+    default int getScrollDeliveryCooldownSeconds() {
         return 0;
     }
 }

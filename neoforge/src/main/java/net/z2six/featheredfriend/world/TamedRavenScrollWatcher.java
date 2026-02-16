@@ -40,6 +40,7 @@ import net.z2six.featheredfriend.entity.raven.modules.RavenSoundEngine;
 import net.z2six.featheredfriend.entity.raven.modules.TamedRaven;
 import net.z2six.featheredfriend.entity.raven.modules.Teleportation;
 import net.z2six.featheredfriend.item.EnderpackStorage;
+import net.z2six.featheredfriend.log.RavenLogCategory;
 import net.z2six.featheredfriend.network.RavenChestChoiceInfo;
 import net.z2six.featheredfriend.network.RavenChestSelectAction;
 import net.z2six.featheredfriend.platform.Services;
@@ -204,6 +205,8 @@ public final class TamedRavenScrollWatcher {
     private static final String NBT_COURIER_SENDER_UUID = "CourierSenderUUID";
     private static final String NBT_COURIER_RECIPIENT_UUID = "CourierRecipientUUID";
     private static final String NBT_COURIER_DESPAWN_AT = "CourierDespawnAt";
+    private static final String NBT_ENDERPACK_DEPOSIT_LAST_AT_MS = "EnderpackDepositLastAtMs";
+    private static final String NBT_SCROLL_DELIVERY_LAST_AT_MS = "ScrollDeliveryLastAtMs";
 
     private TamedRavenScrollWatcher() {
         // no-op
@@ -414,12 +417,26 @@ public final class TamedRavenScrollWatcher {
                 if (!workflow.deposited && now >= workflow.depositAtGameTime) {
                     if (raven == null || !raven.isAlive() || raven.isRemoved()) {
                         workflow.returnAtGameTime = Math.min(workflow.returnAtGameTime, now);
+                        if (owner != null) {
+                            logPlayer(
+                                    owner,
+                                    RavenLogCategory.ENDERPACK,
+                                    "log.featheredfriend.enderpack.workflow.raven_missing_before_deposit"
+                            );
+                        }
                     } else {
                         ResourceLocation dimLoc = ResourceLocation.tryParse(workflow.chestDimensionId);
                         if (dimLoc == null) {
                             workflow.invalidTarget = true;
                             workflow.deposited = true;
                             workflow.returnAtGameTime = Math.min(workflow.returnAtGameTime, now);
+                            if (owner != null) {
+                                logPlayer(
+                                        owner,
+                                        RavenLogCategory.CHEST,
+                                        "log.featheredfriend.enderpack.workflow.invalid_dimension_id"
+                                );
+                            }
                         } else {
                             ResourceKey<Level> dimKey = ResourceKey.create(Registries.DIMENSION, dimLoc);
                             ServerLevel chestLevel = server.getLevel(dimKey);
@@ -427,6 +444,13 @@ public final class TamedRavenScrollWatcher {
                                 workflow.invalidTarget = true;
                                 workflow.deposited = true;
                                 workflow.returnAtGameTime = Math.min(workflow.returnAtGameTime, now);
+                                if (owner != null) {
+                                    logPlayer(
+                                            owner,
+                                            RavenLogCategory.CHEST,
+                                            "log.featheredfriend.enderpack.workflow.level_unavailable"
+                                    );
+                                }
                             } else {
                                 BlockPos chestPos = BlockPos.of(workflow.chestBlockPos);
                                 chestLevel.getChunk(chestPos.getX() >> 4, chestPos.getZ() >> 4);
@@ -435,6 +459,13 @@ public final class TamedRavenScrollWatcher {
                                     workflow.invalidTarget = true;
                                     workflow.deposited = true;
                                     workflow.returnAtGameTime = Math.min(workflow.returnAtGameTime, now);
+                                    if (owner != null) {
+                                        logPlayer(
+                                                owner,
+                                                RavenLogCategory.CHEST,
+                                                "log.featheredfriend.enderpack.workflow.target_missing_or_wrong_level"
+                                        );
+                                    }
                                 } else {
                                     applyRavenChestPerchPose(chestLevel, raven, chestPos);
                                     playRavenChestArrivalFx(chestLevel, raven, "enderpack-deposit-arrive");
@@ -451,6 +482,14 @@ public final class TamedRavenScrollWatcher {
                                             workflow.returnAtGameTime,
                                             now + ENDERPACK_WORKFLOW_RETURN_DELAY_TICKS
                                     );
+                                    if (owner != null) {
+                                        logPlayer(
+                                                owner,
+                                                RavenLogCategory.ENDERPACK,
+                                                "log.featheredfriend.enderpack.workflow.deposit_finished",
+                                                workflow.movedItems
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -483,14 +522,30 @@ public final class TamedRavenScrollWatcher {
 
                 if (workflow.invalidTarget) {
                     owner.sendSystemMessage(Component.translatable("message.featheredfriend.raven_chest.invalid_target"));
+                    logPlayer(
+                            owner,
+                            RavenLogCategory.CHEST,
+                            "log.featheredfriend.enderpack.workflow.target_became_invalid"
+                    );
                 } else if (workflow.deposited) {
                     if (workflow.movedItems > 0) {
                         owner.sendSystemMessage(Component.translatable(
                                 "message.featheredfriend.raven_chest.deposit.success",
                                 workflow.movedItems
                         ));
+                        logPlayer(
+                                owner,
+                                RavenLogCategory.ENDERPACK,
+                                "log.featheredfriend.enderpack.workflow.returned_success",
+                                workflow.movedItems
+                        );
                     } else {
                         owner.sendSystemMessage(Component.translatable("message.featheredfriend.raven_chest.deposit.empty"));
+                        logPlayer(
+                                owner,
+                                RavenLogCategory.ENDERPACK,
+                                "log.featheredfriend.enderpack.workflow.returned_empty"
+                        );
                     }
                 }
 
@@ -517,6 +572,11 @@ public final class TamedRavenScrollWatcher {
                 ServerPlayer owner = server.getPlayerList().getPlayer(workflow.ownerUuid);
                 if (owner != null) {
                     returnExtractedEnderpack(owner, workflow.extraction, owner.position());
+                    logPlayer(
+                            owner,
+                            RavenLogCategory.ENDERPACK,
+                            "log.featheredfriend.enderpack.workflow.failed_returned"
+                    );
                 }
             } catch (Throwable ignored) {
             }
@@ -888,6 +948,12 @@ public final class TamedRavenScrollWatcher {
             playScrollSummonSpawnFx(level, owner, raven);
             LOG.debug("[TamedRavenScrollWatcher] spawnSummonedRaven: spawned id={} name='{}' for player='{}' at {}",
                     raven.getId(), ravenName, safePlayerName(owner), raven.position());
+            logPlayer(
+                    owner,
+                    RavenLogCategory.SUMMON,
+                    "log.featheredfriend.summon.spawned_at",
+                    formatVec(raven.position())
+            );
 
             return raven;
 
@@ -1039,6 +1105,12 @@ public final class TamedRavenScrollWatcher {
             } catch (Throwable ignored) {
             }
 
+            logPlayer(
+                    owner,
+                    RavenLogCategory.SUMMON,
+                    "log.featheredfriend.summon.force_despawn_before_new",
+                    reason
+            );
             clearSingleRavenTrackingFlags(raven);
             raven.discard();
         } catch (Throwable t) {
@@ -1192,6 +1264,21 @@ public final class TamedRavenScrollWatcher {
 
                 if (holdingNewSealedScroll) {
                     try {
+                        long nowMillis = System.currentTimeMillis();
+                        long cooldownRemainingMs = getScrollDeliveryCooldownRemainingMillis(player, nowMillis);
+                        if (cooldownRemainingMs > 0L) {
+                            long remainingSeconds = Math.max(1L, (cooldownRemainingMs + 999L) / 1000L);
+                            player.sendSystemMessage(Component.translatable(
+                                    "message.featheredfriend.courier.dispatch.cooldown",
+                                    remainingSeconds
+                            ));
+                            logPlayer(
+                                    player,
+                                    RavenLogCategory.COURIER,
+                                    "log.featheredfriend.courier.create_aborted.cooldown",
+                                    remainingSeconds
+                            );
+                        } else {
                         RavenCourierData courierData = RavenCourierData.get(level);
                         RavenCourierData.DeliveryJob newJob = courierData.createJobFromSealedScroll(player, raven, inHand);
 
@@ -1205,9 +1292,11 @@ public final class TamedRavenScrollWatcher {
 
                             LOG.debug("[TamedRavenScrollWatcher] RecallInteract: created NEW courier jobId={} after recall return (player='{}')",
                                     newJob.jobId, safePlayerName(player));
+                            setLastScrollDeliveryAtMillis(player, nowMillis);
                         } else {
                             LOG.warn("[TamedRavenScrollWatcher] RecallInteract: failed to create NEW job from held sealed scroll for player='{}'",
                                     safePlayerName(player));
+                        }
                         }
                     } catch (Throwable t) {
                         LOG.warn("[TamedRavenScrollWatcher] RecallInteract: createJobFromSealedScroll threw safely for player='{}': {}",
@@ -1250,6 +1339,11 @@ public final class TamedRavenScrollWatcher {
                 return InteractionResult.CONSUME;
             }
 
+            if ((stack == null || stack.isEmpty()) && player.isCrouching()) {
+                tryUnequipRavenArmorToOwner(player, raven);
+                return InteractionResult.CONSUME;
+            }
+
             if (stack != null && !stack.isEmpty() && !FFItems.isEnderpack(stack)) {
                 return InteractionResult.PASS;
             }
@@ -1276,6 +1370,32 @@ public final class TamedRavenScrollWatcher {
         } catch (Throwable t) {
             LOG.error("[TamedRavenScrollWatcher] handleScrollSummonedRavenInteract failed safely", t);
             return InteractionResult.PASS;
+        }
+    }
+
+    private static boolean tryUnequipRavenArmorToOwner(@NotNull ServerPlayer player,
+                                                       @NotNull RavenEntity raven) {
+        try {
+            RavenArmorVisual equipped = raven.getRavenArmorVisual();
+            if (equipped == null || equipped == RavenArmorVisual.NONE) {
+                return false;
+            }
+
+            raven.setRavenArmorVisual(RavenArmorVisual.NONE);
+            TamedRavenPlayerData.setEquippedArmorVisual(player, RavenArmorVisual.NONE);
+
+            ItemStack previousArmor = FFItems.createRavenArmorStack(equipped);
+            if (!previousArmor.isEmpty()) {
+                boolean added = player.getInventory().add(previousArmor);
+                if (!added) {
+                    raven.spawnAtLocation(previousArmor);
+                }
+            }
+            return true;
+        } catch (Throwable t) {
+            LOG.warn("[TamedRavenScrollWatcher] tryUnequipRavenArmorToOwner failed safely for player='{}' ravenId={}: {}",
+                    safePlayerName(player), raven.getId(), t.toString());
+            return false;
         }
     }
 
@@ -1519,6 +1639,13 @@ public final class TamedRavenScrollWatcher {
                         safePlayerName(owner), raven.getId(), reason);
                 raven.discard();
             }
+
+            logPlayer(
+                    owner,
+                    RavenLogCategory.SUMMON,
+                    "log.featheredfriend.summon.despawned_reason",
+                    reason
+            );
 
             // --- CRUCIAL: stop treating this raven as scroll-summoned from now on ---
 
@@ -1891,6 +2018,23 @@ public final class TamedRavenScrollWatcher {
                 return InteractionResult.PASS;
             }
 
+            long nowMillis = System.currentTimeMillis();
+            long cooldownRemainingMs = getScrollDeliveryCooldownRemainingMillis(serverPlayer, nowMillis);
+            if (cooldownRemainingMs > 0L) {
+                long remainingSeconds = Math.max(1L, (cooldownRemainingMs + 999L) / 1000L);
+                serverPlayer.sendSystemMessage(Component.translatable(
+                        "message.featheredfriend.courier.dispatch.cooldown",
+                        remainingSeconds
+                ));
+                logPlayer(
+                        serverPlayer,
+                        RavenLogCategory.COURIER,
+                        "log.featheredfriend.courier.create_aborted.cooldown",
+                        remainingSeconds
+                );
+                return InteractionResult.CONSUME;
+            }
+
             // 1) Create a delivery job in RavenCourierData from this Sealed Scroll.
             RavenCourierData courierData = RavenCourierData.get(serverLevel);
             RavenCourierData.DeliveryJob job = courierData.createJobFromSealedScroll(
@@ -1910,6 +2054,11 @@ public final class TamedRavenScrollWatcher {
                         hand,
                         stack
                 );
+                logPlayer(
+                        serverPlayer,
+                        RavenLogCategory.COURIER,
+                        "log.featheredfriend.courier.create_failed_from_scroll"
+                );
                 return InteractionResult.PASS;
             }
 
@@ -1920,6 +2069,14 @@ public final class TamedRavenScrollWatcher {
                     job.senderName,
                     job.recipientName,
                     raven.getId()
+            );
+            setLastScrollDeliveryAtMillis(serverPlayer, nowMillis);
+            logPlayer(
+                    serverPlayer,
+                    RavenLogCategory.COURIER,
+                    "log.featheredfriend.courier.job_created_for_recipient",
+                    job.jobId,
+                    job.recipientName
             );
 
             // 2) Switch the model of this raven to the SCROLL variant (visually holding the scroll).
@@ -1963,6 +2120,12 @@ public final class TamedRavenScrollWatcher {
                 // Fail-safe: if FX despawn fails, we do NOT forcibly discard here,
                 // so the raven remains in-world rather than causing a hard state mismatch.
             }
+
+            logPlayer(
+                    serverPlayer,
+                    RavenLogCategory.COURIER,
+                    "log.featheredfriend.courier.raven_departed_with_scroll"
+            );
 
             // We fully handled this interaction: the scroll was turned into a courier job,
             // the raven swapped to SCROLL variant and began its fade-out.
@@ -2015,6 +2178,11 @@ public final class TamedRavenScrollWatcher {
                 );
                 LOG.debug("[TamedRavenScrollWatcher] Whistle request denied: player='{}' has no stored tamed raven.",
                         safePlayerName(serverPlayer));
+                logPlayer(
+                        serverPlayer,
+                        RavenLogCategory.SUMMON,
+                        "log.featheredfriend.summon.whistle_failed_no_raven"
+                );
                 return;
             }
 
@@ -2026,6 +2194,12 @@ public final class TamedRavenScrollWatcher {
                 }
                 LOG.debug("[TamedRavenScrollWatcher] Whistle: toggled OFF {} scroll-summoned raven(s) for player='{}'",
                         scrollRavens.size(), safePlayerName(serverPlayer));
+                logPlayer(
+                        serverPlayer,
+                        RavenLogCategory.SUMMON,
+                        "log.featheredfriend.summon.whistle_toggled_off",
+                        scrollRavens.size()
+                );
                 return;
             }
 
@@ -2033,6 +2207,18 @@ public final class TamedRavenScrollWatcher {
             if (spawned != null) {
                 LOG.debug("[TamedRavenScrollWatcher] Whistle: spawned scroll-raven id={} for player='{}' at {}",
                         spawned.getId(), safePlayerName(serverPlayer), spawned.position());
+                logPlayer(
+                        serverPlayer,
+                        RavenLogCategory.SUMMON,
+                        "log.featheredfriend.summon.whistle_spawned_at",
+                        formatVec(spawned.position())
+                );
+            } else {
+                logPlayer(
+                        serverPlayer,
+                        RavenLogCategory.SUMMON,
+                        "log.featheredfriend.summon.whistle_spawn_failed"
+                );
             }
 
         } catch (Throwable t) {
@@ -2115,26 +2301,57 @@ public final class TamedRavenScrollWatcher {
                 return;
             }
 
+            long nowMillis = System.currentTimeMillis();
+            long cooldownRemainingMs = getEnderpackDepositCooldownRemainingMillis(player, nowMillis);
+            if (cooldownRemainingMs > 0L) {
+                long remainingSeconds = Math.max(1L, (cooldownRemainingMs + 999L) / 1000L);
+                player.sendSystemMessage(Component.translatable(
+                        "message.featheredfriend.enderpack.deposit.cooldown",
+                        remainingSeconds
+                ));
+                logPlayer(
+                        player,
+                        RavenLogCategory.ENDERPACK,
+                        "log.featheredfriend.enderpack.deposit.aborted.cooldown",
+                        remainingSeconds
+                );
+                return;
+            }
+
+            logPlayer(
+                    player,
+                    RavenLogCategory.ENDERPACK,
+                    "log.featheredfriend.enderpack.deposit.workflow_started"
+            );
+
             if (!Services.PLATFORM.hasAccessibleEnderpack(player)) {
                 player.sendSystemMessage(Component.translatable("message.featheredfriend.enderpack.none_found"));
+                logPlayer(
+                        player,
+                        RavenLogCategory.ENDERPACK,
+                        "log.featheredfriend.enderpack.deposit.aborted.no_accessible_pack"
+                );
                 return;
             }
 
             ResourceLocation dimLoc = ResourceLocation.tryParse(dimensionId);
             if (dimLoc == null) {
                 player.sendSystemMessage(Component.translatable("message.featheredfriend.raven_chest.invalid_target"));
+                logPlayer(player, RavenLogCategory.CHEST, "log.featheredfriend.enderpack.deposit.aborted.invalid_chest_target");
                 return;
             }
             ResourceKey<Level> dimKey = ResourceKey.create(Registries.DIMENSION, dimLoc);
             ServerLevel targetLevel = player.server.getLevel(dimKey);
             if (targetLevel == null) {
                 player.sendSystemMessage(Component.translatable("message.featheredfriend.raven_chest.invalid_target"));
+                logPlayer(player, RavenLogCategory.CHEST, "log.featheredfriend.enderpack.deposit.aborted.dimension_unavailable");
                 return;
             }
 
             RavenChestRegistryData data = RavenChestRegistryData.get(targetLevel);
             if (!data.isOwnedBy(player.getUUID(), dimensionId, blockPos)) {
                 player.sendSystemMessage(Component.translatable("message.featheredfriend.raven_chest.invalid_target"));
+                logPlayer(player, RavenLogCategory.CHEST, "log.featheredfriend.enderpack.deposit.aborted.chest_not_owned");
                 return;
             }
 
@@ -2148,10 +2365,12 @@ public final class TamedRavenScrollWatcher {
             }
             if (selected == null) {
                 player.sendSystemMessage(Component.translatable("message.featheredfriend.raven_chest.invalid_target"));
+                logPlayer(player, RavenLogCategory.CHEST, "log.featheredfriend.enderpack.deposit.aborted.chest_not_in_registry");
                 return;
             }
             if (!selected.available()) {
                 player.sendSystemMessage(Component.translatable("message.featheredfriend.raven_chest.unavailable_target"));
+                logPlayer(player, RavenLogCategory.CHEST, "log.featheredfriend.enderpack.deposit.aborted.chest_unavailable_cap");
                 return;
             }
 
@@ -2161,16 +2380,19 @@ public final class TamedRavenScrollWatcher {
             if (!(blockEntity instanceof RavenChestBlockEntity ravenChest)) {
                 data.unregisterChest(dimensionId, blockPos);
                 player.sendSystemMessage(Component.translatable("message.featheredfriend.raven_chest.invalid_target"));
+                logPlayer(player, RavenLogCategory.CHEST, "log.featheredfriend.enderpack.deposit.aborted.chest_block_missing");
                 return;
             }
             if (raven.level() != targetLevel) {
                 player.sendSystemMessage(Component.translatable("message.featheredfriend.raven_chest.invalid_target"));
+                logPlayer(player, RavenLogCategory.CHEST, "log.featheredfriend.enderpack.deposit.aborted.raven_wrong_dimension");
                 return;
             }
 
             EnderpackExtraction extraction = extractAccessibleEnderpack(player);
             if (extraction == null) {
                 player.sendSystemMessage(Component.translatable("message.featheredfriend.enderpack.none_found"));
+                logPlayer(player, RavenLogCategory.ENDERPACK, "log.featheredfriend.enderpack.deposit.aborted.extraction_failed");
                 return;
             }
 
@@ -2191,8 +2413,131 @@ public final class TamedRavenScrollWatcher {
             workflow.invalidTarget = false;
 
             ENDERPACK_DEPOSIT_WORKFLOWS.put(raven.getUUID(), workflow);
+            setLastEnderpackDepositAtMillis(player, nowMillis);
+            logPlayer(
+                    player,
+                    RavenLogCategory.ENDERPACK,
+                    "log.featheredfriend.enderpack.deposit.raven_moved_to_chest",
+                    BlockPos.of(blockPos).toShortString()
+            );
         } catch (Throwable t) {
             LOG.error("[TamedRavenScrollWatcher] handleConfirmRavenChestDeposit failed safely", t);
+        }
+    }
+
+    private static long getEnderpackDepositCooldownRemainingMillis(@NotNull ServerPlayer player, long nowMillis) {
+        try {
+            long cooldownMs = Math.max(0L, (long) Services.PLATFORM.getEnderpackDepositCooldownSeconds() * 1000L);
+            if (cooldownMs <= 0L) {
+                return 0L;
+            }
+            long lastAtMs = getLastEnderpackDepositAtMillis(player);
+            if (lastAtMs <= 0L) {
+                return 0L;
+            }
+            long elapsed = Math.max(0L, nowMillis - lastAtMs);
+            if (elapsed >= cooldownMs) {
+                return 0L;
+            }
+            return cooldownMs - elapsed;
+        } catch (Throwable t) {
+            LOG.warn("[TamedRavenScrollWatcher] getEnderpackDepositCooldownRemainingMillis failed safely for player='{}': {}",
+                    safePlayerName(player), t.toString());
+            return 0L;
+        }
+    }
+
+    private static long getLastEnderpackDepositAtMillis(@NotNull ServerPlayer player) {
+        try {
+            CompoundTag root = Services.PLATFORM.getPlayerPersistentData(player);
+            if (root == null || !root.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)) {
+                return 0L;
+            }
+            CompoundTag modTag = root.getCompound(Constants.MOD_ID);
+            if (modTag == null || modTag.isEmpty()) {
+                return 0L;
+            }
+            if (!modTag.contains(NBT_ENDERPACK_DEPOSIT_LAST_AT_MS, Tag.TAG_LONG)) {
+                return 0L;
+            }
+            return Math.max(0L, modTag.getLong(NBT_ENDERPACK_DEPOSIT_LAST_AT_MS));
+        } catch (Throwable t) {
+            LOG.warn("[TamedRavenScrollWatcher] getLastEnderpackDepositAtMillis failed safely for player='{}': {}",
+                    safePlayerName(player), t.toString());
+            return 0L;
+        }
+    }
+
+    private static void setLastEnderpackDepositAtMillis(@NotNull ServerPlayer player, long whenMillis) {
+        try {
+            CompoundTag root = Services.PLATFORM.getPlayerPersistentData(player);
+            if (root == null) {
+                return;
+            }
+            CompoundTag modTag = root.getCompound(Constants.MOD_ID);
+            modTag.putLong(NBT_ENDERPACK_DEPOSIT_LAST_AT_MS, Math.max(0L, whenMillis));
+            root.put(Constants.MOD_ID, modTag);
+        } catch (Throwable t) {
+            LOG.warn("[TamedRavenScrollWatcher] setLastEnderpackDepositAtMillis failed safely for player='{}': {}",
+                    safePlayerName(player), t.toString());
+        }
+    }
+
+    private static long getScrollDeliveryCooldownRemainingMillis(@NotNull ServerPlayer player, long nowMillis) {
+        try {
+            long cooldownMs = Math.max(0L, (long) Services.PLATFORM.getScrollDeliveryCooldownSeconds() * 1000L);
+            if (cooldownMs <= 0L) {
+                return 0L;
+            }
+            long lastAtMs = getLastScrollDeliveryAtMillis(player);
+            if (lastAtMs <= 0L) {
+                return 0L;
+            }
+            long elapsed = Math.max(0L, nowMillis - lastAtMs);
+            if (elapsed >= cooldownMs) {
+                return 0L;
+            }
+            return cooldownMs - elapsed;
+        } catch (Throwable t) {
+            LOG.warn("[TamedRavenScrollWatcher] getScrollDeliveryCooldownRemainingMillis failed safely for player='{}': {}",
+                    safePlayerName(player), t.toString());
+            return 0L;
+        }
+    }
+
+    private static long getLastScrollDeliveryAtMillis(@NotNull ServerPlayer player) {
+        try {
+            CompoundTag root = Services.PLATFORM.getPlayerPersistentData(player);
+            if (root == null || !root.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)) {
+                return 0L;
+            }
+            CompoundTag modTag = root.getCompound(Constants.MOD_ID);
+            if (modTag == null || modTag.isEmpty()) {
+                return 0L;
+            }
+            if (!modTag.contains(NBT_SCROLL_DELIVERY_LAST_AT_MS, Tag.TAG_LONG)) {
+                return 0L;
+            }
+            return Math.max(0L, modTag.getLong(NBT_SCROLL_DELIVERY_LAST_AT_MS));
+        } catch (Throwable t) {
+            LOG.warn("[TamedRavenScrollWatcher] getLastScrollDeliveryAtMillis failed safely for player='{}': {}",
+                    safePlayerName(player), t.toString());
+            return 0L;
+        }
+    }
+
+    private static void setLastScrollDeliveryAtMillis(@NotNull ServerPlayer player, long whenMillis) {
+        try {
+            CompoundTag root = Services.PLATFORM.getPlayerPersistentData(player);
+            if (root == null) {
+                return;
+            }
+            CompoundTag modTag = root.getCompound(Constants.MOD_ID);
+            modTag.putLong(NBT_SCROLL_DELIVERY_LAST_AT_MS, Math.max(0L, whenMillis));
+            root.put(Constants.MOD_ID, modTag);
+        } catch (Throwable t) {
+            LOG.warn("[TamedRavenScrollWatcher] setLastScrollDeliveryAtMillis failed safely for player='{}': {}",
+                    safePlayerName(player), t.toString());
         }
     }
 
@@ -2539,21 +2884,29 @@ public final class TamedRavenScrollWatcher {
                                                                @NotNull String dimensionId,
                                                                long blockPos) {
         try {
+            logPlayer(
+                    player,
+                    RavenLogCategory.PERCH,
+                    "log.featheredfriend.perch.assignment_requested"
+            );
             ResourceLocation dimLoc = ResourceLocation.tryParse(dimensionId);
             if (dimLoc == null) {
                 player.sendSystemMessage(Component.translatable("message.featheredfriend.raven_chest.invalid_target"));
+                logPlayer(player, RavenLogCategory.PERCH, "log.featheredfriend.perch.assignment_failed.invalid_dimension");
                 return;
             }
             ResourceKey<Level> dimKey = ResourceKey.create(Registries.DIMENSION, dimLoc);
             ServerLevel targetLevel = player.server.getLevel(dimKey);
             if (targetLevel == null) {
                 player.sendSystemMessage(Component.translatable("message.featheredfriend.raven_chest.invalid_target"));
+                logPlayer(player, RavenLogCategory.PERCH, "log.featheredfriend.perch.assignment_failed.level_unavailable");
                 return;
             }
 
             RavenChestRegistryData data = RavenChestRegistryData.get(targetLevel);
             if (!data.isOwnedBy(player.getUUID(), dimensionId, blockPos)) {
                 player.sendSystemMessage(Component.translatable("message.featheredfriend.raven_chest.invalid_target"));
+                logPlayer(player, RavenLogCategory.PERCH, "log.featheredfriend.perch.assignment_failed.chest_not_owned");
                 return;
             }
 
@@ -2567,10 +2920,12 @@ public final class TamedRavenScrollWatcher {
             }
             if (selected == null) {
                 player.sendSystemMessage(Component.translatable("message.featheredfriend.raven_chest.invalid_target"));
+                logPlayer(player, RavenLogCategory.PERCH, "log.featheredfriend.perch.assignment_failed.chest_not_found");
                 return;
             }
             if (!selected.available()) {
                 player.sendSystemMessage(Component.translatable("message.featheredfriend.raven_chest.unavailable_target"));
+                logPlayer(player, RavenLogCategory.PERCH, "log.featheredfriend.perch.assignment_failed.chest_unavailable");
                 return;
             }
 
@@ -2580,10 +2935,12 @@ public final class TamedRavenScrollWatcher {
             if (!(blockEntity instanceof RavenChestBlockEntity)) {
                 data.unregisterChest(dimensionId, blockPos);
                 player.sendSystemMessage(Component.translatable("message.featheredfriend.raven_chest.invalid_target"));
+                logPlayer(player, RavenLogCategory.PERCH, "log.featheredfriend.perch.assignment_failed.chest_block_missing");
                 return;
             }
             if (raven.level() != targetLevel) {
                 player.sendSystemMessage(Component.translatable("message.featheredfriend.raven_chest.invalid_target"));
+                logPlayer(player, RavenLogCategory.PERCH, "log.featheredfriend.perch.assignment_failed.raven_wrong_dimension");
                 return;
             }
 
@@ -2591,6 +2948,7 @@ public final class TamedRavenScrollWatcher {
                 player.sendSystemMessage(Component.translatable(
                         "message.featheredfriend.raven_chest.perch.requires_ender_eye"
                 ));
+                logPlayer(player, RavenLogCategory.PERCH, "log.featheredfriend.perch.assignment_failed.no_ender_eye");
                 return;
             }
 
@@ -2602,6 +2960,12 @@ public final class TamedRavenScrollWatcher {
             raven.setPersistenceRequired();
 
             player.sendSystemMessage(Component.translatable("message.featheredfriend.raven_chest.perch.assigned"));
+            logPlayer(
+                    player,
+                    RavenLogCategory.PERCH,
+                    "log.featheredfriend.perch.assignment_success",
+                    targetPos.toShortString()
+            );
         } catch (Throwable t) {
             LOG.error("[TamedRavenScrollWatcher] handleConfirmRavenChestPerchAssignment failed safely", t);
         }
@@ -2853,7 +3217,7 @@ public final class TamedRavenScrollWatcher {
      */
     @Nullable
     public static ServerPlayer getScrollSummonOwnerIfHoldingScroll(@NotNull ServerLevel level,
-                                                                   @NotNull RavenEntity raven) {
+                                                                    @NotNull RavenEntity raven) {
         try {
             // Must be tagged as scroll-summoned.
             if (!isScrollSummonedRaven(raven)) {
@@ -2893,6 +3257,28 @@ public final class TamedRavenScrollWatcher {
                     raven.getId(), t.toString());
             return null;
         }
+    }
+
+    private static void logPlayer(@NotNull ServerPlayer player,
+                                  @NotNull RavenLogCategory category,
+                                  @NotNull String key,
+                                  @Nullable Object... args) {
+        RavenLogService.logForPlayerKey(player, category, key, args);
+    }
+
+    private static void logPlayer(@NotNull ServerLevel level,
+                                  @Nullable UUID playerUuid,
+                                  @NotNull RavenLogCategory category,
+                                  @NotNull String key,
+                                  @Nullable Object... args) {
+        RavenLogService.logForPlayerKey(level, playerUuid, category, key, args);
+    }
+
+    private static @NotNull String formatVec(@NotNull Vec3 vec) {
+        if (vec == null) {
+            return "?, ?, ?";
+        }
+        return String.format("%.2f, %.2f, %.2f", vec.x, vec.y, vec.z);
     }
 
     private static String safePlayerName(@NotNull Player player) {

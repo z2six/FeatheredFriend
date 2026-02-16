@@ -27,6 +27,10 @@ public class FeatheredFriendSettingsScreen extends Screen {
     // server-owned + synced
     private boolean chatDisabled;
     private int maxRavenChestsPerPlayer;
+    private int ravenLogRetentionMinutes;
+    private int ravenLogMaxBytesPerPlayer;
+    private int enderpackDepositCooldownSeconds;
+    private int scrollDeliveryCooldownSeconds;
     private boolean hasServerSettings = false;
     private boolean canEditChat = false;
 
@@ -35,6 +39,18 @@ public class FeatheredFriendSettingsScreen extends Screen {
     private Button ravenChestsMinusButton;
     private Button ravenChestsValueButton;
     private Button ravenChestsPlusButton;
+    private Button ravenLogRetentionMinusButton;
+    private Button ravenLogRetentionValueButton;
+    private Button ravenLogRetentionPlusButton;
+    private Button ravenLogSizeMinusButton;
+    private Button ravenLogSizeValueButton;
+    private Button ravenLogSizePlusButton;
+    private Button enderpackCooldownMinusButton;
+    private Button enderpackCooldownValueButton;
+    private Button enderpackCooldownPlusButton;
+    private Button scrollDeliveryCooldownMinusButton;
+    private Button scrollDeliveryCooldownValueButton;
+    private Button scrollDeliveryCooldownPlusButton;
 
     public FeatheredFriendSettingsScreen() {
         super(Component.translatable("screen.featheredfriend.settings.title"));
@@ -124,11 +140,99 @@ public class FeatheredFriendSettingsScreen extends Screen {
             this.addRenderableWidget(this.ravenChestsValueButton);
             this.addRenderableWidget(this.ravenChestsPlusButton);
             y += 24;
+
+            this.ravenLogRetentionMinusButton = Button.builder(Component.literal("-"), btn -> adjustRavenLogRetentionMinutes(-60))
+                    .bounds(centerX - 100, y, 20, 20)
+                    .build();
+            this.ravenLogRetentionValueButton = Button.builder(textForRavenLogRetention(), btn -> {})
+                    .bounds(centerX - 76, y, 152, 20)
+                    .build();
+            this.ravenLogRetentionValueButton.active = false;
+            this.ravenLogRetentionPlusButton = Button.builder(Component.literal("+"), btn -> adjustRavenLogRetentionMinutes(60))
+                    .bounds(centerX + 80, y, 20, 20)
+                    .build();
+
+            this.ravenLogRetentionMinusButton.active = editActive;
+            this.ravenLogRetentionPlusButton.active = editActive;
+
+            this.addRenderableWidget(this.ravenLogRetentionMinusButton);
+            this.addRenderableWidget(this.ravenLogRetentionValueButton);
+            this.addRenderableWidget(this.ravenLogRetentionPlusButton);
+            y += 24;
+
+            this.ravenLogSizeMinusButton = Button.builder(Component.literal("-"), btn -> adjustRavenLogMaxBytesPerPlayer(-(64 * 1024)))
+                    .bounds(centerX - 100, y, 20, 20)
+                    .build();
+            this.ravenLogSizeValueButton = Button.builder(textForRavenLogSize(), btn -> {})
+                    .bounds(centerX - 76, y, 152, 20)
+                    .build();
+            this.ravenLogSizeValueButton.active = false;
+            this.ravenLogSizePlusButton = Button.builder(Component.literal("+"), btn -> adjustRavenLogMaxBytesPerPlayer(64 * 1024))
+                    .bounds(centerX + 80, y, 20, 20)
+                    .build();
+
+            this.ravenLogSizeMinusButton.active = editActive;
+            this.ravenLogSizePlusButton.active = editActive;
+
+            this.addRenderableWidget(this.ravenLogSizeMinusButton);
+            this.addRenderableWidget(this.ravenLogSizeValueButton);
+            this.addRenderableWidget(this.ravenLogSizePlusButton);
+            y += 24;
+
+            this.enderpackCooldownMinusButton = Button.builder(Component.literal("-"), btn -> adjustEnderpackDepositCooldownSeconds(-5))
+                    .bounds(centerX - 100, y, 20, 20)
+                    .build();
+            this.enderpackCooldownValueButton = Button.builder(textForEnderpackDepositCooldown(), btn -> {})
+                    .bounds(centerX - 76, y, 152, 20)
+                    .build();
+            this.enderpackCooldownValueButton.active = false;
+            this.enderpackCooldownPlusButton = Button.builder(Component.literal("+"), btn -> adjustEnderpackDepositCooldownSeconds(5))
+                    .bounds(centerX + 80, y, 20, 20)
+                    .build();
+
+            this.enderpackCooldownMinusButton.active = editActive;
+            this.enderpackCooldownPlusButton.active = editActive;
+
+            this.addRenderableWidget(this.enderpackCooldownMinusButton);
+            this.addRenderableWidget(this.enderpackCooldownValueButton);
+            this.addRenderableWidget(this.enderpackCooldownPlusButton);
+            y += 24;
+
+            this.scrollDeliveryCooldownMinusButton = Button.builder(Component.literal("-"), btn -> adjustScrollDeliveryCooldownSeconds(-5))
+                    .bounds(centerX - 100, y, 20, 20)
+                    .build();
+            this.scrollDeliveryCooldownValueButton = Button.builder(textForScrollDeliveryCooldown(), btn -> {})
+                    .bounds(centerX - 76, y, 152, 20)
+                    .build();
+            this.scrollDeliveryCooldownValueButton.active = false;
+            this.scrollDeliveryCooldownPlusButton = Button.builder(Component.literal("+"), btn -> adjustScrollDeliveryCooldownSeconds(5))
+                    .bounds(centerX + 80, y, 20, 20)
+                    .build();
+
+            this.scrollDeliveryCooldownMinusButton.active = editActive;
+            this.scrollDeliveryCooldownPlusButton.active = editActive;
+
+            this.addRenderableWidget(this.scrollDeliveryCooldownMinusButton);
+            this.addRenderableWidget(this.scrollDeliveryCooldownValueButton);
+            this.addRenderableWidget(this.scrollDeliveryCooldownPlusButton);
+            y += 24;
         } else {
             this.chatDisabledButton = null;
             this.ravenChestsMinusButton = null;
             this.ravenChestsValueButton = null;
             this.ravenChestsPlusButton = null;
+            this.ravenLogRetentionMinusButton = null;
+            this.ravenLogRetentionValueButton = null;
+            this.ravenLogRetentionPlusButton = null;
+            this.ravenLogSizeMinusButton = null;
+            this.ravenLogSizeValueButton = null;
+            this.ravenLogSizePlusButton = null;
+            this.enderpackCooldownMinusButton = null;
+            this.enderpackCooldownValueButton = null;
+            this.enderpackCooldownPlusButton = null;
+            this.scrollDeliveryCooldownMinusButton = null;
+            this.scrollDeliveryCooldownValueButton = null;
+            this.scrollDeliveryCooldownPlusButton = null;
         }
 
         Button done = Button.builder(Component.translatable("gui.done"), btn -> onClose())
@@ -163,6 +267,42 @@ public class FeatheredFriendSettingsScreen extends Screen {
             }
             if (this.ravenChestsPlusButton != null) {
                 this.ravenChestsPlusButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
+            }
+            if (this.ravenLogRetentionValueButton != null) {
+                this.ravenLogRetentionValueButton.setMessage(textForRavenLogRetention());
+            }
+            if (this.ravenLogRetentionMinusButton != null) {
+                this.ravenLogRetentionMinusButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
+            }
+            if (this.ravenLogRetentionPlusButton != null) {
+                this.ravenLogRetentionPlusButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
+            }
+            if (this.ravenLogSizeValueButton != null) {
+                this.ravenLogSizeValueButton.setMessage(textForRavenLogSize());
+            }
+            if (this.ravenLogSizeMinusButton != null) {
+                this.ravenLogSizeMinusButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
+            }
+            if (this.ravenLogSizePlusButton != null) {
+                this.ravenLogSizePlusButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
+            }
+            if (this.enderpackCooldownValueButton != null) {
+                this.enderpackCooldownValueButton.setMessage(textForEnderpackDepositCooldown());
+            }
+            if (this.enderpackCooldownMinusButton != null) {
+                this.enderpackCooldownMinusButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
+            }
+            if (this.enderpackCooldownPlusButton != null) {
+                this.enderpackCooldownPlusButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
+            }
+            if (this.scrollDeliveryCooldownValueButton != null) {
+                this.scrollDeliveryCooldownValueButton.setMessage(textForScrollDeliveryCooldown());
+            }
+            if (this.scrollDeliveryCooldownMinusButton != null) {
+                this.scrollDeliveryCooldownMinusButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
+            }
+            if (this.scrollDeliveryCooldownPlusButton != null) {
+                this.scrollDeliveryCooldownPlusButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
             }
 
             if (this.chatDisabledButton == null && this.canEditChat) {
@@ -221,15 +361,23 @@ public class FeatheredFriendSettingsScreen extends Screen {
                 this.chatDisabled = Services.PLATFORM.isChatDisabledClient();
                 this.canEditChat = Services.PLATFORM.canEditChat();
                 this.maxRavenChestsPerPlayer = Services.PLATFORM.getMaxRavenChestsPerPlayerClient();
+                this.ravenLogRetentionMinutes = Services.PLATFORM.getRavenLogRetentionMinutesClient();
+                this.ravenLogMaxBytesPerPlayer = Services.PLATFORM.getRavenLogMaxBytesPerPlayerClient();
+                this.enderpackDepositCooldownSeconds = Services.PLATFORM.getEnderpackDepositCooldownSecondsClient();
+                this.scrollDeliveryCooldownSeconds = Services.PLATFORM.getScrollDeliveryCooldownSecondsClient();
             } else {
                 // while syncing, default to enabled + no perms
                 this.chatDisabled = false;
                 this.canEditChat = false;
                 this.maxRavenChestsPerPlayer = 0;
+                this.ravenLogRetentionMinutes = 0;
+                this.ravenLogMaxBytesPerPlayer = 0;
+                this.enderpackDepositCooldownSeconds = 0;
+                this.scrollDeliveryCooldownSeconds = 0;
             }
 
-            LOG.debug("[FeatheredFriendSettingsScreen] refreshFromCacheOnly: hasServerSettings={} chatDisabled={} maxRavenChestsPerPlayer={} canEditChat={}",
-                    hasServerSettings, chatDisabled, maxRavenChestsPerPlayer, canEditChat);
+            LOG.debug("[FeatheredFriendSettingsScreen] refreshFromCacheOnly: hasServerSettings={} chatDisabled={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} canEditChat={}",
+                    hasServerSettings, chatDisabled, maxRavenChestsPerPlayer, ravenLogRetentionMinutes, ravenLogMaxBytesPerPlayer, enderpackDepositCooldownSeconds, scrollDeliveryCooldownSeconds, canEditChat);
 
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendSettingsScreen] refreshFromCacheOnly failed safely", t);
@@ -255,6 +403,10 @@ public class FeatheredFriendSettingsScreen extends Screen {
             canEditChat = false;
             chatDisabled = false;
             maxRavenChestsPerPlayer = 0;
+            ravenLogRetentionMinutes = 0;
+            ravenLogMaxBytesPerPlayer = 0;
+            enderpackDepositCooldownSeconds = 0;
+            scrollDeliveryCooldownSeconds = 0;
             LOG.error("[FeatheredFriendSettingsScreen] loadFromCacheAndMaybeRequestSync failed safely", t);
         }
     }
@@ -286,6 +438,47 @@ public class FeatheredFriendSettingsScreen extends Screen {
         );
     }
 
+    private Component textForRavenLogRetention() {
+        if (!hasServerSettings) {
+            return Component.translatable("screen.featheredfriend.settings.raven_log_retention.syncing");
+        }
+        return Component.translatable(
+                "screen.featheredfriend.settings.raven_log_retention",
+                Integer.valueOf(ravenLogRetentionMinutes)
+        );
+    }
+
+    private Component textForRavenLogSize() {
+        if (!hasServerSettings) {
+            return Component.translatable("screen.featheredfriend.settings.raven_log_size.syncing");
+        }
+        int kb = Math.max(0, ravenLogMaxBytesPerPlayer / 1024);
+        return Component.translatable(
+                "screen.featheredfriend.settings.raven_log_size",
+                Integer.valueOf(kb)
+        );
+    }
+
+    private Component textForEnderpackDepositCooldown() {
+        if (!hasServerSettings) {
+            return Component.translatable("screen.featheredfriend.settings.enderpack_deposit_cooldown.syncing");
+        }
+        return Component.translatable(
+                "screen.featheredfriend.settings.enderpack_deposit_cooldown",
+                Integer.valueOf(enderpackDepositCooldownSeconds)
+        );
+    }
+
+    private Component textForScrollDeliveryCooldown() {
+        if (!hasServerSettings) {
+            return Component.translatable("screen.featheredfriend.settings.scroll_delivery_cooldown.syncing");
+        }
+        return Component.translatable(
+                "screen.featheredfriend.settings.scroll_delivery_cooldown",
+                Integer.valueOf(scrollDeliveryCooldownSeconds)
+        );
+    }
+
     private void adjustRavenChestCap(int delta) {
         try {
             if (!hasServerSettings || !canEditChat || !isConnectionReady()) {
@@ -303,6 +496,86 @@ public class FeatheredFriendSettingsScreen extends Screen {
             LOG.debug("[FeatheredFriendSettingsScreen] Sent SetMaxRavenChestsPerPlayerPayload -> {}", newValue);
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendSettingsScreen] adjustRavenChestCap failed safely", t);
+        }
+    }
+
+    private void adjustRavenLogRetentionMinutes(int deltaMinutes) {
+        try {
+            if (!hasServerSettings || !canEditChat || !isConnectionReady()) {
+                return;
+            }
+            int newValue = Math.max(0, Math.min(60 * 24 * 90, this.ravenLogRetentionMinutes + deltaMinutes));
+            if (newValue == this.ravenLogRetentionMinutes) {
+                return;
+            }
+            this.ravenLogRetentionMinutes = newValue;
+            if (this.ravenLogRetentionValueButton != null) {
+                this.ravenLogRetentionValueButton.setMessage(textForRavenLogRetention());
+            }
+            Services.PLATFORM.sendSetRavenLogRetentionMinutes(newValue);
+            LOG.debug("[FeatheredFriendSettingsScreen] Sent SetRavenLogRetentionMinutesPayload -> {}", newValue);
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriendSettingsScreen] adjustRavenLogRetentionMinutes failed safely", t);
+        }
+    }
+
+    private void adjustRavenLogMaxBytesPerPlayer(int deltaBytes) {
+        try {
+            if (!hasServerSettings || !canEditChat || !isConnectionReady()) {
+                return;
+            }
+            int newValue = Math.max(0, Math.min(4 * 1024 * 1024, this.ravenLogMaxBytesPerPlayer + deltaBytes));
+            if (newValue == this.ravenLogMaxBytesPerPlayer) {
+                return;
+            }
+            this.ravenLogMaxBytesPerPlayer = newValue;
+            if (this.ravenLogSizeValueButton != null) {
+                this.ravenLogSizeValueButton.setMessage(textForRavenLogSize());
+            }
+            Services.PLATFORM.sendSetRavenLogMaxBytesPerPlayer(newValue);
+            LOG.debug("[FeatheredFriendSettingsScreen] Sent SetRavenLogMaxBytesPerPlayerPayload -> {}", newValue);
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriendSettingsScreen] adjustRavenLogMaxBytesPerPlayer failed safely", t);
+        }
+    }
+
+    private void adjustEnderpackDepositCooldownSeconds(int deltaSeconds) {
+        try {
+            if (!hasServerSettings || !canEditChat || !isConnectionReady()) {
+                return;
+            }
+            int newValue = Math.max(0, Math.min(86_400, this.enderpackDepositCooldownSeconds + deltaSeconds));
+            if (newValue == this.enderpackDepositCooldownSeconds) {
+                return;
+            }
+            this.enderpackDepositCooldownSeconds = newValue;
+            if (this.enderpackCooldownValueButton != null) {
+                this.enderpackCooldownValueButton.setMessage(textForEnderpackDepositCooldown());
+            }
+            Services.PLATFORM.sendSetEnderpackDepositCooldownSeconds(newValue);
+            LOG.debug("[FeatheredFriendSettingsScreen] Sent SetEnderpackDepositCooldownSecondsPayload -> {}", newValue);
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriendSettingsScreen] adjustEnderpackDepositCooldownSeconds failed safely", t);
+        }
+    }
+
+    private void adjustScrollDeliveryCooldownSeconds(int deltaSeconds) {
+        try {
+            if (!hasServerSettings || !canEditChat || !isConnectionReady()) {
+                return;
+            }
+            int newValue = Math.max(0, Math.min(86_400, this.scrollDeliveryCooldownSeconds + deltaSeconds));
+            if (newValue == this.scrollDeliveryCooldownSeconds) {
+                return;
+            }
+            this.scrollDeliveryCooldownSeconds = newValue;
+            if (this.scrollDeliveryCooldownValueButton != null) {
+                this.scrollDeliveryCooldownValueButton.setMessage(textForScrollDeliveryCooldown());
+            }
+            Services.PLATFORM.sendSetScrollDeliveryCooldownSeconds(newValue);
+            LOG.debug("[FeatheredFriendSettingsScreen] Sent SetScrollDeliveryCooldownSecondsPayload -> {}", newValue);
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriendSettingsScreen] adjustScrollDeliveryCooldownSeconds failed safely", t);
         }
     }
 

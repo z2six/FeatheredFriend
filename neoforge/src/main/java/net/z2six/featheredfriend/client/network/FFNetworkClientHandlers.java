@@ -3,12 +3,11 @@ package net.z2six.featheredfriend.client.network;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.z2six.featheredfriend.client.knownplayers.KnownPlayersClientCache;
 import net.z2six.featheredfriend.client.screen.RavenChestLabelScreen;
-import net.z2six.featheredfriend.client.screen.RavenChestPerchDebugScreen;
 import net.z2six.featheredfriend.client.screen.RavenChestSelectScreen;
+import net.z2six.featheredfriend.client.screen.RavenLogScreen;
 import net.z2six.featheredfriend.client.screen.RavenNamingScreen;
 import net.z2six.featheredfriend.network.FFNetwork;
 import net.z2six.featheredfriend.network.RavenChestSelectAction;
@@ -49,26 +48,16 @@ public final class FFNetworkClientHandlers {
         }
     }
 
-    public static void handleOpenRavenChestPerchDebugScreenOnClient(@NotNull FFNetwork.OpenRavenChestPerchDebugScreenPayload payload,
-                                                                     @NotNull IPayloadContext context) {
+    public static void handleOpenRavenLogScreenOnClient(@NotNull FFNetwork.OpenRavenLogScreenPayload payload,
+                                                        @NotNull IPayloadContext context) {
         try {
             Minecraft mc = Minecraft.getInstance();
             if (mc == null || mc.player == null || mc.level == null) {
                 return;
             }
-
-            BlockPos chestPos = BlockPos.of(payload.chestPos());
-            mc.setScreen(new RavenChestPerchDebugScreen(
-                    payload.ravenEntityId(),
-                    chestPos,
-                    payload.offsetX(),
-                    payload.offsetY(),
-                    payload.offsetZ(),
-                    payload.yaw(),
-                    payload.pitch()
-            ));
+            mc.setScreen(new RavenLogScreen(payload.entries()));
         } catch (Throwable t) {
-            LOG.error("[FFNetworkClientHandlers] handleOpenRavenChestPerchDebugScreenOnClient failed", t);
+            LOG.error("[FFNetworkClientHandlers] handleOpenRavenLogScreenOnClient failed", t);
         }
     }
 

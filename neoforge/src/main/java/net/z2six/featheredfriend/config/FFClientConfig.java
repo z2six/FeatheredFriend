@@ -6,6 +6,7 @@ import net.neoforged.fml.ModLoadingContext;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.ModConfigSpec;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 /**
@@ -22,6 +23,7 @@ public final class FFClientConfig {
     public static final ModConfigSpec CLIENT_SPEC;
     public static final ModConfigSpec.BooleanValue USE_VANILLA_FONT_FOR_GOTHIC_TEXT;
     public static final ModConfigSpec.ConfigValue<String> FAVORITE_STAMP_KEY;
+    public static final ModConfigSpec.ConfigValue<String> RAVEN_LOG_VIEW_SETTINGS_RAW;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -41,6 +43,13 @@ public final class FFClientConfig {
                         "Format: owner|seed|slices|shapeSet (empty means no favorite)."
                 )
                 .define("favoriteStampKey", "");
+
+        RAVEN_LOG_VIEW_SETTINGS_RAW = builder
+                .comment(
+                        "Raven Log client-side category visibility/color settings.",
+                        "Format: categoryId,visible,colorRgb;... (managed automatically by UI)."
+                )
+                .define("ravenLogViewSettingsRaw", "");
 
         builder.pop();
 
@@ -108,6 +117,25 @@ public final class FFClientConfig {
             LOG.debug("[FFClientConfig] favoriteStampKey set to {}", value);
         } catch (Throwable t) {
             LOG.error("[FFClientConfig] setFavoriteStampKey failed safely: {}", t.toString());
+        }
+    }
+
+    public static @NotNull String getRavenLogViewSettingsRaw() {
+        try {
+            String raw = RAVEN_LOG_VIEW_SETTINGS_RAW.get();
+            return raw == null ? "" : raw;
+        } catch (Throwable t) {
+            LOG.error("[FFClientConfig] getRavenLogViewSettingsRaw failed safely", t);
+            return "";
+        }
+    }
+
+    public static void setRavenLogViewSettingsRaw(@NotNull String value) {
+        try {
+            RAVEN_LOG_VIEW_SETTINGS_RAW.set(value == null ? "" : value);
+            LOG.debug("[FFClientConfig] ravenLogViewSettingsRaw updated");
+        } catch (Throwable t) {
+            LOG.error("[FFClientConfig] setRavenLogViewSettingsRaw failed safely: {}", t.toString());
         }
     }
 

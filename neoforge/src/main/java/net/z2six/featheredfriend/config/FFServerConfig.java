@@ -42,6 +42,27 @@ public final class FFServerConfig {
      */
     public static final int DEFAULT_RAVEN_CHESTS_PER_PLAYER = 3;
 
+    /**
+     * How long a Raven Log entry is kept (in minutes).
+     */
+    public static final int DEFAULT_RAVEN_LOG_RETENTION_MINUTES = 60 * 24 * 7; // 7 days
+
+    /**
+     * Max bytes retained per player for Raven Logs.
+     * If exceeded, that player's log is cleared entirely.
+     */
+    public static final int DEFAULT_RAVEN_LOG_MAX_BYTES_PER_PLAYER = 262_144; // 256 KiB
+
+    /**
+     * Real-time cooldown (seconds) between Enderpack -> Raven Chest deposit workflows per player.
+     */
+    public static final int DEFAULT_ENDERPACK_DEPOSIT_COOLDOWN_SECONDS = 600;
+
+    /**
+     * Real-time cooldown (seconds) between raven scroll deliveries per player.
+     */
+    public static final int DEFAULT_SCROLL_DELIVERY_COOLDOWN_SECONDS = 600;
+
     // ---------------------------------------------------------------------
     // Spec + entries
     // ---------------------------------------------------------------------
@@ -51,6 +72,10 @@ public final class FFServerConfig {
     // settings
     public static final ModConfigSpec.BooleanValue CHAT_DISABLED_DEFAULT;
     public static final ModConfigSpec.IntValue RAVEN_CHESTS_PER_PLAYER;
+    public static final ModConfigSpec.IntValue RAVEN_LOG_RETENTION_MINUTES;
+    public static final ModConfigSpec.IntValue RAVEN_LOG_MAX_BYTES_PER_PLAYER;
+    public static final ModConfigSpec.IntValue ENDERPACK_DEPOSIT_COOLDOWN_SECONDS;
+    public static final ModConfigSpec.IntValue SCROLL_DELIVERY_COOLDOWN_SECONDS;
 
     // spawning
     public static final ModConfigSpec.IntValue WILD_RAVENS_PER_PLAYER;
@@ -83,6 +108,37 @@ public final class FFServerConfig {
                         "but additional placements are blocked until the player is back within limit."
                 )
                 .defineInRange("ravenChestsPerPlayer", DEFAULT_RAVEN_CHESTS_PER_PLAYER, 0, 64);
+
+        RAVEN_LOG_RETENTION_MINUTES = builder
+                .comment(
+                        "How long Raven Log entries are retained, in minutes.",
+                        "0 means keep no history."
+                )
+                .defineInRange("ravenLogRetentionMinutes", DEFAULT_RAVEN_LOG_RETENTION_MINUTES, 0, 60 * 24 * 90);
+
+        RAVEN_LOG_MAX_BYTES_PER_PLAYER = builder
+                .comment(
+                        "Maximum retained Raven Log size per player (in bytes).",
+                        "If exceeded, that player's Raven Log is cleared entirely.",
+                        "0 means keep no history."
+                )
+                .defineInRange("ravenLogMaxBytesPerPlayer", DEFAULT_RAVEN_LOG_MAX_BYTES_PER_PLAYER, 0, 4 * 1024 * 1024);
+
+        ENDERPACK_DEPOSIT_COOLDOWN_SECONDS = builder
+                .comment(
+                        "Real-time cooldown in seconds between Enderpack -> Raven Chest deposit workflows per player.",
+                        "Hot-reloadable and server-authoritative.",
+                        "0 disables cooldown."
+                )
+                .defineInRange("enderpackDepositCooldownSeconds", DEFAULT_ENDERPACK_DEPOSIT_COOLDOWN_SECONDS, 0, 86_400);
+
+        SCROLL_DELIVERY_COOLDOWN_SECONDS = builder
+                .comment(
+                        "Real-time cooldown in seconds between raven scroll deliveries per player.",
+                        "Hot-reloadable and server-authoritative.",
+                        "0 disables cooldown."
+                )
+                .defineInRange("scrollDeliveryCooldownSeconds", DEFAULT_SCROLL_DELIVERY_COOLDOWN_SECONDS, 0, 86_400);
 
         builder.pop();
 
@@ -226,6 +282,122 @@ public final class FFServerConfig {
             }
         } catch (Throwable t) {
             LOG.error("[FFServerConfig] setRavenChestsPerPlayer failed", t);
+        }
+    }
+
+    public static int getRavenLogRetentionMinutes() {
+        try {
+            int v = RAVEN_LOG_RETENTION_MINUTES.get();
+            return Math.max(0, Math.min(60 * 24 * 90, v));
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] getRavenLogRetentionMinutes failed, using default {}", DEFAULT_RAVEN_LOG_RETENTION_MINUTES, t);
+            return DEFAULT_RAVEN_LOG_RETENTION_MINUTES;
+        }
+    }
+
+    public static void setRavenLogRetentionMinutes(int value) {
+        try {
+            int clamped = Math.max(0, Math.min(60 * 24 * 90, value));
+            int before = getRavenLogRetentionMinutes();
+            RAVEN_LOG_RETENTION_MINUTES.set(clamped);
+            if (before != clamped) {
+                markSettingsDirty();
+            }
+            try {
+                SERVER_SPEC.save();
+            } catch (Throwable saveErr) {
+                LOG.warn("[FFServerConfig] Failed to save SERVER config to disk after raven log retention update: {}",
+                        saveErr.toString());
+            }
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] setRavenLogRetentionMinutes failed", t);
+        }
+    }
+
+    public static int getRavenLogMaxBytesPerPlayer() {
+        try {
+            int v = RAVEN_LOG_MAX_BYTES_PER_PLAYER.get();
+            return Math.max(0, Math.min(4 * 1024 * 1024, v));
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] getRavenLogMaxBytesPerPlayer failed, using default {}", DEFAULT_RAVEN_LOG_MAX_BYTES_PER_PLAYER, t);
+            return DEFAULT_RAVEN_LOG_MAX_BYTES_PER_PLAYER;
+        }
+    }
+
+    public static void setRavenLogMaxBytesPerPlayer(int value) {
+        try {
+            int clamped = Math.max(0, Math.min(4 * 1024 * 1024, value));
+            int before = getRavenLogMaxBytesPerPlayer();
+            RAVEN_LOG_MAX_BYTES_PER_PLAYER.set(clamped);
+            if (before != clamped) {
+                markSettingsDirty();
+            }
+            try {
+                SERVER_SPEC.save();
+            } catch (Throwable saveErr) {
+                LOG.warn("[FFServerConfig] Failed to save SERVER config to disk after raven log size update: {}",
+                        saveErr.toString());
+            }
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] setRavenLogMaxBytesPerPlayer failed", t);
+        }
+    }
+
+    public static int getEnderpackDepositCooldownSeconds() {
+        try {
+            int v = ENDERPACK_DEPOSIT_COOLDOWN_SECONDS.get();
+            return Math.max(0, Math.min(86_400, v));
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] getEnderpackDepositCooldownSeconds failed, using default {}", DEFAULT_ENDERPACK_DEPOSIT_COOLDOWN_SECONDS, t);
+            return DEFAULT_ENDERPACK_DEPOSIT_COOLDOWN_SECONDS;
+        }
+    }
+
+    public static void setEnderpackDepositCooldownSeconds(int value) {
+        try {
+            int clamped = Math.max(0, Math.min(86_400, value));
+            int before = getEnderpackDepositCooldownSeconds();
+            ENDERPACK_DEPOSIT_COOLDOWN_SECONDS.set(clamped);
+            if (before != clamped) {
+                markSettingsDirty();
+            }
+            try {
+                SERVER_SPEC.save();
+            } catch (Throwable saveErr) {
+                LOG.warn("[FFServerConfig] Failed to save SERVER config to disk after enderpack deposit cooldown update: {}",
+                        saveErr.toString());
+            }
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] setEnderpackDepositCooldownSeconds failed", t);
+        }
+    }
+
+    public static int getScrollDeliveryCooldownSeconds() {
+        try {
+            int v = SCROLL_DELIVERY_COOLDOWN_SECONDS.get();
+            return Math.max(0, Math.min(86_400, v));
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] getScrollDeliveryCooldownSeconds failed, using default {}", DEFAULT_SCROLL_DELIVERY_COOLDOWN_SECONDS, t);
+            return DEFAULT_SCROLL_DELIVERY_COOLDOWN_SECONDS;
+        }
+    }
+
+    public static void setScrollDeliveryCooldownSeconds(int value) {
+        try {
+            int clamped = Math.max(0, Math.min(86_400, value));
+            int before = getScrollDeliveryCooldownSeconds();
+            SCROLL_DELIVERY_COOLDOWN_SECONDS.set(clamped);
+            if (before != clamped) {
+                markSettingsDirty();
+            }
+            try {
+                SERVER_SPEC.save();
+            } catch (Throwable saveErr) {
+                LOG.warn("[FFServerConfig] Failed to save SERVER config to disk after scroll delivery cooldown update: {}",
+                        saveErr.toString());
+            }
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] setScrollDeliveryCooldownSeconds failed", t);
         }
     }
 

@@ -42,6 +42,7 @@ public final class FFKeyBindings {
     private static KeyMapping OPEN_SETTINGS_KEY;
     private static KeyMapping WHISTLE_KEY;
     private static KeyMapping OPEN_ENDERPACK_KEY;
+    private static KeyMapping OPEN_RAVEN_LOG_KEY;
 
     private FFKeyBindings() {
         // no-op
@@ -89,11 +90,19 @@ public final class FFKeyBindings {
                     category
             );
 
+            OPEN_RAVEN_LOG_KEY = new KeyMapping(
+                    "key." + Constants.MOD_ID + ".open_raven_log",
+                    InputConstants.Type.KEYSYM,
+                    GLFW.GLFW_KEY_UNKNOWN,
+                    category
+            );
+
             event.register(OPEN_SETTINGS_KEY);
             event.register(WHISTLE_KEY);
             event.register(OPEN_ENDERPACK_KEY);
+            event.register(OPEN_RAVEN_LOG_KEY);
 
-            LOG.debug("[FFKeyBindings] Registered key mappings: open_settings, whistle, open_enderpack.");
+            LOG.debug("[FFKeyBindings] Registered key mappings: open_settings, whistle, open_enderpack, open_raven_log.");
 
         } catch (Throwable t) {
             LOG.error("[FFKeyBindings] onRegisterKeyMappings failed safely", t);
@@ -138,6 +147,12 @@ public final class FFKeyBindings {
             if (OPEN_ENDERPACK_KEY != null) {
                 while (OPEN_ENDERPACK_KEY.consumeClick()) {
                     Services.PLATFORM.sendOpenEnderpackToServer();
+                }
+            }
+
+            if (OPEN_RAVEN_LOG_KEY != null) {
+                while (OPEN_RAVEN_LOG_KEY.consumeClick()) {
+                    Services.PLATFORM.sendOpenRavenLogToServer();
                 }
             }
 

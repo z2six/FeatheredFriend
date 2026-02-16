@@ -15,7 +15,6 @@ import net.z2six.featheredfriend.client.raven.RavenClientEvents;
 import net.z2six.featheredfriend.command.FeatheredFriendCommands;
 import net.z2six.featheredfriend.config.FFServerConfig;
 import net.z2six.featheredfriend.config.FFClientConfig;
-import net.z2six.featheredfriend.debug.RavenChestPerchDebugService;
 import net.z2six.featheredfriend.events.FFPlayerEvents;
 import net.z2six.featheredfriend.network.FFNetwork;
 import net.z2six.featheredfriend.network.FFPayloads;
@@ -177,13 +176,6 @@ public class FeatheredFriend {
             LOG.debug("[FeatheredFriend] Registered RavenCourierRuntime");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to register RavenCourierRuntime", t);
-        }
-
-        try {
-            RavenChestPerchDebugService.register();
-            LOG.debug("[FeatheredFriend] Registered RavenChestPerchDebugService");
-        } catch (Throwable t) {
-            LOG.error("[FeatheredFriend] Failed to register RavenChestPerchDebugService", t);
         }
 
         try {

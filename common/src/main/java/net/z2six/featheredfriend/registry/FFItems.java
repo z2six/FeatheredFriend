@@ -84,6 +84,11 @@ public final class FFItems {
             )
     );
 
+    public static final Supplier<Item> RAVEN_FEATHER = register(
+            "raven_feather",
+            () -> new Item(new Item.Properties().stacksTo(64))
+    );
+
     public static final RavenArmorStats RAVEN_ARMOR_STATS_LEATHER = new RavenArmorStats(2, 35, 10, 15, 2);
     public static final RavenArmorStats RAVEN_ARMOR_STATS_COPPER = new RavenArmorStats(3, 22, 18, 35, 1);
     public static final RavenArmorStats RAVEN_ARMOR_STATS_IRON = new RavenArmorStats(4, 18, 16, 25, 1);

@@ -18,6 +18,7 @@ import net.minecraft.world.level.saveddata.SavedData;
 import net.minecraft.util.datafix.DataFixTypes;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
+import net.z2six.featheredfriend.log.RavenLogCategory;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -455,6 +456,27 @@ public class RavenCourierData extends SavedData {
 
             LOG.debug("[RavenCourierData] Created delivery job id={} (sender='{}' [{}], recipient='{}' [{}], ravenId={} ravenName='{}')",
                     jobId, senderName, senderUuid, recipientName, recipientUuid, raven.getId(), ravenName);
+
+            try {
+                RavenLogService.logForPlayerKey(
+                        sender,
+                        RavenLogCategory.COURIER,
+                        "log.featheredfriend.courier.job.queued_outgoing",
+                        jobId,
+                        recipientName
+                );
+                if (recipientUuid != null && !recipientUuid.equals(senderUuid)) {
+                    RavenLogService.logForPlayerKey(
+                            sender.serverLevel(),
+                            recipientUuid,
+                            RavenLogCategory.COURIER,
+                            "log.featheredfriend.courier.job.queued_incoming",
+                            jobId,
+                            senderName
+                    );
+                }
+            } catch (Throwable ignored) {
+            }
 
             return job;
 
