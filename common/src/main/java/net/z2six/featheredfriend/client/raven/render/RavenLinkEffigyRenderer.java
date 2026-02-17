@@ -16,7 +16,7 @@ import net.z2six.featheredfriend.entity.ravenlink.RavenLinkEffigyEntity;
 public class RavenLinkEffigyRenderer extends HumanoidMobRenderer<RavenLinkEffigyEntity, HumanoidModel<RavenLinkEffigyEntity>> {
 
     private static final ResourceLocation EFFIGY_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath("minecraft", "textures/block/stone.png");
+            ResourceLocation.fromNamespaceAndPath("featheredfriend", "textures/entity/raven_link_effigy_stone.png");
 
     public RavenLinkEffigyRenderer(EntityRendererProvider.Context context) {
         super(context, new RavenLinkEffigyModel(context.bakeLayer(ModelLayers.PLAYER)), 0.5F);
