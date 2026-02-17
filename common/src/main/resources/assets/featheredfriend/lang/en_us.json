@@ -101,6 +101,7 @@
   "log.featheredfriend.summon.whistle_spawn_failed": "Whistle attempted summon, but spawn failed.",
   "log.featheredfriend.raven_link.started": "Raven Link started.",
   "log.featheredfriend.raven_link.ended": "Raven Link ended. Reason: %s.",
+  "log.featheredfriend.raven_link.effigy_hit": "Raven Link cancelled because your effigy was struck.",
 
   "log.featheredfriend.courier.create_failed_from_scroll": "Failed to create a courier delivery job from sealed scroll.",
   "log.featheredfriend.courier.job_created_for_recipient": "Courier job #%s created for recipient %s.",
@@ -222,6 +223,7 @@
   "message.featheredfriend.raven_link.no_active_raven": "[FeatheredFriend] No active raven is currently spawned for Raven Link.",
   "message.featheredfriend.raven_link.already_active": "[FeatheredFriend] Raven Link is already active.",
   "message.featheredfriend.raven_link.cross_dimension_unavailable": "[FeatheredFriend] Raven Link currently supports only ravens in your current dimension.",
+  "message.featheredfriend.raven_link.cancelled_effigy_hit": "[FeatheredFriend] Raven Link was cancelled because your effigy was struck.",
 
   "message.featheredfriend.raven_name.default_owned": "%s's Raven",
   "message.featheredfriend.raven_death.killed": "[FeatheredFriend] Your raven, %s, was killed by %s.",
@@ -255,6 +257,7 @@
   "message.featheredfriend.command.playerdata_dir_not_found": "[FeatheredFriend] playerdata directory not found: %s",
   "message.featheredfriend.command.clear_tamed_raven.cleared": "[FeatheredFriend] Cleared tamed raven data for %s.",
   "message.featheredfriend.command.clear_tamed_raven.none": "[FeatheredFriend] Found no tamed raven data to clear for %s.",
+  "entity.featheredfriend.raven_link_effigy": "Raven Link Effigy",
   "message.featheredfriend.command.tamed_raven.unnamed": "(unnamed)",
   "message.featheredfriend.command.tamed_raven.unknown_owner": "(unknown)",
   "message.featheredfriend.command.tamed_raven.entry": " - owner='%s' [%s] ravenName='%s' ownerDim='%s'",

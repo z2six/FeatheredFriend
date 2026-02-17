@@ -35,6 +35,7 @@ import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.event.entity.player.AttackEntityEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
@@ -45,9 +46,11 @@ import net.z2six.featheredfriend.block.RavenChestBlock;
 import net.z2six.featheredfriend.entity.raven.RavenAIState;
 import net.z2six.featheredfriend.entity.raven.RavenAnimMode;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
+import net.z2six.featheredfriend.entity.ravenlink.RavenLinkEffigyEntity;
 import net.z2six.featheredfriend.entity.raven.modules.Teleportation;
 import net.z2six.featheredfriend.log.RavenLogCategory;
 import net.z2six.featheredfriend.network.FFNetwork;
+import net.z2six.featheredfriend.registry.FFEntities;
 import net.z2six.featheredfriend.registry.FFBlocks;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -133,6 +136,7 @@ public final class RavenLinkRuntime {
             NeoForge.EVENT_BUS.addListener(RavenLinkRuntime::onEntityInteract);
             NeoForge.EVENT_BUS.addListener(RavenLinkRuntime::onEntityInteractSpecific);
             NeoForge.EVENT_BUS.addListener(RavenLinkRuntime::onBreakBlock);
+            NeoForge.EVENT_BUS.addListener(RavenLinkRuntime::onLivingIncomingDamage);
         } catch (Throwable t) {
             LOG.error("[RavenLinkRuntime] register failed safely", t);
         }
@@ -216,6 +220,17 @@ public final class RavenLinkRuntime {
         }
     }
 
+    private static void onLivingIncomingDamage(@NotNull LivingIncomingDamageEvent event) {
+        try {
+            if (!(event.getEntity() instanceof RavenLinkEffigyEntity effigy)) {
+                return;
+            }
+            event.setCanceled(true);
+            handleEffigyHit(effigy);
+        } catch (Throwable ignored) {
+        }
+    }
+
     private static void onServerTickPre(@NotNull net.neoforged.neoforge.event.tick.ServerTickEvent.Pre event) {
         try {
             if (ACTIVE_SESSIONS.isEmpty()) {
@@ -295,6 +310,11 @@ public final class RavenLinkRuntime {
             // We force-exit perch state on the same entity and mount that one.
             if (session.returnToAssignedPerch) {
                 raven.forceExitRavenChestPerchForLink();
+            }
+
+            RavenLinkEffigyEntity effigy = spawnEffigyForSession(owner.server, owner, session);
+            if (effigy != null) {
+                session.effigyUuid = effigy.getUUID();
             }
             ACTIVE_SESSIONS.put(owner.getUUID(), session);
 
@@ -545,6 +565,7 @@ public final class RavenLinkRuntime {
                                     @NotNull LinkSession session,
                                     @NotNull String reason) {
         try {
+            discardSessionEffigy(server, session);
             restoreOwnerChunkStreaming(server, owner, session);
             restoreOwnerAfterLink(server, owner, session);
 
@@ -1749,6 +1770,100 @@ public final class RavenLinkRuntime {
         }
     }
 
+    private static @Nullable RavenLinkEffigyEntity spawnEffigyForSession(@Nullable MinecraftServer server,
+                                                                          @NotNull ServerPlayer owner,
+                                                                          @NotNull LinkSession session) {
+        try {
+            if (server == null) {
+                return null;
+            }
+            ServerLevel anchorLevel = server.getLevel(session.ownerAnchorDimension);
+            if (anchorLevel == null) {
+                return null;
+            }
+
+            RavenLinkEffigyEntity effigy = FFEntities.RAVEN_LINK_EFFIGY.get().create(anchorLevel);
+            if (effigy == null) {
+                return null;
+            }
+
+            Vec3 p = session.ownerAnchorPos;
+            effigy.moveTo(p.x, p.y, p.z, session.ownerAnchorYaw, session.ownerAnchorPitch);
+            effigy.setYRot(session.ownerAnchorYaw);
+            effigy.setYHeadRot(session.ownerAnchorYaw);
+            effigy.yBodyRot = session.ownerAnchorYaw;
+            effigy.setXRot(session.ownerAnchorPitch);
+            effigy.copyVisualsFromOwner(owner);
+            effigy.setLinkedOwnerUuid(owner.getUUID());
+            effigy.setDeltaMovement(Vec3.ZERO);
+            effigy.hurtMarked = true;
+
+            if (!anchorLevel.addFreshEntity(effigy)) {
+                return null;
+            }
+            return effigy;
+        } catch (Throwable t) {
+            LOG.debug("[RavenLinkRuntime] spawnEffigyForSession failed safely owner='{}': {}",
+                    safePlayerName(owner), t.toString());
+            return null;
+        }
+    }
+
+    private static void discardSessionEffigy(@Nullable MinecraftServer server, @NotNull LinkSession session) {
+        try {
+            if (server == null || session.effigyUuid == null) {
+                return;
+            }
+            for (ServerLevel level : server.getAllLevels()) {
+                Entity e = level.getEntity(session.effigyUuid);
+                if (e instanceof RavenLinkEffigyEntity effigy) {
+                    effigy.discard();
+                    break;
+                }
+            }
+        } catch (Throwable ignored) {
+        } finally {
+            session.effigyUuid = null;
+        }
+    }
+
+    private static void handleEffigyHit(@NotNull RavenLinkEffigyEntity effigy) {
+        try {
+            if (effigy.level().isClientSide || !(effigy.level() instanceof ServerLevel serverLevel)) {
+                return;
+            }
+
+            UUID ownerId = effigy.getLinkedOwnerUuid();
+            effigy.discard();
+            if (ownerId == null) {
+                return;
+            }
+
+            LinkSession session = ACTIVE_SESSIONS.remove(ownerId);
+            if (session == null) {
+                return;
+            }
+            session.effigyUuid = null;
+
+            MinecraftServer server = serverLevel.getServer();
+            ServerPlayer owner = server.getPlayerList().getPlayer(ownerId);
+            if (owner != null && owner.isAlive() && !owner.isRemoved()) {
+                owner.sendSystemMessage(net.minecraft.network.chat.Component.translatable(
+                        "message.featheredfriend.raven_link.cancelled_effigy_hit"
+                ));
+            }
+            RavenLogService.logForPlayerKey(
+                    serverLevel,
+                    ownerId,
+                    RavenLogCategory.COMBAT,
+                    "log.featheredfriend.raven_link.effigy_hit"
+            );
+            stopSession(server, owner, session, "effigy_hit");
+        } catch (Throwable t) {
+            LOG.warn("[RavenLinkRuntime] handleEffigyHit failed safely: {}", t.toString());
+        }
+    }
+
     private static boolean clearPerchAssignmentForLink(@NotNull RavenEntity raven) {
         try {
             CompoundTag root = raven.getPersistentData();
@@ -1816,6 +1931,7 @@ public final class RavenLinkRuntime {
         private boolean ownerAbilitiesFlying;
         private float ownerFlySpeed;
         private ChunkTrackingView ownerOriginalTrackingView;
+        private UUID effigyUuid;
         private LinkInput input;
         private boolean returnToAssignedPerch;
         private ResourceKey<Level> perchDimension;

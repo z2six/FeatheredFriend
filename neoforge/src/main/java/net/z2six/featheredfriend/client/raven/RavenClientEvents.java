@@ -3,6 +3,7 @@ package net.z2six.featheredfriend.client.raven;
 
 import com.mojang.logging.LogUtils;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
+import net.z2six.featheredfriend.client.raven.render.RavenLinkEffigyRenderer;
 import net.z2six.featheredfriend.client.block.ravenchest.render.RavenChestBlockRenderer;
 import net.z2six.featheredfriend.client.raven.render.RavenRenderer;
 import net.z2six.featheredfriend.registry.FFNeoForgeBlockEntities;
@@ -31,6 +32,12 @@ public final class RavenClientEvents {
             LOG.debug("[RavenClientEvents] Raven renderer registered");
         } catch (Throwable t) {
             LOG.error("[RavenClientEvents] Failed to register Raven renderer", t);
+        }
+        try {
+            event.registerEntityRenderer(FFNeoForgeEntities.RAVEN_LINK_EFFIGY.get(), RavenLinkEffigyRenderer::new);
+            LOG.debug("[RavenClientEvents] Raven Link effigy renderer registered");
+        } catch (Throwable t) {
+            LOG.error("[RavenClientEvents] Failed to register Raven Link effigy renderer", t);
         }
 
         try {

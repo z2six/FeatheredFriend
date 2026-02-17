@@ -11,6 +11,7 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
+import net.z2six.featheredfriend.entity.ravenlink.RavenLinkEffigyEntity;
 import net.z2six.featheredfriend.registry.FFEntities;
 import org.slf4j.Logger;
 
@@ -36,6 +37,8 @@ public final class FFNeoForgeEntities {
 
     public static final DeferredHolder<EntityType<?>, EntityType<RavenEntity>> RAVEN =
             ENTITY_TYPES.register("raven", FFEntities.RAVEN);
+    public static final DeferredHolder<EntityType<?>, EntityType<RavenLinkEffigyEntity>> RAVEN_LINK_EFFIGY =
+            ENTITY_TYPES.register("raven_link_effigy", FFEntities.RAVEN_LINK_EFFIGY);
 
     private FFNeoForgeEntities() {
     }
@@ -64,6 +67,12 @@ public final class FFNeoForgeEntities {
             LOG.debug("[FFNeoForgeEntities] Registered Raven attributes");
         } catch (Throwable t) {
             LOG.error("[FFNeoForgeEntities] Failed to register Raven attributes", t);
+        }
+        try {
+            event.put(RAVEN_LINK_EFFIGY.get(), FFEntities.createRavenLinkEffigyAttributes().build());
+            LOG.debug("[FFNeoForgeEntities] Registered Raven Link effigy attributes");
+        } catch (Throwable t) {
+            LOG.error("[FFNeoForgeEntities] Failed to register Raven Link effigy attributes", t);
         }
     }
 

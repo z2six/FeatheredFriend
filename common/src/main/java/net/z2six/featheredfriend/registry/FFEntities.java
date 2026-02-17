@@ -10,6 +10,7 @@ import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
+import net.z2six.featheredfriend.entity.ravenlink.RavenLinkEffigyEntity;
 import org.slf4j.Logger;
 
 import java.util.LinkedHashMap;
@@ -33,6 +34,8 @@ public final class FFEntities {
     // Raven hitbox tuning (gameplay collision/selection).
     private static final float RAVEN_HITBOX_WIDTH = 0.70F;
     private static final float RAVEN_HITBOX_HEIGHT = 0.70F;
+    private static final float RAVEN_LINK_EFFIGY_HITBOX_WIDTH = 0.60F;
+    private static final float RAVEN_LINK_EFFIGY_HITBOX_HEIGHT = 1.80F;
 
     public static final Supplier<EntityType<RavenEntity>> RAVEN = register(
             "raven",
@@ -41,6 +44,15 @@ public final class FFEntities {
                     .sized(RAVEN_HITBOX_WIDTH, RAVEN_HITBOX_HEIGHT)
                     .clientTrackingRange(8)
                     .build(Constants.MOD_ID + ":raven")
+    );
+
+    public static final Supplier<EntityType<RavenLinkEffigyEntity>> RAVEN_LINK_EFFIGY = register(
+            "raven_link_effigy",
+            () -> EntityType.Builder
+                    .of(RavenLinkEffigyEntity::new, MobCategory.MISC)
+                    .sized(RAVEN_LINK_EFFIGY_HITBOX_WIDTH, RAVEN_LINK_EFFIGY_HITBOX_HEIGHT)
+                    .clientTrackingRange(10)
+                    .build(Constants.MOD_ID + ":raven_link_effigy")
     );
 
     public static AttributeSupplier.Builder createRavenAttributes() {
@@ -52,6 +64,16 @@ public final class FFEntities {
             LOG.error("[FFEntities] createRavenAttributes failed; falling back to minimal attributes", t);
             return Mob.createMobAttributes()
                     .add(Attributes.MAX_HEALTH, 1.0D);
+        }
+    }
+
+    public static AttributeSupplier.Builder createRavenLinkEffigyAttributes() {
+        try {
+            return RavenLinkEffigyEntity.createAttributes();
+        } catch (Throwable t) {
+            LOG.error("[FFEntities] createRavenLinkEffigyAttributes failed; falling back to minimal attributes", t);
+            return Mob.createMobAttributes()
+                    .add(Attributes.MAX_HEALTH, 20.0D);
         }
     }
 
