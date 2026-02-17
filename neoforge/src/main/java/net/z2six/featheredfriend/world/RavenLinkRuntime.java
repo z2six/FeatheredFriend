@@ -289,6 +289,13 @@ public final class RavenLinkRuntime {
                 }
                 return false;
             }
+
+            // Keep runtime identity stable for the linked raven to avoid client-side
+            // desync around entity replacement when link starts near an already loaded raven.
+            // We force-exit perch state on the same entity and mount that one.
+            if (session.returnToAssignedPerch) {
+                raven.forceExitRavenChestPerchForLink();
+            }
             ACTIVE_SESSIONS.put(owner.getUUID(), session);
 
             applyLinkedRavenState(raven);
@@ -442,8 +449,22 @@ public final class RavenLinkRuntime {
 
                 if (now - session.lastStreamDebugLogTime >= 20L) {
                     session.lastStreamDebugLogTime = now;
+                    boolean mounted = false;
+                    boolean ravenPassenger = false;
+                    String vehicleInfo = "none";
+                    int ownerPassengerCount = 0;
+                    try {
+                        mounted = (raven.getVehicle() == owner && owner.getPassengers().contains(raven));
+                        ravenPassenger = raven.isPassenger();
+                        Entity vehicle = raven.getVehicle();
+                        if (vehicle != null) {
+                            vehicleInfo = vehicle.getType().toShortString() + "#" + vehicle.getId();
+                        }
+                        ownerPassengerCount = owner.getPassengers().size();
+                    } catch (Throwable ignored) {
+                    }
                     LOG.info(
-                            "[RavenLinkStream] owner='{}' center=({}, {}) pendingBefore={} sentTick={} pendingAfter={} loaded={} radius={}",
+                            "[RavenLinkStream] owner='{}' center=({}, {}) pendingBefore={} sentTick={} pendingAfter={} loaded={} radius={} mounted={} ravenPassenger={} vehicle={} ownerPassengers={}",
                             safePlayerName(owner),
                             session.streamCenter == null ? 0 : session.streamCenter.x,
                             session.streamCenter == null ? 0 : session.streamCenter.z,
@@ -451,7 +472,11 @@ public final class RavenLinkRuntime {
                             session.lastChunksSentThisTick,
                             session.lastChunksPending,
                             session.lastChunksLoaded,
-                            session.lastStreamRadius
+                            session.lastStreamRadius,
+                            mounted,
+                            ravenPassenger,
+                            vehicleInfo,
+                            ownerPassengerCount
                     );
                 }
             }
@@ -753,10 +778,33 @@ public final class RavenLinkRuntime {
             if (raven.isPassenger()) {
                 raven.stopRiding();
             }
-            raven.startRiding(owner, true);
-            return raven.getVehicle() == owner && owner.getPassengers().contains(raven);
+            boolean started = raven.startRiding(owner, true);
+            boolean mounted = raven.getVehicle() == owner && owner.getPassengers().contains(raven);
+            if (!mounted) {
+                try {
+                    long now = owner.serverLevel().getGameTime();
+                    if (now % 20L == 0L) {
+                        Entity vehicle = raven.getVehicle();
+                        String vehicleInfo = vehicle == null
+                                ? "none"
+                                : vehicle.getType().toShortString() + "#" + vehicle.getId();
+                        LOG.info(
+                                "[RavenLinkMountFail] owner='{}' ravenId={} started={} mounted={} ravenPassenger={} vehicle={} ownerPassengers={}",
+                                safePlayerName(owner),
+                                raven.getId(),
+                                started,
+                                mounted,
+                                raven.isPassenger(),
+                                vehicleInfo,
+                                owner.getPassengers().size()
+                        );
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+            return mounted;
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] ensureRavenMountedToOwner failed safely owner='{}' ravenId={}: {}",
+            LOG.info("[RavenLinkRuntime] ensureRavenMountedToOwner failed safely owner='{}' ravenId={}: {}",
                     safePlayerName(owner), raven.getId(), t.toString());
             return false;
         }
@@ -1659,6 +1707,43 @@ public final class RavenLinkRuntime {
                     ResourceKey.create(Registries.DIMENSION, dimLoc),
                     BlockPos.of(ffTag.getLong(NBT_RAVEN_CHEST_PERCH_BLOCK_POS))
             );
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static @Nullable RavenEntity respawnRavenForLink(@NotNull ServerPlayer owner, @NotNull RavenEntity raven) {
+        try {
+            if (!(raven.level() instanceof ServerLevel level)) {
+                return null;
+            }
+
+            CompoundTag snapshot = new CompoundTag();
+            raven.saveWithoutId(snapshot);
+            // Force a new runtime identity and position.
+            snapshot.remove("UUID");
+            snapshot.remove("Pos");
+            snapshot.remove("Motion");
+            snapshot.remove("Rotation");
+            snapshot.remove("Passengers");
+
+            Entity created = raven.getType().create(level);
+            if (!(created instanceof RavenEntity replacement)) {
+                return null;
+            }
+
+            replacement.load(snapshot);
+            Vec3 ownerPos = owner.position();
+            replacement.moveTo(ownerPos.x, ownerPos.y + 0.20D, ownerPos.z, owner.getYRot(), owner.getXRot());
+            replacement.setDeltaMovement(Vec3.ZERO);
+            replacement.hurtMarked = true;
+
+            if (!level.addFreshEntity(replacement)) {
+                return null;
+            }
+
+            raven.discard();
+            return replacement;
         } catch (Throwable ignored) {
             return null;
         }

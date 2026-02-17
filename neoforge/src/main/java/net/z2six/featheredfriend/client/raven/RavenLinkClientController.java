@@ -18,6 +18,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.RenderHandEvent;
 import net.neoforged.neoforge.client.event.RenderLivingEvent;
@@ -27,6 +28,7 @@ import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.common.NeoForge;
+import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import net.z2six.featheredfriend.platform.Services;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
@@ -290,6 +292,7 @@ public final class RavenLinkClientController {
             if (mc.getCameraEntity() != mc.player) {
                 mc.setCameraEntity(mc.player);
             }
+            ensureLinkedRavenVisualMount(mc);
             suppressNonMovementInputs(mc);
             if (!mc.options.hideGui) {
                 mc.options.hideGui = true;
@@ -335,6 +338,7 @@ public final class RavenLinkClientController {
             if (mc.getCameraEntity() != mc.player) {
                 mc.setCameraEntity(mc.player);
             }
+            ensureLinkedRavenVisualMount(mc);
         } catch (Throwable t) {
             LOG.debug("[RavenLinkClientController] onRenderFramePre failed safely: {}", t.toString());
         }
@@ -673,6 +677,7 @@ public final class RavenLinkClientController {
     }
 
     private static void clearLocalState(boolean sendStopRequest) {
+        int previousLinkedRavenId = linkedRavenEntityId;
         try {
             if (sendStopRequest) {
                 Services.PLATFORM.sendStopRavenLinkToServer();
@@ -683,6 +688,15 @@ public final class RavenLinkClientController {
         try {
             Minecraft mc = Minecraft.getInstance();
             if (mc != null && mc.player != null) {
+                try {
+                    if (mc.level != null && previousLinkedRavenId >= 0) {
+                        Entity e = mc.level.getEntity(previousLinkedRavenId);
+                        if (e instanceof RavenEntity raven && raven.getVehicle() == mc.player) {
+                            raven.stopRiding();
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
                 if (mc.getCameraEntity() != mc.player) {
                     mc.setCameraEntity(mc.player);
                 }
@@ -761,6 +775,52 @@ public final class RavenLinkClientController {
                 // drain queued clicks
             }
         } catch (Throwable ignored) {
+        }
+    }
+
+    private static void ensureLinkedRavenVisualMount(@org.jetbrains.annotations.NotNull Minecraft mc) {
+        try {
+            if (!active || linkedRavenEntityId < 0 || mc.level == null || mc.player == null) {
+                return;
+            }
+
+            Entity entity = mc.level.getEntity(linkedRavenEntityId);
+            if (!(entity instanceof RavenEntity raven) || raven.isRemoved() || !raven.isAlive()) {
+                return;
+            }
+
+            boolean mounted = raven.getVehicle() == mc.player && mc.player.getPassengers().contains(raven);
+            if (!mounted) {
+                try {
+                    if (raven.isPassenger() && raven.getVehicle() != mc.player) {
+                        raven.stopRiding();
+                    }
+                } catch (Throwable ignored) {
+                }
+                try {
+                    raven.startRiding(mc.player, true);
+                } catch (Throwable ignored) {
+                }
+                mounted = raven.getVehicle() == mc.player && mc.player.getPassengers().contains(raven);
+            }
+
+            float yaw = mc.player.getYRot();
+            float pitch = mc.player.getXRot();
+            if (!mounted) {
+                raven.absMoveTo(mc.player.getX(), mc.player.getY(), mc.player.getZ(), yaw, pitch);
+                raven.setOldPosAndRot();
+            }
+            raven.setYRot(yaw);
+            raven.setYHeadRot(yaw);
+            raven.yBodyRot = yaw;
+            raven.setXRot(pitch);
+            raven.yRotO = yaw;
+            raven.yHeadRotO = yaw;
+            raven.yBodyRotO = yaw;
+            raven.xRotO = pitch;
+            raven.setDeltaMovement(Vec3.ZERO);
+        } catch (Throwable t) {
+            LOG.debug("[RavenLinkClientController] ensureLinkedRavenVisualMount failed safely: {}", t.toString());
         }
     }
 
