@@ -99,7 +99,15 @@ public final class FFNetworkClientHandlers {
     public static void handleStartRavenLinkOnClient(@NotNull FFNetwork.StartRavenLinkPayload payload,
                                                      @NotNull IPayloadContext context) {
         try {
-            RavenLinkClientController.beginFromServer(payload.ravenEntityId(), payload.durationTicks());
+            RavenLinkClientController.beginFromServer(
+                    payload.ravenEntityId(),
+                    payload.durationTicks(),
+                    payload.anchorX(),
+                    payload.anchorY(),
+                    payload.anchorZ(),
+                    payload.anchorYaw(),
+                    payload.anchorPitch()
+            );
         } catch (Throwable t) {
             LOG.error("[FFNetworkClientHandlers] handleStartRavenLinkOnClient failed", t);
         }

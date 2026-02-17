@@ -78,6 +78,7 @@ public final class RavenLinkRuntime {
     private static final Logger LOG = LogUtils.getLogger();
 
     private static final long LINK_DURATION_TICKS = 30L * 20L;
+    private static final long LINK_START_DELAY_TICKS = 5L;
     private static final double LINK_HORIZONTAL_SPEED = 0.25D;
     private static final double LINK_VERTICAL_SPEED = 0.18D;
     private static final double LINK_ACCEL_FACTOR = 0.22D;
@@ -87,6 +88,7 @@ public final class RavenLinkRuntime {
     private static final int MIN_STREAM_VIEW_DISTANCE = 2;
     private static final int MAX_STREAM_VIEW_DISTANCE = 32;
     private static final int STREAM_TICKET_RADIUS = 3;
+    private static final int EFFIGY_TICKET_RADIUS = 1;
     private static final int MANUAL_STREAM_MAX_RADIUS = 8;
     private static final int MANUAL_STREAM_CHUNKS_PER_TICK = 18;
     private static final long LINK_INPUT_TIMEOUT_TICKS = 40L;
@@ -106,6 +108,7 @@ public final class RavenLinkRuntime {
     private static final double RAVEN_CHEST_PERCH_OFFSET_Z = 0.5D;
 
     private static final Map<UUID, LinkSession> ACTIVE_SESSIONS = new ConcurrentHashMap<>();
+    private static final Map<UUID, PendingLinkStart> PENDING_LINK_STARTS = new ConcurrentHashMap<>();
     private static volatile @Nullable Method APPLY_CHUNK_TRACKING_VIEW_METHOD = null;
     private static volatile boolean APPLY_CHUNK_TRACKING_VIEW_LOOKED_UP = false;
     private static volatile @Nullable Field PLAYER_CHUNK_SENDER_PENDING_CHUNKS_FIELD = null;
@@ -298,7 +301,15 @@ public final class RavenLinkRuntime {
             if (session.returnToAssignedPerch) {
                 perchAssignmentTemporarilyCleared = clearPerchAssignmentForLink(raven);
             }
+            // Spawn effigy immediately before teleporting the owner into Raven Link.
+            RavenLinkEffigyEntity effigy = spawnEffigyForSession(owner.server, owner, session);
+            if (effigy != null) {
+                session.effigyUuid = effigy.getUUID();
+            }
             if (!prepareOwnerForLink(owner, raven, session)) {
+                if (session.effigyUuid != null) {
+                    discardSessionEffigy(owner.server, session);
+                }
                 if (perchAssignmentTemporarilyCleared) {
                     restorePerchAssignmentAfterLink(raven, session);
                 }
@@ -311,16 +322,20 @@ public final class RavenLinkRuntime {
             if (session.returnToAssignedPerch) {
                 raven.forceExitRavenChestPerchForLink();
             }
-
-            RavenLinkEffigyEntity effigy = spawnEffigyForSession(owner.server, owner, session);
-            if (effigy != null) {
-                session.effigyUuid = effigy.getUUID();
-            }
             ACTIVE_SESSIONS.put(owner.getUUID(), session);
 
             applyLinkedRavenState(raven);
             FFNetwork.sendRavenLinkOwnerVisibilityToAll(owner.server, owner.getId(), true);
-            FFNetwork.sendStartRavenLink(owner, raven.getId(), (int) LINK_DURATION_TICKS);
+            FFNetwork.sendStartRavenLink(
+                    owner,
+                    raven.getId(),
+                    (int) LINK_DURATION_TICKS,
+                    session.ownerAnchorPos.x,
+                    session.ownerAnchorPos.y + owner.getEyeHeight(owner.getPose()),
+                    session.ownerAnchorPos.z,
+                    session.ownerAnchorYaw,
+                    session.ownerAnchorPitch
+            );
 
             RavenLogService.logForPlayerKey(
                     owner.serverLevel(),
@@ -371,6 +386,7 @@ public final class RavenLinkRuntime {
         try {
             LinkSession session = ACTIVE_SESSIONS.remove(owner.getUUID());
             if (session == null) {
+                discardAnyEffigiesForOwner(owner.server, owner.getUUID());
                 return;
             }
             stopSession(owner.server, owner, session, reason);
@@ -591,6 +607,7 @@ public final class RavenLinkRuntime {
                     raven.setAnimMode(RavenAnimMode.AUTO);
                 }
             }
+            discardAnyEffigiesForOwner(server, session.ownerUuid);
 
             if (owner != null && owner.isAlive() && !owner.isRemoved()) {
                 if (owner.server != null) {
@@ -614,6 +631,41 @@ public final class RavenLinkRuntime {
                     owner == null ? "<offline>" : safePlayerName(owner),
                     reason,
                     t.toString());
+        }
+    }
+
+    private static void discardAnyEffigiesForOwner(@Nullable MinecraftServer server, @Nullable UUID ownerId) {
+        try {
+            if (server == null || ownerId == null) {
+                return;
+            }
+            for (ServerLevel level : server.getAllLevels()) {
+                if (level == null) {
+                    continue;
+                }
+                double cx = level.getWorldBorder().getCenterX();
+                double cz = level.getWorldBorder().getCenterZ();
+                double half = Math.min(level.getWorldBorder().getSize() * 0.5D, 30_000_000D);
+                AABB worldBox = new AABB(
+                        cx - half,
+                        level.getMinBuildHeight(),
+                        cz - half,
+                        cx + half,
+                        level.getMaxBuildHeight(),
+                        cz + half
+                );
+                List<RavenLinkEffigyEntity> effigies = level.getEntitiesOfClass(
+                        RavenLinkEffigyEntity.class,
+                        worldBox,
+                        e -> e != null && ownerId.equals(e.getLinkedOwnerUuid())
+                );
+                for (RavenLinkEffigyEntity effigy : effigies) {
+                    if (effigy != null && !effigy.isRemoved()) {
+                        effigy.discard();
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
         }
     }
 
@@ -1147,6 +1199,34 @@ public final class RavenLinkRuntime {
         }
     }
 
+    private static void ensureEffigyTicket(@NotNull LinkSession session,
+                                           @NotNull ServerLevel level,
+                                           @NotNull ChunkPos targetChunk) {
+        try {
+            if (Objects.equals(session.effigyTicketDimension, level.dimension())
+                    && session.effigyTicketChunk != null
+                    && session.effigyTicketChunk.equals(targetChunk)) {
+                return;
+            }
+
+            clearEffigyTicket(level.getServer(), session);
+
+            // Keep the effigy chunk loaded until Raven Link stops so we can always
+            // discard the effigy reliably even when the owner is far away.
+            level.getChunkSource().addRegionTicket(
+                    TicketType.FORCED,
+                    targetChunk,
+                    EFFIGY_TICKET_RADIUS,
+                    targetChunk,
+                    true
+            );
+            session.effigyTicketDimension = level.dimension();
+            session.effigyTicketChunk = targetChunk;
+        } catch (Throwable t) {
+            LOG.debug("[RavenLinkRuntime] ensureEffigyTicket failed safely: {}", t.toString());
+        }
+    }
+
     private static void clearStreamTicket(@Nullable MinecraftServer server, @NotNull LinkSession session) {
         try {
             if (server == null || session.ticketDimension == null || session.ticketChunk == null) {
@@ -1167,6 +1247,29 @@ public final class RavenLinkRuntime {
         } finally {
             session.ticketDimension = null;
             session.ticketChunk = null;
+        }
+    }
+
+    private static void clearEffigyTicket(@Nullable MinecraftServer server, @NotNull LinkSession session) {
+        try {
+            if (server == null || session.effigyTicketDimension == null || session.effigyTicketChunk == null) {
+                return;
+            }
+            ServerLevel ticketLevel = server.getLevel(session.effigyTicketDimension);
+            if (ticketLevel != null) {
+                ticketLevel.getChunkSource().removeRegionTicket(
+                        TicketType.FORCED,
+                        session.effigyTicketChunk,
+                        EFFIGY_TICKET_RADIUS,
+                        session.effigyTicketChunk,
+                        true
+                );
+            }
+        } catch (Throwable t) {
+            LOG.debug("[RavenLinkRuntime] clearEffigyTicket failed safely: {}", t.toString());
+        } finally {
+            session.effigyTicketDimension = null;
+            session.effigyTicketChunk = null;
         }
     }
 
@@ -1801,6 +1904,7 @@ public final class RavenLinkRuntime {
             if (!anchorLevel.addFreshEntity(effigy)) {
                 return null;
             }
+            ensureEffigyTicket(session, anchorLevel, effigy.chunkPosition());
             return effigy;
         } catch (Throwable t) {
             LOG.debug("[RavenLinkRuntime] spawnEffigyForSession failed safely owner='{}': {}",
@@ -1824,6 +1928,7 @@ public final class RavenLinkRuntime {
         } catch (Throwable ignored) {
         } finally {
             session.effigyUuid = null;
+            clearEffigyTicket(server, session);
         }
     }
 
@@ -1932,6 +2037,8 @@ public final class RavenLinkRuntime {
         private float ownerFlySpeed;
         private ChunkTrackingView ownerOriginalTrackingView;
         private UUID effigyUuid;
+        private ResourceKey<Level> effigyTicketDimension;
+        private ChunkPos effigyTicketChunk;
         private LinkInput input;
         private boolean returnToAssignedPerch;
         private ResourceKey<Level> perchDimension;

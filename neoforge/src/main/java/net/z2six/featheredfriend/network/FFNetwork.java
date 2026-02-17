@@ -827,9 +827,27 @@ public final class FFNetwork {
         }
     }
 
-    public static void sendStartRavenLink(@NotNull ServerPlayer player, int ravenEntityId, int durationTicks) {
+    public static void sendStartRavenLink(@NotNull ServerPlayer player,
+                                          int ravenEntityId,
+                                          int durationTicks,
+                                          double anchorX,
+                                          double anchorY,
+                                          double anchorZ,
+                                          float anchorYaw,
+                                          float anchorPitch) {
         try {
-            PacketDistributor.sendToPlayer(player, new StartRavenLinkPayload(ravenEntityId, durationTicks));
+            PacketDistributor.sendToPlayer(
+                    player,
+                    new StartRavenLinkPayload(
+                            ravenEntityId,
+                            durationTicks,
+                            anchorX,
+                            anchorY,
+                            anchorZ,
+                            anchorYaw,
+                            anchorPitch
+                    )
+            );
         } catch (Throwable t) {
             LOG.error("[FFNetwork] sendStartRavenLink failed for player={}", player.getGameProfile().getName(), t);
         }
@@ -1460,7 +1478,13 @@ public final class FFNetwork {
         }
     }
 
-    public record StartRavenLinkPayload(int ravenEntityId, int durationTicks) implements CustomPacketPayload {
+    public record StartRavenLinkPayload(int ravenEntityId,
+                                        int durationTicks,
+                                        double anchorX,
+                                        double anchorY,
+                                        double anchorZ,
+                                        float anchorYaw,
+                                        float anchorPitch) implements CustomPacketPayload {
 
         public static final Type<StartRavenLinkPayload> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "start_raven_link"));
@@ -1472,6 +1496,11 @@ public final class FFNetwork {
             try {
                 buf.writeVarInt(payload.ravenEntityId());
                 buf.writeVarInt(payload.durationTicks());
+                buf.writeDouble(payload.anchorX());
+                buf.writeDouble(payload.anchorY());
+                buf.writeDouble(payload.anchorZ());
+                buf.writeFloat(payload.anchorYaw());
+                buf.writeFloat(payload.anchorPitch());
             } catch (Throwable t) {
                 LOG.error("[FFNetwork] StartRavenLinkPayload encode failed", t);
             }
@@ -1481,11 +1510,16 @@ public final class FFNetwork {
             try {
                 return new StartRavenLinkPayload(
                         buf.readVarInt(),
-                        buf.readVarInt()
+                        buf.readVarInt(),
+                        buf.readDouble(),
+                        buf.readDouble(),
+                        buf.readDouble(),
+                        buf.readFloat(),
+                        buf.readFloat()
                 );
             } catch (Throwable t) {
                 LOG.error("[FFNetwork] StartRavenLinkPayload decode failed", t);
-                return new StartRavenLinkPayload(-1, 0);
+                return new StartRavenLinkPayload(-1, 0, 0.0D, 0.0D, 0.0D, 0.0F, 0.0F);
             }
         }
 

@@ -27,6 +27,9 @@ import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
+import net.neoforged.neoforge.client.event.RenderGuiEvent;
+import net.neoforged.neoforge.client.event.RenderGuiLayerEvent;
+import net.neoforged.neoforge.client.event.ViewportEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import net.z2six.featheredfriend.platform.Services;
@@ -43,11 +46,31 @@ public final class RavenLinkClientController {
 
     private static final Logger LOG = LogUtils.getLogger();
     private static final boolean ENABLE_RAVEN_LINK_DIAGNOSTICS = false;
+    private static final long EYE_TRANSITION_DURATION_MS = 260L;
+    private static final long BLACK_HOLD_AFTER_TELEPORT_MS = 1000L;
+    private static final double LINK_FOV_MULTIPLIER = 1.18D;
+
+    private enum VisionPhase {
+        CLOSING,
+        HOLD_BLACK,
+        OPENING,
+        ACTIVE
+    }
 
     private static volatile boolean registered = false;
     private static volatile boolean active = false;
     private static volatile int linkedRavenEntityId = -1;
     private static volatile long localEndMillis = 0L;
+    private static volatile VisionPhase visionPhase = VisionPhase.CLOSING;
+    private static volatile long visionPhaseStartedAtMillis = 0L;
+    private static volatile @org.jetbrains.annotations.Nullable RavenCameraProxy transitionCameraProxy = null;
+    private static volatile double transitionAnchorX = 0.0D;
+    private static volatile double transitionAnchorY = 0.0D;
+    private static volatile double transitionAnchorZ = 0.0D;
+    private static volatile float transitionAnchorYaw = 0.0F;
+    private static volatile float transitionAnchorPitch = 0.0F;
+    private static volatile int pendingStopRetries = 0;
+    private static volatile long lastStopRetrySentAtMillis = 0L;
     private static volatile boolean escWasDown = false;
     private static volatile float lookYaw = 0.0F;
     private static volatile float lookPitch = 0.0F;
@@ -102,12 +125,26 @@ public final class RavenLinkClientController {
         }
     }
 
-    public static void beginFromServer(int ravenEntityId, int durationTicks) {
+    public static void beginFromServer(int ravenEntityId,
+                                       int durationTicks,
+                                       double anchorX,
+                                       double anchorY,
+                                       double anchorZ,
+                                       float anchorYawFromServer,
+                                       float anchorPitchFromServer) {
         try {
             active = true;
             linkedRavenEntityId = ravenEntityId;
             long durMs = Math.max(0L, (long) durationTicks * 50L);
             localEndMillis = System.currentTimeMillis() + durMs;
+            visionPhase = VisionPhase.CLOSING;
+            visionPhaseStartedAtMillis = System.currentTimeMillis();
+            transitionAnchorX = anchorX;
+            transitionAnchorY = anchorY;
+            transitionAnchorZ = anchorZ;
+            transitionAnchorYaw = anchorYawFromServer;
+            transitionAnchorPitch = anchorPitchFromServer;
+            transitionCameraProxy = null;
             escWasDown = false;
             Minecraft mc = Minecraft.getInstance();
             if (mc != null && mc.player != null) {
@@ -115,11 +152,24 @@ public final class RavenLinkClientController {
                 anchorPitch = mc.player.getXRot();
                 lookYaw = anchorYaw;
                 lookPitch = anchorPitch;
+                RavenCameraProxy proxy = ensureTransitionCameraProxy(
+                        mc,
+                        anchorX,
+                        anchorY,
+                        anchorZ,
+                        anchorYawFromServer,
+                        anchorPitchFromServer
+                );
+                if (proxy != null) {
+                    mc.setCameraEntity(proxy);
+                }
                 if (!hideGuiCaptured) {
                     savedHideGui = mc.options.hideGui;
                     hideGuiCaptured = true;
                 }
-                mc.options.hideGui = true;
+                // Keep HUD pipeline active so Raven Link overlays can render;
+                // actual vanilla layers are suppressed via RenderGuiLayerEvent.Pre.
+                mc.options.hideGui = false;
             }
             debugFrameLogsRemaining = ENABLE_RAVEN_LINK_DIAGNOSTICS ? 600 : 0;
             debugLastFrameSignature = "";
@@ -258,9 +308,71 @@ public final class RavenLinkClientController {
     }
 
     @SubscribeEvent
+    public static void onRenderGuiLayerPre(RenderGuiLayerEvent.Pre event) {
+        try {
+            if (!active) {
+                return;
+            }
+            // Hide all vanilla HUD layers while linked; custom Raven Link overlays
+            // are rendered in RenderGuiEvent.Post.
+            event.setCanceled(true);
+        } catch (Throwable t) {
+            LOG.debug("[RavenLinkClientController] onRenderGuiLayerPre failed safely: {}", t.toString());
+        }
+    }
+
+    @SubscribeEvent
+    public static void onRenderGuiPost(RenderGuiEvent.Post event) {
+        try {
+            if (!active) {
+                return;
+            }
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null || mc.player == null || mc.level == null) {
+                return;
+            }
+            renderRavenLinkVisionOverlay(event.getGuiGraphics(), mc);
+        } catch (Throwable t) {
+            LOG.debug("[RavenLinkClientController] onRenderGuiPost failed safely: {}", t.toString());
+        }
+    }
+
+    @SubscribeEvent
+    public static void onComputeViewportFov(ViewportEvent.ComputeFov event) {
+        try {
+            if (!active) {
+                return;
+            }
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null || mc.player == null) {
+                return;
+            }
+            Entity camEntity = event.getCamera() == null ? null : event.getCamera().getEntity();
+            if (camEntity != mc.player && camEntity != transitionCameraProxy) {
+                return;
+            }
+
+            double fov = event.getFOV();
+            double closingMultiplier = getClosingFovMultiplier();
+            if (closingMultiplier < 0.999D) {
+                fov *= closingMultiplier;
+            }
+
+            double strength = getVisionEffectStrength();
+            if (strength > 0.0D) {
+                fov *= (1.0D + ((LINK_FOV_MULTIPLIER - 1.0D) * strength));
+            }
+            event.setFOV(Math.min(170.0D, fov));
+        } catch (Throwable t) {
+            LOG.debug("[RavenLinkClientController] onComputeViewportFov failed safely: {}", t.toString());
+        }
+    }
+
+    @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
         try {
             if (!active) {
+                tickStopRetryDelivery();
                 return;
             }
 
@@ -289,21 +401,25 @@ public final class RavenLinkClientController {
             }
             escWasDown = escDown;
 
-            if (mc.getCameraEntity() != mc.player) {
-                mc.setCameraEntity(mc.player);
+            tickVisionTransition();
+
+            Entity desiredCamera = resolveDesiredActiveCamera(mc);
+            if (desiredCamera != null && mc.getCameraEntity() != desiredCamera) {
+                mc.setCameraEntity(desiredCamera);
             }
             ensureLinkedRavenVisualMount(mc);
             suppressNonMovementInputs(mc);
-            if (!mc.options.hideGui) {
-                mc.options.hideGui = true;
+            if (mc.options.hideGui) {
+                mc.options.hideGui = false;
             }
 
-            boolean forward = mc.options.keyUp.isDown();
-            boolean backward = mc.options.keyDown.isDown();
-            boolean left = mc.options.keyLeft.isDown();
-            boolean right = mc.options.keyRight.isDown();
-            boolean ascend = mc.options.keyJump.isDown();
-            boolean descend = mc.options.keyShift.isDown();
+            boolean allowMovementInput = visionPhase == VisionPhase.ACTIVE;
+            boolean forward = allowMovementInput && mc.options.keyUp.isDown();
+            boolean backward = allowMovementInput && mc.options.keyDown.isDown();
+            boolean left = allowMovementInput && mc.options.keyLeft.isDown();
+            boolean right = allowMovementInput && mc.options.keyRight.isDown();
+            boolean ascend = allowMovementInput && mc.options.keyJump.isDown();
+            boolean descend = allowMovementInput && mc.options.keyShift.isDown();
 
             // Keep server in sync with player intent + look during link.
             Services.PLATFORM.sendRavenLinkInputToServer(
@@ -335,8 +451,9 @@ public final class RavenLinkClientController {
                 return;
             }
 
-            if (mc.getCameraEntity() != mc.player) {
-                mc.setCameraEntity(mc.player);
+            Entity desiredCamera = resolveDesiredActiveCamera(mc);
+            if (desiredCamera != null && mc.getCameraEntity() != desiredCamera) {
+                mc.setCameraEntity(desiredCamera);
             }
             ensureLinkedRavenVisualMount(mc);
         } catch (Throwable t) {
@@ -396,6 +513,242 @@ public final class RavenLinkClientController {
         } catch (Throwable t) {
             LOG.debug("[RavenLinkClientController] onRenderFramePost failed safely: {}", t.toString());
         }
+    }
+
+    private static @org.jetbrains.annotations.Nullable Entity resolveDesiredActiveCamera(@org.jetbrains.annotations.NotNull Minecraft mc) {
+        try {
+            if (mc.player == null) {
+                return null;
+            }
+            if (visionPhase == VisionPhase.CLOSING || visionPhase == VisionPhase.HOLD_BLACK) {
+                return ensureTransitionCameraProxy(
+                        mc,
+                        transitionAnchorX,
+                        transitionAnchorY,
+                        transitionAnchorZ,
+                        transitionAnchorYaw,
+                        transitionAnchorPitch
+                );
+            }
+            return mc.player;
+        } catch (Throwable ignored) {
+            return mc.player;
+        }
+    }
+
+    private static @org.jetbrains.annotations.Nullable RavenCameraProxy ensureTransitionCameraProxy(@org.jetbrains.annotations.NotNull Minecraft mc,
+                                                                                                    double x,
+                                                                                                    double y,
+                                                                                                    double z,
+                                                                                                    float yaw,
+                                                                                                    float pitch) {
+        try {
+            if (mc.level == null) {
+                return null;
+            }
+            RavenCameraProxy proxy = transitionCameraProxy;
+            if (proxy == null || proxy.level() != mc.level || proxy.isRemoved()) {
+                proxy = new RavenCameraProxy(mc.level);
+                transitionCameraProxy = proxy;
+            }
+            proxy.applyRemoteState(x, y, z, yaw, pitch);
+            return proxy;
+        } catch (Throwable t) {
+            LOG.debug("[RavenLinkClientController] ensureTransitionCameraProxy failed safely: {}", t.toString());
+            transitionCameraProxy = null;
+            return null;
+        }
+    }
+
+    private static void tickStopRetryDelivery() {
+        try {
+            if (pendingStopRetries <= 0) {
+                return;
+            }
+            long now = System.currentTimeMillis();
+            if (lastStopRetrySentAtMillis > 0L && now - lastStopRetrySentAtMillis < 120L) {
+                return;
+            }
+            Services.PLATFORM.sendStopRavenLinkToServer();
+            pendingStopRetries--;
+            lastStopRetrySentAtMillis = now;
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void tickVisionTransition() {
+        try {
+            long now = System.currentTimeMillis();
+            switch (visionPhase) {
+                case CLOSING -> {
+                    if (now - visionPhaseStartedAtMillis >= EYE_TRANSITION_DURATION_MS) {
+                        visionPhase = VisionPhase.HOLD_BLACK;
+                        visionPhaseStartedAtMillis = now;
+                    }
+                }
+                case HOLD_BLACK -> {
+                    if (now - visionPhaseStartedAtMillis >= BLACK_HOLD_AFTER_TELEPORT_MS) {
+                        visionPhase = VisionPhase.OPENING;
+                        visionPhaseStartedAtMillis = now;
+                    }
+                }
+                case OPENING -> {
+                    if (now - visionPhaseStartedAtMillis >= EYE_TRANSITION_DURATION_MS) {
+                        visionPhase = VisionPhase.ACTIVE;
+                        visionPhaseStartedAtMillis = now;
+                    }
+                }
+                case ACTIVE -> {
+                    // steady-state
+                }
+            }
+        } catch (Throwable t) {
+            LOG.debug("[RavenLinkClientController] tickVisionTransition failed safely: {}", t.toString());
+        }
+    }
+
+    private static double getEyelidProgress() {
+        try {
+            long now = System.currentTimeMillis();
+            return switch (visionPhase) {
+                case CLOSING -> Mth.clamp((double) (now - visionPhaseStartedAtMillis) / (double) EYE_TRANSITION_DURATION_MS, 0.0D, 1.0D);
+                case HOLD_BLACK -> 1.0D;
+                case OPENING -> 1.0D - Mth.clamp((double) (now - visionPhaseStartedAtMillis) / (double) EYE_TRANSITION_DURATION_MS, 0.0D, 1.0D);
+                case ACTIVE -> 0.0D;
+            };
+        } catch (Throwable ignored) {
+            return 0.0D;
+        }
+    }
+
+    private static double getVisionEffectStrength() {
+        try {
+            return switch (visionPhase) {
+                case CLOSING, HOLD_BLACK -> 0.0D;
+                case OPENING -> Mth.clamp(1.0D - getEyelidProgress(), 0.0D, 1.0D);
+                case ACTIVE -> 1.0D;
+            };
+        } catch (Throwable ignored) {
+            return 0.0D;
+        }
+    }
+
+    private static double getClosingFovMultiplier() {
+        try {
+            if (visionPhase != VisionPhase.CLOSING) {
+                return 1.0D;
+            }
+            double progress = getEyelidProgress();
+            // Quickly tunnel in while eyelids close, then reset once full black starts.
+            return Mth.clamp(1.0D - (0.34D * progress), 0.66D, 1.0D);
+        } catch (Throwable ignored) {
+            return 1.0D;
+        }
+    }
+
+    private static void renderRavenLinkVisionOverlay(@org.jetbrains.annotations.NotNull net.minecraft.client.gui.GuiGraphics guiGraphics,
+                                                     @org.jetbrains.annotations.NotNull Minecraft mc) {
+        try {
+            int width = mc.getWindow().getGuiScaledWidth();
+            int height = mc.getWindow().getGuiScaledHeight();
+            if (width <= 0 || height <= 0) {
+                return;
+            }
+
+            double strength = getVisionEffectStrength();
+            if (strength > 0.0D) {
+                // Slight pink-purple raven vision tint across whole frame.
+                int baseTintA = (int) Math.round(34.0D * strength);
+                int glowTintA = (int) Math.round(18.0D * strength);
+                guiGraphics.fill(0, 0, width, height, argb(baseTintA, 187, 131, 214));
+                guiGraphics.fill(0, 0, width, height, argb(glowTintA, 231, 170, 255));
+                drawEdgeBlurVignette(guiGraphics, width, height, strength);
+            }
+
+            double eyelid = getEyelidProgress();
+            if (eyelid > 0.0D) {
+                drawEyelids(guiGraphics, width, height, eyelid);
+            }
+        } catch (Throwable t) {
+            LOG.debug("[RavenLinkClientController] renderRavenLinkVisionOverlay failed safely: {}", t.toString());
+        }
+    }
+
+    private static void drawEdgeBlurVignette(@org.jetbrains.annotations.NotNull net.minecraft.client.gui.GuiGraphics guiGraphics,
+                                             int width,
+                                             int height,
+                                             double strength) {
+        try {
+            int layers = 14;
+            int maxInset = Math.max(10, (int) (Math.min(width, height) * 0.14F));
+
+            for (int i = 0; i < layers; i++) {
+                float f0 = i / (float) layers;
+                float f1 = (i + 1) / (float) layers;
+                int inset0 = Math.round(f0 * maxInset);
+                int inset1 = Math.round(f1 * maxInset);
+                if (inset1 <= inset0) {
+                    continue;
+                }
+
+                float edgeStrength = 1.0F - f0;
+                int darkAlpha = (int) Math.round((2.0F + (edgeStrength * edgeStrength * 22.0F)) * strength);
+                int hazeAlpha = (int) Math.round((1.0F + (edgeStrength * edgeStrength * 12.0F)) * strength);
+                int darkColor = argb(darkAlpha, 18, 12, 24);
+                int hazeColor = argb(hazeAlpha, 196, 141, 223);
+
+                guiGraphics.fill(inset0, inset0, width - inset0, inset1, darkColor);
+                guiGraphics.fill(inset0, height - inset1, width - inset0, height - inset0, darkColor);
+                guiGraphics.fill(inset0, inset0, inset1, height - inset0, darkColor);
+                guiGraphics.fill(width - inset1, inset0, width - inset0, height - inset0, darkColor);
+
+                // Slight colored haze to fake soft edge focus.
+                guiGraphics.fill(inset1, inset1, width - inset1, inset1 + 1, hazeColor);
+                guiGraphics.fill(inset1, height - inset1 - 1, width - inset1, height - inset1, hazeColor);
+                guiGraphics.fill(inset1, inset1, inset1 + 1, height - inset1, hazeColor);
+                guiGraphics.fill(width - inset1 - 1, inset1, width - inset1, height - inset1, hazeColor);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void drawEyelids(@org.jetbrains.annotations.NotNull net.minecraft.client.gui.GuiGraphics guiGraphics,
+                                    int width,
+                                    int height,
+                                    double progress) {
+        try {
+            int barHeight = Mth.clamp((int) Math.round((height * 0.5D) * progress), 0, height / 2);
+            if (barHeight <= 0) {
+                return;
+            }
+
+            guiGraphics.fill(0, 0, width, barHeight, 0xFF000000);
+            guiGraphics.fill(0, height - barHeight, width, height, 0xFF000000);
+
+            int feather = Math.max(2, height / 96);
+            for (int i = 0; i < feather; i++) {
+                float t = 1.0F - (i / (float) feather);
+                int alpha = (int) Math.round(170.0F * t * progress);
+                int color = argb(alpha, 0, 0, 0);
+                int topY = barHeight + i;
+                int bottomY = height - barHeight - i - 1;
+                if (topY >= 0 && topY < height) {
+                    guiGraphics.fill(0, topY, width, topY + 1, color);
+                }
+                if (bottomY >= 0 && bottomY < height) {
+                    guiGraphics.fill(0, bottomY, width, bottomY + 1, color);
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static int argb(int a, int r, int g, int b) {
+        int aa = Mth.clamp(a, 0, 255);
+        int rr = Mth.clamp(r, 0, 255);
+        int gg = Mth.clamp(g, 0, 255);
+        int bb = Mth.clamp(b, 0, 255);
+        return (aa << 24) | (rr << 16) | (gg << 8) | bb;
     }
 
     private static @org.jetbrains.annotations.Nullable Entity resolveCameraTarget(Minecraft mc) {
@@ -681,6 +1034,8 @@ public final class RavenLinkClientController {
         try {
             if (sendStopRequest) {
                 Services.PLATFORM.sendStopRavenLinkToServer();
+                pendingStopRetries = Math.max(pendingStopRetries, 4);
+                lastStopRetrySentAtMillis = System.currentTimeMillis();
             }
         } catch (Throwable ignored) {
         }
@@ -707,6 +1062,18 @@ public final class RavenLinkClientController {
         active = false;
         linkedRavenEntityId = -1;
         localEndMillis = 0L;
+        visionPhase = VisionPhase.CLOSING;
+        visionPhaseStartedAtMillis = 0L;
+        transitionCameraProxy = null;
+        transitionAnchorX = 0.0D;
+        transitionAnchorY = 0.0D;
+        transitionAnchorZ = 0.0D;
+        transitionAnchorYaw = 0.0F;
+        transitionAnchorPitch = 0.0F;
+        if (!sendStopRequest) {
+            pendingStopRetries = 0;
+            lastStopRetrySentAtMillis = 0L;
+        }
         escWasDown = false;
         lookYaw = 0.0F;
         lookPitch = 0.0F;
@@ -740,9 +1107,13 @@ public final class RavenLinkClientController {
         }
         savedHideGui = false;
         hideGuiCaptured = false;
-        hiddenLinkedRavenEntityId = -1;
-        hiddenLinkedRavenOriginalInvisible = false;
-        hiddenLinkedRavenApplied = false;
+        try {
+            restoreHiddenLinkedRaven(Minecraft.getInstance());
+        } catch (Throwable ignored) {
+            hiddenLinkedRavenEntityId = -1;
+            hiddenLinkedRavenOriginalInvisible = false;
+            hiddenLinkedRavenApplied = false;
+        }
     }
 
     private static void suppressNonMovementInputs(@org.jetbrains.annotations.NotNull Minecraft mc) {
