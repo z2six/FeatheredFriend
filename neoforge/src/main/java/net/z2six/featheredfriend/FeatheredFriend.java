@@ -11,6 +11,7 @@ import net.z2six.featheredfriend.client.FFClientSyncEvents;
 import net.z2six.featheredfriend.client.FFKeyBindings;
 import net.z2six.featheredfriend.client.FFNeoForgeClient;
 import net.z2six.featheredfriend.client.particle.FFClientParticles;
+import net.z2six.featheredfriend.client.raven.RavenLinkClientController;
 import net.z2six.featheredfriend.client.raven.RavenClientEvents;
 import net.z2six.featheredfriend.command.FeatheredFriendCommands;
 import net.z2six.featheredfriend.config.FFServerConfig;
@@ -28,6 +29,7 @@ import net.z2six.featheredfriend.registry.FFNeoForgeParticles;
 import net.z2six.featheredfriend.server.FFServerSyncEvents;
 import net.z2six.featheredfriend.server.FFConfigSyncEvents;
 import net.z2six.featheredfriend.world.RavenCourierRuntime;
+import net.z2six.featheredfriend.world.RavenLinkRuntime;
 import net.z2six.featheredfriend.world.RavenSpawnEvents;
 import net.z2six.featheredfriend.world.TamedRavenScrollWatcher;
 import org.slf4j.Logger;
@@ -140,6 +142,9 @@ public class FeatheredFriend {
 
                 FFKeyBindings.register(modEventBus);
                 LOG.debug("[FeatheredFriend] Registered FFKeyBindings (client only)");
+
+                RavenLinkClientController.registerGameBus();
+                LOG.debug("[FeatheredFriend] Registered RavenLinkClientController (client only)");
             } else {
                 LOG.debug("[FeatheredFriend] Skipping client-only listeners on non-client dist");
             }
@@ -176,6 +181,13 @@ public class FeatheredFriend {
             LOG.debug("[FeatheredFriend] Registered RavenCourierRuntime");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to register RavenCourierRuntime", t);
+        }
+
+        try {
+            RavenLinkRuntime.register();
+            LOG.debug("[FeatheredFriend] Registered RavenLinkRuntime");
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriend] Failed to register RavenLinkRuntime", t);
         }
 
         try {

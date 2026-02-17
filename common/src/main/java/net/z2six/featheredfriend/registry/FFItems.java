@@ -9,6 +9,7 @@ import net.z2six.featheredfriend.entity.raven.RavenArmorVisual;
 import net.z2six.featheredfriend.item.EnderpackItem;
 import net.z2six.featheredfriend.item.RavenArmorItem;
 import net.z2six.featheredfriend.item.RavenArmorStats;
+import net.z2six.featheredfriend.item.RavensEyeItem;
 import net.z2six.featheredfriend.item.ScrollViewItem;
 import net.z2six.featheredfriend.item.TooltipBlockItem;
 import net.z2six.featheredfriend.item.TooltipItem;
@@ -87,6 +88,11 @@ public final class FFItems {
     public static final Supplier<Item> RAVEN_FEATHER = register(
             "raven_feather",
             () -> new Item(new Item.Properties().stacksTo(64))
+    );
+
+    public static final Supplier<Item> RAVENS_EYE = register(
+            "ravens_eye",
+            () -> new RavensEyeItem(new Item.Properties().stacksTo(64))
     );
 
     public static final RavenArmorStats RAVEN_ARMOR_STATS_LEATHER = new RavenArmorStats(2, 35, 10, 15, 2);

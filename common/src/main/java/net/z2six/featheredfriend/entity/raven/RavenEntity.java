@@ -106,6 +106,8 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             SynchedEntityData.defineId(RavenEntity.class, EntityDataSerializers.FLOAT);
     private static final EntityDataAccessor<Float> DATA_RAVEN_CHEST_PERCH_PITCH =
             SynchedEntityData.defineId(RavenEntity.class, EntityDataSerializers.FLOAT);
+    private static final EntityDataAccessor<Boolean> DATA_RAVEN_LINK_CONTROLLED =
+            SynchedEntityData.defineId(RavenEntity.class, EntityDataSerializers.BOOLEAN);
 
     // --- Lure/follow data accessors (MUST live here, not in LureFollowTame) ---
     public static final EntityDataAccessor<Boolean> DATA_LURE_FOLLOW_ARMED =
@@ -346,6 +348,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         builder.define(DATA_AI_STATE, RavenAIState.IDLE_GROUND.id());
         builder.define(DATA_RAVEN_CHEST_PERCH_YAW, 0.0F);
         builder.define(DATA_RAVEN_CHEST_PERCH_PITCH, 0.0F);
+        builder.define(DATA_RAVEN_LINK_CONTROLLED, Boolean.FALSE);
 
         // Follow cooldown shared with LureFollowTame via DATA_FOLLOW_COOLDOWN_TICKS
         builder.define(DATA_FOLLOW_COOLDOWN_TICKS, 0);
@@ -464,6 +467,73 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
     public float getRavenChestPerchLockPitch() {
         return this.entityData.get(DATA_RAVEN_CHEST_PERCH_PITCH);
+    }
+
+    public boolean isRavenLinkControlled() {
+        try {
+            return this.entityData.get(DATA_RAVEN_LINK_CONTROLLED);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    public void setRavenLinkControlled(boolean value) {
+        try {
+            this.entityData.set(DATA_RAVEN_LINK_CONTROLLED, value);
+            if (value) {
+                forceExitRavenChestPerchForLink();
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    public void forceExitRavenChestPerchForLink() {
+        try {
+            if (this.getAIState() == RavenAIState.RAVEN_CHEST_PERCH) {
+                // Raw state write to avoid any transition guards from other behavior systems.
+                this.entityData.set(DATA_AI_STATE, RavenAIState.ROAM_FLY.id());
+            }
+            clearAssignedRavenChestPerch();
+            this.setNoGravity(true);
+            this.setNoAi(false);
+            this.setDeltaMovement(Vec3.ZERO);
+            if (this.getAnimMode() != RavenAnimMode.IN_AIR) {
+                this.setAnimMode(RavenAnimMode.IN_AIR);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @Override
+    public boolean isPushable() {
+        if (isRavenLinkControlled()) {
+            return false;
+        }
+        return super.isPushable();
+    }
+
+    @Override
+    public boolean canBeCollidedWith() {
+        if (isRavenLinkControlled()) {
+            return false;
+        }
+        return super.canBeCollidedWith();
+    }
+
+    @Override
+    public boolean canCollideWith(@NotNull Entity entity) {
+        if (isRavenLinkControlled()) {
+            return false;
+        }
+        return super.canCollideWith(entity);
+    }
+
+    @Override
+    public void push(@NotNull Entity entity) {
+        if (isRavenLinkControlled()) {
+            return;
+        }
+        super.push(entity);
     }
 
     public void setAIState(@Nullable RavenAIState state) {
@@ -1081,11 +1151,46 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     public void aiStep() {
         super.aiStep();
 
-        if (!this.level().isClientSide) {
+        if (!this.level().isClientSide && !this.isRavenLinkControlled()) {
             try {
                 enforceAssignedRavenChestPerch();
             } catch (Throwable ignored) {
             }
+        }
+
+        // Manual Raven Link control: keep the raven airborne and skip planner/AI state
+        // transitions while still allowing teleport/dodge sequences and FX to run.
+        if (this.isRavenLinkControlled()) {
+            try {
+                this.setNoGravity(true);
+                this.setNoAi(false);
+                this.setDeltaMovement(Vec3.ZERO);
+                this.hurtMarked = true;
+                if (this.getAIState() == RavenAIState.RAVEN_CHEST_PERCH) {
+                    this.setAIState(RavenAIState.ROAM_FLY);
+                }
+                if (this.getAnimMode() != RavenAnimMode.IN_AIR) {
+                    this.setAnimMode(RavenAnimMode.IN_AIR);
+                }
+
+                if (!this.level().isClientSide) {
+                    try {
+                        net.z2six.featheredfriend.entity.raven.modules.TamedRaven tamed = this.getTamedRavenModule();
+                        if (tamed != null) {
+                            tamed.tickServer();
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                    try {
+                        tickPassiveHealthRegen();
+                    } catch (Throwable ignored) {
+                    }
+                    teleportation.tickTeleportSequenceServer(this);
+                    teleportation.tickTeleportFxServer(this);
+                }
+            } catch (Throwable ignored) {
+            }
+            return;
         }
 
         // Hard-locked Raven Chest perch state: no movement logic, no avoidance, no stuck teleport recovery.
@@ -2679,6 +2784,12 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     }
 
     private void enforceAssignedRavenChestPerch() {
+        if (isRavenLinkControlled()) {
+            return;
+        }
+        if (this.isPassenger()) {
+            return;
+        }
         RavenChestPerchAssignment assignment = readAssignedRavenChestPerch();
         if (assignment == null) {
             return;
@@ -2906,7 +3017,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 return handleSuffocationDespawn(source);
             }
 
-            if (isAssignedRavenChestPerch()) {
+            if (isAssignedRavenChestPerch() && !isRavenLinkControlled()) {
                 if (this.level().isClientSide) {
                     return false;
                 }

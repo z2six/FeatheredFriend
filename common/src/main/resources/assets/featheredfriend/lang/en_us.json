@@ -8,6 +8,7 @@
   "item.featheredfriend.seal_stamp": "Seal Stamp",
   "item.featheredfriend.enderpack": "Enderpack",
   "item.featheredfriend.raven_feather": "Raven's Feather",
+  "item.featheredfriend.ravens_eye": "Raven's Eye",
   "item.featheredfriend.raven_chest": "Raven Chest",
   "block.featheredfriend.raven_chest": "Raven Chest",
   "container.featheredfriend.raven_chest": "Raven Chest",
@@ -98,6 +99,8 @@
   "log.featheredfriend.summon.whistle_toggled_off": "Whistle toggled raven off (%s active raven(s) despawned).",
   "log.featheredfriend.summon.whistle_spawned_at": "Whistle summoned raven at %s.",
   "log.featheredfriend.summon.whistle_spawn_failed": "Whistle attempted summon, but spawn failed.",
+  "log.featheredfriend.raven_link.started": "Raven Link started.",
+  "log.featheredfriend.raven_link.ended": "Raven Link ended. Reason: %s.",
 
   "log.featheredfriend.courier.create_failed_from_scroll": "Failed to create a courier delivery job from sealed scroll.",
   "log.featheredfriend.courier.job_created_for_recipient": "Courier job #%s created for recipient %s.",
@@ -216,6 +219,9 @@
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend] Your raven needs %s more second(s) before it can deliver another scroll.",
   "message.featheredfriend.whistle.network_error": "[FeatheredFriend] Could not send whistle request.",
   "message.featheredfriend.whistle.no_raven": "[FeatheredFriend] You do not have a stored tamed raven.",
+  "message.featheredfriend.raven_link.no_active_raven": "[FeatheredFriend] No active raven is currently spawned for Raven Link.",
+  "message.featheredfriend.raven_link.already_active": "[FeatheredFriend] Raven Link is already active.",
+  "message.featheredfriend.raven_link.cross_dimension_unavailable": "[FeatheredFriend] Raven Link currently supports only ravens in your current dimension.",
 
   "message.featheredfriend.raven_name.default_owned": "%s's Raven",
   "message.featheredfriend.raven_death.killed": "[FeatheredFriend] Your raven, %s, was killed by %s.",

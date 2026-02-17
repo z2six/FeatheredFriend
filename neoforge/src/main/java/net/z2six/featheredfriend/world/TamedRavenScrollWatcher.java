@@ -289,6 +289,10 @@ public final class TamedRavenScrollWatcher {
 
                 for (RavenEntity r : scrollRavens) {
                     try {
+                        if (RavenLinkRuntime.isRavenLinkControlled(r)) {
+                            continue;
+                        }
+
                         CompoundTag root = r.getPersistentData();
                         if (root == null) {
                             continue;

@@ -323,6 +323,25 @@ public interface IPlatformHelper {
         // no-op
     }
 
+    default boolean tryStartRavenLink(@NotNull ServerPlayer player) {
+        return false;
+    }
+
+    default void sendRavenLinkInputToServer(boolean forward,
+                                            boolean backward,
+                                            boolean left,
+                                            boolean right,
+                                            boolean ascend,
+                                            boolean descend,
+                                            float yaw,
+                                            float pitch) {
+        // no-op
+    }
+
+    default void sendStopRavenLinkToServer() {
+        // no-op
+    }
+
     default int getMaxRavenChestsPerPlayer() {
         return 0;
     }

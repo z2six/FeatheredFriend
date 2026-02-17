@@ -32,6 +32,7 @@ public final class FFCreativeTabsNeoForge {
                         output.accept(FFItems.SEAL_STAMP.get());
                         output.accept(FFItems.ENDERPACK.get());
                         output.accept(FFItems.RAVEN_FEATHER.get());
+                        output.accept(FFItems.RAVENS_EYE.get());
 
                         output.accept(FFItems.RAVEN_CHEST.get());
                         output.accept(FFItems.RAVEN_ARMOR_LEATHER.get());

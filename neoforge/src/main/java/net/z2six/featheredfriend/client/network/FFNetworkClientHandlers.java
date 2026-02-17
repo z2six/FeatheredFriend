@@ -4,6 +4,7 @@ package net.z2six.featheredfriend.client.network;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
+import net.z2six.featheredfriend.client.raven.RavenLinkClientController;
 import net.z2six.featheredfriend.client.knownplayers.KnownPlayersClientCache;
 import net.z2six.featheredfriend.client.screen.RavenChestLabelScreen;
 import net.z2six.featheredfriend.client.screen.RavenChestSelectScreen;
@@ -92,6 +93,53 @@ public final class FFNetworkClientHandlers {
             ));
         } catch (Throwable t) {
             LOG.error("[FFNetworkClientHandlers] handleOpenRavenChestSelectScreenOnClient failed", t);
+        }
+    }
+
+    public static void handleStartRavenLinkOnClient(@NotNull FFNetwork.StartRavenLinkPayload payload,
+                                                     @NotNull IPayloadContext context) {
+        try {
+            RavenLinkClientController.beginFromServer(payload.ravenEntityId(), payload.durationTicks());
+        } catch (Throwable t) {
+            LOG.error("[FFNetworkClientHandlers] handleStartRavenLinkOnClient failed", t);
+        }
+    }
+
+    public static void handleStopRavenLinkOnClient(@NotNull FFNetwork.StopRavenLinkPayload payload,
+                                                    @NotNull IPayloadContext context) {
+        try {
+            RavenLinkClientController.endFromServer();
+        } catch (Throwable t) {
+            LOG.error("[FFNetworkClientHandlers] handleStopRavenLinkOnClient failed", t);
+        }
+    }
+
+    public static void handleRavenLinkStateOnClient(@NotNull FFNetwork.RavenLinkStatePayload payload,
+                                                     @NotNull IPayloadContext context) {
+        try {
+            RavenLinkClientController.updateRavenStateFromServer(
+                    payload.ravenEntityId(),
+                    payload.x(),
+                    payload.y(),
+                    payload.z(),
+                    payload.yaw(),
+                    payload.pitch(),
+                    payload.chunksSentThisTick(),
+                    payload.chunksPending(),
+                    payload.chunksLoaded(),
+                    payload.streamRadius()
+            );
+        } catch (Throwable t) {
+            LOG.error("[FFNetworkClientHandlers] handleRavenLinkStateOnClient failed", t);
+        }
+    }
+
+    public static void handleRavenLinkOwnerVisibilityOnClient(@NotNull FFNetwork.RavenLinkOwnerVisibilityPayload payload,
+                                                               @NotNull IPayloadContext context) {
+        try {
+            RavenLinkClientController.setLinkedOwnerHidden(payload.ownerEntityId(), payload.hidden());
+        } catch (Throwable t) {
+            LOG.error("[FFNetworkClientHandlers] handleRavenLinkOwnerVisibilityOnClient failed", t);
         }
     }
 }

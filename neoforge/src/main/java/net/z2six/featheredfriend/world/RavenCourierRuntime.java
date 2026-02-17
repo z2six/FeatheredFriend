@@ -666,6 +666,10 @@ public final class RavenCourierRuntime {
                                                 @NotNull RavenEntity raven,
                                                 @NotNull RavenCourierData.DeliveryJob job) {
         try {
+            if (RavenLinkRuntime.isRavenLinked(raven)) {
+                return false;
+            }
+
             CompoundTag root = raven.getPersistentData();
             CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
 
@@ -703,6 +707,10 @@ public final class RavenCourierRuntime {
                                               @NotNull RavenEntity raven,
                                               @NotNull RavenCourierData.DeliveryJob job) {
         try {
+            if (RavenLinkRuntime.isRavenLinked(raven)) {
+                return false;
+            }
+
             double detectionRadius = Math.max(
                     0.0D,
                     raven.getEffectiveThreatDetectionRadiusBlocks()
@@ -1282,7 +1290,9 @@ public final class RavenCourierRuntime {
             RavenCourierData.DeliveryJob job = data.getJobById(jobId);
             if (job == null) {
                 LOG.warn("[RavenCourierRuntime] onEntityInteract: no job found for CourierJobId={} (raven id={})", jobId, raven.getId());
-                despawnCourierRaven(serverLevel, serverPlayer, raven, "orphaned courier (no job)");
+                if (!RavenLinkRuntime.isRavenLinked(raven)) {
+                    despawnCourierRaven(serverLevel, serverPlayer, raven, "orphaned courier (no job)");
+                }
                 event.setCancellationResult(InteractionResult.SUCCESS);
                 event.setCanceled(true);
                 return;
@@ -1305,7 +1315,11 @@ public final class RavenCourierRuntime {
             // COMPLETE ONLY HERE (RMB path)
             data.removeJob(job.jobId, job.recipientUuid);
 
-            despawnCourierRaven(serverLevel, serverPlayer, raven, "delivery complete: scroll retrieved");
+            if (RavenLinkRuntime.isRavenLinked(raven)) {
+                RavenLinkRuntime.markCourierDeliveryCompleteDeferred(raven);
+            } else {
+                despawnCourierRaven(serverLevel, serverPlayer, raven, "delivery complete: scroll retrieved");
+            }
             event.setCancellationResult(InteractionResult.SUCCESS);
             event.setCanceled(true);
 
@@ -1777,6 +1791,27 @@ public final class RavenCourierRuntime {
         } catch (Throwable t) {
             LOG.warn("[RavenCourierRuntime] clearCourierFlags: NBT cleanup failed safely for id={}: {}",
                     raven.getId(), t.toString());
+        }
+    }
+
+    public static void finishLinkedCourierDelivery(@NotNull MinecraftServer server,
+                                                   @NotNull ServerPlayer ownerContext,
+                                                   @NotNull RavenEntity raven) {
+        try {
+            if (!(raven.level() instanceof ServerLevel level) || level.isClientSide()) {
+                clearCourierFlags(raven);
+                raven.discard();
+                return;
+            }
+            despawnCourierRaven(level, ownerContext, raven, "delivery complete: scroll retrieved (post-link)");
+        } catch (Throwable t) {
+            LOG.warn("[RavenCourierRuntime] finishLinkedCourierDelivery failed safely for raven id={}: {}",
+                    raven.getId(), t.toString());
+            try {
+                clearCourierFlags(raven);
+                raven.discard();
+            } catch (Throwable ignored) {
+            }
         }
     }
 

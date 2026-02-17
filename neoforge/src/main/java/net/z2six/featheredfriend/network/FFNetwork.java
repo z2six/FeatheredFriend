@@ -86,6 +86,30 @@ public final class FFNetwork {
                     FFNetwork::handleOpenRavenChestSelectScreenOnClientProxy
             );
 
+            registrar.playToClient(
+                    StartRavenLinkPayload.TYPE,
+                    StartRavenLinkPayload.STREAM_CODEC,
+                    FFNetwork::handleStartRavenLinkOnClientProxy
+            );
+
+            registrar.playToClient(
+                    RavenLinkStatePayload.TYPE,
+                    RavenLinkStatePayload.STREAM_CODEC,
+                    FFNetwork::handleRavenLinkStateOnClientProxy
+            );
+
+            registrar.playToClient(
+                    StopRavenLinkPayload.TYPE,
+                    StopRavenLinkPayload.STREAM_CODEC,
+                    FFNetwork::handleStopRavenLinkOnClientProxy
+            );
+
+            registrar.playToClient(
+                    RavenLinkOwnerVisibilityPayload.TYPE,
+                    RavenLinkOwnerVisibilityPayload.STREAM_CODEC,
+                    FFNetwork::handleRavenLinkOwnerVisibilityOnClientProxy
+            );
+
             registrar.playToServer(
                     RequestKnownPlayersPacket.TYPE,
                     RequestKnownPlayersPacket.STREAM_CODEC,
@@ -156,6 +180,18 @@ public final class FFNetwork {
                     ConfirmRavenChestDepositPacket.TYPE,
                     ConfirmRavenChestDepositPacket.STREAM_CODEC,
                     FFNetwork::handleConfirmRavenChestDepositOnServer
+            );
+
+            registrar.playToServer(
+                    RavenLinkInputPacket.TYPE,
+                    RavenLinkInputPacket.STREAM_CODEC,
+                    FFNetwork::handleRavenLinkInputOnServer
+            );
+
+            registrar.playToServer(
+                    StopRavenLinkRequestPacket.TYPE,
+                    StopRavenLinkRequestPacket.STREAM_CODEC,
+                    FFNetwork::handleStopRavenLinkRequestOnServer
             );
 
             LOG.debug("[FFNetwork] Registered payload channels: known_players, request_known_players, open_raven_name_screen, open_raven_log_screen, " +
@@ -354,6 +390,28 @@ public final class FFNetwork {
         });
     }
 
+    private static void handleStartRavenLinkOnClientProxy(@NotNull StartRavenLinkPayload payload,
+                                                           @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                dispatchToClientHandler("handleStartRavenLinkOnClient", payload, context);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] handleStartRavenLinkOnClientProxy failed", t);
+            }
+        });
+    }
+
+    private static void handleStopRavenLinkOnClientProxy(@NotNull StopRavenLinkPayload payload,
+                                                          @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                dispatchToClientHandler("handleStopRavenLinkOnClient", payload, context);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] handleStopRavenLinkOnClientProxy failed", t);
+            }
+        });
+    }
+
     private static void handleSetRavenChestLabelOnServer(@NotNull SetRavenChestLabelPacket payload,
                                                           @NotNull IPayloadContext context) {
         context.enqueueWork(() -> {
@@ -370,6 +428,28 @@ public final class FFNetwork {
                 );
             } catch (Throwable t) {
                 LOG.error("[FFNetwork] Failed to handle SetRavenChestLabelPacket on server", t);
+            }
+        });
+    }
+
+    private static void handleRavenLinkStateOnClientProxy(@NotNull RavenLinkStatePayload payload,
+                                                          @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                dispatchToClientHandler("handleRavenLinkStateOnClient", payload, context);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] handleRavenLinkStateOnClientProxy failed", t);
+            }
+        });
+    }
+
+    private static void handleRavenLinkOwnerVisibilityOnClientProxy(@NotNull RavenLinkOwnerVisibilityPayload payload,
+                                                                     @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                dispatchToClientHandler("handleRavenLinkOwnerVisibilityOnClient", payload, context);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] handleRavenLinkOwnerVisibilityOnClientProxy failed", t);
             }
         });
     }
@@ -391,6 +471,46 @@ public final class FFNetwork {
                 );
             } catch (Throwable t) {
                 LOG.error("[FFNetwork] Failed to handle ConfirmRavenChestDepositPacket on server", t);
+            }
+        });
+    }
+
+    private static void handleRavenLinkInputOnServer(@NotNull RavenLinkInputPacket payload,
+                                                      @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                if (!(context.player() instanceof ServerPlayer serverPlayer)) {
+                    LOG.error("[FFNetwork] handleRavenLinkInputOnServer: context.player() is not a ServerPlayer");
+                    return;
+                }
+                net.z2six.featheredfriend.world.RavenLinkRuntime.handleLinkInput(
+                        serverPlayer,
+                        payload.forward(),
+                        payload.backward(),
+                        payload.left(),
+                        payload.right(),
+                        payload.ascend(),
+                        payload.descend(),
+                        payload.yaw(),
+                        payload.pitch()
+                );
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] Failed to handle RavenLinkInputPacket on server", t);
+            }
+        });
+    }
+
+    private static void handleStopRavenLinkRequestOnServer(@NotNull StopRavenLinkRequestPacket payload,
+                                                            @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                if (!(context.player() instanceof ServerPlayer serverPlayer)) {
+                    LOG.error("[FFNetwork] handleStopRavenLinkRequestOnServer: context.player() is not a ServerPlayer");
+                    return;
+                }
+                net.z2six.featheredfriend.world.RavenLinkRuntime.stopLinkForOwner(serverPlayer, "client_stop");
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] Failed to handle StopRavenLinkRequestPacket on server", t);
             }
         });
     }
@@ -704,6 +824,114 @@ public final class FFNetwork {
             );
         } catch (Throwable t) {
             LOG.error("[FFNetwork] sendConfirmRavenChestDepositToServer failed safely", t);
+        }
+    }
+
+    public static void sendStartRavenLink(@NotNull ServerPlayer player, int ravenEntityId, int durationTicks) {
+        try {
+            PacketDistributor.sendToPlayer(player, new StartRavenLinkPayload(ravenEntityId, durationTicks));
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendStartRavenLink failed for player={}", player.getGameProfile().getName(), t);
+        }
+    }
+
+    public static void sendStopRavenLink(@NotNull ServerPlayer player) {
+        try {
+            PacketDistributor.sendToPlayer(player, new StopRavenLinkPayload());
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendStopRavenLink failed for player={}", player.getGameProfile().getName(), t);
+        }
+    }
+
+    public static void sendRavenLinkOwnerVisibilityToAll(@NotNull net.minecraft.server.MinecraftServer server,
+                                                          int ownerEntityId,
+                                                          boolean hidden) {
+        try {
+            RavenLinkOwnerVisibilityPayload payload = new RavenLinkOwnerVisibilityPayload(ownerEntityId, hidden);
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                if (player == null || !player.isAlive() || player.isRemoved()) {
+                    continue;
+                }
+                PacketDistributor.sendToPlayer(player, payload);
+            }
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendRavenLinkOwnerVisibilityToAll failed (ownerEntityId={}, hidden={})",
+                    ownerEntityId, hidden, t);
+        }
+    }
+
+    public static void sendRavenLinkOwnerVisibilityToPlayer(@NotNull ServerPlayer targetPlayer,
+                                                             int ownerEntityId,
+                                                             boolean hidden) {
+        try {
+            PacketDistributor.sendToPlayer(targetPlayer, new RavenLinkOwnerVisibilityPayload(ownerEntityId, hidden));
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendRavenLinkOwnerVisibilityToPlayer failed for player={} ownerEntityId={} hidden={}",
+                    targetPlayer.getGameProfile().getName(), ownerEntityId, hidden, t);
+        }
+    }
+
+    public static void sendRavenLinkState(@NotNull ServerPlayer player,
+                                          int ravenEntityId,
+                                          double x,
+                                          double y,
+                                          double z,
+                                          float yaw,
+                                          float pitch,
+                                          int chunksSentThisTick,
+                                          int chunksPending,
+                                          int chunksLoaded,
+                                          int streamRadius) {
+        try {
+            PacketDistributor.sendToPlayer(
+                    player,
+                    new RavenLinkStatePayload(
+                            ravenEntityId,
+                            x,
+                            y,
+                            z,
+                            yaw,
+                            pitch,
+                            chunksSentThisTick,
+                            chunksPending,
+                            chunksLoaded,
+                            streamRadius
+                    )
+            );
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendRavenLinkState failed for player={}", player.getGameProfile().getName(), t);
+        }
+    }
+
+    public static void sendRavenLinkInputToServer(boolean forward,
+                                                  boolean backward,
+                                                  boolean left,
+                                                  boolean right,
+                                                  boolean ascend,
+                                                  boolean descend,
+                                                  float yaw,
+                                                  float pitch) {
+        try {
+            PacketDistributor.sendToServer(new RavenLinkInputPacket(
+                    forward,
+                    backward,
+                    left,
+                    right,
+                    ascend,
+                    descend,
+                    yaw,
+                    pitch
+            ));
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendRavenLinkInputToServer failed safely", t);
+        }
+    }
+
+    public static void sendStopRavenLinkRequestToServer() {
+        try {
+            PacketDistributor.sendToServer(new StopRavenLinkRequestPacket());
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendStopRavenLinkRequestToServer failed safely", t);
         }
     }
 
@@ -1228,6 +1456,257 @@ public final class FFNetwork {
 
         @Override
         public @NotNull Type<ConfirmRavenChestDepositPacket> type() {
+            return TYPE;
+        }
+    }
+
+    public record StartRavenLinkPayload(int ravenEntityId, int durationTicks) implements CustomPacketPayload {
+
+        public static final Type<StartRavenLinkPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "start_raven_link"));
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, StartRavenLinkPayload> STREAM_CODEC =
+                StreamCodec.of(StartRavenLinkPayload::encode, StartRavenLinkPayload::decode);
+
+        private static void encode(@NotNull RegistryFriendlyByteBuf buf, @NotNull StartRavenLinkPayload payload) {
+            try {
+                buf.writeVarInt(payload.ravenEntityId());
+                buf.writeVarInt(payload.durationTicks());
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] StartRavenLinkPayload encode failed", t);
+            }
+        }
+
+        private static @NotNull StartRavenLinkPayload decode(@NotNull RegistryFriendlyByteBuf buf) {
+            try {
+                return new StartRavenLinkPayload(
+                        buf.readVarInt(),
+                        buf.readVarInt()
+                );
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] StartRavenLinkPayload decode failed", t);
+                return new StartRavenLinkPayload(-1, 0);
+            }
+        }
+
+        @Override
+        public @NotNull Type<StartRavenLinkPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record StopRavenLinkPayload() implements CustomPacketPayload {
+
+        public static final Type<StopRavenLinkPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "stop_raven_link"));
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, StopRavenLinkPayload> STREAM_CODEC =
+                StreamCodec.of(StopRavenLinkPayload::encode, StopRavenLinkPayload::decode);
+
+        private static void encode(@NotNull RegistryFriendlyByteBuf buf, @NotNull StopRavenLinkPayload payload) {
+            try {
+                // no fields
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] StopRavenLinkPayload encode failed", t);
+            }
+        }
+
+        private static @NotNull StopRavenLinkPayload decode(@NotNull RegistryFriendlyByteBuf buf) {
+            try {
+                return new StopRavenLinkPayload();
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] StopRavenLinkPayload decode failed", t);
+                return new StopRavenLinkPayload();
+            }
+        }
+
+        @Override
+        public @NotNull Type<StopRavenLinkPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record RavenLinkOwnerVisibilityPayload(int ownerEntityId, boolean hidden) implements CustomPacketPayload {
+
+        public static final Type<RavenLinkOwnerVisibilityPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "raven_link_owner_visibility"));
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, RavenLinkOwnerVisibilityPayload> STREAM_CODEC =
+                StreamCodec.of(RavenLinkOwnerVisibilityPayload::encode, RavenLinkOwnerVisibilityPayload::decode);
+
+        private static void encode(@NotNull RegistryFriendlyByteBuf buf, @NotNull RavenLinkOwnerVisibilityPayload payload) {
+            try {
+                buf.writeVarInt(payload.ownerEntityId());
+                buf.writeBoolean(payload.hidden());
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] RavenLinkOwnerVisibilityPayload encode failed", t);
+            }
+        }
+
+        private static @NotNull RavenLinkOwnerVisibilityPayload decode(@NotNull RegistryFriendlyByteBuf buf) {
+            try {
+                return new RavenLinkOwnerVisibilityPayload(
+                        buf.readVarInt(),
+                        buf.readBoolean()
+                );
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] RavenLinkOwnerVisibilityPayload decode failed", t);
+                return new RavenLinkOwnerVisibilityPayload(-1, false);
+            }
+        }
+
+        @Override
+        public @NotNull Type<RavenLinkOwnerVisibilityPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record RavenLinkStatePayload(int ravenEntityId,
+                                        double x,
+                                        double y,
+                                        double z,
+                                        float yaw,
+                                        float pitch,
+                                        int chunksSentThisTick,
+                                        int chunksPending,
+                                        int chunksLoaded,
+                                        int streamRadius) implements CustomPacketPayload {
+
+        public static final Type<RavenLinkStatePayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "raven_link_state"));
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, RavenLinkStatePayload> STREAM_CODEC =
+                StreamCodec.of(RavenLinkStatePayload::encode, RavenLinkStatePayload::decode);
+
+        private static void encode(@NotNull RegistryFriendlyByteBuf buf, @NotNull RavenLinkStatePayload payload) {
+            try {
+                buf.writeVarInt(payload.ravenEntityId());
+                buf.writeDouble(payload.x());
+                buf.writeDouble(payload.y());
+                buf.writeDouble(payload.z());
+                buf.writeFloat(payload.yaw());
+                buf.writeFloat(payload.pitch());
+                buf.writeVarInt(payload.chunksSentThisTick());
+                buf.writeVarInt(payload.chunksPending());
+                buf.writeVarInt(payload.chunksLoaded());
+                buf.writeVarInt(payload.streamRadius());
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] RavenLinkStatePayload encode failed", t);
+            }
+        }
+
+        private static @NotNull RavenLinkStatePayload decode(@NotNull RegistryFriendlyByteBuf buf) {
+            try {
+                return new RavenLinkStatePayload(
+                        buf.readVarInt(),
+                        buf.readDouble(),
+                        buf.readDouble(),
+                        buf.readDouble(),
+                        buf.readFloat(),
+                        buf.readFloat(),
+                        buf.readVarInt(),
+                        buf.readVarInt(),
+                        buf.readVarInt(),
+                        buf.readVarInt()
+                );
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] RavenLinkStatePayload decode failed", t);
+                return new RavenLinkStatePayload(-1, 0.0D, 0.0D, 0.0D, 0.0F, 0.0F, 0, 0, 0, 0);
+            }
+        }
+
+        @Override
+        public @NotNull Type<RavenLinkStatePayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record RavenLinkInputPacket(boolean forward,
+                                       boolean backward,
+                                       boolean left,
+                                       boolean right,
+                                       boolean ascend,
+                                       boolean descend,
+                                       float yaw,
+                                       float pitch) implements CustomPacketPayload {
+
+        public static final Type<RavenLinkInputPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "raven_link_input"));
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, RavenLinkInputPacket> STREAM_CODEC =
+                StreamCodec.of(RavenLinkInputPacket::encode, RavenLinkInputPacket::decode);
+
+        private static void encode(@NotNull RegistryFriendlyByteBuf buf, @NotNull RavenLinkInputPacket payload) {
+            try {
+                byte flags = 0;
+                if (payload.forward()) flags |= 1;
+                if (payload.backward()) flags |= 1 << 1;
+                if (payload.left()) flags |= 1 << 2;
+                if (payload.right()) flags |= 1 << 3;
+                if (payload.ascend()) flags |= 1 << 4;
+                if (payload.descend()) flags |= 1 << 5;
+                buf.writeByte(flags);
+                buf.writeFloat(payload.yaw());
+                buf.writeFloat(payload.pitch());
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] RavenLinkInputPacket encode failed", t);
+            }
+        }
+
+        private static @NotNull RavenLinkInputPacket decode(@NotNull RegistryFriendlyByteBuf buf) {
+            try {
+                byte flags = buf.readByte();
+                float yaw = buf.readFloat();
+                float pitch = buf.readFloat();
+                return new RavenLinkInputPacket(
+                        (flags & 1) != 0,
+                        (flags & (1 << 1)) != 0,
+                        (flags & (1 << 2)) != 0,
+                        (flags & (1 << 3)) != 0,
+                        (flags & (1 << 4)) != 0,
+                        (flags & (1 << 5)) != 0,
+                        yaw,
+                        pitch
+                );
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] RavenLinkInputPacket decode failed", t);
+                return new RavenLinkInputPacket(false, false, false, false, false, false, 0.0F, 0.0F);
+            }
+        }
+
+        @Override
+        public @NotNull Type<RavenLinkInputPacket> type() {
+            return TYPE;
+        }
+    }
+
+    public record StopRavenLinkRequestPacket() implements CustomPacketPayload {
+
+        public static final Type<StopRavenLinkRequestPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "stop_raven_link_request"));
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, StopRavenLinkRequestPacket> STREAM_CODEC =
+                StreamCodec.of(StopRavenLinkRequestPacket::encode, StopRavenLinkRequestPacket::decode);
+
+        private static void encode(@NotNull RegistryFriendlyByteBuf buf, @NotNull StopRavenLinkRequestPacket payload) {
+            try {
+                // no fields
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] StopRavenLinkRequestPacket encode failed", t);
+            }
+        }
+
+        private static @NotNull StopRavenLinkRequestPacket decode(@NotNull RegistryFriendlyByteBuf buf) {
+            try {
+                return new StopRavenLinkRequestPacket();
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] StopRavenLinkRequestPacket decode failed", t);
+                return new StopRavenLinkRequestPacket();
+            }
+        }
+
+        @Override
+        public @NotNull Type<StopRavenLinkRequestPacket> type() {
             return TYPE;
         }
     }

@@ -37,6 +37,7 @@ import net.z2six.featheredfriend.platform.services.IPlatformHelper;
 import net.z2six.featheredfriend.registry.FFItems;
 import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
 import net.z2six.featheredfriend.world.RavenCourierRuntime;
+import net.z2six.featheredfriend.world.RavenLinkRuntime;
 import net.z2six.featheredfriend.world.TamedRavenScrollWatcher;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -567,6 +568,28 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     @Override
     public void sendSetScrollDeliveryCooldownSeconds(int value) {
         PacketDistributor.sendToServer(new FFPayloads.SetScrollDeliveryCooldownSecondsPayload(value));
+    }
+
+    @Override
+    public boolean tryStartRavenLink(@NotNull ServerPlayer player) {
+        return RavenLinkRuntime.tryStartLink(player);
+    }
+
+    @Override
+    public void sendRavenLinkInputToServer(boolean forward,
+                                           boolean backward,
+                                           boolean left,
+                                           boolean right,
+                                           boolean ascend,
+                                           boolean descend,
+                                           float yaw,
+                                           float pitch) {
+        FFNetwork.sendRavenLinkInputToServer(forward, backward, left, right, ascend, descend, yaw, pitch);
+    }
+
+    @Override
+    public void sendStopRavenLinkToServer() {
+        FFNetwork.sendStopRavenLinkRequestToServer();
     }
 
     @Override
