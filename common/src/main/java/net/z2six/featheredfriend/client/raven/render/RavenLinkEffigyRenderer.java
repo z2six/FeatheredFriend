@@ -7,6 +7,7 @@ import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.HumanoidMobRenderer;
 import net.minecraft.client.renderer.entity.layers.HumanoidArmorLayer;
 import net.minecraft.resources.ResourceLocation;
+import net.z2six.featheredfriend.client.raven.render.model.RavenLinkEffigyModel;
 import net.z2six.featheredfriend.entity.ravenlink.RavenLinkEffigyEntity;
 
 /**
@@ -15,10 +16,10 @@ import net.z2six.featheredfriend.entity.ravenlink.RavenLinkEffigyEntity;
 public class RavenLinkEffigyRenderer extends HumanoidMobRenderer<RavenLinkEffigyEntity, HumanoidModel<RavenLinkEffigyEntity>> {
 
     private static final ResourceLocation EFFIGY_TEXTURE =
-            ResourceLocation.withDefaultNamespace("textures/block/stone.png");
+            ResourceLocation.fromNamespaceAndPath("minecraft", "textures/block/stone.png");
 
     public RavenLinkEffigyRenderer(EntityRendererProvider.Context context) {
-        super(context, new HumanoidModel<>(context.bakeLayer(ModelLayers.PLAYER)), 0.5F);
+        super(context, new RavenLinkEffigyModel(context.bakeLayer(ModelLayers.PLAYER)), 0.5F);
         this.addLayer(new HumanoidArmorLayer<>(
                 this,
                 new HumanoidArmorModel<>(context.bakeLayer(ModelLayers.PLAYER_INNER_ARMOR)),
@@ -32,4 +33,3 @@ public class RavenLinkEffigyRenderer extends HumanoidMobRenderer<RavenLinkEffigy
         return EFFIGY_TEXTURE;
     }
 }
-
