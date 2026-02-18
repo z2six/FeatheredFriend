@@ -7,9 +7,15 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
 import net.z2six.featheredfriend.platform.Services;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Settings screen:
@@ -20,6 +26,8 @@ import org.slf4j.Logger;
 public class FeatheredFriendSettingsScreen extends Screen {
 
     private static final Logger LOG = LogUtils.getLogger();
+    private static final int OPTION_HEIGHT = 20;
+    private static final int OPTION_SPACING = 24;
 
     // client-only preference
     private boolean useVanillaFontForGothicText;
@@ -51,6 +59,15 @@ public class FeatheredFriendSettingsScreen extends Screen {
     private Button scrollDeliveryCooldownMinusButton;
     private Button scrollDeliveryCooldownValueButton;
     private Button scrollDeliveryCooldownPlusButton;
+    private Button doneButton;
+
+    private final List<Button> scrollableButtons = new ArrayList<>();
+    private final Map<Button, Integer> scrollBaseY = new HashMap<>();
+    private int scrollOffset = 0;
+    private int maxScrollOffset = 0;
+    private int scrollContentTop = 0;
+    private int scrollContentBottom = 0;
+    private int scrollContentHeight = 0;
 
     public FeatheredFriendSettingsScreen() {
         super(Component.translatable("screen.featheredfriend.settings.title"));
@@ -64,8 +81,15 @@ public class FeatheredFriendSettingsScreen extends Screen {
 
         loadFromCacheAndMaybeRequestSync();
 
+        this.scrollableButtons.clear();
+        this.scrollBaseY.clear();
+        this.maxScrollOffset = 0;
+        this.scrollContentHeight = 0;
+
         int centerX = this.width / 2;
-        int y = this.height / 4;
+        this.scrollContentTop = 62;
+        this.scrollContentBottom = Math.max(this.scrollContentTop + OPTION_HEIGHT, this.height - 52);
+        int y = this.scrollContentTop;
 
         this.gothicFontButton = Button.builder(
                         textForGothicFont(),
@@ -84,9 +108,9 @@ public class FeatheredFriendSettingsScreen extends Screen {
                         })
                 .bounds(centerX - 100, y, 200, 20)
                 .build();
-        this.addRenderableWidget(this.gothicFontButton);
+        addScrollableButton(this.gothicFontButton, y);
 
-        y += 24;
+        y += OPTION_SPACING;
 
         if (canEditChat) {
             this.chatDisabledButton = Button.builder(
@@ -118,8 +142,8 @@ public class FeatheredFriendSettingsScreen extends Screen {
                     .build();
 
             this.chatDisabledButton.active = hasServerSettings && isConnectionReady();
-            this.addRenderableWidget(this.chatDisabledButton);
-            y += 24;
+            addScrollableButton(this.chatDisabledButton, y);
+            y += OPTION_SPACING;
 
             this.ravenChestsMinusButton = Button.builder(Component.literal("-"), btn -> adjustRavenChestCap(-1))
                     .bounds(centerX - 100, y, 20, 20)
@@ -136,10 +160,10 @@ public class FeatheredFriendSettingsScreen extends Screen {
             this.ravenChestsMinusButton.active = editActive;
             this.ravenChestsPlusButton.active = editActive;
 
-            this.addRenderableWidget(this.ravenChestsMinusButton);
-            this.addRenderableWidget(this.ravenChestsValueButton);
-            this.addRenderableWidget(this.ravenChestsPlusButton);
-            y += 24;
+            addScrollableButton(this.ravenChestsMinusButton, y);
+            addScrollableButton(this.ravenChestsValueButton, y);
+            addScrollableButton(this.ravenChestsPlusButton, y);
+            y += OPTION_SPACING;
 
             this.ravenLogRetentionMinusButton = Button.builder(Component.literal("-"), btn -> adjustRavenLogRetentionMinutes(-60))
                     .bounds(centerX - 100, y, 20, 20)
@@ -155,10 +179,10 @@ public class FeatheredFriendSettingsScreen extends Screen {
             this.ravenLogRetentionMinusButton.active = editActive;
             this.ravenLogRetentionPlusButton.active = editActive;
 
-            this.addRenderableWidget(this.ravenLogRetentionMinusButton);
-            this.addRenderableWidget(this.ravenLogRetentionValueButton);
-            this.addRenderableWidget(this.ravenLogRetentionPlusButton);
-            y += 24;
+            addScrollableButton(this.ravenLogRetentionMinusButton, y);
+            addScrollableButton(this.ravenLogRetentionValueButton, y);
+            addScrollableButton(this.ravenLogRetentionPlusButton, y);
+            y += OPTION_SPACING;
 
             this.ravenLogSizeMinusButton = Button.builder(Component.literal("-"), btn -> adjustRavenLogMaxBytesPerPlayer(-(64 * 1024)))
                     .bounds(centerX - 100, y, 20, 20)
@@ -174,10 +198,10 @@ public class FeatheredFriendSettingsScreen extends Screen {
             this.ravenLogSizeMinusButton.active = editActive;
             this.ravenLogSizePlusButton.active = editActive;
 
-            this.addRenderableWidget(this.ravenLogSizeMinusButton);
-            this.addRenderableWidget(this.ravenLogSizeValueButton);
-            this.addRenderableWidget(this.ravenLogSizePlusButton);
-            y += 24;
+            addScrollableButton(this.ravenLogSizeMinusButton, y);
+            addScrollableButton(this.ravenLogSizeValueButton, y);
+            addScrollableButton(this.ravenLogSizePlusButton, y);
+            y += OPTION_SPACING;
 
             this.enderpackCooldownMinusButton = Button.builder(Component.literal("-"), btn -> adjustEnderpackDepositCooldownSeconds(-5))
                     .bounds(centerX - 100, y, 20, 20)
@@ -193,10 +217,10 @@ public class FeatheredFriendSettingsScreen extends Screen {
             this.enderpackCooldownMinusButton.active = editActive;
             this.enderpackCooldownPlusButton.active = editActive;
 
-            this.addRenderableWidget(this.enderpackCooldownMinusButton);
-            this.addRenderableWidget(this.enderpackCooldownValueButton);
-            this.addRenderableWidget(this.enderpackCooldownPlusButton);
-            y += 24;
+            addScrollableButton(this.enderpackCooldownMinusButton, y);
+            addScrollableButton(this.enderpackCooldownValueButton, y);
+            addScrollableButton(this.enderpackCooldownPlusButton, y);
+            y += OPTION_SPACING;
 
             this.scrollDeliveryCooldownMinusButton = Button.builder(Component.literal("-"), btn -> adjustScrollDeliveryCooldownSeconds(-5))
                     .bounds(centerX - 100, y, 20, 20)
@@ -212,10 +236,10 @@ public class FeatheredFriendSettingsScreen extends Screen {
             this.scrollDeliveryCooldownMinusButton.active = editActive;
             this.scrollDeliveryCooldownPlusButton.active = editActive;
 
-            this.addRenderableWidget(this.scrollDeliveryCooldownMinusButton);
-            this.addRenderableWidget(this.scrollDeliveryCooldownValueButton);
-            this.addRenderableWidget(this.scrollDeliveryCooldownPlusButton);
-            y += 24;
+            addScrollableButton(this.scrollDeliveryCooldownMinusButton, y);
+            addScrollableButton(this.scrollDeliveryCooldownValueButton, y);
+            addScrollableButton(this.scrollDeliveryCooldownPlusButton, y);
+            y += OPTION_SPACING;
         } else {
             this.chatDisabledButton = null;
             this.ravenChestsMinusButton = null;
@@ -235,10 +259,47 @@ public class FeatheredFriendSettingsScreen extends Screen {
             this.scrollDeliveryCooldownPlusButton = null;
         }
 
-        Button done = Button.builder(Component.translatable("gui.done"), btn -> onClose())
-                .bounds(centerX - 75, this.height - 40, 150, 20)
+        this.doneButton = Button.builder(Component.translatable("gui.done"), btn -> onClose())
+                .bounds(centerX - 75, this.height - 28, 150, OPTION_HEIGHT)
                 .build();
-        this.addRenderableWidget(done);
+        this.addRenderableWidget(this.doneButton);
+
+        recalculateScrollBounds();
+        applyScrollToWidgets();
+    }
+
+    private void addScrollableButton(@NotNull Button button, int baseY) {
+        this.addRenderableWidget(button);
+        this.scrollableButtons.add(button);
+        this.scrollBaseY.put(button, Integer.valueOf(baseY));
+    }
+
+    private void recalculateScrollBounds() {
+        int maxBottom = this.scrollContentTop;
+        for (Button button : this.scrollableButtons) {
+            Integer baseY = this.scrollBaseY.get(button);
+            if (baseY == null) {
+                continue;
+            }
+            maxBottom = Math.max(maxBottom, baseY.intValue() + OPTION_HEIGHT);
+        }
+
+        int viewportHeight = Math.max(1, this.scrollContentBottom - this.scrollContentTop);
+        this.scrollContentHeight = Math.max(0, maxBottom - this.scrollContentTop);
+        this.maxScrollOffset = Math.max(0, this.scrollContentHeight - viewportHeight);
+        this.scrollOffset = Mth.clamp(this.scrollOffset, 0, this.maxScrollOffset);
+    }
+
+    private void applyScrollToWidgets() {
+        for (Button button : this.scrollableButtons) {
+            Integer baseY = this.scrollBaseY.get(button);
+            if (baseY == null) {
+                continue;
+            }
+            int y = baseY.intValue() - this.scrollOffset;
+            button.setY(y);
+            button.visible = y >= this.scrollContentTop && (y + OPTION_HEIGHT) <= this.scrollContentBottom;
+        }
     }
 
     /**
@@ -584,6 +645,28 @@ public class FeatheredFriendSettingsScreen extends Screen {
     }
 
     @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (this.maxScrollOffset > 0 && isMouseOverOptionsArea(mouseX, mouseY)) {
+            int delta = (int) Math.round(scrollY * 18.0D);
+            if (delta != 0) {
+                this.scrollOffset = Mth.clamp(this.scrollOffset - delta, 0, this.maxScrollOffset);
+                applyScrollToWidgets();
+                return true;
+            }
+        }
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+    }
+
+    private boolean isMouseOverOptionsArea(double mouseX, double mouseY) {
+        int left = (this.width / 2) - 120;
+        int right = (this.width / 2) + 120;
+        return mouseX >= left
+                && mouseX <= right
+                && mouseY >= this.scrollContentTop
+                && mouseY <= this.scrollContentBottom;
+    }
+
+    @Override
     public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
         super.render(guiGraphics, mouseX, mouseY, partialTick);
@@ -597,6 +680,34 @@ public class FeatheredFriendSettingsScreen extends Screen {
             guiGraphics.drawCenteredString(this.font, status, this.width / 2, 44, 0xAAAAAA);
         } catch (Throwable ignored) {
         }
+
+        if (this.maxScrollOffset > 0) {
+            drawScrollBar(guiGraphics);
+        }
+    }
+
+    private void drawScrollBar(@NotNull GuiGraphics guiGraphics) {
+        int trackX0 = (this.width / 2) + 108;
+        int trackX1 = trackX0 + 4;
+        int trackY0 = this.scrollContentTop;
+        int trackY1 = this.scrollContentBottom;
+        int trackHeight = Math.max(1, trackY1 - trackY0);
+
+        guiGraphics.fill(trackX0, trackY0, trackX1, trackY1, 0x55333333);
+
+        int viewportHeight = Math.max(1, this.scrollContentBottom - this.scrollContentTop);
+        int thumbHeight = Mth.clamp(
+                Math.round((float) viewportHeight * ((float) viewportHeight / (float) Math.max(viewportHeight, this.scrollContentHeight))),
+                14,
+                trackHeight
+        );
+        int thumbTravel = Math.max(0, trackHeight - thumbHeight);
+        int thumbY = trackY0;
+        if (this.maxScrollOffset > 0 && thumbTravel > 0) {
+            thumbY = trackY0 + Math.round((this.scrollOffset / (float) this.maxScrollOffset) * thumbTravel);
+        }
+
+        guiGraphics.fill(trackX0, thumbY, trackX1, thumbY + thumbHeight, 0xCCBBBBBB);
     }
 
     @Override

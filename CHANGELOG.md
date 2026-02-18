@@ -3,6 +3,38 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [1.7.0.0-InDev]
+
+This is a development build, aimed to be tested by the Discord community. Changes since 1.3.8:
+
+### Major
+- MAJOR: Raven Chest
+- MAJOR: Raven perch at base
+- MAJOR: Raven log
+- MAJOR: Raven armor & 5 distinct stats
+- MAJOR: Raven's Eye (Raven Link)
+
+### Minor
+- Raven now despawns if fed the wrong nugget during taming process
+- Config for switching to vanilla font
+- Full mod translation keys for localization
+- Courier Raven drops scroll when hit (not dodged)
+- Ravens now dies from "x hits" rather than "x damage"
+- Curios slot for Seal Stamp
+- Jade integration
+- Raven's Feather item, dropped on Raven death
+
+### Fixes
+- Complete removal of A* pathing logic
+- Teleportation/movement rework
+- Changed many "per tick" features to per 10-20 or more ticks
+- Improved several features to be "smarter", consuming (much) less server TPS
+- Refactored "state" logic (roam/fly/etc)
+- Best-effort bugfixes (infinite raven spawn, tamed raven disappearing)
+- Lowered default raven dodge % to 25%
+- Chat no longer disabled by default
+- Cooldown for Enderpack/Scroll delivery
+
 ## [1.3.8]
 Several critical and minor bugfixes to taming sequence.
 
