@@ -78,7 +78,9 @@ public final class RavenLinkRuntime {
     private static final Logger LOG = LogUtils.getLogger();
 
     private static final long LINK_DURATION_TICKS = 30L * 20L;
-    private static final long LINK_START_DELAY_TICKS = 5L;
+    // Delay actual server-side link start slightly so the client "eyes closing"
+    // transition is already fully covering the view before effigy spawn/teleport.
+    private static final long LINK_START_DELAY_TICKS = 10L;
     private static final double LINK_HORIZONTAL_SPEED = 0.25D;
     private static final double LINK_VERTICAL_SPEED = 0.18D;
     private static final double LINK_ACCEL_FACTOR = 0.22D;
@@ -271,7 +273,8 @@ public final class RavenLinkRuntime {
             }
 
             LinkSession existing = ACTIVE_SESSIONS.get(owner.getUUID());
-            if (existing != null) {
+            PendingLinkStart pendingExisting = PENDING_LINK_STARTS.get(owner.getUUID());
+            if (existing != null || pendingExisting != null) {
                 owner.sendSystemMessage(net.minecraft.network.chat.Component.translatable(
                         "message.featheredfriend.raven_link.already_active"
                 ));
@@ -297,51 +300,19 @@ public final class RavenLinkRuntime {
             }
 
             LinkSession session = buildSession(owner, raven);
-            boolean perchAssignmentTemporarilyCleared = false;
-            if (session.returnToAssignedPerch) {
-                perchAssignmentTemporarilyCleared = clearPerchAssignmentForLink(raven);
-            }
-            // Spawn effigy immediately before teleporting the owner into Raven Link.
-            RavenLinkEffigyEntity effigy = spawnEffigyForSession(owner.server, owner, session);
-            if (effigy != null) {
-                session.effigyUuid = effigy.getUUID();
-            }
-            if (!prepareOwnerForLink(owner, raven, session)) {
-                if (session.effigyUuid != null) {
-                    discardSessionEffigy(owner.server, session);
-                }
-                if (perchAssignmentTemporarilyCleared) {
-                    restorePerchAssignmentAfterLink(raven, session);
-                }
-                return false;
-            }
+            ServerLevel tickLevel = owner.server.overworld();
+            long now = tickLevel == null ? 0L : tickLevel.getGameTime();
+            PENDING_LINK_STARTS.put(owner.getUUID(), new PendingLinkStart(session, now + LINK_START_DELAY_TICKS));
 
-            // Keep runtime identity stable for the linked raven to avoid client-side
-            // desync around entity replacement when link starts near an already loaded raven.
-            // We force-exit perch state on the same entity and mount that one.
-            if (session.returnToAssignedPerch) {
-                raven.forceExitRavenChestPerchForLink();
-            }
-            ACTIVE_SESSIONS.put(owner.getUUID(), session);
-
-            applyLinkedRavenState(raven);
-            FFNetwork.sendRavenLinkOwnerVisibilityToAll(owner.server, owner.getId(), true);
             FFNetwork.sendStartRavenLink(
                     owner,
                     raven.getId(),
-                    (int) LINK_DURATION_TICKS,
+                    (int) (LINK_DURATION_TICKS + LINK_START_DELAY_TICKS),
                     session.ownerAnchorPos.x,
                     session.ownerAnchorPos.y + owner.getEyeHeight(owner.getPose()),
                     session.ownerAnchorPos.z,
                     session.ownerAnchorYaw,
                     session.ownerAnchorPitch
-            );
-
-            RavenLogService.logForPlayerKey(
-                    owner.serverLevel(),
-                    owner.getUUID(),
-                    RavenLogCategory.SYSTEM,
-                    "log.featheredfriend.raven_link.started"
             );
             return true;
         } catch (Throwable t) {
@@ -386,6 +357,7 @@ public final class RavenLinkRuntime {
         try {
             LinkSession session = ACTIVE_SESSIONS.remove(owner.getUUID());
             if (session == null) {
+                PENDING_LINK_STARTS.remove(owner.getUUID());
                 discardAnyEffigiesForOwner(owner.server, owner.getUUID());
                 return;
             }
@@ -435,7 +407,7 @@ public final class RavenLinkRuntime {
 
     private static void onServerTick(@NotNull ServerTickEvent.Post event) {
         try {
-            if (ACTIVE_SESSIONS.isEmpty()) {
+            if (ACTIVE_SESSIONS.isEmpty() && PENDING_LINK_STARTS.isEmpty()) {
                 return;
             }
 
@@ -446,6 +418,14 @@ public final class RavenLinkRuntime {
 
             ServerLevel overworld = server.overworld();
             long now = overworld == null ? 0L : overworld.getGameTime();
+
+            if (!PENDING_LINK_STARTS.isEmpty()) {
+                processPendingLinkStarts(server, now);
+            }
+
+            if (ACTIVE_SESSIONS.isEmpty()) {
+                return;
+            }
             List<UUID> toStop = new ArrayList<>();
 
             for (Map.Entry<UUID, LinkSession> e : ACTIVE_SESSIONS.entrySet()) {
@@ -535,11 +515,93 @@ public final class RavenLinkRuntime {
         }
     }
 
+    private static void processPendingLinkStarts(@NotNull MinecraftServer server, long now) {
+        try {
+            List<UUID> toRemove = new ArrayList<>();
+            for (Map.Entry<UUID, PendingLinkStart> e : PENDING_LINK_STARTS.entrySet()) {
+                UUID ownerId = e.getKey();
+                PendingLinkStart pending = e.getValue();
+                if (ownerId == null || pending == null || pending.session == null) {
+                    toRemove.add(ownerId);
+                    continue;
+                }
+                if (ACTIVE_SESSIONS.containsKey(ownerId)) {
+                    toRemove.add(ownerId);
+                    continue;
+                }
+                if (now < pending.startAtGameTime) {
+                    continue;
+                }
+
+                ServerPlayer owner = server.getPlayerList().getPlayer(ownerId);
+                if (owner == null || !owner.isAlive() || owner.isRemoved()) {
+                    toRemove.add(ownerId);
+                    continue;
+                }
+
+                RavenEntity raven = findRavenByUuid(server, pending.session.ravenUuid);
+                if (raven == null || !raven.isAlive() || raven.isRemoved() || raven.level() != owner.level()) {
+                    FFNetwork.sendStopRavenLink(owner);
+                    toRemove.add(ownerId);
+                    continue;
+                }
+
+                boolean perchAssignmentTemporarilyCleared = false;
+                if (pending.session.returnToAssignedPerch) {
+                    perchAssignmentTemporarilyCleared = clearPerchAssignmentForLink(raven);
+                }
+
+                RavenLinkEffigyEntity effigy = spawnEffigyForSession(server, owner, pending.session);
+                if (effigy != null) {
+                    pending.session.effigyUuid = effigy.getUUID();
+                }
+
+                if (!prepareOwnerForLink(owner, raven, pending.session)) {
+                    if (pending.session.effigyUuid != null) {
+                        discardSessionEffigy(server, pending.session);
+                    }
+                    if (perchAssignmentTemporarilyCleared) {
+                        restorePerchAssignmentAfterLink(raven, pending.session);
+                    }
+                    FFNetwork.sendStopRavenLink(owner);
+                    toRemove.add(ownerId);
+                    continue;
+                }
+
+                if (pending.session.returnToAssignedPerch) {
+                    raven.forceExitRavenChestPerchForLink();
+                }
+
+                pending.session.endsAtGameTime = owner.serverLevel().getGameTime() + LINK_DURATION_TICKS;
+                ACTIVE_SESSIONS.put(ownerId, pending.session);
+                applyLinkedRavenState(raven);
+                FFNetwork.sendRavenLinkOwnerVisibilityToAll(server, owner.getId(), true);
+
+                RavenLogService.logForPlayerKey(
+                        owner.serverLevel(),
+                        owner.getUUID(),
+                        RavenLogCategory.SYSTEM,
+                        "log.featheredfriend.raven_link.started"
+                );
+                toRemove.add(ownerId);
+            }
+
+            for (UUID ownerId : toRemove) {
+                if (ownerId != null) {
+                    PENDING_LINK_STARTS.remove(ownerId);
+                }
+            }
+        } catch (Throwable t) {
+            LOG.warn("[RavenLinkRuntime] processPendingLinkStarts failed safely: {}", t.toString());
+        }
+    }
+
     private static void onPlayerLoggedOut(@NotNull PlayerEvent.PlayerLoggedOutEvent event) {
         try {
             if (!(event.getEntity() instanceof ServerPlayer owner)) {
                 return;
             }
+            PENDING_LINK_STARTS.remove(owner.getUUID());
             LinkSession session = ACTIVE_SESSIONS.remove(owner.getUUID());
             if (session == null) {
                 return;
@@ -2018,6 +2080,16 @@ public final class RavenLinkRuntime {
                              boolean descend,
                              float yaw,
                              float pitch) {
+    }
+
+    private static final class PendingLinkStart {
+        private final LinkSession session;
+        private final long startAtGameTime;
+
+        private PendingLinkStart(@NotNull LinkSession session, long startAtGameTime) {
+            this.session = session;
+            this.startAtGameTime = startAtGameTime;
+        }
     }
 
     private static final class LinkSession {

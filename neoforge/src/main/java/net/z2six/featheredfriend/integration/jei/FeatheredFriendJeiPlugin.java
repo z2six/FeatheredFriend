@@ -7,6 +7,7 @@ import mezz.jei.api.constants.VanillaTypes;
 import mezz.jei.api.gui.handlers.IGuiContainerHandler;
 import mezz.jei.api.registration.IGuiHandlerRegistration;
 import mezz.jei.api.registration.IRecipeRegistration;
+import mezz.jei.api.runtime.IJeiRuntime;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -242,6 +243,16 @@ public class FeatheredFriendJeiPlugin implements IModPlugin {
             );
         } catch (Throwable t) {
             LOG.error("FeatheredFriendJeiPlugin: registerGuiHandlers failed for ScrollViewScreen", t);
+        }
+    }
+
+    @Override
+    public void onRuntimeAvailable(IJeiRuntime jeiRuntime) {
+        try {
+            JeiOverlayHider.setRuntime(jeiRuntime);
+            LOG.debug("FeatheredFriendJeiPlugin: JEI runtime available and passed to JeiOverlayHider");
+        } catch (Throwable t) {
+            LOG.error("FeatheredFriendJeiPlugin: Failed to pass JEI runtime to JeiOverlayHider", t);
         }
     }
 }

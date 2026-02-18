@@ -8,8 +8,9 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.z2six.featheredfriend.chat.ChatDisabler;
 import net.z2six.featheredfriend.client.FFClientSyncEvents;
+import net.z2six.featheredfriend.client.FFClientCommands;
 import net.z2six.featheredfriend.client.FFKeyBindings;
-import net.z2six.featheredfriend.client.FFNeoForgeClient;
+import net.z2six.featheredfriend.client.ClientScreens;
 import net.z2six.featheredfriend.client.particle.FFClientParticles;
 import net.z2six.featheredfriend.client.raven.RavenLinkClientController;
 import net.z2six.featheredfriend.client.raven.RavenClientEvents;
@@ -28,6 +29,7 @@ import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
 import net.z2six.featheredfriend.registry.FFNeoForgeParticles;
 import net.z2six.featheredfriend.server.FFServerSyncEvents;
 import net.z2six.featheredfriend.server.FFConfigSyncEvents;
+import net.z2six.featheredfriend.integration.jei.JeiOverlayHider;
 import net.z2six.featheredfriend.world.RavenCourierRuntime;
 import net.z2six.featheredfriend.world.RavenLinkRuntime;
 import net.z2six.featheredfriend.world.RavenSpawnEvents;
@@ -126,8 +128,12 @@ public class FeatheredFriend {
         // Client-only registrations
         // ---------------------------------------------------------------------
         try {
-            modEventBus.addListener(FFNeoForgeClient::onRegisterMenuScreens);
-            LOG.debug("[FeatheredFriend] Hooked client menu screen registration listener");
+            if (FMLEnvironment.dist == Dist.CLIENT) {
+                ClientScreens.registerModBus(modEventBus);
+                LOG.debug("[FeatheredFriend] Hooked client menu screen registration listener");
+            } else {
+                LOG.debug("[FeatheredFriend] Skipping client menu screen registration on non-client dist");
+            }
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to hook client menu screen registration", t);
         }
@@ -143,8 +149,14 @@ public class FeatheredFriend {
                 FFKeyBindings.register(modEventBus);
                 LOG.debug("[FeatheredFriend] Registered FFKeyBindings (client only)");
 
+                FFClientCommands.registerGameBus();
+                LOG.debug("[FeatheredFriend] Registered FFClientCommands (client only)");
+
                 RavenLinkClientController.registerGameBus();
                 LOG.debug("[FeatheredFriend] Registered RavenLinkClientController (client only)");
+
+                JeiOverlayHider.registerGameBus();
+                LOG.debug("[FeatheredFriend] Registered JeiOverlayHider (client only)");
             } else {
                 LOG.debug("[FeatheredFriend] Skipping client-only listeners on non-client dist");
             }

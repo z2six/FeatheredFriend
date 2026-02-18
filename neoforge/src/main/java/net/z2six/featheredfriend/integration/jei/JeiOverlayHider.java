@@ -3,11 +3,9 @@ package net.z2six.featheredfriend.integration.jei;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
-import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.z2six.featheredfriend.Constants;
+import net.neoforged.neoforge.common.NeoForge;
 import net.z2six.featheredfriend.client.gui.EnderPearlInventoryScreen;
 import net.z2six.featheredfriend.client.gui.ScrollSealingScreen;
 import net.z2six.featheredfriend.client.gui.SealStampScreen;
@@ -46,13 +44,13 @@ import java.util.Locale;
  *          - any single-boolean-arg "set*" that looks like visibility control
  *  - If anything fails, we log and gracefully give up, never crashing the game.
  */
-@EventBusSubscriber(modid = Constants.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.GAME)
 public final class JeiOverlayHider {
 
     private static final Logger LOG = LogUtils.getLogger();
 
     // JEI runtime (IJeiRuntime), stored as Object to avoid direct dependency.
     private static volatile Object jeiRuntime = null;
+    private static volatile boolean REGISTERED = false;
 
     // Remember previous visible/enabled state so we can restore it.
     private static volatile Boolean previousOverlayState = null;
@@ -63,6 +61,20 @@ public final class JeiOverlayHider {
 
     private JeiOverlayHider() {
         // no-op
+    }
+
+    public static void registerGameBus() {
+        try {
+            if (REGISTERED) {
+                LOG.debug("[JeiOverlayHider] already registered on NeoForge EVENT_BUS; skipping");
+                return;
+            }
+            NeoForge.EVENT_BUS.register(JeiOverlayHider.class);
+            REGISTERED = true;
+            LOG.debug("[JeiOverlayHider] Registered on NeoForge EVENT_BUS");
+        } catch (Throwable t) {
+            LOG.error("[JeiOverlayHider] Failed to register on NeoForge EVENT_BUS", t);
+        }
     }
 
     /**

@@ -1,17 +1,22 @@
 package net.z2six.featheredfriend.client.raven;
 
+import com.google.gson.JsonSyntaxException;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientChunkCache;
 import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.PostChain;
 import net.minecraft.client.renderer.ViewArea;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.core.SectionPos;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.entity.Entity;
@@ -35,8 +40,13 @@ import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import net.z2six.featheredfriend.platform.Services;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
+import java.io.IOException;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -49,6 +59,12 @@ public final class RavenLinkClientController {
     private static final long EYE_TRANSITION_DURATION_MS = 260L;
     private static final long BLACK_HOLD_AFTER_TELEPORT_MS = 1000L;
     private static final double LINK_FOV_MULTIPLIER = 1.18D;
+    private static final double CLOSING_CAMERA_PUSH_DISTANCE = 1.28D;
+    private static final double CLOSING_CAMERA_LIFT_DISTANCE = 0.16D;
+    private static final ResourceLocation RAVEN_LINK_EDGE_BLUR_LOCATION =
+            ResourceLocation.fromNamespaceAndPath("featheredfriend", "shaders/post/raven_link_edge_blur.json");
+    private static final ResourceLocation RAVEN_LINK_OPENING_CAW_SOUND_ID =
+            ResourceLocation.fromNamespaceAndPath("featheredfriend", "raven.caw_whistle");
 
     private enum VisionPhase {
         CLOSING,
@@ -108,6 +124,10 @@ public final class RavenLinkClientController {
     private static volatile boolean hiddenLinkedRavenApplied = false;
     private static volatile boolean savedHideGui = false;
     private static volatile boolean hideGuiCaptured = false;
+    private static volatile @org.jetbrains.annotations.Nullable PostChain ravenLinkEdgeBlurEffect = null;
+    private static volatile int ravenLinkEdgeBlurWidth = -1;
+    private static volatile int ravenLinkEdgeBlurHeight = -1;
+    private static final List<VisionPixel> VISION_PIXELS = new ArrayList<>();
     private static final Set<Integer> HIDDEN_OWNER_ENTITY_IDS = ConcurrentHashMap.newKeySet();
 
     private RavenLinkClientController() {
@@ -145,6 +165,7 @@ public final class RavenLinkClientController {
             transitionAnchorYaw = anchorYawFromServer;
             transitionAnchorPitch = anchorPitchFromServer;
             transitionCameraProxy = null;
+            resetVisionPixels();
             escWasDown = false;
             Minecraft mc = Minecraft.getInstance();
             if (mc != null && mc.player != null) {
@@ -331,7 +352,7 @@ public final class RavenLinkClientController {
             if (mc == null || mc.player == null || mc.level == null) {
                 return;
             }
-            renderRavenLinkVisionOverlay(event.getGuiGraphics(), mc);
+            renderRavenLinkVisionOverlay(event.getGuiGraphics(), mc, event.getPartialTick().getGameTimeDeltaTicks());
         } catch (Throwable t) {
             LOG.debug("[RavenLinkClientController] onRenderGuiPost failed safely: {}", t.toString());
         }
@@ -521,11 +542,12 @@ public final class RavenLinkClientController {
                 return null;
             }
             if (visionPhase == VisionPhase.CLOSING || visionPhase == VisionPhase.HOLD_BLACK) {
+                Vec3 closingPos = getClosingTransitionCameraPosition();
                 return ensureTransitionCameraProxy(
                         mc,
-                        transitionAnchorX,
-                        transitionAnchorY,
-                        transitionAnchorZ,
+                        closingPos.x,
+                        closingPos.y,
+                        closingPos.z,
                         transitionAnchorYaw,
                         transitionAnchorPitch
                 );
@@ -534,6 +556,33 @@ public final class RavenLinkClientController {
         } catch (Throwable ignored) {
             return mc.player;
         }
+    }
+
+    private static @org.jetbrains.annotations.NotNull Vec3 getClosingTransitionCameraPosition() {
+        double progress = 0.0D;
+        try {
+            long now = System.currentTimeMillis();
+            if (visionPhase == VisionPhase.CLOSING) {
+                progress = Mth.clamp(
+                        (double) (now - visionPhaseStartedAtMillis) / (double) EYE_TRANSITION_DURATION_MS,
+                        0.0D,
+                        1.0D
+                );
+            } else if (visionPhase == VisionPhase.HOLD_BLACK) {
+                progress = 1.0D;
+            }
+        } catch (Throwable ignored) {
+        }
+
+        double eased = 1.0D - Math.pow(1.0D - progress, 2.35D);
+        Vec3 forward = Vec3.directionFromRotation(transitionAnchorPitch, transitionAnchorYaw);
+        double push = CLOSING_CAMERA_PUSH_DISTANCE * eased;
+        double lift = CLOSING_CAMERA_LIFT_DISTANCE * eased;
+        return new Vec3(
+                transitionAnchorX + (forward.x * push),
+                transitionAnchorY + (forward.y * push) + lift,
+                transitionAnchorZ + (forward.z * push)
+        );
     }
 
     private static @org.jetbrains.annotations.Nullable RavenCameraProxy ensureTransitionCameraProxy(@org.jetbrains.annotations.NotNull Minecraft mc,
@@ -590,6 +639,7 @@ public final class RavenLinkClientController {
                     if (now - visionPhaseStartedAtMillis >= BLACK_HOLD_AFTER_TELEPORT_MS) {
                         visionPhase = VisionPhase.OPENING;
                         visionPhaseStartedAtMillis = now;
+                        playOpeningCawSound();
                     }
                 }
                 case OPENING -> {
@@ -604,6 +654,37 @@ public final class RavenLinkClientController {
             }
         } catch (Throwable t) {
             LOG.debug("[RavenLinkClientController] tickVisionTransition failed safely: {}", t.toString());
+        }
+    }
+
+    private static void playOpeningCawSound() {
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null || mc.level == null) {
+                return;
+            }
+
+            Entity target = resolveCameraTarget(mc);
+            double x;
+            double y;
+            double z;
+            if (target != null) {
+                x = target.getX();
+                y = target.getY() + target.getBbHeight() * 0.5D;
+                z = target.getZ();
+            } else if (mc.player != null) {
+                x = mc.player.getX();
+                y = mc.player.getEyeY();
+                z = mc.player.getZ();
+            } else {
+                return;
+            }
+
+            SoundEvent caw = SoundEvent.createVariableRangeEvent(RAVEN_LINK_OPENING_CAW_SOUND_ID);
+            float pitch = 0.98F + (mc.level.random.nextFloat() * 0.04F);
+            mc.level.playLocalSound(x, y, z, caw, SoundSource.NEUTRAL, 1.0F, pitch, false);
+        } catch (Throwable t) {
+            LOG.debug("[RavenLinkClientController] playOpeningCawSound failed safely: {}", t.toString());
         }
     }
 
@@ -647,7 +728,8 @@ public final class RavenLinkClientController {
     }
 
     private static void renderRavenLinkVisionOverlay(@org.jetbrains.annotations.NotNull net.minecraft.client.gui.GuiGraphics guiGraphics,
-                                                     @org.jetbrains.annotations.NotNull Minecraft mc) {
+                                                     @org.jetbrains.annotations.NotNull Minecraft mc,
+                                                     float partialTicks) {
         try {
             int width = mc.getWindow().getGuiScaledWidth();
             int height = mc.getWindow().getGuiScaledHeight();
@@ -657,12 +739,14 @@ public final class RavenLinkClientController {
 
             double strength = getVisionEffectStrength();
             if (strength > 0.0D) {
-                // Slight pink-purple raven vision tint across whole frame.
-                int baseTintA = (int) Math.round(34.0D * strength);
-                int glowTintA = (int) Math.round(18.0D * strength);
-                guiGraphics.fill(0, 0, width, height, argb(baseTintA, 187, 131, 214));
-                guiGraphics.fill(0, 0, width, height, argb(glowTintA, 231, 170, 255));
-                drawEdgeBlurVignette(guiGraphics, width, height, strength);
+                applyEdgeGaussianBlur(mc, partialTicks, strength);
+                // Stronger purple vision tint across whole frame.
+                int baseTintA = (int) Math.round(72.0D * strength);
+                int glowTintA = (int) Math.round(44.0D * strength);
+                guiGraphics.fill(0, 0, width, height, argb(baseTintA, 168, 100, 218));
+                guiGraphics.fill(0, 0, width, height, argb(glowTintA, 220, 146, 255));
+                drawPurpleVignette(guiGraphics, width, height, strength);
+                drawAnimatedPixelVeil(guiGraphics, width, height, strength);
             }
 
             double eyelid = getEyelidProgress();
@@ -674,13 +758,92 @@ public final class RavenLinkClientController {
         }
     }
 
-    private static void drawEdgeBlurVignette(@org.jetbrains.annotations.NotNull net.minecraft.client.gui.GuiGraphics guiGraphics,
-                                             int width,
-                                             int height,
-                                             double strength) {
+    private static void applyEdgeGaussianBlur(@org.jetbrains.annotations.NotNull Minecraft mc,
+                                              float partialTicks,
+                                              double strength) {
         try {
-            int layers = 14;
-            int maxInset = Math.max(10, (int) (Math.min(width, height) * 0.14F));
+            PostChain blurChain = ensureRavenLinkEdgeBlurEffect(mc);
+            if (blurChain == null) {
+                return;
+            }
+            float radius = Mth.clamp((float) (2.4D + (strength * 4.8D)), 1.0F, 8.0F);
+            float edgeMix = Mth.clamp((float) (0.34D + (strength * 0.46D)), 0.0F, 1.0F);
+            float edgeStart = Mth.clamp((float) (0.58D - (strength * 0.06D)), 0.45F, 0.70F);
+            blurChain.setUniform("Radius", radius);
+            blurChain.setUniform("EdgeMix", edgeMix);
+            blurChain.setUniform("EdgeStart", edgeStart);
+            blurChain.setUniform("EdgeEnd", 0.98F);
+            blurChain.setUniform("EdgePower", 1.55F);
+            blurChain.process(partialTicks);
+            // PostChain leaves the target unbound after processing; rebind so GUI tint draws on top.
+            mc.getMainRenderTarget().bindWrite(false);
+        } catch (Throwable t) {
+            LOG.debug("[RavenLinkClientController] applyEdgeGaussianBlur failed safely: {}", t.toString());
+            releaseRavenLinkEdgeBlurEffect();
+        }
+    }
+
+    private static @org.jetbrains.annotations.Nullable PostChain ensureRavenLinkEdgeBlurEffect(@org.jetbrains.annotations.NotNull Minecraft mc) {
+        try {
+            if (ravenLinkEdgeBlurEffect == null) {
+                ravenLinkEdgeBlurEffect = new PostChain(
+                        mc.getTextureManager(),
+                        mc.getResourceManager(),
+                        mc.getMainRenderTarget(),
+                        RAVEN_LINK_EDGE_BLUR_LOCATION
+                );
+                ravenLinkEdgeBlurWidth = -1;
+                ravenLinkEdgeBlurHeight = -1;
+            }
+
+            int width = mc.getWindow().getWidth();
+            int height = mc.getWindow().getHeight();
+            if (width > 0
+                    && height > 0
+                    && (width != ravenLinkEdgeBlurWidth || height != ravenLinkEdgeBlurHeight)) {
+                ravenLinkEdgeBlurEffect.resize(width, height);
+                ravenLinkEdgeBlurWidth = width;
+                ravenLinkEdgeBlurHeight = height;
+            }
+            return ravenLinkEdgeBlurEffect;
+        } catch (IOException | JsonSyntaxException e) {
+            LOG.warn("[RavenLinkClientController] Failed to load Raven Link edge blur shader '{}': {}", RAVEN_LINK_EDGE_BLUR_LOCATION, e.toString());
+            releaseRavenLinkEdgeBlurEffect();
+            return null;
+        } catch (Throwable t) {
+            LOG.debug("[RavenLinkClientController] ensureRavenLinkEdgeBlurEffect failed safely: {}", t.toString());
+            releaseRavenLinkEdgeBlurEffect();
+            return null;
+        }
+    }
+
+    private static void releaseRavenLinkEdgeBlurEffect() {
+        try {
+            if (ravenLinkEdgeBlurEffect != null) {
+                ravenLinkEdgeBlurEffect.close();
+            }
+        } catch (Throwable ignored) {
+        } finally {
+            ravenLinkEdgeBlurEffect = null;
+            ravenLinkEdgeBlurWidth = -1;
+            ravenLinkEdgeBlurHeight = -1;
+        }
+    }
+
+    private static void resetVisionPixels() {
+        try {
+            VISION_PIXELS.clear();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void drawPurpleVignette(@org.jetbrains.annotations.NotNull net.minecraft.client.gui.GuiGraphics guiGraphics,
+                                           int width,
+                                           int height,
+                                           double strength) {
+        try {
+            int layers = 12;
+            int maxInset = Math.max(12, (int) (Math.min(width, height) * 0.16F));
 
             for (int i = 0; i < layers; i++) {
                 float f0 = i / (float) layers;
@@ -692,24 +855,213 @@ public final class RavenLinkClientController {
                 }
 
                 float edgeStrength = 1.0F - f0;
-                int darkAlpha = (int) Math.round((2.0F + (edgeStrength * edgeStrength * 22.0F)) * strength);
-                int hazeAlpha = (int) Math.round((1.0F + (edgeStrength * edgeStrength * 12.0F)) * strength);
-                int darkColor = argb(darkAlpha, 18, 12, 24);
-                int hazeColor = argb(hazeAlpha, 196, 141, 223);
+                int darkAlpha = (int) Math.round((4.0F + (edgeStrength * edgeStrength * 34.0F)) * strength);
+                int purpleAlpha = (int) Math.round((3.0F + (edgeStrength * edgeStrength * 24.0F)) * strength);
+                int darkColor = argb(darkAlpha, 20, 8, 34);
+                int purpleColor = argb(purpleAlpha, 132, 64, 176);
 
                 guiGraphics.fill(inset0, inset0, width - inset0, inset1, darkColor);
                 guiGraphics.fill(inset0, height - inset1, width - inset0, height - inset0, darkColor);
                 guiGraphics.fill(inset0, inset0, inset1, height - inset0, darkColor);
                 guiGraphics.fill(width - inset1, inset0, width - inset0, height - inset0, darkColor);
 
-                // Slight colored haze to fake soft edge focus.
-                guiGraphics.fill(inset1, inset1, width - inset1, inset1 + 1, hazeColor);
-                guiGraphics.fill(inset1, height - inset1 - 1, width - inset1, height - inset1, hazeColor);
-                guiGraphics.fill(inset1, inset1, inset1 + 1, height - inset1, hazeColor);
-                guiGraphics.fill(width - inset1 - 1, inset1, width - inset1, height - inset1, hazeColor);
+                guiGraphics.fill(inset1, inset1, width - inset1, inset1 + 1, purpleColor);
+                guiGraphics.fill(inset1, height - inset1 - 1, width - inset1, height - inset1, purpleColor);
+                guiGraphics.fill(inset1, inset1, inset1 + 1, height - inset1, purpleColor);
+                guiGraphics.fill(width - inset1 - 1, inset1, width - inset1, height - inset1, purpleColor);
             }
         } catch (Throwable ignored) {
         }
+    }
+
+    private static void drawAnimatedPixelVeil(@org.jetbrains.annotations.NotNull net.minecraft.client.gui.GuiGraphics guiGraphics,
+                                              int width,
+                                              int height,
+                                              double strength) {
+        try {
+            float s = Mth.clamp((float) strength, 0.0F, 1.0F);
+            if (s <= 0.0F) {
+                return;
+            }
+
+            long now = System.currentTimeMillis();
+            int targetPixels = Mth.clamp(Math.round(52.0F + (146.0F * s)), 34, 228);
+
+            Iterator<VisionPixel> it = VISION_PIXELS.iterator();
+            while (it.hasNext()) {
+                VisionPixel pixel = it.next();
+                if (now - pixel.bornAtMs >= pixel.lifeMs) {
+                    it.remove();
+                }
+            }
+
+            while (VISION_PIXELS.size() > targetPixels) {
+                VISION_PIXELS.remove(VISION_PIXELS.size() - 1);
+            }
+            while (VISION_PIXELS.size() < targetPixels) {
+                VISION_PIXELS.add(spawnVisionPixel(width, height, s, now));
+            }
+            ensureVisionPixelEdgeCoverage(width, height, s, now, targetPixels);
+
+            for (VisionPixel pixel : VISION_PIXELS) {
+                float lifeT = Mth.clamp((float) (now - pixel.bornAtMs) / (float) pixel.lifeMs, 0.0F, 1.0F);
+                float fade = lifeT < 0.5F ? (lifeT * 2.0F) : ((1.0F - lifeT) * 2.0F);
+                float pulse = 0.74F + (0.26F * (float) Math.sin((now + pixel.phaseOffsetMs) * 0.0044D));
+                int alpha = Mth.clamp(Math.round(pixel.maxAlpha * fade * pulse), 0, 255);
+                if (alpha <= 1) {
+                    continue;
+                }
+
+                int x0 = Math.round(pixel.x);
+                int y0 = Math.round(pixel.y);
+                int x1 = x0 + pixel.size;
+                int y1 = y0 + pixel.size;
+                if (x1 <= 0 || y1 <= 0 || x0 >= width || y0 >= height) {
+                    continue;
+                }
+
+                guiGraphics.fill(x0, y0, x1, y1, argb(alpha, pixel.r, pixel.g, pixel.b));
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void ensureVisionPixelEdgeCoverage(int width,
+                                                      int height,
+                                                      float strength,
+                                                      long nowMs,
+                                                      int targetPixels) {
+        try {
+            float edgeBandX = Math.max(10.0F, width * 0.15F);
+            float edgeBandY = Math.max(10.0F, height * 0.15F);
+
+            boolean hasTop = false;
+            boolean hasBottom = false;
+            boolean hasLeft = false;
+            boolean hasRight = false;
+
+            for (VisionPixel pixel : VISION_PIXELS) {
+                float px = pixel.x + (pixel.size * 0.5F);
+                float py = pixel.y + (pixel.size * 0.5F);
+                if (py <= edgeBandY) {
+                    hasTop = true;
+                }
+                if (py >= (height - edgeBandY)) {
+                    hasBottom = true;
+                }
+                if (px <= edgeBandX) {
+                    hasLeft = true;
+                }
+                if (px >= (width - edgeBandX)) {
+                    hasRight = true;
+                }
+                if (hasTop && hasBottom && hasLeft && hasRight) {
+                    return;
+                }
+            }
+
+            ThreadLocalRandom rnd = ThreadLocalRandom.current();
+            if (!hasTop) {
+                addVisionPixelForSide(0, width, height, strength, nowMs, targetPixels, rnd);
+            }
+            if (!hasBottom) {
+                addVisionPixelForSide(1, width, height, strength, nowMs, targetPixels, rnd);
+            }
+            if (!hasLeft) {
+                addVisionPixelForSide(2, width, height, strength, nowMs, targetPixels, rnd);
+            }
+            if (!hasRight) {
+                addVisionPixelForSide(3, width, height, strength, nowMs, targetPixels, rnd);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void addVisionPixelForSide(int side,
+                                              int width,
+                                              int height,
+                                              float strength,
+                                              long nowMs,
+                                              int targetPixels,
+                                              @org.jetbrains.annotations.NotNull ThreadLocalRandom rnd) {
+        try {
+            if (VISION_PIXELS.size() >= targetPixels && !VISION_PIXELS.isEmpty()) {
+                VISION_PIXELS.remove(rnd.nextInt(VISION_PIXELS.size()));
+            }
+            VISION_PIXELS.add(spawnVisionPixelOnSide(width, height, strength, nowMs, side, rnd));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static @org.jetbrains.annotations.NotNull VisionPixel spawnVisionPixel(int width,
+                                                                                    int height,
+                                                                                    float strength,
+                                                                                    long nowMs) {
+        ThreadLocalRandom rnd = ThreadLocalRandom.current();
+        if (rnd.nextFloat() < 0.90F) {
+            int side = rnd.nextInt(4);
+            return spawnVisionPixelOnSide(width, height, strength, nowMs, side, rnd);
+        }
+        float x = rnd.nextFloat() * width;
+        float y = rnd.nextFloat() * height;
+        return createVisionPixelAt(x, y, width, height, strength, nowMs, rnd);
+    }
+
+    private static @org.jetbrains.annotations.NotNull VisionPixel spawnVisionPixelOnSide(int width,
+                                                                                          int height,
+                                                                                          float strength,
+                                                                                          long nowMs,
+                                                                                          int side,
+                                                                                          @org.jetbrains.annotations.NotNull ThreadLocalRandom rnd) {
+        float edgeDepthX = Math.max(10.0F, width * (0.07F + (rnd.nextFloat() * 0.23F)));
+        float edgeDepthY = Math.max(10.0F, height * (0.07F + (rnd.nextFloat() * 0.23F)));
+        float x;
+        float y;
+        switch (side) {
+            case 0 -> {
+                x = rnd.nextFloat() * width;
+                y = rnd.nextFloat() * edgeDepthY;
+            }
+            case 1 -> {
+                x = rnd.nextFloat() * width;
+                y = height - (rnd.nextFloat() * edgeDepthY);
+            }
+            case 2 -> {
+                x = rnd.nextFloat() * edgeDepthX;
+                y = rnd.nextFloat() * height;
+            }
+            default -> {
+                x = width - (rnd.nextFloat() * edgeDepthX);
+                y = rnd.nextFloat() * height;
+            }
+        }
+        return createVisionPixelAt(x, y, width, height, strength, nowMs, rnd);
+    }
+
+    private static @org.jetbrains.annotations.NotNull VisionPixel createVisionPixelAt(float x,
+                                                                                       float y,
+                                                                                       int width,
+                                                                                       int height,
+                                                                                       float strength,
+                                                                                       long nowMs,
+                                                                                       @org.jetbrains.annotations.NotNull ThreadLocalRandom rnd) {
+        float edgeRatioX = Math.min(x, Math.max(0.0F, width - x)) / Math.max(1.0F, width);
+        float edgeRatioY = Math.min(y, Math.max(0.0F, height - y)) / Math.max(1.0F, height);
+        float edgeBias = Mth.clamp(1.0F - (Math.min(edgeRatioX, edgeRatioY) * 5.2F), 0.0F, 1.0F);
+
+        int size = rnd.nextInt(10, 22);
+        long lifeMs = rnd.nextLong(760L, 1820L);
+        int maxAlpha = Mth.clamp(
+                Math.round((18.0F + (78.0F * edgeBias)) * (0.45F + (0.85F * strength))),
+                16,
+                154
+        );
+
+        int r = Mth.clamp(126 + rnd.nextInt(66), 0, 255);
+        int g = Mth.clamp(46 + rnd.nextInt(82), 0, 255);
+        int b = Mth.clamp(168 + rnd.nextInt(82), 0, 255);
+        long phaseOffsetMs = rnd.nextLong(0L, 2200L);
+        return new VisionPixel(x, y, size, nowMs, lifeMs, maxAlpha, r, g, b, phaseOffsetMs);
     }
 
     private static void drawEyelids(@org.jetbrains.annotations.NotNull net.minecraft.client.gui.GuiGraphics guiGraphics,
@@ -1059,6 +1411,9 @@ public final class RavenLinkClientController {
         } catch (Throwable ignored) {
         }
 
+        releaseRavenLinkEdgeBlurEffect();
+        resetVisionPixels();
+
         active = false;
         linkedRavenEntityId = -1;
         localEndMillis = 0L;
@@ -1291,6 +1646,18 @@ public final class RavenLinkClientController {
         public boolean shouldRender(double x, double y, double z) {
             return false;
         }
+    }
+
+    private record VisionPixel(float x,
+                               float y,
+                               int size,
+                               long bornAtMs,
+                               long lifeMs,
+                               int maxAlpha,
+                               int r,
+                               int g,
+                               int b,
+                               long phaseOffsetMs) {
     }
 
     private record ChunkViewDebug(int centerX, int centerZ, int radius) {

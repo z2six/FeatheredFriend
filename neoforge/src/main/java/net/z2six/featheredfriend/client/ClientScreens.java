@@ -2,9 +2,7 @@
 package net.z2six.featheredfriend.client;
 
 import com.mojang.logging.LogUtils;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.ScrollSealingScreen;
@@ -25,17 +23,12 @@ import org.slf4j.Logger;
  *
  * IMPORTANT:
  *  - This must live in the NeoForge source set.
- *  - The @EventBusSubscriber annotation must use the correct mod id (Constants.MOD_ID).
+ *  - registerModBus(...) must be called from FeatheredFriend on Dist.CLIENT.
  *  - We register:
  *      * scroll_sealing  -> ScrollSealingScreen
  *      * seal_stamp      -> SealStampScreen
  *      * scroll_view     -> ScrollViewScreen
  */
-@EventBusSubscriber(
-        value = Dist.CLIENT,
-        bus = EventBusSubscriber.Bus.MOD,
-        modid = Constants.MOD_ID
-)
 public final class ClientScreens {
 
     private static final Logger LOG = LogUtils.getLogger();
@@ -44,7 +37,15 @@ public final class ClientScreens {
         // no-op
     }
 
-    @SubscribeEvent
+    public static void registerModBus(IEventBus modEventBus) {
+        try {
+            modEventBus.addListener(ClientScreens::onRegisterMenuScreens);
+            LOG.debug("[ClientScreens] Registered on MOD event bus");
+        } catch (Throwable t) {
+            LOG.error("[ClientScreens] Failed to register MOD event bus listener", t);
+        }
+    }
+
     public static void onRegisterMenuScreens(RegisterMenuScreensEvent event) {
         LOG.debug("[ClientScreens] onRegisterMenuScreens fired for modId='{}'", Constants.MOD_ID);
 

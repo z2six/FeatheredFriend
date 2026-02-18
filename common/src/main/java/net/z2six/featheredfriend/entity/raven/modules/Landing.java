@@ -244,6 +244,21 @@ public final class Landing {
         }
     }
 
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static @Nullable Enum<?> findEnumConstant(Class<?> enumType, String constantName) {
+        try {
+            if (enumType == null || constantName == null || !enumType.isEnum()) {
+                return null;
+            }
+            Class enumClass = enumType.asSubclass(Enum.class);
+            return Enum.valueOf(enumClass, constantName);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
     private static void setPhaseOnRaven(RavenEntity ravenEntity, Phase phase) {
         try {
             if (ravenEntity == null || phase == null) return;
@@ -253,14 +268,8 @@ public final class Landing {
             Class<?> t = f.getType();
             if (!t.isEnum()) return;
 
-            @SuppressWarnings("unchecked")
-            Class<? extends Enum> enumClass = (Class<? extends Enum>) t.asSubclass(Enum.class);
-
-            Enum<?> enumVal;
-            try {
-                enumVal = Enum.valueOf(enumClass, phase.name());
-            } catch (IllegalArgumentException ex) {
-                // Underlying enum does not have this constant; fail silently.
+            Enum<?> enumVal = findEnumConstant(t, phase.name());
+            if (enumVal == null) {
                 return;
             }
             f.set(ravenEntity, enumVal);
