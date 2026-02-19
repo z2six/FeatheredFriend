@@ -139,7 +139,11 @@ public class RavenNamingScreen extends Screen {
                        int mouseY,
                        float partialTick) {
         try {
-            this.renderBlurredBackground(partialTick);
+            // Match other screens: draw MC/NeoForge background first, then widgets,
+            // then our custom panel so it stays above menu blur.
+            this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
+            super.render(guiGraphics, mouseX, mouseY, partialTick);
+
             guiGraphics.blit(BG_TEXTURE, this.bgLeft, this.bgTop, 0, 0, BG_WIDTH, BG_HEIGHT, BG_WIDTH, BG_HEIGHT);
 
             Font renderFont = this.font;
@@ -180,8 +184,6 @@ public class RavenNamingScreen extends Screen {
                 int caretY = nameY + ((nameH - renderFont.lineHeight) / 2);
                 guiGraphics.fill(caretX, caretY, caretX + 1, caretY + renderFont.lineHeight, 0xFF000000);
             }
-
-            super.render(guiGraphics, mouseX, mouseY, partialTick);
 
         } catch (Throwable t) {
             LOG.error("[RavenNamingScreen] render failed", t);

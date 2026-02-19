@@ -183,7 +183,10 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             "screen.featheredfriend.seal_stamp.style.fantasy_3",
             "screen.featheredfriend.seal_stamp.style.floral",
             "screen.featheredfriend.seal_stamp.style.floral_2",
-            "screen.featheredfriend.seal_stamp.style.floral_3"
+            "screen.featheredfriend.seal_stamp.style.floral_3",
+            "screen.featheredfriend.seal_stamp.style.geometric",
+            "screen.featheredfriend.seal_stamp.style.geometric_2",
+            "screen.featheredfriend.seal_stamp.style.geometric_3"
     };
     private static final int[] STYLE_SHAPE_SET_IDS = {
             0, // Medieval 1
@@ -194,7 +197,10 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             6, // Fantasy 3
             2, // Floral
             7, // Floral 2
-            8  // Floral 3
+            8, // Floral 3
+            9, // Geometric
+            10, // Geometric 2
+            11  // Geometric 3
     };
 
 // ---------------------------------------------------------------------
@@ -521,6 +527,21 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             regenerateSigilPattern();
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] cycleStyle failed", t);
+        }
+    }
+
+    private void cycleStyleBackward() {
+        try {
+            currentStyleIndex--;
+            if (currentStyleIndex < 0) {
+                currentStyleIndex = STYLE_NAME_KEYS.length - 1;
+            }
+            LOG.debug("[SealStampScreen] cycleStyleBackward -> {} ({})",
+                    currentStyleIndex, STYLE_NAME_KEYS[currentStyleIndex]);
+            updateButtonLabels();
+            regenerateSigilPattern();
+        } catch (Throwable t) {
+            LOG.error("[SealStampScreen] cycleStyleBackward failed", t);
         }
     }
 
@@ -898,6 +919,31 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 // ---------------------------------------------------------------------
 // Input handling (E key eating like ScrollSealingScreen)
 // ---------------------------------------------------------------------
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        try {
+            // Right-click on Style button cycles backward.
+            if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT &&
+                    this.styleButton != null &&
+                    this.styleButton.active &&
+                    this.styleButton.visible &&
+                    this.styleButton.isMouseOver(mouseX, mouseY)) {
+                cycleStyleBackward();
+
+                Minecraft mc = Minecraft.getInstance();
+                if (mc != null && mc.getSoundManager() != null) {
+                    this.styleButton.playDownSound(mc.getSoundManager());
+                }
+                return true;
+            }
+
+            return super.mouseClicked(mouseX, mouseY, button);
+        } catch (Throwable t) {
+            LOG.error("[SealStampScreen] mouseClicked failed", t);
+            return false;
+        }
+    }
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {

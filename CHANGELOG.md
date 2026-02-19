@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 
 ---
+
+### Minor
+- 6 new sigil generators
+
+### Fixes
+- Fixed Raven Naming GUI being rendered below NeoForge its menu blur
+
 ## [1.7.0.0-InDev]
 
 This is a development build, aimed to be tested by the Discord community. Changes since 1.3.8:

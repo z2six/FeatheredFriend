@@ -41,6 +41,9 @@ import java.util.UUID;
  *         * index 6 => SealSigilShapeSetDarkFantasy6 (dark fantasy: skulls/bones/necromancy)
  *         * index 7 => SealSigilShapeSetFloral7 (floral 2: ornamental blossoms/vines)
  *         * index 8 => SealSigilShapeSetFloral8 (floral 3: large singular symbols)
+ *         * index 9 => SealSigilShapeSetGeometric9 (geometric motifs with strict non-overlap)
+ *         * index 10 => SealSigilShapeSetGeometric10 (geometric 2: bold geometric crests)
+ *         * index 11 => SealSigilShapeSetGeometric11 (geometric 3: monumental geometric crests)
  *
  *  4) Slice replication
  *     - For every pixel that is set in the base slice mask, we:
@@ -185,7 +188,7 @@ public final class SealSigilGenerator {
      * @param radius        requested radius (will be clamped to >= 16)
      * @param slices        number of symmetry slices (2–8)
      * @param shapeSetIndex index of shape set
-     *                      (0 => Medieval0, 1 => HighFantasy1, 2 => Floral2, 3 => Medieval3, 4 => Medieval4, 5 => HighFantasy5, 6 => DarkFantasy6, 7 => Floral7, 8 => Floral8)
+     *                      (0 => Medieval0, 1 => HighFantasy1, 2 => Floral2, 3 => Medieval3, 4 => Medieval4, 5 => HighFantasy5, 6 => DarkFantasy6, 7 => Floral7, 8 => Floral8, 9 => Geometric9, 10 => Geometric10, 11 => Geometric11)
      */
     public static @NotNull SigilPattern generateFromSeed(long seed,
                                                          int radius,
@@ -319,6 +322,18 @@ public final class SealSigilGenerator {
                 case 8 -> {
                     LOG.debug("[SealSigilGenerator] Using shape set 8: SealSigilShapeSetFloral8");
                     yield new SealSigilShapeSetFloral8();
+                }
+                case 9 -> {
+                    LOG.debug("[SealSigilGenerator] Using shape set 9: SealSigilShapeSetGeometric9");
+                    yield new SealSigilShapeSetGeometric9();
+                }
+                case 10 -> {
+                    LOG.debug("[SealSigilGenerator] Using shape set 10: SealSigilShapeSetGeometric10");
+                    yield new SealSigilShapeSetGeometric10();
+                }
+                case 11 -> {
+                    LOG.debug("[SealSigilGenerator] Using shape set 11: SealSigilShapeSetGeometric11");
+                    yield new SealSigilShapeSetGeometric11();
                 }
                 default -> {
                     LOG.warn("[SealSigilGenerator] Unknown shapeSetIndex={} — falling back to Medieval0", shapeSetIndex);
