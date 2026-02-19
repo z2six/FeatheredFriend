@@ -72,7 +72,13 @@
   "screen.featheredfriend.seal_stamp.style": "ã‚¹ã‚¿ã‚¤ãƒ«: %s",
   "screen.featheredfriend.seal_stamp.style.medieval": "ä¸­ä¸–",
   "screen.featheredfriend.seal_stamp.style.fantasy": "ãƒ•ã‚¡ãƒ³ã‚¿ã‚¸ãƒ¼",
+  "screen.featheredfriend.seal_stamp.style.fantasy_2": "Fantasy 2",
+  "screen.featheredfriend.seal_stamp.style.fantasy_3": "Fantasy 3",
   "screen.featheredfriend.seal_stamp.style.floral": "èŠ±æŸ„",
+  "screen.featheredfriend.seal_stamp.style.floral_2": "Floral 2",
+  "screen.featheredfriend.seal_stamp.style.floral_3": "Floral 3",
+  "screen.featheredfriend.seal_stamp.style.medieval_intricate": "Medieval 2",
+  "screen.featheredfriend.seal_stamp.style.medieval_3d": "Medieval 3D",
   "screen.featheredfriend.seal_stamp.carve": "å½«åˆ»",
   "screen.featheredfriend.seal_stamp.scale": "GUIã‚¹ã‚±ãƒ¼ãƒ«: %s",
   "screen.featheredfriend.seal_stamp.scale.auto": "è‡ªå‹•",
@@ -176,6 +182,11 @@
   "message.featheredfriend.command.courier.clear_player_success": "[FeatheredFriend] ãƒ—ãƒ¬ã‚¤ãƒ¤ãƒ¼ '%s' ã®ã‚«ãƒ©ã‚¹é…é”ã‚¸ãƒ§ãƒ–ã‚’ %s ä»¶å‰Šé™¤ã—ã¾ã—ãŸã€‚",
   "message.featheredfriend.command.courier.clear_player_error": "[FeatheredFriend] æŒ‡å®šãƒ—ãƒ¬ã‚¤ãƒ¤ãƒ¼ã®é…é”ã‚¸ãƒ§ãƒ–å‰Šé™¤ä¸­ã«ã‚¨ãƒ©ãƒ¼ãŒç™ºç”Ÿã—ã¾ã—ãŸã€‚ãƒ­ã‚°ã‚’ç¢ºèªã—ã¦ãã ã•ã„ã€‚"
 }
+
+
+
+
+
 
 
 

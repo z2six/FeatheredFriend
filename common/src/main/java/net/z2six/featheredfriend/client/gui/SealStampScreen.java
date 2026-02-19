@@ -176,8 +176,25 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
     private static final String[] STYLE_NAME_KEYS = {
             "screen.featheredfriend.seal_stamp.style.medieval",
+            "screen.featheredfriend.seal_stamp.style.medieval_intricate",
+            "screen.featheredfriend.seal_stamp.style.medieval_3d",
             "screen.featheredfriend.seal_stamp.style.fantasy",
-            "screen.featheredfriend.seal_stamp.style.floral"
+            "screen.featheredfriend.seal_stamp.style.fantasy_2",
+            "screen.featheredfriend.seal_stamp.style.fantasy_3",
+            "screen.featheredfriend.seal_stamp.style.floral",
+            "screen.featheredfriend.seal_stamp.style.floral_2",
+            "screen.featheredfriend.seal_stamp.style.floral_3"
+    };
+    private static final int[] STYLE_SHAPE_SET_IDS = {
+            0, // Medieval 1
+            3, // Medieval 2
+            4, // Medieval 3D
+            1, // Fantasy
+            5, // Fantasy 2
+            6, // Fantasy 3
+            2, // Floral
+            7, // Floral 2
+            8  // Floral 3
     };
 
 // ---------------------------------------------------------------------
@@ -519,7 +536,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             }
 
             int slices = currentSlices;
-            int shapeSetIndex = Math.max(0, Math.min(currentStyleIndex, STYLE_NAME_KEYS.length - 1));
+            int shapeSetIndex = getCurrentShapeSetId();
 
             long seed = SealSigilGenerator.computeSeedFromSecretOnly(secret);
             int radius = SIGIL_RADIUS;
@@ -598,7 +615,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
             String secret = safeString(secretField != null ? secretField.getText() : "");
             long seed = SealSigilGenerator.computeSeedFromSecretOnly(secret);
             int slices = currentSlices;
-            int style = currentStyleIndex;
+            int style = getCurrentShapeSetId();
 
             // Compute the actual slot that currently holds a SealStampItem.
             // This is what will actually be sent to the server when the carve finishes.
@@ -940,6 +957,11 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
     private String safeString(String s) {
         return (s == null) ? "" : s;
+    }
+
+    private int getCurrentShapeSetId() {
+        int idx = Math.max(0, Math.min(currentStyleIndex, STYLE_SHAPE_SET_IDS.length - 1));
+        return STYLE_SHAPE_SET_IDS[idx];
     }
 
 // ---------------------------------------------------------------------
