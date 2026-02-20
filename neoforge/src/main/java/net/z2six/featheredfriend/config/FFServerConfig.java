@@ -63,6 +63,18 @@ public final class FFServerConfig {
      */
     public static final int DEFAULT_SCROLL_DELIVERY_COOLDOWN_SECONDS = 600;
 
+    /**
+     * Real-time interval (seconds) between automatic retries for courier jobs that failed due to timeout.
+     * 0 disables auto-retry.
+     */
+    public static final int DEFAULT_COURIER_TIMEOUT_RETRY_SECONDS = 60;
+
+    /**
+     * If false, OPs cannot view/edit server-owned settings through the in-game settings screen.
+     * This remains configurable only via server TOML.
+     */
+    public static final boolean DEFAULT_ALLOW_SERVER_SETTINGS_SCREEN_EDITING = true;
+
     // ---------------------------------------------------------------------
     // Spec + entries
     // ---------------------------------------------------------------------
@@ -76,6 +88,8 @@ public final class FFServerConfig {
     public static final ModConfigSpec.IntValue RAVEN_LOG_MAX_BYTES_PER_PLAYER;
     public static final ModConfigSpec.IntValue ENDERPACK_DEPOSIT_COOLDOWN_SECONDS;
     public static final ModConfigSpec.IntValue SCROLL_DELIVERY_COOLDOWN_SECONDS;
+    public static final ModConfigSpec.IntValue COURIER_TIMEOUT_RETRY_SECONDS;
+    public static final ModConfigSpec.BooleanValue ALLOW_SERVER_SETTINGS_SCREEN_EDITING;
 
     // spawning
     public static final ModConfigSpec.IntValue WILD_RAVENS_PER_PLAYER;
@@ -139,6 +153,21 @@ public final class FFServerConfig {
                         "0 disables cooldown."
                 )
                 .defineInRange("scrollDeliveryCooldownSeconds", DEFAULT_SCROLL_DELIVERY_COOLDOWN_SECONDS, 0, 86_400);
+
+        COURIER_TIMEOUT_RETRY_SECONDS = builder
+                .comment(
+                        "Real-time interval in seconds between automatic retries for courier jobs that failed by timeout.",
+                        "Hot-reloadable and server-authoritative.",
+                        "0 disables automatic timeout retry."
+                )
+                .defineInRange("courierTimeoutRetrySeconds", DEFAULT_COURIER_TIMEOUT_RETRY_SECONDS, 0, 86_400);
+
+        ALLOW_SERVER_SETTINGS_SCREEN_EDITING = builder
+                .comment(
+                        "If false, no player (including OPs) can view or edit FeatheredFriend server settings",
+                        "from the in-game settings screen. TOML still remains authoritative."
+                )
+                .define("allowServerSettingsScreenEditing", DEFAULT_ALLOW_SERVER_SETTINGS_SCREEN_EDITING);
 
         builder.pop();
 
@@ -398,6 +427,45 @@ public final class FFServerConfig {
             }
         } catch (Throwable t) {
             LOG.error("[FFServerConfig] setScrollDeliveryCooldownSeconds failed", t);
+        }
+    }
+
+    public static int getCourierTimeoutRetrySeconds() {
+        try {
+            int v = COURIER_TIMEOUT_RETRY_SECONDS.get();
+            return Math.max(0, Math.min(86_400, v));
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] getCourierTimeoutRetrySeconds failed, using default {}", DEFAULT_COURIER_TIMEOUT_RETRY_SECONDS, t);
+            return DEFAULT_COURIER_TIMEOUT_RETRY_SECONDS;
+        }
+    }
+
+    public static void setCourierTimeoutRetrySeconds(int value) {
+        try {
+            int clamped = Math.max(0, Math.min(86_400, value));
+            int before = getCourierTimeoutRetrySeconds();
+            COURIER_TIMEOUT_RETRY_SECONDS.set(clamped);
+            if (before != clamped) {
+                markSettingsDirty();
+            }
+            try {
+                SERVER_SPEC.save();
+            } catch (Throwable saveErr) {
+                LOG.warn("[FFServerConfig] Failed to save SERVER config to disk after courier timeout retry update: {}",
+                        saveErr.toString());
+            }
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] setCourierTimeoutRetrySeconds failed", t);
+        }
+    }
+
+    public static boolean isServerSettingsScreenEditingEnabled() {
+        try {
+            return ALLOW_SERVER_SETTINGS_SCREEN_EDITING.get();
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] isServerSettingsScreenEditingEnabled failed, using default {}",
+                    DEFAULT_ALLOW_SERVER_SETTINGS_SCREEN_EDITING, t);
+            return DEFAULT_ALLOW_SERVER_SETTINGS_SCREEN_EDITING;
         }
     }
 

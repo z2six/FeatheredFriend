@@ -31,6 +31,8 @@ public final class FFConfigSyncEvents {
     private static int lastRavenLogMaxBytesPerPlayer = 0;
     private static int lastEnderpackDepositCooldownSeconds = 0;
     private static int lastScrollDeliveryCooldownSeconds = 0;
+    private static int lastCourierTimeoutRetrySeconds = 0;
+    private static boolean lastAllowServerSettingsScreenEditing = true;
     private static boolean lastInitialized = false;
 
     private FFConfigSyncEvents() {
@@ -67,6 +69,8 @@ public final class FFConfigSyncEvents {
             int ravenLogMaxBytesPerPlayerNow = FFServerConfig.getRavenLogMaxBytesPerPlayer();
             int enderpackDepositCooldownSecondsNow = FFServerConfig.getEnderpackDepositCooldownSeconds();
             int scrollDeliveryCooldownSecondsNow = FFServerConfig.getScrollDeliveryCooldownSeconds();
+            int courierTimeoutRetrySecondsNow = FFServerConfig.getCourierTimeoutRetrySeconds();
+            boolean allowServerSettingsScreenEditingNow = FFServerConfig.isServerSettingsScreenEditingEnabled();
 
             boolean changed = false;
             if (!lastInitialized) {
@@ -77,6 +81,8 @@ public final class FFConfigSyncEvents {
                 lastRavenLogMaxBytesPerPlayer = ravenLogMaxBytesPerPlayerNow;
                 lastEnderpackDepositCooldownSeconds = enderpackDepositCooldownSecondsNow;
                 lastScrollDeliveryCooldownSeconds = scrollDeliveryCooldownSecondsNow;
+                lastCourierTimeoutRetrySeconds = courierTimeoutRetrySecondsNow;
+                lastAllowServerSettingsScreenEditing = allowServerSettingsScreenEditingNow;
             } else {
                 if (lastChatDisabled != chatDisabledNow) {
                     lastChatDisabled = chatDisabledNow;
@@ -100,6 +106,14 @@ public final class FFConfigSyncEvents {
                 }
                 if (lastScrollDeliveryCooldownSeconds != scrollDeliveryCooldownSecondsNow) {
                     lastScrollDeliveryCooldownSeconds = scrollDeliveryCooldownSecondsNow;
+                    changed = true;
+                }
+                if (lastCourierTimeoutRetrySeconds != courierTimeoutRetrySecondsNow) {
+                    lastCourierTimeoutRetrySeconds = courierTimeoutRetrySecondsNow;
+                    changed = true;
+                }
+                if (lastAllowServerSettingsScreenEditing != allowServerSettingsScreenEditingNow) {
+                    lastAllowServerSettingsScreenEditing = allowServerSettingsScreenEditingNow;
                     changed = true;
                 }
             }
@@ -126,14 +140,16 @@ public final class FFConfigSyncEvents {
             FFPayloads.broadcastSettings(overworld);
 
             if (LOG.isDebugEnabled()) {
-                LOG.debug("[FFConfigSyncEvents] Broadcast settings due to {} (chatDisabled={} ravenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={})",
+                LOG.debug("[FFConfigSyncEvents] Broadcast settings due to {} (chatDisabled={} ravenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} allowServerSettingsScreenEditing={})",
                         changed ? "config-change" : "request",
                         chatDisabledNow,
                         ravenChestsPerPlayerNow,
                         ravenLogRetentionMinutesNow,
                         ravenLogMaxBytesPerPlayerNow,
                         enderpackDepositCooldownSecondsNow,
-                        scrollDeliveryCooldownSecondsNow);
+                        scrollDeliveryCooldownSecondsNow,
+                        courierTimeoutRetrySecondsNow,
+                        allowServerSettingsScreenEditingNow);
             }
         } catch (Throwable t) {
             LOG.error("[FFConfigSyncEvents] onServerTick failed safely", t);

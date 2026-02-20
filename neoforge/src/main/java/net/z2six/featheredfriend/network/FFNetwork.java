@@ -12,6 +12,8 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.client.ravenbadge.RavenBadgeBaseState;
+import net.z2six.featheredfriend.client.ravenbadge.RavenBadgeEventType;
 import net.z2six.featheredfriend.data.FFKnownPlayersData;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -110,6 +112,12 @@ public final class FFNetwork {
                     FFNetwork::handleRavenLinkOwnerVisibilityOnClientProxy
             );
 
+            registrar.playToClient(
+                    RavenBadgeStatusPayload.TYPE,
+                    RavenBadgeStatusPayload.STREAM_CODEC,
+                    FFNetwork::handleRavenBadgeStatusOnClientProxy
+            );
+
             registrar.playToServer(
                     RequestKnownPlayersPacket.TYPE,
                     RequestKnownPlayersPacket.STREAM_CODEC,
@@ -197,7 +205,7 @@ public final class FFNetwork {
             LOG.debug("[FFNetwork] Registered payload channels: known_players, request_known_players, open_raven_name_screen, open_raven_log_screen, " +
                     "seal_stamp_carve_result, wax_seal, break_seal, " +
                     "raven_name_chosen, raven_name_cancelled, whistle_for_raven, open_enderpack_request, open_raven_log_request, clear_raven_log_request, " +
-                    "open_raven_chest_label_screen, open_raven_chest_select_screen, set_raven_chest_label, confirm_raven_chest_deposit");
+                    "open_raven_chest_label_screen, open_raven_chest_select_screen, set_raven_chest_label, confirm_raven_chest_deposit, raven_badge_status");
 
         } catch (Throwable t) {
             LOG.error("[FFNetwork] Failed to register payload handlers", t);
@@ -450,6 +458,17 @@ public final class FFNetwork {
                 dispatchToClientHandler("handleRavenLinkOwnerVisibilityOnClient", payload, context);
             } catch (Throwable t) {
                 LOG.error("[FFNetwork] handleRavenLinkOwnerVisibilityOnClientProxy failed", t);
+            }
+        });
+    }
+
+    private static void handleRavenBadgeStatusOnClientProxy(@NotNull RavenBadgeStatusPayload payload,
+                                                             @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                dispatchToClientHandler("handleRavenBadgeStatusOnClient", payload, context);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] handleRavenBadgeStatusOnClientProxy failed", t);
             }
         });
     }
@@ -918,6 +937,26 @@ public final class FFNetwork {
             );
         } catch (Throwable t) {
             LOG.error("[FFNetwork] sendRavenLinkState failed for player={}", player.getGameProfile().getName(), t);
+        }
+    }
+
+    public static void sendRavenBadgeStatus(@NotNull ServerPlayer player,
+                                            @NotNull RavenBadgeBaseState baseState,
+                                            @NotNull RavenBadgeEventType eventType) {
+        try {
+            PacketDistributor.sendToPlayer(
+                    player,
+                    new RavenBadgeStatusPayload(
+                            baseState == null ? RavenBadgeBaseState.IDLE_NO_SCROLL.id() : baseState.id(),
+                            eventType == null ? RavenBadgeEventType.NONE.id() : eventType.id()
+                    )
+            );
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendRavenBadgeStatus failed for player={} baseState={} eventType={}",
+                    player.getGameProfile().getName(),
+                    baseState,
+                    eventType,
+                    t);
         }
     }
 
@@ -1651,6 +1690,45 @@ public final class FFNetwork {
 
         @Override
         public @NotNull Type<RavenLinkStatePayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record RavenBadgeStatusPayload(int baseStateId,
+                                          int eventTypeId) implements CustomPacketPayload {
+
+        public static final Type<RavenBadgeStatusPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "raven_badge_status_v1"));
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, RavenBadgeStatusPayload> STREAM_CODEC =
+                StreamCodec.of(RavenBadgeStatusPayload::encode, RavenBadgeStatusPayload::decode);
+
+        private static void encode(@NotNull RegistryFriendlyByteBuf buf, @NotNull RavenBadgeStatusPayload payload) {
+            try {
+                buf.writeVarInt(payload.baseStateId());
+                buf.writeVarInt(payload.eventTypeId());
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] RavenBadgeStatusPayload encode failed", t);
+            }
+        }
+
+        private static @NotNull RavenBadgeStatusPayload decode(@NotNull RegistryFriendlyByteBuf buf) {
+            try {
+                return new RavenBadgeStatusPayload(
+                        buf.readVarInt(),
+                        buf.readVarInt()
+                );
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] RavenBadgeStatusPayload decode failed", t);
+                return new RavenBadgeStatusPayload(
+                        RavenBadgeBaseState.HIDDEN.id(),
+                        RavenBadgeEventType.NONE.id()
+                );
+            }
+        }
+
+        @Override
+        public @NotNull Type<RavenBadgeStatusPayload> type() {
             return TYPE;
         }
     }

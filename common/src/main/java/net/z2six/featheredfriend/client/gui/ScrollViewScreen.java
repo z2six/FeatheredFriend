@@ -22,6 +22,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.CustomData;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.client.font.ScrollUiFontMode;
 import net.z2six.featheredfriend.client.gui.widget.MultiLineScrollTextWidget;
 import net.z2six.featheredfriend.menu.ScrollViewMenu;
 import net.z2six.featheredfriend.platform.Services;
@@ -74,8 +75,10 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     private static final ResourceLocation SCROLL_CLOSING_TEXTURE_ZOOM =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/scrollscreen/scroll_closing.png");
 
-    private static final ResourceLocation GOTHIC_FONT_ID =
+    private static final ResourceLocation JACQUARD_FONT_ID =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12");
+    private static final ResourceLocation ALAGARD_FONT_ID =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "alagard");
 
     // ---------------------------------------------------------------------
     // Scroll animation configuration
@@ -93,7 +96,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
 
     private ViewPhase viewPhase = ViewPhase.CLOSED_IDLE;
     private int viewPhaseTicks = 0;
-    private boolean useVanillaFontForGothicText = Services.PLATFORM.isUseVanillaFontForGothicText();
+    private @NotNull ScrollUiFontMode scrollUiFontMode = Services.PLATFORM.getScrollUiFontMode();
 
     private static final int OPENING_ANIM_TICKS = 20;
 
@@ -586,20 +589,31 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     }
 
     private ResourceLocation getScrollFontId() {
-        return useVanillaFontForGothicText ? null : GOTHIC_FONT_ID;
+        return switch (safeScrollUiFontMode()) {
+            case VANILLA -> null;
+            case JACQUARD -> JACQUARD_FONT_ID;
+            case ALAGARD -> ALAGARD_FONT_ID;
+        };
     }
 
     private void refreshFontPreferenceIfNeeded() {
-        boolean now = Services.PLATFORM.isUseVanillaFontForGothicText();
-        if (now == useVanillaFontForGothicText) {
+        ScrollUiFontMode now = Services.PLATFORM.getScrollUiFontMode();
+        if (now == null) {
+            now = ScrollUiFontMode.JACQUARD;
+        }
+        if (now == scrollUiFontMode) {
             return;
         }
-        useVanillaFontForGothicText = now;
+        scrollUiFontMode = now;
         ResourceLocation fontId = getScrollFontId();
         if (this.dateWidget != null) this.dateWidget.setCustomFontId(fontId);
         if (this.recipientWidget != null) this.recipientWidget.setCustomFontId(fontId);
         if (this.messageWidget != null) this.messageWidget.setCustomFontId(fontId);
         if (this.signatureWidget != null) this.signatureWidget.setCustomFontId(fontId);
+    }
+
+    private @NotNull ScrollUiFontMode safeScrollUiFontMode() {
+        return this.scrollUiFontMode == null ? ScrollUiFontMode.JACQUARD : this.scrollUiFontMode;
     }
 
     private void tickViewPhase() {

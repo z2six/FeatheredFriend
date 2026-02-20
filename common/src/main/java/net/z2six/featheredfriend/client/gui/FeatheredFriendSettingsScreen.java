@@ -8,6 +8,9 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
+import net.z2six.featheredfriend.client.font.ScrollUiFontMode;
+import net.z2six.featheredfriend.client.ravenbadge.RavenStatusGuiAnchor;
+import net.z2six.featheredfriend.client.ravenbadge.RavenStatusGuiVisualMode;
 import net.z2six.featheredfriend.platform.Services;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -28,9 +31,29 @@ public class FeatheredFriendSettingsScreen extends Screen {
     private static final Logger LOG = LogUtils.getLogger();
     private static final int OPTION_HEIGHT = 20;
     private static final int OPTION_SPACING = 24;
+    private static final int OPTION_ROW_WIDTH = 312; // 20% wider than previous 260
+    private static final int OPTION_ROW_HALF_WIDTH = OPTION_ROW_WIDTH / 2;
+    private static final int STEP_BUTTON_WIDTH = 31; // 20% wider than previous 26
+    private static final int STEP_GAP = 4;
+    private static final int STEP_VALUE_WIDTH =
+            OPTION_ROW_WIDTH - (STEP_BUTTON_WIDTH * 2) - (STEP_GAP * 2);
+    private static final int SHIFT_STEP_MULTIPLIER = 5;
+    private static final int OPTIONS_HOVER_SIDE_PADDING = 20;
+    private static final int SCROLLBAR_X_OFFSET = OPTION_ROW_HALF_WIDTH + 8;
+    private static final int RAVEN_STATUS_PREVIEW_BASE_WIDTH = 128;
+    private static final int RAVEN_STATUS_PREVIEW_BASE_HEIGHT = 42;
+    private static final float RAVEN_STATUS_PREVIEW_SCALE = 0.75F;
 
     // client-only preference
-    private boolean useVanillaFontForGothicText;
+    private @NotNull ScrollUiFontMode scrollUiFontMode = ScrollUiFontMode.JACQUARD;
+    private int ravenStatusGuiX;
+    private int ravenStatusGuiY;
+    private @NotNull RavenStatusGuiAnchor ravenStatusGuiAnchor = RavenStatusGuiAnchor.TOP_LEFT;
+    private @NotNull RavenStatusGuiVisualMode ravenStatusGuiVisualMode = RavenStatusGuiVisualMode.BADGE_AND_TEXT;
+    private boolean statusBadgeRepositionMode = false;
+    private boolean statusBadgeDragging = false;
+    private int statusBadgeDragOffsetX = 0;
+    private int statusBadgeDragOffsetY = 0;
 
     // server-owned + synced
     private boolean chatDisabled;
@@ -39,10 +62,14 @@ public class FeatheredFriendSettingsScreen extends Screen {
     private int ravenLogMaxBytesPerPlayer;
     private int enderpackDepositCooldownSeconds;
     private int scrollDeliveryCooldownSeconds;
+    private int courierTimeoutRetrySeconds;
     private boolean hasServerSettings = false;
     private boolean canEditChat = false;
 
     private Button gothicFontButton;
+    private Button ravenStatusGuiRepositionButton;
+    private Button ravenStatusGuiAnchorButton;
+    private Button ravenStatusGuiVisualModeButton;
     private Button chatDisabledButton;
     private Button ravenChestsMinusButton;
     private Button ravenChestsValueButton;
@@ -59,6 +86,9 @@ public class FeatheredFriendSettingsScreen extends Screen {
     private Button scrollDeliveryCooldownMinusButton;
     private Button scrollDeliveryCooldownValueButton;
     private Button scrollDeliveryCooldownPlusButton;
+    private Button courierTimeoutRetryMinusButton;
+    private Button courierTimeoutRetryValueButton;
+    private Button courierTimeoutRetryPlusButton;
     private Button doneButton;
 
     private final List<Button> scrollableButtons = new ArrayList<>();
@@ -80,6 +110,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
         LOG.debug("[FeatheredFriendSettingsScreen] init()");
 
         loadFromCacheAndMaybeRequestSync();
+        this.statusBadgeDragging = false;
 
         this.scrollableButtons.clear();
         this.scrollBaseY.clear();
@@ -94,22 +125,71 @@ public class FeatheredFriendSettingsScreen extends Screen {
         this.gothicFontButton = Button.builder(
                         textForGothicFont(),
                         btn -> {
-                            useVanillaFontForGothicText = !useVanillaFontForGothicText;
+                            scrollUiFontMode = safeScrollUiFontMode().next();
                             btn.setMessage(textForGothicFont());
 
                             try {
-                                Services.PLATFORM.setUseVanillaFontForGothicText(useVanillaFontForGothicText);
+                                Services.PLATFORM.setScrollUiFontMode(scrollUiFontMode);
                                 Services.PLATFORM.saveClientConfig();
-                                LOG.debug("[FeatheredFriendSettingsScreen] Updated client config useVanillaFontForGothicText -> {}",
-                                        useVanillaFontForGothicText);
+                                LOG.debug("[FeatheredFriendSettingsScreen] Updated client config scrollUiFontMode -> {}",
+                                        scrollUiFontMode);
                             } catch (Throwable t) {
-                                LOG.error("[FeatheredFriendSettingsScreen] Failed to update useVanillaFontForGothicText client config", t);
+                                LOG.error("[FeatheredFriendSettingsScreen] Failed to update scrollUiFontMode client config", t);
                             }
                         })
-                .bounds(centerX - 100, y, 200, 20)
+                .bounds(centerX - OPTION_ROW_HALF_WIDTH, y, OPTION_ROW_WIDTH, OPTION_HEIGHT)
                 .build();
         addScrollableButton(this.gothicFontButton, y);
 
+        y += OPTION_SPACING;
+
+        this.ravenStatusGuiRepositionButton = Button.builder(
+                        textForRavenStatusGuiReposition(),
+                        btn -> {
+                            this.statusBadgeRepositionMode = !this.statusBadgeRepositionMode;
+                            this.statusBadgeDragging = false;
+                            btn.setMessage(textForRavenStatusGuiReposition());
+                        })
+                .bounds(centerX - OPTION_ROW_HALF_WIDTH, y, OPTION_ROW_WIDTH, OPTION_HEIGHT)
+                .build();
+        addScrollableButton(this.ravenStatusGuiRepositionButton, y);
+        y += OPTION_SPACING;
+
+        this.ravenStatusGuiAnchorButton = Button.builder(
+                        textForRavenStatusGuiAnchor(),
+                        btn -> {
+                            try {
+                                int absoluteX = statusBadgePreviewX();
+                                int absoluteY = statusBadgePreviewY();
+                                this.ravenStatusGuiAnchor = safeRavenStatusGuiAnchor().next();
+                                Services.PLATFORM.setRavenStatusGuiAnchor(this.ravenStatusGuiAnchor);
+                                setStatusBadgePosition(absoluteX, absoluteY, false);
+                                Services.PLATFORM.saveClientConfig();
+                                btn.setMessage(textForRavenStatusGuiAnchor());
+                            } catch (Throwable t) {
+                                LOG.error("[FeatheredFriendSettingsScreen] Failed to set raven status GUI anchor", t);
+                            }
+                        })
+                .bounds(centerX - OPTION_ROW_HALF_WIDTH, y, OPTION_ROW_WIDTH, OPTION_HEIGHT)
+                .build();
+        addScrollableButton(this.ravenStatusGuiAnchorButton, y);
+        y += OPTION_SPACING;
+
+        this.ravenStatusGuiVisualModeButton = Button.builder(
+                        textForRavenStatusGuiVisualMode(),
+                        btn -> {
+                            try {
+                                this.ravenStatusGuiVisualMode = safeRavenStatusGuiVisualMode().next();
+                                Services.PLATFORM.setRavenStatusGuiVisualMode(this.ravenStatusGuiVisualMode);
+                                Services.PLATFORM.saveClientConfig();
+                                btn.setMessage(textForRavenStatusGuiVisualMode());
+                            } catch (Throwable t) {
+                                LOG.error("[FeatheredFriendSettingsScreen] Failed to set raven status GUI visual mode", t);
+                            }
+                        })
+                .bounds(centerX - OPTION_ROW_HALF_WIDTH, y, OPTION_ROW_WIDTH, OPTION_HEIGHT)
+                .build();
+        addScrollableButton(this.ravenStatusGuiVisualModeButton, y);
         y += OPTION_SPACING;
 
         if (canEditChat) {
@@ -138,22 +218,22 @@ public class FeatheredFriendSettingsScreen extends Screen {
                                     LOG.error("[FeatheredFriendSettingsScreen] Failed to send chatDisabled toggle", t);
                                 }
                             })
-                    .bounds(centerX - 100, y, 200, 20)
+                    .bounds(centerX - OPTION_ROW_HALF_WIDTH, y, OPTION_ROW_WIDTH, OPTION_HEIGHT)
                     .build();
 
             this.chatDisabledButton.active = hasServerSettings && isConnectionReady();
             addScrollableButton(this.chatDisabledButton, y);
             y += OPTION_SPACING;
 
-            this.ravenChestsMinusButton = Button.builder(Component.literal("-"), btn -> adjustRavenChestCap(-1))
-                    .bounds(centerX - 100, y, 20, 20)
+            this.ravenChestsMinusButton = Button.builder(Component.literal("-"), btn -> adjustRavenChestCap(deltaWithShift(-1)))
+                    .bounds(stepperMinusX(centerX), y, STEP_BUTTON_WIDTH, OPTION_HEIGHT)
                     .build();
             this.ravenChestsValueButton = Button.builder(textForRavenChestCap(), btn -> {})
-                    .bounds(centerX - 76, y, 152, 20)
+                    .bounds(stepperValueX(centerX), y, STEP_VALUE_WIDTH, OPTION_HEIGHT)
                     .build();
             this.ravenChestsValueButton.active = false;
-            this.ravenChestsPlusButton = Button.builder(Component.literal("+"), btn -> adjustRavenChestCap(1))
-                    .bounds(centerX + 80, y, 20, 20)
+            this.ravenChestsPlusButton = Button.builder(Component.literal("+"), btn -> adjustRavenChestCap(deltaWithShift(1)))
+                    .bounds(stepperPlusX(centerX), y, STEP_BUTTON_WIDTH, OPTION_HEIGHT)
                     .build();
 
             boolean editActive = hasServerSettings && isConnectionReady();
@@ -165,15 +245,15 @@ public class FeatheredFriendSettingsScreen extends Screen {
             addScrollableButton(this.ravenChestsPlusButton, y);
             y += OPTION_SPACING;
 
-            this.ravenLogRetentionMinusButton = Button.builder(Component.literal("-"), btn -> adjustRavenLogRetentionMinutes(-60))
-                    .bounds(centerX - 100, y, 20, 20)
+            this.ravenLogRetentionMinusButton = Button.builder(Component.literal("-"), btn -> adjustRavenLogRetentionMinutes(deltaWithShift(-60)))
+                    .bounds(stepperMinusX(centerX), y, STEP_BUTTON_WIDTH, OPTION_HEIGHT)
                     .build();
             this.ravenLogRetentionValueButton = Button.builder(textForRavenLogRetention(), btn -> {})
-                    .bounds(centerX - 76, y, 152, 20)
+                    .bounds(stepperValueX(centerX), y, STEP_VALUE_WIDTH, OPTION_HEIGHT)
                     .build();
             this.ravenLogRetentionValueButton.active = false;
-            this.ravenLogRetentionPlusButton = Button.builder(Component.literal("+"), btn -> adjustRavenLogRetentionMinutes(60))
-                    .bounds(centerX + 80, y, 20, 20)
+            this.ravenLogRetentionPlusButton = Button.builder(Component.literal("+"), btn -> adjustRavenLogRetentionMinutes(deltaWithShift(60)))
+                    .bounds(stepperPlusX(centerX), y, STEP_BUTTON_WIDTH, OPTION_HEIGHT)
                     .build();
 
             this.ravenLogRetentionMinusButton.active = editActive;
@@ -184,15 +264,15 @@ public class FeatheredFriendSettingsScreen extends Screen {
             addScrollableButton(this.ravenLogRetentionPlusButton, y);
             y += OPTION_SPACING;
 
-            this.ravenLogSizeMinusButton = Button.builder(Component.literal("-"), btn -> adjustRavenLogMaxBytesPerPlayer(-(64 * 1024)))
-                    .bounds(centerX - 100, y, 20, 20)
+            this.ravenLogSizeMinusButton = Button.builder(Component.literal("-"), btn -> adjustRavenLogMaxBytesPerPlayer(deltaWithShift(-(64 * 1024))))
+                    .bounds(stepperMinusX(centerX), y, STEP_BUTTON_WIDTH, OPTION_HEIGHT)
                     .build();
             this.ravenLogSizeValueButton = Button.builder(textForRavenLogSize(), btn -> {})
-                    .bounds(centerX - 76, y, 152, 20)
+                    .bounds(stepperValueX(centerX), y, STEP_VALUE_WIDTH, OPTION_HEIGHT)
                     .build();
             this.ravenLogSizeValueButton.active = false;
-            this.ravenLogSizePlusButton = Button.builder(Component.literal("+"), btn -> adjustRavenLogMaxBytesPerPlayer(64 * 1024))
-                    .bounds(centerX + 80, y, 20, 20)
+            this.ravenLogSizePlusButton = Button.builder(Component.literal("+"), btn -> adjustRavenLogMaxBytesPerPlayer(deltaWithShift(64 * 1024)))
+                    .bounds(stepperPlusX(centerX), y, STEP_BUTTON_WIDTH, OPTION_HEIGHT)
                     .build();
 
             this.ravenLogSizeMinusButton.active = editActive;
@@ -203,15 +283,15 @@ public class FeatheredFriendSettingsScreen extends Screen {
             addScrollableButton(this.ravenLogSizePlusButton, y);
             y += OPTION_SPACING;
 
-            this.enderpackCooldownMinusButton = Button.builder(Component.literal("-"), btn -> adjustEnderpackDepositCooldownSeconds(-5))
-                    .bounds(centerX - 100, y, 20, 20)
+            this.enderpackCooldownMinusButton = Button.builder(Component.literal("-"), btn -> adjustEnderpackDepositCooldownSeconds(deltaWithShift(-5)))
+                    .bounds(stepperMinusX(centerX), y, STEP_BUTTON_WIDTH, OPTION_HEIGHT)
                     .build();
             this.enderpackCooldownValueButton = Button.builder(textForEnderpackDepositCooldown(), btn -> {})
-                    .bounds(centerX - 76, y, 152, 20)
+                    .bounds(stepperValueX(centerX), y, STEP_VALUE_WIDTH, OPTION_HEIGHT)
                     .build();
             this.enderpackCooldownValueButton.active = false;
-            this.enderpackCooldownPlusButton = Button.builder(Component.literal("+"), btn -> adjustEnderpackDepositCooldownSeconds(5))
-                    .bounds(centerX + 80, y, 20, 20)
+            this.enderpackCooldownPlusButton = Button.builder(Component.literal("+"), btn -> adjustEnderpackDepositCooldownSeconds(deltaWithShift(5)))
+                    .bounds(stepperPlusX(centerX), y, STEP_BUTTON_WIDTH, OPTION_HEIGHT)
                     .build();
 
             this.enderpackCooldownMinusButton.active = editActive;
@@ -222,15 +302,15 @@ public class FeatheredFriendSettingsScreen extends Screen {
             addScrollableButton(this.enderpackCooldownPlusButton, y);
             y += OPTION_SPACING;
 
-            this.scrollDeliveryCooldownMinusButton = Button.builder(Component.literal("-"), btn -> adjustScrollDeliveryCooldownSeconds(-5))
-                    .bounds(centerX - 100, y, 20, 20)
+            this.scrollDeliveryCooldownMinusButton = Button.builder(Component.literal("-"), btn -> adjustScrollDeliveryCooldownSeconds(deltaWithShift(-5)))
+                    .bounds(stepperMinusX(centerX), y, STEP_BUTTON_WIDTH, OPTION_HEIGHT)
                     .build();
             this.scrollDeliveryCooldownValueButton = Button.builder(textForScrollDeliveryCooldown(), btn -> {})
-                    .bounds(centerX - 76, y, 152, 20)
+                    .bounds(stepperValueX(centerX), y, STEP_VALUE_WIDTH, OPTION_HEIGHT)
                     .build();
             this.scrollDeliveryCooldownValueButton.active = false;
-            this.scrollDeliveryCooldownPlusButton = Button.builder(Component.literal("+"), btn -> adjustScrollDeliveryCooldownSeconds(5))
-                    .bounds(centerX + 80, y, 20, 20)
+            this.scrollDeliveryCooldownPlusButton = Button.builder(Component.literal("+"), btn -> adjustScrollDeliveryCooldownSeconds(deltaWithShift(5)))
+                    .bounds(stepperPlusX(centerX), y, STEP_BUTTON_WIDTH, OPTION_HEIGHT)
                     .build();
 
             this.scrollDeliveryCooldownMinusButton.active = editActive;
@@ -239,6 +319,25 @@ public class FeatheredFriendSettingsScreen extends Screen {
             addScrollableButton(this.scrollDeliveryCooldownMinusButton, y);
             addScrollableButton(this.scrollDeliveryCooldownValueButton, y);
             addScrollableButton(this.scrollDeliveryCooldownPlusButton, y);
+            y += OPTION_SPACING;
+
+            this.courierTimeoutRetryMinusButton = Button.builder(Component.literal("-"), btn -> adjustCourierTimeoutRetrySeconds(deltaWithShift(-5)))
+                    .bounds(stepperMinusX(centerX), y, STEP_BUTTON_WIDTH, OPTION_HEIGHT)
+                    .build();
+            this.courierTimeoutRetryValueButton = Button.builder(textForCourierTimeoutRetry(), btn -> {})
+                    .bounds(stepperValueX(centerX), y, STEP_VALUE_WIDTH, OPTION_HEIGHT)
+                    .build();
+            this.courierTimeoutRetryValueButton.active = false;
+            this.courierTimeoutRetryPlusButton = Button.builder(Component.literal("+"), btn -> adjustCourierTimeoutRetrySeconds(deltaWithShift(5)))
+                    .bounds(stepperPlusX(centerX), y, STEP_BUTTON_WIDTH, OPTION_HEIGHT)
+                    .build();
+
+            this.courierTimeoutRetryMinusButton.active = editActive;
+            this.courierTimeoutRetryPlusButton.active = editActive;
+
+            addScrollableButton(this.courierTimeoutRetryMinusButton, y);
+            addScrollableButton(this.courierTimeoutRetryValueButton, y);
+            addScrollableButton(this.courierTimeoutRetryPlusButton, y);
             y += OPTION_SPACING;
         } else {
             this.chatDisabledButton = null;
@@ -257,10 +356,13 @@ public class FeatheredFriendSettingsScreen extends Screen {
             this.scrollDeliveryCooldownMinusButton = null;
             this.scrollDeliveryCooldownValueButton = null;
             this.scrollDeliveryCooldownPlusButton = null;
+            this.courierTimeoutRetryMinusButton = null;
+            this.courierTimeoutRetryValueButton = null;
+            this.courierTimeoutRetryPlusButton = null;
         }
 
         this.doneButton = Button.builder(Component.translatable("gui.done"), btn -> onClose())
-                .bounds(centerX - 75, this.height - 28, 150, OPTION_HEIGHT)
+                .bounds(centerX - 90, this.height - 28, 180, OPTION_HEIGHT)
                 .build();
         this.addRenderableWidget(this.doneButton);
 
@@ -272,6 +374,22 @@ public class FeatheredFriendSettingsScreen extends Screen {
         this.addRenderableWidget(button);
         this.scrollableButtons.add(button);
         this.scrollBaseY.put(button, Integer.valueOf(baseY));
+    }
+
+    private int stepperMinusX(int centerX) {
+        return centerX - OPTION_ROW_HALF_WIDTH;
+    }
+
+    private int stepperValueX(int centerX) {
+        return stepperMinusX(centerX) + STEP_BUTTON_WIDTH + STEP_GAP;
+    }
+
+    private int stepperPlusX(int centerX) {
+        return stepperValueX(centerX) + STEP_VALUE_WIDTH + STEP_GAP;
+    }
+
+    private int deltaWithShift(int baseDelta) {
+        return hasShiftDown() ? (baseDelta * SHIFT_STEP_MULTIPLIER) : baseDelta;
     }
 
     private void recalculateScrollBounds() {
@@ -314,6 +432,15 @@ public class FeatheredFriendSettingsScreen extends Screen {
 
             if (this.gothicFontButton != null) {
                 this.gothicFontButton.setMessage(textForGothicFont());
+            }
+            if (this.ravenStatusGuiRepositionButton != null) {
+                this.ravenStatusGuiRepositionButton.setMessage(textForRavenStatusGuiReposition());
+            }
+            if (this.ravenStatusGuiAnchorButton != null) {
+                this.ravenStatusGuiAnchorButton.setMessage(textForRavenStatusGuiAnchor());
+            }
+            if (this.ravenStatusGuiVisualModeButton != null) {
+                this.ravenStatusGuiVisualModeButton.setMessage(textForRavenStatusGuiVisualMode());
             }
 
             if (this.chatDisabledButton != null) {
@@ -365,9 +492,21 @@ public class FeatheredFriendSettingsScreen extends Screen {
             if (this.scrollDeliveryCooldownPlusButton != null) {
                 this.scrollDeliveryCooldownPlusButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
             }
+            if (this.courierTimeoutRetryValueButton != null) {
+                this.courierTimeoutRetryValueButton.setMessage(textForCourierTimeoutRetry());
+            }
+            if (this.courierTimeoutRetryMinusButton != null) {
+                this.courierTimeoutRetryMinusButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
+            }
+            if (this.courierTimeoutRetryPlusButton != null) {
+                this.courierTimeoutRetryPlusButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
+            }
 
             if (this.chatDisabledButton == null && this.canEditChat) {
                 LOG.debug("[FeatheredFriendSettingsScreen] Chat button absent but perms now true; rebuilding widgets");
+                tryRebuildWidgets();
+            } else if (this.chatDisabledButton != null && !this.canEditChat) {
+                LOG.debug("[FeatheredFriendSettingsScreen] Chat button present but perms now false; rebuilding widgets");
                 tryRebuildWidgets();
             }
 
@@ -414,7 +553,14 @@ public class FeatheredFriendSettingsScreen extends Screen {
     private void refreshFromCacheOnly() {
         try {
             // client-only preference
-            useVanillaFontForGothicText = Services.PLATFORM.isUseVanillaFontForGothicText();
+            ScrollUiFontMode loadedFontMode = Services.PLATFORM.getScrollUiFontMode();
+            scrollUiFontMode = loadedFontMode == null ? ScrollUiFontMode.JACQUARD : loadedFontMode;
+            ravenStatusGuiX = Services.PLATFORM.getRavenStatusGuiX();
+            ravenStatusGuiY = Services.PLATFORM.getRavenStatusGuiY();
+            RavenStatusGuiAnchor loadedAnchor = Services.PLATFORM.getRavenStatusGuiAnchor();
+            ravenStatusGuiAnchor = loadedAnchor == null ? RavenStatusGuiAnchor.TOP_LEFT : loadedAnchor;
+            RavenStatusGuiVisualMode loadedVisualMode = Services.PLATFORM.getRavenStatusGuiVisualMode();
+            ravenStatusGuiVisualMode = loadedVisualMode == null ? RavenStatusGuiVisualMode.BADGE_AND_TEXT : loadedVisualMode;
 
             // server synced
             this.hasServerSettings = Services.PLATFORM.hasServerSettingsSynced();
@@ -426,6 +572,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
                 this.ravenLogMaxBytesPerPlayer = Services.PLATFORM.getRavenLogMaxBytesPerPlayerClient();
                 this.enderpackDepositCooldownSeconds = Services.PLATFORM.getEnderpackDepositCooldownSecondsClient();
                 this.scrollDeliveryCooldownSeconds = Services.PLATFORM.getScrollDeliveryCooldownSecondsClient();
+                this.courierTimeoutRetrySeconds = Services.PLATFORM.getCourierTimeoutRetrySecondsClient();
             } else {
                 // while syncing, default to enabled + no perms
                 this.chatDisabled = false;
@@ -435,10 +582,11 @@ public class FeatheredFriendSettingsScreen extends Screen {
                 this.ravenLogMaxBytesPerPlayer = 0;
                 this.enderpackDepositCooldownSeconds = 0;
                 this.scrollDeliveryCooldownSeconds = 0;
+                this.courierTimeoutRetrySeconds = 0;
             }
 
-            LOG.debug("[FeatheredFriendSettingsScreen] refreshFromCacheOnly: hasServerSettings={} chatDisabled={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} canEditChat={}",
-                    hasServerSettings, chatDisabled, maxRavenChestsPerPlayer, ravenLogRetentionMinutes, ravenLogMaxBytesPerPlayer, enderpackDepositCooldownSeconds, scrollDeliveryCooldownSeconds, canEditChat);
+            LOG.debug("[FeatheredFriendSettingsScreen] refreshFromCacheOnly: hasServerSettings={} chatDisabled={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={} scrollUiFontMode={} ravenStatusGuiX={} ravenStatusGuiY={} ravenStatusGuiAnchor={} ravenStatusGuiVisualMode={}",
+                    hasServerSettings, chatDisabled, maxRavenChestsPerPlayer, ravenLogRetentionMinutes, ravenLogMaxBytesPerPlayer, enderpackDepositCooldownSeconds, scrollDeliveryCooldownSeconds, courierTimeoutRetrySeconds, canEditChat, scrollUiFontMode, ravenStatusGuiX, ravenStatusGuiY, ravenStatusGuiAnchor, ravenStatusGuiVisualMode);
 
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendSettingsScreen] refreshFromCacheOnly failed safely", t);
@@ -463,19 +611,45 @@ public class FeatheredFriendSettingsScreen extends Screen {
             hasServerSettings = false;
             canEditChat = false;
             chatDisabled = false;
+            scrollUiFontMode = ScrollUiFontMode.JACQUARD;
+            ravenStatusGuiX = 12;
+            ravenStatusGuiY = 12;
+            ravenStatusGuiAnchor = RavenStatusGuiAnchor.TOP_LEFT;
+            ravenStatusGuiVisualMode = RavenStatusGuiVisualMode.BADGE_AND_TEXT;
             maxRavenChestsPerPlayer = 0;
             ravenLogRetentionMinutes = 0;
             ravenLogMaxBytesPerPlayer = 0;
             enderpackDepositCooldownSeconds = 0;
             scrollDeliveryCooldownSeconds = 0;
+            courierTimeoutRetrySeconds = 0;
             LOG.error("[FeatheredFriendSettingsScreen] loadFromCacheAndMaybeRequestSync failed safely", t);
         }
     }
 
     private Component textForGothicFont() {
         return Component.translatable(
-                "screen.featheredfriend.settings.vanilla_font",
-                onOff(useVanillaFontForGothicText)
+                "screen.featheredfriend.settings.scroll_ui_font",
+                Component.translatable(safeScrollUiFontMode().translationKey())
+        );
+    }
+
+    private Component textForRavenStatusGuiReposition() {
+        return Component.translatable(
+                "screen.featheredfriend.settings.raven_status_gui_reposition"
+        );
+    }
+
+    private Component textForRavenStatusGuiAnchor() {
+        return Component.translatable(
+                "screen.featheredfriend.settings.raven_status_gui_anchor",
+                Component.translatable(safeRavenStatusGuiAnchor().translationKey())
+        );
+    }
+
+    private Component textForRavenStatusGuiVisualMode() {
+        return Component.translatable(
+                "screen.featheredfriend.settings.raven_status_gui_visual_mode",
+                Component.translatable(safeRavenStatusGuiVisualMode().translationKey())
         );
     }
 
@@ -538,6 +712,149 @@ public class FeatheredFriendSettingsScreen extends Screen {
                 "screen.featheredfriend.settings.scroll_delivery_cooldown",
                 Integer.valueOf(scrollDeliveryCooldownSeconds)
         );
+    }
+
+    private Component textForCourierTimeoutRetry() {
+        if (!hasServerSettings) {
+            return Component.translatable("screen.featheredfriend.settings.courier_timeout_retry.syncing");
+        }
+        return Component.translatable(
+                "screen.featheredfriend.settings.courier_timeout_retry",
+                Integer.valueOf(courierTimeoutRetrySeconds)
+        );
+    }
+
+    private int statusBadgePreviewWidth() {
+        return Math.max(1, Math.round(RAVEN_STATUS_PREVIEW_BASE_WIDTH * RAVEN_STATUS_PREVIEW_SCALE));
+    }
+
+    private int statusBadgePreviewHeight() {
+        return Math.max(1, Math.round(RAVEN_STATUS_PREVIEW_BASE_HEIGHT * RAVEN_STATUS_PREVIEW_SCALE));
+    }
+
+    private int maxStatusBadgeOffsetX() {
+        return Math.max(0, this.width - statusBadgePreviewWidth());
+    }
+
+    private int maxStatusBadgeOffsetY() {
+        return Math.max(0, this.height - statusBadgePreviewHeight());
+    }
+
+    private int maxStoredStatusBadgeX() {
+        int maxOffsetX = maxStatusBadgeOffsetX();
+        return switch (safeRavenStatusGuiAnchor()) {
+            case TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT -> maxOffsetX;
+            case TOP_CENTER, CENTER, BOTTOM_CENTER -> Math.max(0, maxOffsetX * 2);
+        };
+    }
+
+    private int maxStoredStatusBadgeY() {
+        int maxOffsetY = maxStatusBadgeOffsetY();
+        return switch (safeRavenStatusGuiAnchor()) {
+            case TOP_LEFT, TOP_CENTER, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_CENTER, BOTTOM_RIGHT -> maxOffsetY;
+            case CENTER -> Math.max(0, maxOffsetY * 2);
+        };
+    }
+
+    private int clampStoredStatusBadgeX(int storedX) {
+        return Mth.clamp(storedX, 0, maxStoredStatusBadgeX());
+    }
+
+    private int clampStoredStatusBadgeY(int storedY) {
+        return Mth.clamp(storedY, 0, maxStoredStatusBadgeY());
+    }
+
+    private int statusBadgePreviewX() {
+        int storedX = clampStoredStatusBadgeX(this.ravenStatusGuiX);
+        int maxOffset = maxStatusBadgeOffsetX();
+        return switch (safeRavenStatusGuiAnchor()) {
+            case TOP_LEFT, BOTTOM_LEFT -> storedX;
+            case TOP_RIGHT, BOTTOM_RIGHT -> maxOffset - storedX;
+            case TOP_CENTER, CENTER, BOTTOM_CENTER -> decodeCenteredAxis(storedX, maxOffset);
+        };
+    }
+
+    private int statusBadgePreviewY() {
+        int storedY = clampStoredStatusBadgeY(this.ravenStatusGuiY);
+        int maxOffset = maxStatusBadgeOffsetY();
+        return switch (safeRavenStatusGuiAnchor()) {
+            case TOP_LEFT, TOP_CENTER, TOP_RIGHT -> storedY;
+            case BOTTOM_LEFT, BOTTOM_CENTER, BOTTOM_RIGHT -> maxOffset - storedY;
+            case CENTER -> decodeCenteredAxis(storedY, maxOffset);
+        };
+    }
+
+    private int statusBadgeOffsetFromAbsoluteX(int absoluteX) {
+        int maxOffset = maxStatusBadgeOffsetX();
+        int clampedAbsolute = Mth.clamp(absoluteX, 0, maxOffset);
+        return switch (safeRavenStatusGuiAnchor()) {
+            case TOP_LEFT, BOTTOM_LEFT -> clampedAbsolute;
+            case TOP_RIGHT, BOTTOM_RIGHT -> maxOffset - clampedAbsolute;
+            case TOP_CENTER, CENTER, BOTTOM_CENTER -> encodeAbsoluteToCenteredAxis(clampedAbsolute, maxOffset);
+        };
+    }
+
+    private int statusBadgeOffsetFromAbsoluteY(int absoluteY) {
+        int maxOffset = maxStatusBadgeOffsetY();
+        int clampedAbsolute = Mth.clamp(absoluteY, 0, maxOffset);
+        return switch (safeRavenStatusGuiAnchor()) {
+            case TOP_LEFT, TOP_CENTER, TOP_RIGHT -> clampedAbsolute;
+            case BOTTOM_LEFT, BOTTOM_CENTER, BOTTOM_RIGHT -> maxOffset - clampedAbsolute;
+            case CENTER -> encodeAbsoluteToCenteredAxis(clampedAbsolute, maxOffset);
+        };
+    }
+
+    private int decodeCenteredAxis(int storedValue, int maxOffset) {
+        int maxStored = Math.max(0, maxOffset * 2);
+        int clampedStored = Mth.clamp(storedValue, 0, maxStored);
+        int centerAbsolute = maxOffset / 2;
+        int deltaFromCenter = clampedStored - maxOffset;
+        return Mth.clamp(centerAbsolute + deltaFromCenter, 0, maxOffset);
+    }
+
+    private int encodeAbsoluteToCenteredAxis(int absoluteValue, int maxOffset) {
+        int centerAbsolute = maxOffset / 2;
+        int maxStored = Math.max(0, maxOffset * 2);
+        int encoded = (absoluteValue - centerAbsolute) + maxOffset;
+        return Mth.clamp(encoded, 0, maxStored);
+    }
+
+    private boolean isMouseOverStatusBadgePreview(double mouseX, double mouseY) {
+        int x = statusBadgePreviewX();
+        int y = statusBadgePreviewY();
+        int w = statusBadgePreviewWidth();
+        int h = statusBadgePreviewHeight();
+        return mouseX >= x && mouseX <= (x + w) && mouseY >= y && mouseY <= (y + h);
+    }
+
+    private void setStatusBadgePosition(int x, int y, boolean persistNow) {
+        try {
+            int newStoredX = clampStoredStatusBadgeX(statusBadgeOffsetFromAbsoluteX(x));
+            int newStoredY = clampStoredStatusBadgeY(statusBadgeOffsetFromAbsoluteY(y));
+            this.ravenStatusGuiX = newStoredX;
+            this.ravenStatusGuiY = newStoredY;
+            Services.PLATFORM.setRavenStatusGuiX(newStoredX);
+            Services.PLATFORM.setRavenStatusGuiY(newStoredY);
+            if (persistNow) {
+                Services.PLATFORM.saveClientConfig();
+            }
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriendSettingsScreen] setStatusBadgePosition failed safely", t);
+        }
+    }
+
+    private @NotNull RavenStatusGuiAnchor safeRavenStatusGuiAnchor() {
+        return this.ravenStatusGuiAnchor == null ? RavenStatusGuiAnchor.TOP_LEFT : this.ravenStatusGuiAnchor;
+    }
+
+    private @NotNull ScrollUiFontMode safeScrollUiFontMode() {
+        return this.scrollUiFontMode == null ? ScrollUiFontMode.JACQUARD : this.scrollUiFontMode;
+    }
+
+    private @NotNull RavenStatusGuiVisualMode safeRavenStatusGuiVisualMode() {
+        return this.ravenStatusGuiVisualMode == null
+                ? RavenStatusGuiVisualMode.BADGE_AND_TEXT
+                : this.ravenStatusGuiVisualMode;
     }
 
     private void adjustRavenChestCap(int delta) {
@@ -640,12 +957,73 @@ public class FeatheredFriendSettingsScreen extends Screen {
         }
     }
 
+    private void adjustCourierTimeoutRetrySeconds(int deltaSeconds) {
+        try {
+            if (!hasServerSettings || !canEditChat || !isConnectionReady()) {
+                return;
+            }
+            int newValue = Math.max(0, Math.min(86_400, this.courierTimeoutRetrySeconds + deltaSeconds));
+            if (newValue == this.courierTimeoutRetrySeconds) {
+                return;
+            }
+            this.courierTimeoutRetrySeconds = newValue;
+            if (this.courierTimeoutRetryValueButton != null) {
+                this.courierTimeoutRetryValueButton.setMessage(textForCourierTimeoutRetry());
+            }
+            Services.PLATFORM.sendSetCourierTimeoutRetrySeconds(newValue);
+            LOG.debug("[FeatheredFriendSettingsScreen] Sent SetCourierTimeoutRetrySecondsPayload -> {}", newValue);
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriendSettingsScreen] adjustCourierTimeoutRetrySeconds failed safely", t);
+        }
+    }
+
     private static Component onOff(boolean enabled) {
         return Component.translatable(enabled ? "options.on" : "options.off");
     }
 
     @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (this.statusBadgeRepositionMode && button == 0 && isMouseOverStatusBadgePreview(mouseX, mouseY)) {
+            int x = statusBadgePreviewX();
+            int y = statusBadgePreviewY();
+            this.statusBadgeDragging = true;
+            this.statusBadgeDragOffsetX = Mth.clamp((int) Math.round(mouseX) - x, 0, statusBadgePreviewWidth());
+            this.statusBadgeDragOffsetY = Mth.clamp((int) Math.round(mouseY) - y, 0, statusBadgePreviewHeight());
+            return true;
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (this.statusBadgeRepositionMode && this.statusBadgeDragging && button == 0) {
+            int desiredX = (int) Math.round(mouseX) - this.statusBadgeDragOffsetX;
+            int desiredY = (int) Math.round(mouseY) - this.statusBadgeDragOffsetY;
+            setStatusBadgePosition(desiredX, desiredY, false);
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (button == 0 && this.statusBadgeDragging) {
+            this.statusBadgeDragging = false;
+            try {
+                Services.PLATFORM.saveClientConfig();
+            } catch (Throwable t) {
+                LOG.error("[FeatheredFriendSettingsScreen] Failed to persist raven status GUI position", t);
+            }
+            return true;
+        }
+        return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (this.statusBadgeDragging) {
+            return true;
+        }
         if (this.maxScrollOffset > 0 && isMouseOverOptionsArea(mouseX, mouseY)) {
             int delta = (int) Math.round(scrollY * 18.0D);
             if (delta != 0) {
@@ -658,8 +1036,8 @@ public class FeatheredFriendSettingsScreen extends Screen {
     }
 
     private boolean isMouseOverOptionsArea(double mouseX, double mouseY) {
-        int left = (this.width / 2) - 120;
-        int right = (this.width / 2) + 120;
+        int left = (this.width / 2) - (OPTION_ROW_HALF_WIDTH + OPTIONS_HOVER_SIDE_PADDING);
+        int right = (this.width / 2) + (OPTION_ROW_HALF_WIDTH + OPTIONS_HOVER_SIDE_PADDING);
         return mouseX >= left
                 && mouseX <= right
                 && mouseY >= this.scrollContentTop
@@ -678,7 +1056,20 @@ public class FeatheredFriendSettingsScreen extends Screen {
                     ? Component.translatable("screen.featheredfriend.settings.status.synced")
                     : Component.translatable("screen.featheredfriend.settings.status.waiting");
             guiGraphics.drawCenteredString(this.font, status, this.width / 2, 44, 0xAAAAAA);
+
+            if (this.statusBadgeRepositionMode) {
+                Component hint = Component.translatable(
+                        "screen.featheredfriend.settings.raven_status_gui_reposition.hint",
+                        Integer.valueOf(statusBadgePreviewX()),
+                        Integer.valueOf(statusBadgePreviewY())
+                );
+                guiGraphics.drawCenteredString(this.font, hint, this.width / 2, 54, 0xE0E0E0);
+            }
         } catch (Throwable ignored) {
+        }
+
+        if (this.statusBadgeRepositionMode) {
+            drawStatusBadgePreview(guiGraphics);
         }
 
         if (this.maxScrollOffset > 0) {
@@ -686,8 +1077,23 @@ public class FeatheredFriendSettingsScreen extends Screen {
         }
     }
 
+    private void drawStatusBadgePreview(@NotNull GuiGraphics guiGraphics) {
+        int x = statusBadgePreviewX();
+        int y = statusBadgePreviewY();
+        int w = statusBadgePreviewWidth();
+        int h = statusBadgePreviewHeight();
+
+        int fillColor = this.statusBadgeDragging ? 0x77A0D0FF : 0x665A5A5A;
+        int borderColor = this.statusBadgeDragging ? 0xFFD5EAFF : 0xFFFFFFFF;
+        guiGraphics.fill(x, y, x + w, y + h, fillColor);
+        guiGraphics.fill(x, y, x + w, y + 1, borderColor);
+        guiGraphics.fill(x, y + h - 1, x + w, y + h, borderColor);
+        guiGraphics.fill(x, y, x + 1, y + h, borderColor);
+        guiGraphics.fill(x + w - 1, y, x + w, y + h, borderColor);
+    }
+
     private void drawScrollBar(@NotNull GuiGraphics guiGraphics) {
-        int trackX0 = (this.width / 2) + 108;
+        int trackX0 = (this.width / 2) + SCROLLBAR_X_OFFSET;
         int trackX1 = trackX0 + 4;
         int trackY0 = this.scrollContentTop;
         int trackY1 = this.scrollContentBottom;

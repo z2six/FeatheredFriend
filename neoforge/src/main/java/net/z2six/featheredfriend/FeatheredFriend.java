@@ -14,6 +14,7 @@ import net.z2six.featheredfriend.client.ClientScreens;
 import net.z2six.featheredfriend.client.particle.FFClientParticles;
 import net.z2six.featheredfriend.client.raven.RavenLinkClientController;
 import net.z2six.featheredfriend.client.raven.RavenClientEvents;
+import net.z2six.featheredfriend.client.ravenbadge.RavenBadgeHudController;
 import net.z2six.featheredfriend.command.FeatheredFriendCommands;
 import net.z2six.featheredfriend.config.FFServerConfig;
 import net.z2six.featheredfriend.config.FFClientConfig;
@@ -31,6 +32,7 @@ import net.z2six.featheredfriend.server.FFServerSyncEvents;
 import net.z2six.featheredfriend.server.FFConfigSyncEvents;
 import net.z2six.featheredfriend.integration.jei.JeiOverlayHider;
 import net.z2six.featheredfriend.world.RavenCourierRuntime;
+import net.z2six.featheredfriend.world.RavenBadgeRuntime;
 import net.z2six.featheredfriend.world.RavenLinkRuntime;
 import net.z2six.featheredfriend.world.RavenSpawnEvents;
 import net.z2six.featheredfriend.world.TamedRavenScrollWatcher;
@@ -155,6 +157,9 @@ public class FeatheredFriend {
                 RavenLinkClientController.registerGameBus();
                 LOG.debug("[FeatheredFriend] Registered RavenLinkClientController (client only)");
 
+                RavenBadgeHudController.registerGameBus();
+                LOG.debug("[FeatheredFriend] Registered RavenBadgeHudController (client only)");
+
                 JeiOverlayHider.registerGameBus();
                 LOG.debug("[FeatheredFriend] Registered JeiOverlayHider (client only)");
             } else {
@@ -193,6 +198,13 @@ public class FeatheredFriend {
             LOG.debug("[FeatheredFriend] Registered RavenCourierRuntime");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to register RavenCourierRuntime", t);
+        }
+
+        try {
+            RavenBadgeRuntime.register();
+            LOG.debug("[FeatheredFriend] Registered RavenBadgeRuntime");
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriend] Failed to register RavenBadgeRuntime", t);
         }
 
         try {

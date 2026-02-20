@@ -5,6 +5,7 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.z2six.featheredfriend.client.raven.RavenLinkClientController;
+import net.z2six.featheredfriend.client.ravenbadge.RavenBadgeHudController;
 import net.z2six.featheredfriend.client.knownplayers.KnownPlayersClientCache;
 import net.z2six.featheredfriend.client.screen.RavenChestLabelScreen;
 import net.z2six.featheredfriend.client.screen.RavenChestSelectScreen;
@@ -148,6 +149,15 @@ public final class FFNetworkClientHandlers {
             RavenLinkClientController.setLinkedOwnerHidden(payload.ownerEntityId(), payload.hidden());
         } catch (Throwable t) {
             LOG.error("[FFNetworkClientHandlers] handleRavenLinkOwnerVisibilityOnClient failed", t);
+        }
+    }
+
+    public static void handleRavenBadgeStatusOnClient(@NotNull FFNetwork.RavenBadgeStatusPayload payload,
+                                                       @NotNull IPayloadContext context) {
+        try {
+            RavenBadgeHudController.applyServerUpdate(payload.baseStateId(), payload.eventTypeId());
+        } catch (Throwable t) {
+            LOG.error("[FFNetworkClientHandlers] handleRavenBadgeStatusOnClient failed", t);
         }
     }
 }

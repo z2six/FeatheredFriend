@@ -8,10 +8,13 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.entity.raven.RavenArmorVisual;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import net.z2six.featheredfriend.platform.Services;
+import net.z2six.featheredfriend.registry.FFItems;
 import net.z2six.featheredfriend.world.TamedRavenPlayerData;
 import org.slf4j.Logger;
 
@@ -70,6 +73,18 @@ public final class TamedRavenDeathHandler {
                 return;
             }
 
+            // Drop equipped raven armor (if any) when the raven dies.
+            try {
+                RavenArmorVisual armorVisual = raven.getRavenArmorVisual();
+                ItemStack armorDrop = FFItems.createRavenArmorStack(armorVisual);
+                if (!armorDrop.isEmpty()) {
+                    raven.spawnAtLocation(armorDrop);
+                }
+            } catch (Throwable tDrop) {
+                LOG.warn("[TamedRavenDeathHandler] Failed to drop raven armor on death: {}", tDrop.toString());
+            }
+
+            // Courier ravens are not the owner's bound raven record.
             try {
                 if (raven.getTags().contains("ff_courier_raven")) {
                     return;
@@ -102,9 +117,6 @@ public final class TamedRavenDeathHandler {
             }
 
             List<ServerPlayer> players = serverLevel.players();
-            if (players.isEmpty()) {
-                return;
-            }
 
             // Determine the closest player for "last seen nearby" hint.
             ServerPlayer closestPlayer = null;
@@ -224,12 +236,12 @@ public final class TamedRavenDeathHandler {
                 }
 
                 if (matchesStored) {
-                    boolean cleared = TamedRavenPlayerData.clearPlayerTamedRavenData(owner);
-                    if (cleared) {
-                        LOG.debug("[TamedRavenDeathHandler] Cleared TamedRaven data for owner={} due to raven death. ravenName={}",
+                    boolean markedDead = TamedRavenPlayerData.markStoredRavenDead(owner, serverLevel.getGameTime());
+                    if (markedDead) {
+                        LOG.debug("[TamedRavenDeathHandler] Marked stored raven dead for owner={} due to raven death. ravenName={}",
                                 owner.getGameProfile().getName(), displayName);
                     } else {
-                        LOG.debug("[TamedRavenDeathHandler] Owner={} had no TamedRaven data to clear on raven death. ravenName={}",
+                        LOG.debug("[TamedRavenDeathHandler] Owner={} had no matching stored raven data to mark dead. ravenName={}",
                                 owner.getGameProfile().getName(), displayName);
                     }
                 } else if (raven.tickCount % 80 == 0) {

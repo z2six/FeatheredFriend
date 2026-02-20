@@ -15,6 +15,7 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.config.FFServerConfig;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.util.List;
@@ -33,7 +34,8 @@ import java.util.List;
  * - ravenLogMaxBytesPerPlayer (global)
  * - enderpackDepositCooldownSeconds (global)
  * - scrollDeliveryCooldownSeconds (global)
- * - canEditChat (per-player permission check, computed server-side)
+ * - courierTimeoutRetrySeconds (global)
+ * - canEditChat (per-player "can edit server settings in UI" check, computed server-side)
  *
  * Client-only preferences are handled by FFClientConfig (not server-owned).
  */
@@ -115,6 +117,12 @@ public final class FFPayloads {
                     FFPayloads::handleSetScrollDeliveryCooldownSeconds
             );
 
+            registrar.playToServer(
+                    SetCourierTimeoutRetrySecondsPayload.TYPE,
+                    SetCourierTimeoutRetrySecondsPayload.STREAM_CODEC,
+                    FFPayloads::handleSetCourierTimeoutRetrySeconds
+            );
+
             LOG.debug("[FFPayloads] Registered settings payloads OK (protocol={})", PROTOCOL_VERSION);
         } catch (Throwable t) {
             LOG.error("[FFPayloads] onRegisterPayloadHandlers failed safely", t);
@@ -133,6 +141,7 @@ public final class FFPayloads {
         private static volatile int ravenLogMaxBytesPerPlayer = 0;
         private static volatile int enderpackDepositCooldownSeconds = 0;
         private static volatile int scrollDeliveryCooldownSeconds = 0;
+        private static volatile int courierTimeoutRetrySeconds = 0;
         private static volatile boolean canEditChat = false;
 
         private ClientState() {
@@ -171,12 +180,17 @@ public final class FFPayloads {
             return scrollDeliveryCooldownSeconds;
         }
 
+        public static int courierTimeoutRetrySeconds() {
+            return courierTimeoutRetrySeconds;
+        }
+
         private static void applyFromServer(boolean newChatDisabled,
                                             int newMaxRavenChestsPerPlayer,
                                             int newRavenLogRetentionMinutes,
                                             int newRavenLogMaxBytesPerPlayer,
                                             int newEnderpackDepositCooldownSeconds,
                                             int newScrollDeliveryCooldownSeconds,
+                                            int newCourierTimeoutRetrySeconds,
                                             boolean newCanEditChat) {
             chatDisabled = newChatDisabled;
             maxRavenChestsPerPlayer = Math.max(0, newMaxRavenChestsPerPlayer);
@@ -184,11 +198,12 @@ public final class FFPayloads {
             ravenLogMaxBytesPerPlayer = Math.max(0, newRavenLogMaxBytesPerPlayer);
             enderpackDepositCooldownSeconds = Math.max(0, newEnderpackDepositCooldownSeconds);
             scrollDeliveryCooldownSeconds = Math.max(0, newScrollDeliveryCooldownSeconds);
+            courierTimeoutRetrySeconds = Math.max(0, newCourierTimeoutRetrySeconds);
             canEditChat = newCanEditChat;
             hasSynced = true;
 
-            LOG.debug("[FFPayloads.ClientState] Applied server settings: chatDisabled={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} canEditChat={}",
-                    newChatDisabled, maxRavenChestsPerPlayer, ravenLogRetentionMinutes, ravenLogMaxBytesPerPlayer, enderpackDepositCooldownSeconds, scrollDeliveryCooldownSeconds, newCanEditChat);
+            LOG.debug("[FFPayloads.ClientState] Applied server settings: chatDisabled={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={}",
+                    newChatDisabled, maxRavenChestsPerPlayer, ravenLogRetentionMinutes, ravenLogMaxBytesPerPlayer, enderpackDepositCooldownSeconds, scrollDeliveryCooldownSeconds, courierTimeoutRetrySeconds, newCanEditChat);
         }
 
         public static void clear() {
@@ -199,6 +214,7 @@ public final class FFPayloads {
             ravenLogMaxBytesPerPlayer = 0;
             enderpackDepositCooldownSeconds = 0;
             scrollDeliveryCooldownSeconds = 0;
+            courierTimeoutRetrySeconds = 0;
             canEditChat = false;
             LOG.debug("[FFPayloads.ClientState] Cleared client cache");
         }
@@ -236,6 +252,7 @@ public final class FFPayloads {
                                         int ravenLogMaxBytesPerPlayer,
                                         int enderpackDepositCooldownSeconds,
                                         int scrollDeliveryCooldownSeconds,
+                                        int courierTimeoutRetrySeconds,
                                         boolean canEditChat)
             implements net.minecraft.network.protocol.common.custom.CustomPacketPayload {
 
@@ -254,12 +271,14 @@ public final class FFPayloads {
             buf.writeVarInt(payload.ravenLogMaxBytesPerPlayer());
             buf.writeVarInt(payload.enderpackDepositCooldownSeconds());
             buf.writeVarInt(payload.scrollDeliveryCooldownSeconds());
+            buf.writeVarInt(payload.courierTimeoutRetrySeconds());
             buf.writeBoolean(payload.canEditChat());
         }
 
         private static ServerSettingsPayload decode(RegistryFriendlyByteBuf buf) {
             return new ServerSettingsPayload(
                     buf.readBoolean(),
+                    buf.readVarInt(),
                     buf.readVarInt(),
                     buf.readVarInt(),
                     buf.readVarInt(),
@@ -413,6 +432,29 @@ public final class FFPayloads {
         }
     }
 
+    /**
+     * Client -> Server: set courier timeout retry interval (seconds). Requires permission.
+     */
+    public record SetCourierTimeoutRetrySecondsPayload(int value)
+            implements net.minecraft.network.protocol.common.custom.CustomPacketPayload {
+
+        public static final ResourceLocation ID =
+                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "set_courier_timeout_retry_seconds_v1");
+
+        public static final Type<SetCourierTimeoutRetrySecondsPayload> TYPE = new Type<>(ID);
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, SetCourierTimeoutRetrySecondsPayload> STREAM_CODEC =
+                StreamCodec.composite(
+                        ByteBufCodecs.VAR_INT, SetCourierTimeoutRetrySecondsPayload::value,
+                        SetCourierTimeoutRetrySecondsPayload::new
+                );
+
+        @Override
+        public Type<? extends net.minecraft.network.protocol.common.custom.CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
     // ---------------------------------------------------------------------
     // Server-side send helpers
     // ---------------------------------------------------------------------
@@ -430,12 +472,8 @@ public final class FFPayloads {
             int ravenLogMaxBytesPerPlayerValue = FFServerConfig.getRavenLogMaxBytesPerPlayer();
             int enderpackDepositCooldownSecondsValue = FFServerConfig.getEnderpackDepositCooldownSeconds();
             int scrollDeliveryCooldownSecondsValue = FFServerConfig.getScrollDeliveryCooldownSeconds();
-            boolean canEditChatValue;
-            try {
-                canEditChatValue = player.hasPermissions(4);
-            } catch (Throwable ignored) {
-                canEditChatValue = false;
-            }
+            int courierTimeoutRetrySecondsValue = FFServerConfig.getCourierTimeoutRetrySeconds();
+            boolean canEditChatValue = canPlayerEditServerSettings(player);
 
             ServerSettingsPayload msg = new ServerSettingsPayload(
                     chatDisabledValue,
@@ -444,11 +482,12 @@ public final class FFPayloads {
                     ravenLogMaxBytesPerPlayerValue,
                     enderpackDepositCooldownSecondsValue,
                     scrollDeliveryCooldownSecondsValue,
+                    courierTimeoutRetrySecondsValue,
                     canEditChatValue
             );
             PacketDistributor.sendToPlayer(player, msg);
 
-            LOG.debug("[FFPayloads] Sent settings to {}: chatDisabled={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} canEditChat={}",
+            LOG.debug("[FFPayloads] Sent settings to {}: chatDisabled={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={}",
                     player.getGameProfile().getName(),
                     chatDisabledValue,
                     maxRavenChestsPerPlayerValue,
@@ -456,6 +495,7 @@ public final class FFPayloads {
                     ravenLogMaxBytesPerPlayerValue,
                     enderpackDepositCooldownSecondsValue,
                     scrollDeliveryCooldownSecondsValue,
+                    courierTimeoutRetrySecondsValue,
                     canEditChatValue);
 
         } catch (Throwable t) {
@@ -481,6 +521,20 @@ public final class FFPayloads {
             }
         } catch (Throwable t) {
             LOG.error("[FFPayloads] broadcastSettings failed safely", t);
+        }
+    }
+
+    private static boolean canPlayerEditServerSettings(@Nullable ServerPlayer player) {
+        try {
+            if (player == null) {
+                return false;
+            }
+            if (!FFServerConfig.isServerSettingsScreenEditingEnabled()) {
+                return false;
+            }
+            return player.hasPermissions(4);
+        } catch (Throwable ignored) {
+            return false;
         }
     }
 
@@ -525,6 +579,7 @@ public final class FFPayloads {
                             payload.ravenLogMaxBytesPerPlayer(),
                             payload.enderpackDepositCooldownSeconds(),
                             payload.scrollDeliveryCooldownSeconds(),
+                            payload.courierTimeoutRetrySeconds(),
                             payload.canEditChat()
                     );
                 } catch (Throwable t) {
@@ -551,15 +606,10 @@ public final class FFPayloads {
                         return;
                     }
 
-                    boolean allowed;
-                    try {
-                        allowed = sp.hasPermissions(4);
-                    } catch (Throwable ignored) {
-                        allowed = false;
-                    }
+                    boolean allowed = canPlayerEditServerSettings(sp);
 
                     if (!allowed) {
-                        LOG.warn("[FFPayloads] {} tried to SetChatDisabled without permission; denied",
+                        LOG.warn("[FFPayloads] {} tried to SetChatDisabled without permission/settings-screen access; denied",
                                 sp.getGameProfile().getName());
                         sendSettingsToPlayer(level, sp);
                         return;
@@ -596,15 +646,10 @@ public final class FFPayloads {
                         return;
                     }
 
-                    boolean allowed;
-                    try {
-                        allowed = sp.hasPermissions(4);
-                    } catch (Throwable ignored) {
-                        allowed = false;
-                    }
+                    boolean allowed = canPlayerEditServerSettings(sp);
 
                     if (!allowed) {
-                        LOG.warn("[FFPayloads] {} tried to SetMaxRavenChestsPerPlayer without permission; denied",
+                        LOG.warn("[FFPayloads] {} tried to SetMaxRavenChestsPerPlayer without permission/settings-screen access; denied",
                                 sp.getGameProfile().getName());
                         sendSettingsToPlayer(level, sp);
                         return;
@@ -641,14 +686,9 @@ public final class FFPayloads {
                         return;
                     }
 
-                    boolean allowed;
-                    try {
-                        allowed = sp.hasPermissions(4);
-                    } catch (Throwable ignored) {
-                        allowed = false;
-                    }
+                    boolean allowed = canPlayerEditServerSettings(sp);
                     if (!allowed) {
-                        LOG.warn("[FFPayloads] {} tried to SetRavenLogRetentionMinutes without permission; denied",
+                        LOG.warn("[FFPayloads] {} tried to SetRavenLogRetentionMinutes without permission/settings-screen access; denied",
                                 sp.getGameProfile().getName());
                         sendSettingsToPlayer(level, sp);
                         return;
@@ -685,14 +725,9 @@ public final class FFPayloads {
                         return;
                     }
 
-                    boolean allowed;
-                    try {
-                        allowed = sp.hasPermissions(4);
-                    } catch (Throwable ignored) {
-                        allowed = false;
-                    }
+                    boolean allowed = canPlayerEditServerSettings(sp);
                     if (!allowed) {
-                        LOG.warn("[FFPayloads] {} tried to SetRavenLogMaxBytesPerPlayer without permission; denied",
+                        LOG.warn("[FFPayloads] {} tried to SetRavenLogMaxBytesPerPlayer without permission/settings-screen access; denied",
                                 sp.getGameProfile().getName());
                         sendSettingsToPlayer(level, sp);
                         return;
@@ -729,14 +764,9 @@ public final class FFPayloads {
                         return;
                     }
 
-                    boolean allowed;
-                    try {
-                        allowed = sp.hasPermissions(4);
-                    } catch (Throwable ignored) {
-                        allowed = false;
-                    }
+                    boolean allowed = canPlayerEditServerSettings(sp);
                     if (!allowed) {
-                        LOG.warn("[FFPayloads] {} tried to SetEnderpackDepositCooldownSeconds without permission; denied",
+                        LOG.warn("[FFPayloads] {} tried to SetEnderpackDepositCooldownSeconds without permission/settings-screen access; denied",
                                 sp.getGameProfile().getName());
                         sendSettingsToPlayer(level, sp);
                         return;
@@ -773,14 +803,9 @@ public final class FFPayloads {
                         return;
                     }
 
-                    boolean allowed;
-                    try {
-                        allowed = sp.hasPermissions(4);
-                    } catch (Throwable ignored) {
-                        allowed = false;
-                    }
+                    boolean allowed = canPlayerEditServerSettings(sp);
                     if (!allowed) {
-                        LOG.warn("[FFPayloads] {} tried to SetScrollDeliveryCooldownSeconds without permission; denied",
+                        LOG.warn("[FFPayloads] {} tried to SetScrollDeliveryCooldownSeconds without permission/settings-screen access; denied",
                                 sp.getGameProfile().getName());
                         sendSettingsToPlayer(level, sp);
                         return;
@@ -799,6 +824,45 @@ public final class FFPayloads {
             });
         } catch (Throwable t) {
             LOG.error("[FFPayloads] handleSetScrollDeliveryCooldownSeconds failed safely", t);
+        }
+    }
+
+    private static void handleSetCourierTimeoutRetrySeconds(SetCourierTimeoutRetrySecondsPayload payload, IPayloadContext context) {
+        try {
+            context.enqueueWork(() -> {
+                try {
+                    if (!(context.player() instanceof ServerPlayer sp)) {
+                        LOG.warn("[FFPayloads] SetCourierTimeoutRetrySeconds from non-ServerPlayer; ignoring");
+                        return;
+                    }
+
+                    ServerLevel level = sp.serverLevel();
+                    if (level == null) {
+                        LOG.warn("[FFPayloads] SetCourierTimeoutRetrySeconds: serverLevel null; ignoring");
+                        return;
+                    }
+
+                    boolean allowed = canPlayerEditServerSettings(sp);
+                    if (!allowed) {
+                        LOG.warn("[FFPayloads] {} tried to SetCourierTimeoutRetrySeconds without permission/settings-screen access; denied",
+                                sp.getGameProfile().getName());
+                        sendSettingsToPlayer(level, sp);
+                        return;
+                    }
+
+                    int clamped = Math.max(0, Math.min(86_400, payload.value()));
+                    FFServerConfig.setCourierTimeoutRetrySeconds(clamped);
+
+                    LOG.debug("[FFPayloads] {} set courierTimeoutRetrySeconds -> {}",
+                            sp.getGameProfile().getName(), clamped);
+
+                    broadcastSettings(level);
+                } catch (Throwable t) {
+                    LOG.error("[FFPayloads] handleSetCourierTimeoutRetrySeconds work failed safely", t);
+                }
+            });
+        } catch (Throwable t) {
+            LOG.error("[FFPayloads] handleSetCourierTimeoutRetrySeconds failed safely", t);
         }
     }
 }

@@ -1543,6 +1543,14 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                                 ^ BlockPos.containing(teleportPos).asLong()
                                 ^ 0xC0FFEE5EEDL;
                         teleportation.startTeleportSequence(teleportPos, fxSeed, "delivery teleport", this);
+                        try {
+                            boolean hasCourierPayload = this.getRavenVariant() == RavenVariant.SCROLL
+                                    || this.getTags().contains(TAG_COURIER_RAVEN);
+                            if (hasCourierPayload) {
+                                Services.PLATFORM.notifyRavenBadgeDeliveryRepath(this);
+                            }
+                        } catch (Throwable ignored) {
+                        }
                         playRavenArriveSound();
                     }
                     return true;
@@ -1589,6 +1597,22 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
             return this.getTags().contains(TAG_COURIER_RAVEN);
         } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private boolean isCourierRavenForBadge() {
+        try {
+            if (this.getTags().contains(TAG_COURIER_RAVEN)) {
+                return true;
+            }
+            CompoundTag root = Services.PLATFORM.getEntityPersistentData(this);
+            if (root == null) {
+                return false;
+            }
+            CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
+            return ffTag != null && ffTag.getLong("ff_courier_job_id") > 0L;
+        } catch (Throwable ignored) {
             return false;
         }
     }
@@ -2919,6 +2943,10 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         e.getValue()
                 );
             }
+            try {
+                Services.PLATFORM.notifyRavenBadgeThreatDetected(this, this.getRavenVariant() == RavenVariant.SCROLL);
+            } catch (Throwable ignored) {
+            }
         }
 
         if (!this.ravenChestPerchSeenHostiles.isEmpty()) {
@@ -2962,6 +2990,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
 
             boolean dodged = this.getRandom().nextFloat() < this.getEffectiveDodgeChanceFraction();
+            boolean wasCourierRavenBeforeHit = isCourierRavenForBadge();
             if (!dodged) {
                 this.setHealth(Math.max(0.0F, this.getHealth() - DAMAGE_PER_LANDED_HIT));
                 spawnSuccessfulDamageFeatherBurst(serverLevel);
@@ -2972,6 +3001,12 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 logPerchedHit(source, false);
             } else {
                 logPerchedHit(source, true);
+            }
+            try {
+                if (dodged || !wasCourierRavenBeforeHit) {
+                    Services.PLATFORM.notifyRavenBadgeHit(this, dodged);
+                }
+            } catch (Throwable ignored) {
             }
 
             try {
@@ -3069,6 +3104,10 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             if (dodge) {
                 // Dodged: no damage applied.
                 logCombatHit(source, true);
+                try {
+                    Services.PLATFORM.notifyRavenBadgeHit(this, true);
+                } catch (Throwable ignored) {
+                }
                 if (this.tickCount % 20 == 0) {
                     /* LOG.debug("[RavenEntity] hurt: DODGED damage. amount={} src={} pos={}",
                             amount,
@@ -3094,6 +3133,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
 
             if (result && !this.level().isClientSide) {
+                boolean wasCourierRavenBeforeHit = isCourierRavenForBadge();
                 if (this.level() instanceof ServerLevel serverLevel) {
                     spawnSuccessfulDamageFeatherBurst(serverLevel);
                 }
@@ -3102,6 +3142,12 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 } catch (Throwable ignored) {
                 }
                 logCombatHit(source, false);
+                try {
+                    if (!wasCourierRavenBeforeHit) {
+                        Services.PLATFORM.notifyRavenBadgeHit(this, false);
+                    }
+                } catch (Throwable ignored) {
+                }
             }
 
             if (this.tickCount % 20 == 0) {

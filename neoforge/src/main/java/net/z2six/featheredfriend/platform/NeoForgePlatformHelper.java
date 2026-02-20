@@ -18,8 +18,11 @@ import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.loading.FMLLoader;
+import net.z2six.featheredfriend.client.font.ScrollUiFontMode;
 import net.z2six.featheredfriend.config.FFClientConfig;
 import net.z2six.featheredfriend.config.FFServerConfig;
+import net.z2six.featheredfriend.client.ravenbadge.RavenStatusGuiAnchor;
+import net.z2six.featheredfriend.client.ravenbadge.RavenStatusGuiVisualMode;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import net.z2six.featheredfriend.item.EnderpackStorage;
 import net.z2six.featheredfriend.item.SealStampItem;
@@ -36,6 +39,7 @@ import net.z2six.featheredfriend.network.RavenChestSelectAction;
 import net.z2six.featheredfriend.platform.services.IPlatformHelper;
 import net.z2six.featheredfriend.registry.FFItems;
 import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
+import net.z2six.featheredfriend.world.RavenBadgeRuntime;
 import net.z2six.featheredfriend.world.RavenCourierRuntime;
 import net.z2six.featheredfriend.world.RavenLinkRuntime;
 import net.z2six.featheredfriend.world.TamedRavenScrollWatcher;
@@ -177,6 +181,21 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public void notifyRavenBadgeHit(@NotNull RavenEntity raven, boolean dodged) {
+        RavenBadgeRuntime.onRavenHit(raven, dodged);
+    }
+
+    @Override
+    public void notifyRavenBadgeThreatDetected(@NotNull RavenEntity raven, boolean hasScrollPayload) {
+        RavenBadgeRuntime.onRavenThreatDetected(raven, hasScrollPayload);
+    }
+
+    @Override
+    public void notifyRavenBadgeDeliveryRepath(@NotNull RavenEntity raven) {
+        RavenBadgeRuntime.onRavenDeliveryRepath(raven);
+    }
+
+    @Override
     public boolean isScrollSummonedRaven(@NotNull RavenEntity raven) {
         return TamedRavenScrollWatcher.isScrollSummonedRaven(raven);
     }
@@ -303,6 +322,16 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public @NotNull ScrollUiFontMode getScrollUiFontMode() {
+        return FFClientConfig.getScrollUiFontMode();
+    }
+
+    @Override
+    public void setScrollUiFontMode(@NotNull ScrollUiFontMode mode) {
+        FFClientConfig.setScrollUiFontMode(mode);
+    }
+
+    @Override
     public @NotNull String getFavoriteStampKey() {
         return FFClientConfig.getFavoriteStampKey();
     }
@@ -325,6 +354,46 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     @Override
     public void setRavenLogViewSettingsRaw(@NotNull String value) {
         FFClientConfig.setRavenLogViewSettingsRaw(value);
+    }
+
+    @Override
+    public int getRavenStatusGuiX() {
+        return FFClientConfig.getRavenStatusGuiX();
+    }
+
+    @Override
+    public int getRavenStatusGuiY() {
+        return FFClientConfig.getRavenStatusGuiY();
+    }
+
+    @Override
+    public void setRavenStatusGuiX(int value) {
+        FFClientConfig.setRavenStatusGuiX(value);
+    }
+
+    @Override
+    public void setRavenStatusGuiY(int value) {
+        FFClientConfig.setRavenStatusGuiY(value);
+    }
+
+    @Override
+    public @NotNull RavenStatusGuiAnchor getRavenStatusGuiAnchor() {
+        return FFClientConfig.getRavenStatusGuiAnchor();
+    }
+
+    @Override
+    public void setRavenStatusGuiAnchor(@NotNull RavenStatusGuiAnchor anchor) {
+        FFClientConfig.setRavenStatusGuiAnchor(anchor);
+    }
+
+    @Override
+    public @NotNull RavenStatusGuiVisualMode getRavenStatusGuiVisualMode() {
+        return FFClientConfig.getRavenStatusGuiVisualMode();
+    }
+
+    @Override
+    public void setRavenStatusGuiVisualMode(@NotNull RavenStatusGuiVisualMode mode) {
+        FFClientConfig.setRavenStatusGuiVisualMode(mode);
     }
 
     @Override
@@ -536,6 +605,11 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public int getCourierTimeoutRetrySecondsClient() {
+        return FFPayloads.ClientState.courierTimeoutRetrySeconds();
+    }
+
+    @Override
     public void requestServerSettingsSync() {
         PacketDistributor.sendToServer(new FFPayloads.RequestServerSettingsPayload());
     }
@@ -568,6 +642,11 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     @Override
     public void sendSetScrollDeliveryCooldownSeconds(int value) {
         PacketDistributor.sendToServer(new FFPayloads.SetScrollDeliveryCooldownSecondsPayload(value));
+    }
+
+    @Override
+    public void sendSetCourierTimeoutRetrySeconds(int value) {
+        PacketDistributor.sendToServer(new FFPayloads.SetCourierTimeoutRetrySecondsPayload(value));
     }
 
     @Override
@@ -615,6 +694,11 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     @Override
     public int getScrollDeliveryCooldownSeconds() {
         return FFServerConfig.getScrollDeliveryCooldownSeconds();
+    }
+
+    @Override
+    public int getCourierTimeoutRetrySeconds() {
+        return FFServerConfig.getCourierTimeoutRetrySeconds();
     }
 
     // ---------------------------------------------------------------------

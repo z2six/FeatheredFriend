@@ -3,12 +3,15 @@ package net.z2six.featheredfriend.world;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -33,13 +36,18 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.z2six.featheredfriend.client.ravenbadge.RavenBadgeEventType;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.config.FFServerConfig;
+import net.z2six.featheredfriend.entity.raven.RavenAIState;
+import net.z2six.featheredfriend.entity.raven.RavenAnimMode;
 import net.z2six.featheredfriend.entity.raven.RavenArmorVisual;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import net.z2six.featheredfriend.entity.raven.RavenVariant;
 import net.z2six.featheredfriend.entity.raven.modules.TamedRaven;
 import net.z2six.featheredfriend.entity.raven.modules.Teleportation;
 import net.z2six.featheredfriend.log.RavenLogCategory;
+import net.z2six.featheredfriend.registry.FFBlocks;
 import net.z2six.featheredfriend.registry.FFEntities;
 import net.z2six.featheredfriend.world.TamedRavenPlayerData;
 import org.jetbrains.annotations.NotNull;
@@ -50,6 +58,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
@@ -66,7 +75,9 @@ import java.util.UUID;
  *  - Delivery completion:
  *      * Only complete when a player RMBs and we hand out (or drop) the scroll.
  *      * If raven dies: drop scroll + remove job (complete).
- *      * If raven times out / fails (non-death): mark job failed in RavenCourierData; do NOT remove job; do NOT drop scroll.
+ *      * If raven times out: mark job failed in RavenCourierData; do NOT remove job; do NOT drop scroll.
+ *        Auto-retry-eligible failed jobs retry based on server config.
+ *      * Payload-protected landed hits fail + requeue (no payload drop) and also auto-retry.
  *  - Courier raven name is just RavenName (no "Player's RavenName").
  */
 public final class RavenCourierRuntime {
@@ -77,6 +88,11 @@ public final class RavenCourierRuntime {
      * Scoreboard tag used to mark courier ravens.
      */
     private static final String TAG_COURIER_RAVEN = "ff_courier_raven";
+
+    private static final String FAILURE_REASON_TIMEOUT = "timeout";
+    private static final String FAILURE_REASON_PAYLOAD_PROTECTED_RETRY = "payload_protected_retry";
+    private static final String FAILURE_REASON_PAYLOAD_PROTECTED_RETRY_LEGACY = "payload_saved_on_hit";
+    private static final String FAILURE_REASON_SENDER_RECALL_REQUESTED = "sender_recall_requested";
 
     /**
      * Registry name of the sealed scroll item.
@@ -94,8 +110,17 @@ public final class RavenCourierRuntime {
      * NBT key used to store the lifetime deadline for courier ravens.
      */
     private static final String NBT_COURIER_DESPAWN_AT = "CourierDespawnAt";
+    private static final String NBT_COURIER_LINK_PAUSE_LAST_TICK = "CourierLinkPauseLastTick";
+    private static final String NBT_COURIER_LAST_THREAT_LOG_AT = "CourierLastThreatLogAt";
+    private static final String NBT_RAVEN_CHEST_PERCH_ASSIGNED = "RavenChestPerchAssigned";
+    private static final String NBT_RAVEN_CHEST_PERCH_DIMENSION = "RavenChestPerchDimension";
+    private static final String NBT_RAVEN_CHEST_PERCH_BLOCK_POS = "RavenChestPerchBlockPos";
+    private static final double RAVEN_CHEST_PERCH_OFFSET_X = 0.5D;
+    private static final double RAVEN_CHEST_PERCH_OFFSET_Y = 1.6D;
+    private static final double RAVEN_CHEST_PERCH_OFFSET_Z = 0.5D;
 
     private static final double DEFAULT_COURIER_THREAT_SENSE_RADIUS_BLOCKS = 10.0D;
+    private static final long COURIER_THREAT_LOG_COOLDOWN_TICKS = 5L * 20L;
 
     /**
      * How often (in server ticks) we attempt to dispatch new courier ravens.
@@ -270,12 +295,15 @@ public final class RavenCourierRuntime {
                 }
                 job = liveJob;
 
-                // Skip failed jobs until sender triggers retry.
+                // Failed jobs may be auto-retried based on reason + config interval.
                 if (job.failed) {
-                    if (LOG.isDebugEnabled()) {
-                        LOG.debug("[RavenCourierRuntime] dispatch: jobId={} is failed; skipping until retry.", job.jobId);
+                    boolean autoRetryReady = tryAutoRetryFailedJob(overworld, data, job);
+                    if (!autoRetryReady) {
+                        if (LOG.isDebugEnabled()) {
+                            LOG.debug("[RavenCourierRuntime] dispatch: jobId={} is failed; skipping until retry.", job.jobId);
+                        }
+                        continue;
                     }
-                    continue;
                 }
 
                 if (job.inFlight) {
@@ -307,6 +335,10 @@ public final class RavenCourierRuntime {
                     continue;
                 }
 
+                if (job.hasSenderPerchAssignment()) {
+                    despawnSenderPerchRavenForDispatch(server, job);
+                }
+
                 logToJobParticipants(
                         targetLevel,
                         job,
@@ -318,6 +350,7 @@ public final class RavenCourierRuntime {
                 job.inFlight = true;
                 job.courierRavenUuid = raven.getUUID();
                 data.setDirty();
+                RavenBadgeRuntime.onCourierJobUpdated(targetLevel, job.senderUuid, RavenBadgeEventType.NONE);
 
                 if (senderId != null) {
                     busySenders.add(senderId);
@@ -354,14 +387,7 @@ public final class RavenCourierRuntime {
                                                   @NotNull RavenCourierData data,
                                                   @NotNull RavenEntity raven,
                                                   @NotNull RavenCourierData.DeliveryJob job) {
-        handleCourierRavenFailure(level, data, raven, job, "timeout", "timeout", false);
-    }
-
-    private static void handleCourierRavenThreatDetected(@NotNull ServerLevel level,
-                                                         @NotNull RavenCourierData data,
-                                                         @NotNull RavenEntity raven,
-                                                         @NotNull RavenCourierData.DeliveryJob job) {
-        handleCourierRavenFailure(level, data, raven, job, "hostile_detected", "threat", false);
+        handleCourierRavenFailure(level, data, raven, job, FAILURE_REASON_TIMEOUT, "timeout", false);
     }
 
     private static void handleCourierRavenFailure(@NotNull ServerLevel level,
@@ -389,6 +415,7 @@ public final class RavenCourierRuntime {
                     failureReason
             );
             job.courierRavenUuid = null;
+            data.setDirty();
 
             // Find a context player for despawn FX (recipient -> sender -> any).
             ServerPlayer contextPlayer = findBestContextPlayer(level.getServer(), job.senderUuid, job.recipientUuid);
@@ -404,6 +431,11 @@ public final class RavenCourierRuntime {
             LOG.debug("[RavenCourierRuntime] handleCourierRavenFailure: jobId={} marked failed (reason='{}'); courier raven id={} despawned.",
                     job.jobId, failureReason, raven.getId());
 
+            // If this job originated from a Raven Chest perch, restore the perched sender raven
+            // to hold the queued payload while waiting for retry/online recipient.
+            maybeRespawnSenderPerchRavenForJob(level, job, true);
+            RavenBadgeRuntime.onCourierJobUpdated(level, job.senderUuid, RavenBadgeEventType.NONE);
+
         } catch (Throwable t) {
             LOG.error("[RavenCourierRuntime] handleCourierRavenFailure failed safely for jobId={} reason='{}'",
                     job.jobId, failureReason, t);
@@ -413,6 +445,64 @@ public final class RavenCourierRuntime {
             } catch (Throwable ignored) {
             }
         }
+    }
+
+    private static boolean tryAutoRetryFailedJob(@NotNull ServerLevel level,
+                                                 @NotNull RavenCourierData data,
+                                                 @NotNull RavenCourierData.DeliveryJob job) {
+        try {
+            if (!job.failed) {
+                return true;
+            }
+            if (!isAutoRetryFailureReason(job.lastFailureReason)) {
+                return false;
+            }
+
+            int retrySeconds = FFServerConfig.getCourierTimeoutRetrySeconds();
+            if (retrySeconds <= 0) {
+                return false;
+            }
+
+            long retryIntervalTicks = Math.max(20L, (long) retrySeconds * 20L);
+            long now = level.getGameTime();
+            long last = Math.max(0L, job.lastFailureGameTime);
+
+            if (last > 0L && (now - last) < retryIntervalTicks) {
+                return false;
+            }
+
+            String previousReason = job.lastFailureReason;
+            job.failed = false;
+            job.inFlight = false;
+            job.lastFailureReason = "";
+            job.lastFailureGameTime = 0L;
+            job.courierRavenUuid = null;
+            data.setDirty();
+
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("[RavenCourierRuntime] auto-retry unlocked failed jobId={} reason='{}' retrySeconds={}",
+                        job.jobId,
+                        previousReason,
+                        retrySeconds);
+            }
+
+            return true;
+        } catch (Throwable t) {
+            LOG.warn("[RavenCourierRuntime] tryAutoRetryFailedJob failed safely for jobId={}: {}",
+                    job.jobId, t.toString());
+            return false;
+        }
+    }
+
+    private static boolean isAutoRetryFailureReason(@Nullable String reason) {
+        if (reason == null) {
+            return false;
+        }
+        String normalized = reason.trim().toLowerCase(Locale.ROOT);
+        return normalized.equals(FAILURE_REASON_TIMEOUT)
+                || normalized.equals(FAILURE_REASON_PAYLOAD_PROTECTED_RETRY)
+                || normalized.equals(FAILURE_REASON_PAYLOAD_PROTECTED_RETRY_LEGACY)
+                || normalized.equals(FAILURE_REASON_SENDER_RECALL_REQUESTED);
     }
 
     private static ServerPlayer findBestContextPlayer(@Nullable MinecraftServer server, @Nullable UUID senderUuid, @Nullable UUID recipientUuid) {
@@ -451,6 +541,285 @@ public final class RavenCourierRuntime {
                 RavenLogService.logForPlayerKey(level, job.recipientUuid, category, key, args);
             }
         } catch (Throwable ignored) {
+        }
+    }
+
+    private record SenderPerchTarget(@NotNull ServerLevel level, @NotNull BlockPos chestPos) {
+    }
+
+    @Nullable
+    private static SenderPerchTarget resolveSenderPerchTarget(@Nullable MinecraftServer server,
+                                                              @NotNull RavenCourierData.DeliveryJob job) {
+        try {
+            if (server == null || !job.hasSenderPerchAssignment()) {
+                return null;
+            }
+
+            ResourceLocation dimLoc = ResourceLocation.tryParse(job.senderPerchDimensionId);
+            if (dimLoc == null) {
+                return null;
+            }
+            ResourceKey<Level> dimKey = ResourceKey.create(Registries.DIMENSION, dimLoc);
+            ServerLevel targetLevel = server.getLevel(dimKey);
+            if (targetLevel == null) {
+                return null;
+            }
+
+            return new SenderPerchTarget(targetLevel, BlockPos.of(job.senderPerchBlockPos));
+        } catch (Throwable t) {
+            LOG.warn("[RavenCourierRuntime] resolveSenderPerchTarget failed safely for jobId={}: {}",
+                    job.jobId, t.toString());
+            return null;
+        }
+    }
+
+    private static boolean isSenderPerchRavenForJob(@NotNull RavenEntity raven,
+                                                     @NotNull RavenCourierData.DeliveryJob job,
+                                                     @NotNull SenderPerchTarget perchTarget) {
+        try {
+            if (job.senderUuid == null || !job.senderUuid.equals(raven.getOwnerUUID())) {
+                return false;
+            }
+            if (!(raven.level() instanceof ServerLevel ravenLevel) || ravenLevel != perchTarget.level()) {
+                return false;
+            }
+
+            CompoundTag root = raven.getPersistentData();
+            CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
+            if (ffTag == null || ffTag.isEmpty()) {
+                return false;
+            }
+            if (!ffTag.getBoolean(NBT_RAVEN_CHEST_PERCH_ASSIGNED)) {
+                return false;
+            }
+            if (!ffTag.contains(NBT_RAVEN_CHEST_PERCH_DIMENSION, Tag.TAG_STRING)
+                    || !ffTag.contains(NBT_RAVEN_CHEST_PERCH_BLOCK_POS, Tag.TAG_LONG)) {
+                return false;
+            }
+            String dim = ffTag.getString(NBT_RAVEN_CHEST_PERCH_DIMENSION);
+            long pos = ffTag.getLong(NBT_RAVEN_CHEST_PERCH_BLOCK_POS);
+            return dim != null
+                    && dim.equals(job.senderPerchDimensionId)
+                    && pos == job.senderPerchBlockPos;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    @Nullable
+    private static RavenEntity findSenderPerchRavenForJob(@NotNull RavenCourierData.DeliveryJob job,
+                                                           @Nullable SenderPerchTarget perchTarget) {
+        try {
+            if (perchTarget == null) {
+                return null;
+            }
+
+            AABB box = new AABB(perchTarget.chestPos()).inflate(2.0D, 3.0D, 2.0D);
+            List<RavenEntity> candidates = perchTarget.level().getEntitiesOfClass(
+                    RavenEntity.class,
+                    box,
+                    e -> e != null
+                            && e.isAlive()
+                            && !e.isRemoved()
+                            && isSenderPerchRavenForJob(e, job, perchTarget)
+            );
+
+            if (candidates.isEmpty()) {
+                return null;
+            }
+
+            Vec3 perchCenter = new Vec3(
+                    perchTarget.chestPos().getX() + RAVEN_CHEST_PERCH_OFFSET_X,
+                    perchTarget.chestPos().getY() + RAVEN_CHEST_PERCH_OFFSET_Y,
+                    perchTarget.chestPos().getZ() + RAVEN_CHEST_PERCH_OFFSET_Z
+            );
+            RavenEntity best = null;
+            double bestDist = Double.MAX_VALUE;
+            for (RavenEntity candidate : candidates) {
+                double dist = candidate.position().distanceToSqr(perchCenter);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    best = candidate;
+                }
+            }
+            return best;
+        } catch (Throwable t) {
+            LOG.warn("[RavenCourierRuntime] findSenderPerchRavenForJob failed safely for jobId={}: {}",
+                    job.jobId, t.toString());
+            return null;
+        }
+    }
+
+    private static void despawnSenderPerchRavenForDispatch(@NotNull MinecraftServer server,
+                                                           @NotNull RavenCourierData.DeliveryJob job) {
+        try {
+            if (!job.hasSenderPerchAssignment()) {
+                return;
+            }
+
+            SenderPerchTarget perchTarget = resolveSenderPerchTarget(server, job);
+            RavenEntity perched = findSenderPerchRavenForJob(job, perchTarget);
+            if (perched == null) {
+                return;
+            }
+
+            ServerPlayer senderOwner = null;
+            try {
+                if (job.senderUuid != null) {
+                    senderOwner = server.getPlayerList().getPlayer(job.senderUuid);
+                }
+            } catch (Throwable ignored) {
+            }
+
+            if (perchTarget != null) {
+                try {
+                    TamedRaven tamed = perched.getTamedRavenModule();
+                    if (tamed != null) {
+                        String name = perched.getCustomName() == null
+                                ? Component.translatable("entity.featheredfriend.raven").getString()
+                                : perched.getCustomName().getString();
+                        tamed.beginDespawnWithFx(perchTarget.level(), senderOwner, name, false);
+                    } else {
+                        perched.discard();
+                    }
+                } catch (Throwable t) {
+                    LOG.warn("[RavenCourierRuntime] despawnSenderPerchRavenForDispatch: despawn FX failed safely for jobId={}: {}",
+                            job.jobId, t.toString());
+                    perched.discard();
+                }
+            } else {
+                perched.discard();
+            }
+
+            LOG.debug("[RavenCourierRuntime] despawnSenderPerchRavenForDispatch: sender perch raven removed for dispatch jobId={}",
+                    job.jobId);
+        } catch (Throwable t) {
+            LOG.warn("[RavenCourierRuntime] despawnSenderPerchRavenForDispatch failed safely for jobId={}: {}",
+                    job.jobId, t.toString());
+        }
+    }
+
+    private static void writePerchAssignment(@NotNull RavenEntity raven, @NotNull SenderPerchTarget perchTarget) {
+        try {
+            CompoundTag root = raven.getPersistentData();
+            CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
+            ffTag.putBoolean(NBT_RAVEN_CHEST_PERCH_ASSIGNED, true);
+            ffTag.putString(NBT_RAVEN_CHEST_PERCH_DIMENSION, perchTarget.level().dimension().location().toString());
+            ffTag.putLong(NBT_RAVEN_CHEST_PERCH_BLOCK_POS, perchTarget.chestPos().asLong());
+            root.put(Constants.MOD_ID, ffTag);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void applyPerchPose(@NotNull ServerLevel level,
+                                       @NotNull RavenEntity raven,
+                                       @NotNull BlockPos chestPos) {
+        float yaw = defaultYawFromChest(level, chestPos);
+        float pitch = 0.0F;
+        double x = chestPos.getX() + RAVEN_CHEST_PERCH_OFFSET_X;
+        double y = chestPos.getY() + RAVEN_CHEST_PERCH_OFFSET_Y;
+        double z = chestPos.getZ() + RAVEN_CHEST_PERCH_OFFSET_Z;
+
+        raven.moveTo(x, y, z, yaw, pitch);
+        raven.setYRot(yaw);
+        raven.setYHeadRot(yaw);
+        raven.yBodyRot = yaw;
+        raven.setXRot(pitch);
+        raven.setRavenChestPerchLockRotation(yaw, pitch);
+        raven.setDeltaMovement(Vec3.ZERO);
+        raven.setNoGravity(true);
+        raven.setNoAi(false);
+        raven.setAIState(RavenAIState.RAVEN_CHEST_PERCH);
+        raven.setAnimMode(RavenAnimMode.NO_AIR);
+    }
+
+    private static float defaultYawFromChest(@NotNull ServerLevel level, @NotNull BlockPos pos) {
+        try {
+            BlockState state = level.getBlockState(pos);
+            if (state.hasProperty(net.z2six.featheredfriend.block.RavenChestBlock.FACING)) {
+                Direction facing = state.getValue(net.z2six.featheredfriend.block.RavenChestBlock.FACING);
+                return Mth.wrapDegrees(facing.toYRot());
+            }
+        } catch (Throwable ignored) {
+        }
+        return 0.0F;
+    }
+
+    private static void maybeRespawnSenderPerchRavenForJob(@NotNull ServerLevel anyLevel,
+                                                           @NotNull RavenCourierData.DeliveryJob job,
+                                                           boolean carryScroll) {
+        try {
+            MinecraftServer server = anyLevel.getServer();
+            SenderPerchTarget perchTarget = resolveSenderPerchTarget(server, job);
+            if (perchTarget == null) {
+                return;
+            }
+
+            perchTarget.level().getChunk(perchTarget.chestPos().getX() >> 4, perchTarget.chestPos().getZ() >> 4);
+            if (!perchTarget.level().getBlockState(perchTarget.chestPos()).is(FFBlocks.RAVEN_CHEST.get())) {
+                return;
+            }
+
+            RavenEntity existing = findSenderPerchRavenForJob(job, perchTarget);
+            if (existing != null) {
+                try {
+                    existing.setRavenArmorVisual(RavenArmorVisual.fromId(job.ravenArmorVisualId));
+                    existing.setRavenVariant(carryScroll ? RavenVariant.SCROLL : RavenVariant.NORMAL);
+                    String ravenName = (job.ravenName == null || job.ravenName.isBlank())
+                            ? Component.translatable("entity.featheredfriend.raven").getString()
+                            : job.ravenName;
+                    ensureRavenName(existing, ravenName);
+                    writePerchAssignment(existing, perchTarget);
+                    applyPerchPose(perchTarget.level(), existing, perchTarget.chestPos());
+                    existing.setPersistenceRequired();
+                } catch (Throwable ignored) {
+                }
+                return;
+            }
+
+            RavenEntity raven = FFEntities.RAVEN.get().create(perchTarget.level());
+            if (raven == null) {
+                return;
+            }
+
+            try {
+                raven.setTame(true, true);
+            } catch (Throwable ignored) {
+            }
+            try {
+                if (job.senderUuid != null) {
+                    raven.setOwnerUUID(job.senderUuid);
+                }
+            } catch (Throwable ignored) {
+            }
+            try {
+                raven.setRavenArmorVisual(RavenArmorVisual.fromId(job.ravenArmorVisualId));
+            } catch (Throwable ignored) {
+            }
+            try {
+                raven.setRavenVariant(carryScroll ? RavenVariant.SCROLL : RavenVariant.NORMAL);
+            } catch (Throwable ignored) {
+            }
+            try {
+                float clamped = Mth.clamp(raven.getMaxHealth(), 1.0F, raven.getMaxHealth());
+                raven.setHealth(clamped);
+            } catch (Throwable ignored) {
+            }
+
+            String ravenName = (job.ravenName == null || job.ravenName.isBlank())
+                    ? Component.translatable("entity.featheredfriend.raven").getString()
+                    : job.ravenName;
+            ensureRavenName(raven, ravenName);
+            writePerchAssignment(raven, perchTarget);
+            applyPerchPose(perchTarget.level(), raven, perchTarget.chestPos());
+            raven.setPersistenceRequired();
+            perchTarget.level().addFreshEntity(raven);
+
+            LOG.debug("[RavenCourierRuntime] maybeRespawnSenderPerchRavenForJob: spawned perched sender raven id={} for jobId={} carryScroll={}",
+                    raven.getId(), job.jobId, carryScroll);
+        } catch (Throwable t) {
+            LOG.warn("[RavenCourierRuntime] maybeRespawnSenderPerchRavenForJob failed safely for jobId={}: {}",
+                    job.jobId, t.toString());
         }
     }
 
@@ -524,9 +893,7 @@ public final class RavenCourierRuntime {
                     if (checkCourierLifetime(ravenLevel, data, raven, job)) {
                         continue;
                     }
-                    if (checkCourierThreat(ravenLevel, data, raven, job)) {
-                        continue;
-                    }
+                    checkCourierThreat(ravenLevel, raven, job);
 
                     markJobInFlight(job, busySenders, busyRecipients);
                 }
@@ -613,9 +980,7 @@ public final class RavenCourierRuntime {
                         if (checkCourierLifetime(level, data, raven, job)) {
                             continue;
                         }
-                        if (checkCourierThreat(level, data, raven, job)) {
-                            continue;
-                        }
+                        checkCourierThreat(level, raven, job);
 
                         markJobInFlight(job, busySenders, busyRecipients);
                     }
@@ -666,10 +1031,6 @@ public final class RavenCourierRuntime {
                                                 @NotNull RavenEntity raven,
                                                 @NotNull RavenCourierData.DeliveryJob job) {
         try {
-            if (RavenLinkRuntime.isRavenLinked(raven)) {
-                return false;
-            }
-
             CompoundTag root = raven.getPersistentData();
             CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
 
@@ -687,6 +1048,24 @@ public final class RavenCourierRuntime {
                 }
             }
 
+            if (RavenLinkRuntime.isRavenLinked(raven)) {
+                long lastPauseTick = ffTag.getLong(NBT_COURIER_LINK_PAUSE_LAST_TICK);
+                long anchorTick = lastPauseTick > 0L ? lastPauseTick : now;
+                long elapsed = Math.max(0L, now - anchorTick);
+                if (elapsed > 0L) {
+                    despawnAt += elapsed;
+                    ffTag.putLong(NBT_COURIER_DESPAWN_AT, despawnAt);
+                }
+                ffTag.putLong(NBT_COURIER_LINK_PAUSE_LAST_TICK, now);
+                root.put(Constants.MOD_ID, ffTag);
+                return false;
+            }
+
+            if (ffTag.contains(NBT_COURIER_LINK_PAUSE_LAST_TICK, Tag.TAG_LONG)) {
+                ffTag.remove(NBT_COURIER_LINK_PAUSE_LAST_TICK);
+                root.put(Constants.MOD_ID, ffTag);
+            }
+
             if (now >= despawnAt) {
                 LOG.debug("[RavenCourierRuntime] reconcile: lifetime expired for courier raven id={} jobId={} now={} despawnAt={}",
                         raven.getId(), job.jobId, now, despawnAt);
@@ -702,13 +1081,12 @@ public final class RavenCourierRuntime {
         return false;
     }
 
-    private static boolean checkCourierThreat(@NotNull ServerLevel level,
-                                              @NotNull RavenCourierData data,
-                                              @NotNull RavenEntity raven,
-                                              @NotNull RavenCourierData.DeliveryJob job) {
+    private static void checkCourierThreat(@NotNull ServerLevel level,
+                                           @NotNull RavenEntity raven,
+                                           @NotNull RavenCourierData.DeliveryJob job) {
         try {
             if (RavenLinkRuntime.isRavenLinked(raven)) {
-                return false;
+                return;
             }
 
             double detectionRadius = Math.max(
@@ -719,37 +1097,64 @@ public final class RavenCourierRuntime {
                 detectionRadius = DEFAULT_COURIER_THREAT_SENSE_RADIUS_BLOCKS;
             }
 
-            if (hasHostileThreatNearby(raven, detectionRadius)) {
-                LOG.debug("[RavenCourierRuntime] reconcile: hostile detected near courier raven id={} jobId={} -> aborting courier and keeping payload in failed job.",
-                        raven.getId(), job.jobId);
-                logToJobParticipants(
-                        level,
-                        job,
-                        RavenLogCategory.COURIER,
-                        "log.featheredfriend.courier.threat_detected",
-                        job.jobId
-                );
-                handleCourierRavenThreatDetected(level, data, raven, job);
-                return true;
+            ThreatScanResult threats = scanCourierThreats(raven, detectionRadius, job.recipientUuid);
+            if (threats.hasThreat()) {
+                long now = level.getGameTime();
+                CompoundTag root = raven.getPersistentData();
+                CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
+                long lastLoggedAt = ffTag.getLong(NBT_COURIER_LAST_THREAT_LOG_AT);
+
+                if (lastLoggedAt <= 0L || (now - lastLoggedAt) >= COURIER_THREAT_LOG_COOLDOWN_TICKS) {
+                    ffTag.putLong(NBT_COURIER_LAST_THREAT_LOG_AT, now);
+                    root.put(Constants.MOD_ID, ffTag);
+
+                    logToJobParticipants(
+                            level,
+                            job,
+                            RavenLogCategory.COURIER,
+                            "log.featheredfriend.courier.threat_detected",
+                            job.jobId
+                    );
+                    RavenBadgeRuntime.onCourierJobUpdated(level, job.senderUuid, RavenBadgeEventType.HOSTILE_WITH_SCROLL);
+                    LOG.debug("[RavenCourierRuntime] reconcile: threat near courier raven id={} jobId={} hostiles={} nonRecipientPlayers={}",
+                            raven.getId(), job.jobId, threats.hostileMobCount, threats.nonRecipientPlayerCount);
+                }
             }
         } catch (Throwable threatErr) {
             LOG.warn("[RavenCourierRuntime] reconcile: threat check failed safely for raven id={} jobId={}: {}",
                     raven.getId(), job.jobId, threatErr.toString());
         }
-        return false;
     }
 
-    private static boolean hasHostileThreatNearby(@NotNull RavenEntity raven, double radiusBlocks) {
+    private static final class ThreatScanResult {
+        final int hostileMobCount;
+        final int nonRecipientPlayerCount;
+
+        private ThreatScanResult(int hostileMobCount, int nonRecipientPlayerCount) {
+            this.hostileMobCount = Math.max(0, hostileMobCount);
+            this.nonRecipientPlayerCount = Math.max(0, nonRecipientPlayerCount);
+        }
+
+        private boolean hasThreat() {
+            return hostileMobCount > 0 || nonRecipientPlayerCount > 0;
+        }
+    }
+
+    @NotNull
+    private static ThreatScanResult scanCourierThreats(@NotNull RavenEntity raven,
+                                                       double radiusBlocks,
+                                                       @Nullable UUID recipientUuid) {
         try {
             if (!(raven.level() instanceof ServerLevel level) || level.isClientSide()) {
-                return false;
+                return new ThreatScanResult(0, 0);
             }
             if (radiusBlocks <= 0.0D) {
-                return false;
+                return new ThreatScanResult(0, 0);
             }
 
             AABB box = raven.getBoundingBox().inflate(radiusBlocks);
             double radiusSq = radiusBlocks * radiusBlocks;
+
             List<Mob> hostiles = level.getEntitiesOfClass(
                     Mob.class,
                     box,
@@ -760,11 +1165,22 @@ public final class RavenCourierRuntime {
                             && mob.distanceToSqr(raven) <= radiusSq
             );
 
-            return !hostiles.isEmpty();
+            List<ServerPlayer> nonRecipientPlayers = level.getEntitiesOfClass(
+                    ServerPlayer.class,
+                    box,
+                    p -> p != null
+                            && p.isAlive()
+                            && !p.isRemoved()
+                            && !p.isSpectator()
+                            && p.distanceToSqr(raven) <= radiusSq
+                            && (recipientUuid == null || !recipientUuid.equals(p.getUUID()))
+            );
+
+            return new ThreatScanResult(hostiles.size(), nonRecipientPlayers.size());
         } catch (Throwable t) {
-            LOG.warn("[RavenCourierRuntime] hasHostileThreatNearby failed safely for raven id={}: {}",
+            LOG.warn("[RavenCourierRuntime] scanCourierThreats failed safely for raven id={}: {}",
                     raven.getId(), t.toString());
-            return false;
+            return new ThreatScanResult(0, 0);
         }
     }
 
@@ -785,12 +1201,6 @@ public final class RavenCourierRuntime {
                                                        @NotNull ServerPlayer recipient,
                                                        @NotNull RavenCourierData.DeliveryJob job) {
         try {
-            TamedRavenScrollWatcher.despawnAllOwnedRavensBeforeSummon(
-                    recipient,
-                    null,
-                    "single-raven pre-spawn cleanup (courier summon)"
-            );
-
             RavenEntity raven = FFEntities.RAVEN.get().create(level);
             if (raven == null) {
                 LOG.error("[RavenCourierRuntime] spawnCourierRavenForJob: entity factory returned null for jobId={}", job.jobId);
@@ -813,7 +1223,10 @@ public final class RavenCourierRuntime {
                 LOG.warn("[RavenCourierRuntime] spawnCourierRavenForJob: setTame(true,true) failed safely for jobId={}: {}", job.jobId, t.toString());
             }
             try {
-                raven.setOwnerUUID(job.recipientUuid);
+                UUID ownerUuid = (job.senderUuid != null) ? job.senderUuid : job.recipientUuid;
+                if (ownerUuid != null) {
+                    raven.setOwnerUUID(ownerUuid);
+                }
             } catch (Throwable t) {
                 LOG.warn("[RavenCourierRuntime] spawnCourierRavenForJob: setOwnerUUID failed safely for jobId={}: {}", job.jobId, t.toString());
             }
@@ -825,18 +1238,26 @@ public final class RavenCourierRuntime {
             }
 
             try {
-                RavenArmorVisual armorVisual = TamedRavenPlayerData.getEquippedArmorVisual(recipient);
+                RavenArmorVisual armorVisual = RavenArmorVisual.fromId(job.ravenArmorVisualId);
                 raven.setRavenArmorVisual(armorVisual);
             } catch (Throwable t) {
                 LOG.warn("[RavenCourierRuntime] spawnCourierRavenForJob: setRavenArmorVisual failed safely for jobId={}: {}",
                         job.jobId, t.toString());
             }
             try {
+                ServerPlayer healthOwner = null;
+                if (level.getServer() != null && job.senderUuid != null) {
+                    healthOwner = level.getServer().getPlayerList().getPlayer(job.senderUuid);
+                }
+                if (healthOwner == null) {
+                    healthOwner = recipient;
+                }
                 long now = level.getGameTime();
-                float health = TamedRavenPlayerData.applyDespawnedHealthRegenAndGet(recipient, now);
-                float clamped = Mth.clamp(health, 0.0F, raven.getMaxHealth());
+                float health = TamedRavenPlayerData.applyDespawnedHealthRegenAndGet(healthOwner, now);
+                float maxHealth = Math.max(1.0F, raven.getMaxHealth());
+                float clamped = Mth.clamp(health, 1.0F, maxHealth);
                 raven.setHealth(clamped);
-                TamedRavenPlayerData.setStoredRavenHealth(recipient, clamped, now);
+                TamedRavenPlayerData.setStoredRavenHealth(healthOwner, clamped, now);
             } catch (Throwable t) {
                 LOG.warn("[RavenCourierRuntime] spawnCourierRavenForJob: restoring stored health failed safely for jobId={}: {}",
                         job.jobId, t.toString());
@@ -974,6 +1395,7 @@ public final class RavenCourierRuntime {
             long now = level.getGameTime();
             long despawnAt = now + COURIER_LIFETIME_TICKS;
             ffTag.putLong(NBT_COURIER_DESPAWN_AT, despawnAt);
+            ffTag.remove(NBT_COURIER_LINK_PAUSE_LAST_TICK);
 
             root.put(Constants.MOD_ID, ffTag);
 
@@ -1314,11 +1736,16 @@ public final class RavenCourierRuntime {
 
             // COMPLETE ONLY HERE (RMB path)
             data.removeJob(job.jobId, job.recipientUuid);
+            boolean hadSenderPerchAssignment = job.hasSenderPerchAssignment();
+            RavenBadgeRuntime.onCourierJobUpdated(serverLevel, job.senderUuid, RavenBadgeEventType.DELIVERY_SUCCESS);
 
             if (RavenLinkRuntime.isRavenLinked(raven)) {
                 RavenLinkRuntime.markCourierDeliveryCompleteDeferred(raven);
             } else {
                 despawnCourierRaven(serverLevel, serverPlayer, raven, "delivery complete: scroll retrieved");
+                if (hadSenderPerchAssignment) {
+                    maybeRespawnSenderPerchRavenForJob(serverLevel, job, false);
+                }
             }
             event.setCancellationResult(InteractionResult.SUCCESS);
             event.setCanceled(true);
@@ -1546,14 +1973,6 @@ public final class RavenCourierRuntime {
                 return;
             }
 
-            float chance = Mth.clamp(raven.getEffectivePayloadDropOnLandedHitChance(), 0.0F, 1.0F);
-            if (chance <= 0.0F) {
-                return;
-            }
-            if (chance < 1.0F && serverLevel.random.nextFloat() >= chance) {
-                return;
-            }
-
             long jobId = getCourierJobIdFromRaven(raven);
             if (jobId <= 0L) {
                 return;
@@ -1566,19 +1985,62 @@ public final class RavenCourierRuntime {
                 return;
             }
 
-            dropSealedScrollAtRaven(serverLevel, raven, job);
-            data.removeJob(job.jobId, job.recipientUuid);
-            clearCourierFlags(raven);
+            float payloadLossChance = Mth.clamp(raven.getEffectivePayloadDropOnLandedHitChance(), 0.0F, 1.0F);
+            boolean payloadLost;
+            if (payloadLossChance <= 0.0F) {
+                payloadLost = false;
+            } else if (payloadLossChance >= 1.0F) {
+                payloadLost = true;
+            } else {
+                payloadLost = serverLevel.random.nextFloat() < payloadLossChance;
+            }
 
-            LOG.debug("[RavenCourierRuntime] handleCourierRavenLandedHit: payload dropped for courier raven id={} jobId={}",
-                    raven.getId(), job.jobId);
+            if (payloadLost) {
+                // Payload safety roll failed: scroll is lost from raven inventory,
+                // so materialize it into the world before clearing the job.
+                dropSealedScrollAtRaven(serverLevel, raven, job);
+                data.removeJob(job.jobId, job.recipientUuid);
+
+                ServerPlayer contextPlayer = findBestContextPlayer(serverLevel.getServer(), job.senderUuid, job.recipientUuid);
+                if (contextPlayer != null) {
+                    despawnCourierRaven(serverLevel, contextPlayer, raven, "payload lost on landed hit", true);
+                } else {
+                    clearCourierFlags(raven);
+                    raven.discard();
+                }
+
+                maybeRespawnSenderPerchRavenForJob(serverLevel, job, false);
+
+                LOG.debug("[RavenCourierRuntime] handleCourierRavenLandedHit: payload lost; courier raven despawned id={} jobId={}",
+                        raven.getId(), job.jobId);
+                logToJobParticipants(
+                        serverLevel,
+                        job,
+                        RavenLogCategory.COMBAT,
+                        "log.featheredfriend.courier.payload_dropped_on_hit",
+                        job.jobId
+                );
+                RavenBadgeRuntime.onCourierJobUpdated(serverLevel, job.senderUuid, RavenBadgeEventType.HIT_LOSE_SCROLL);
+                return;
+            }
+
+            handleCourierRavenFailure(
+                    serverLevel,
+                    data,
+                    raven,
+                    job,
+                    FAILURE_REASON_PAYLOAD_PROTECTED_RETRY,
+                    "payload-protected-hit",
+                    false
+            );
             logToJobParticipants(
                     serverLevel,
                     job,
                     RavenLogCategory.COMBAT,
-                    "log.featheredfriend.courier.payload_dropped_on_hit",
+                    "log.featheredfriend.courier.payload_protected_retry",
                     job.jobId
             );
+            RavenBadgeRuntime.onCourierJobUpdated(serverLevel, job.senderUuid, RavenBadgeEventType.HIT_KEEP_SCROLL);
         } catch (Throwable t) {
             LOG.error("[RavenCourierRuntime] handleCourierRavenLandedHit failed safely", t);
         }
@@ -1636,6 +2098,8 @@ public final class RavenCourierRuntime {
                     job.jobId
             );
             data.removeJob(job.jobId, job.recipientUuid);
+            RavenBadgeRuntime.onCourierJobUpdated(serverLevel, job.senderUuid, RavenBadgeEventType.NONE);
+            maybeRespawnSenderPerchRavenForJob(serverLevel, job, false);
             clearCourierFlags(raven);
 
         } catch (Throwable t) {
@@ -1785,6 +2249,8 @@ public final class RavenCourierRuntime {
                     ffTag.remove("CourierSenderUUID");
                     ffTag.remove("CourierRecipientUUID");
                     ffTag.remove(NBT_COURIER_DESPAWN_AT);
+                    ffTag.remove(NBT_COURIER_LINK_PAUSE_LAST_TICK);
+                    ffTag.remove(NBT_COURIER_LAST_THREAT_LOG_AT);
                     root.put(Constants.MOD_ID, ffTag);
                 }
             }

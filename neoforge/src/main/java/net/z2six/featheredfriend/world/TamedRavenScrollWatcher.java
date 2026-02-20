@@ -122,6 +122,7 @@ public final class TamedRavenScrollWatcher {
     private static final String NBT_SCROLL_SUMMONED = "ScrollSummoned";
     private static final String NBT_SCROLL_SUMMONED_OWNER = "ScrollSummonedOwner";
     private static final String NBT_SCROLL_SUMMONED_DESPAWN_AT = "ScrollSummonedDespawnAt";
+    private static final String NBT_SCROLL_SUMMON_LINK_PAUSE_LAST_TICK = "ScrollSummonedLinkPauseLastTick";
     private static final String NBT_BOUND_RAVEN_ID = "BoundRavenId";
     private static final String NBT_RAVEN_CHEST_PERCH_ASSIGNED = "RavenChestPerchAssigned";
     private static final String NBT_RAVEN_CHEST_PERCH_DIMENSION = "RavenChestPerchDimension";
@@ -205,6 +206,7 @@ public final class TamedRavenScrollWatcher {
     private static final String NBT_COURIER_SENDER_UUID = "CourierSenderUUID";
     private static final String NBT_COURIER_RECIPIENT_UUID = "CourierRecipientUUID";
     private static final String NBT_COURIER_DESPAWN_AT = "CourierDespawnAt";
+    private static final String NBT_COURIER_LINK_PAUSE_LAST_TICK = "CourierLinkPauseLastTick";
     private static final String NBT_ENDERPACK_DEPOSIT_LAST_AT_MS = "EnderpackDepositLastAtMs";
     private static final String NBT_SCROLL_DELIVERY_LAST_AT_MS = "ScrollDeliveryLastAtMs";
 
@@ -289,10 +291,6 @@ public final class TamedRavenScrollWatcher {
 
                 for (RavenEntity r : scrollRavens) {
                     try {
-                        if (RavenLinkRuntime.isRavenLinkControlled(r)) {
-                            continue;
-                        }
-
                         CompoundTag root = r.getPersistentData();
                         if (root == null) {
                             continue;
@@ -303,6 +301,26 @@ public final class TamedRavenScrollWatcher {
                         }
 
                         long despawnAt = ffTag.getLong(NBT_SCROLL_SUMMONED_DESPAWN_AT);
+                        if (RavenLinkRuntime.isRavenLinkControlled(r)) {
+                            if (despawnAt > 0L) {
+                                long lastPauseTick = ffTag.getLong(NBT_SCROLL_SUMMON_LINK_PAUSE_LAST_TICK);
+                                long anchorTick = lastPauseTick > 0L ? lastPauseTick : nowGameTime;
+                                long elapsed = Math.max(0L, nowGameTime - anchorTick);
+                                if (elapsed > 0L) {
+                                    despawnAt += elapsed;
+                                    ffTag.putLong(NBT_SCROLL_SUMMONED_DESPAWN_AT, despawnAt);
+                                }
+                            }
+                            ffTag.putLong(NBT_SCROLL_SUMMON_LINK_PAUSE_LAST_TICK, nowGameTime);
+                            root.put(Constants.MOD_ID, ffTag);
+                            continue;
+                        }
+
+                        if (ffTag.contains(NBT_SCROLL_SUMMON_LINK_PAUSE_LAST_TICK, Tag.TAG_LONG)) {
+                            ffTag.remove(NBT_SCROLL_SUMMON_LINK_PAUSE_LAST_TICK);
+                            root.put(Constants.MOD_ID, ffTag);
+                        }
+
                         if (despawnAt > 0L && nowGameTime >= despawnAt) {
                             expired.add(r);
 
@@ -870,26 +888,71 @@ public final class TamedRavenScrollWatcher {
             try {
                 long now = level.getGameTime();
                 float health = TamedRavenPlayerData.applyDespawnedHealthRegenAndGet(owner, now);
-                float clamped = Mth.clamp(health, 0.0F, raven.getMaxHealth());
+                float maxHealth = Math.max(1.0F, raven.getMaxHealth());
+                float clamped = Mth.clamp(health, 1.0F, maxHealth);
                 raven.setHealth(clamped);
                 TamedRavenPlayerData.setStoredRavenHealth(owner, clamped, now);
             } catch (Throwable t) {
                 LOG.warn("[TamedRavenScrollWatcher] spawnSummonedRaven: restoring stored health failed safely: {}", t.toString());
             }
 
-            // If sender has FAILED jobs, arm this raven with recall payload (carry the failed scroll back).
+            // Arm recall payload with sender's most recent recallable courier job:
+            // - Prefer in-flight jobs (active delivery) and reserve them for recall.
+            // - Else prefer queued jobs and reserve them for recall.
+            // - Else fall back to already-failed jobs.
             try {
                 RavenCourierData courierData = RavenCourierData.get(level);
-                RavenCourierData.DeliveryJob failedJob = courierData.getMostRecentFailedJobForSender(owner.getUUID());
+                RavenCourierData.DeliveryJob recallJob = null;
+                String recallMode = "failed";
 
-                if (failedJob != null && failedJob.sealedScrollNbt != null && !failedJob.sealedScrollNbt.isEmpty()) {
+                RavenCourierData.DeliveryJob inFlightJob = courierData.getMostRecentInFlightJobForSender(owner.getUUID());
+                if (inFlightJob != null && inFlightJob.recipientUuid != null) {
+                    boolean marked = courierData.markJobFailed(
+                            inFlightJob.jobId,
+                            inFlightJob.recipientUuid,
+                            "sender_recall_requested",
+                            level.getGameTime()
+                    );
+                    if (marked) {
+                        recallJob = courierData.getJobById(inFlightJob.jobId);
+                        recallMode = "in_flight_marked_failed";
+                    } else {
+                        LOG.warn("[TamedRavenScrollWatcher] spawnSummonedRaven: failed to reserve in-flight jobId={} for recall for player='{}'",
+                                inFlightJob.jobId, safePlayerName(owner));
+                    }
+                }
+
+                if (recallJob == null) {
+                    RavenCourierData.DeliveryJob queuedJob = courierData.getMostRecentQueuedJobForSender(owner.getUUID());
+                    if (queuedJob != null && queuedJob.recipientUuid != null) {
+                        boolean marked = courierData.markJobFailed(
+                                queuedJob.jobId,
+                                queuedJob.recipientUuid,
+                                "sender_recall_requested",
+                                level.getGameTime()
+                        );
+                        if (marked) {
+                            recallJob = courierData.getJobById(queuedJob.jobId);
+                            recallMode = "queued_marked_failed";
+                        } else {
+                            LOG.warn("[TamedRavenScrollWatcher] spawnSummonedRaven: failed to reserve queued jobId={} for recall for player='{}'",
+                                    queuedJob.jobId, safePlayerName(owner));
+                        }
+                    }
+                }
+
+                if (recallJob == null) {
+                    recallJob = courierData.getMostRecentFailedJobForSender(owner.getUUID());
+                }
+
+                if (recallJob != null && recallJob.sealedScrollNbt != null && !recallJob.sealedScrollNbt.isEmpty()) {
                     CompoundTag root = raven.getPersistentData();
                     CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
 
                     ffTag.putBoolean(NBT_RECALL_ACTIVE, true);
-                    ffTag.putLong(NBT_RECALL_JOB_ID, failedJob.jobId);
-                    ffTag.putString(NBT_RECALL_RECIPIENT_UUID, failedJob.recipientUuid.toString());
-                    ffTag.put(NBT_RECALL_SEALED_SCROLL, failedJob.sealedScrollNbt.copy());
+                    ffTag.putLong(NBT_RECALL_JOB_ID, recallJob.jobId);
+                    ffTag.putString(NBT_RECALL_RECIPIENT_UUID, recallJob.recipientUuid.toString());
+                    ffTag.put(NBT_RECALL_SEALED_SCROLL, recallJob.sealedScrollNbt.copy());
 
                     root.put(Constants.MOD_ID, ffTag);
 
@@ -899,11 +962,11 @@ public final class TamedRavenScrollWatcher {
                         LOG.warn("[TamedRavenScrollWatcher] spawnSummonedRaven: setRavenVariant(SCROLL) failed safely: {}", t.toString());
                     }
 
-                    LOG.debug("[TamedRavenScrollWatcher] spawnSummonedRaven: recall armed for player='{}' jobId={} recipient={} (failed).",
-                            safePlayerName(owner), failedJob.jobId, failedJob.recipientUuid);
+                    LOG.debug("[TamedRavenScrollWatcher] spawnSummonedRaven: recall armed for player='{}' jobId={} recipient={} mode={}",
+                            safePlayerName(owner), recallJob.jobId, recallJob.recipientUuid, recallMode);
                 }
             } catch (Throwable t) {
-                LOG.warn("[TamedRavenScrollWatcher] spawnSummonedRaven: failed-job recall arming failed safely for player='{}': {}",
+                LOG.warn("[TamedRavenScrollWatcher] spawnSummonedRaven: recall arming failed safely for player='{}': {}",
                         safePlayerName(owner), t.toString());
             }
 
@@ -1155,6 +1218,7 @@ public final class TamedRavenScrollWatcher {
             ffTag.remove(NBT_SCROLL_SUMMONED);
             ffTag.remove(NBT_SCROLL_SUMMONED_OWNER);
             ffTag.remove(NBT_SCROLL_SUMMONED_DESPAWN_AT);
+            ffTag.remove(NBT_SCROLL_SUMMON_LINK_PAUSE_LAST_TICK);
             ffTag.remove(NBT_BOUND_RAVEN_ID);
 
             ffTag.remove(NBT_RAVEN_CHEST_PERCH_ASSIGNED);
@@ -1166,6 +1230,7 @@ public final class TamedRavenScrollWatcher {
             ffTag.remove(NBT_COURIER_SENDER_UUID);
             ffTag.remove(NBT_COURIER_RECIPIENT_UUID);
             ffTag.remove(NBT_COURIER_DESPAWN_AT);
+            ffTag.remove(NBT_COURIER_LINK_PAUSE_LAST_TICK);
 
             root.put(Constants.MOD_ID, ffTag);
         } catch (Throwable ignored) {
@@ -1672,6 +1737,7 @@ public final class TamedRavenScrollWatcher {
                         ffTag.remove(NBT_SCROLL_SUMMONED);
                         ffTag.remove(NBT_SCROLL_SUMMONED_OWNER);
                         ffTag.remove(NBT_SCROLL_SUMMONED_DESPAWN_AT);
+                        ffTag.remove(NBT_SCROLL_SUMMON_LINK_PAUSE_LAST_TICK);
                         ffTag.remove(NBT_BOUND_RAVEN_ID);
                         root.put(Constants.MOD_ID, ffTag);
                     }
@@ -2108,31 +2174,42 @@ public final class TamedRavenScrollWatcher {
                         t.toString());
             }
 
-            // 4) Trigger fade-out / despawn FX for this raven, but ONLY because job creation succeeded.
-            try {
-                despawnOneScrollSummonedRaven(
-                        serverLevel,
+            // 4) If this job came from a Raven Chest perch assignment, keep the raven perched
+            // with the scroll while the job is queued/offline. It will be dispatched by runtime.
+            if (job.hasSenderPerchAssignment()) {
+                logPlayer(
                         serverPlayer,
-                        raven,
-                        "courier-dispatch: sealed scroll accepted",
-                        false
+                        RavenLogCategory.COURIER,
+                        "log.featheredfriend.courier.raven_waiting_on_perch",
+                        job.jobId
                 );
-            } catch (Throwable t) {
-                LOG.error("[TamedRavenScrollWatcher] handleSealedScrollInteract: despawnOneScrollSummonedRaven failed safely for id={}: {}",
-                        raven.getId(),
-                        t.toString());
-                // Fail-safe: if FX despawn fails, we do NOT forcibly discard here,
-                // so the raven remains in-world rather than causing a hard state mismatch.
+            } else {
+                // Non-perch flow: trigger fade-out / despawn FX now.
+                try {
+                    despawnOneScrollSummonedRaven(
+                            serverLevel,
+                            serverPlayer,
+                            raven,
+                            "courier-dispatch: sealed scroll accepted",
+                            false
+                    );
+                } catch (Throwable t) {
+                    LOG.error("[TamedRavenScrollWatcher] handleSealedScrollInteract: despawnOneScrollSummonedRaven failed safely for id={}: {}",
+                            raven.getId(),
+                            t.toString());
+                    // Fail-safe: if FX despawn fails, we do NOT forcibly discard here,
+                    // so the raven remains in-world rather than causing a hard state mismatch.
+                }
+
+                logPlayer(
+                        serverPlayer,
+                        RavenLogCategory.COURIER,
+                        "log.featheredfriend.courier.raven_departed_with_scroll"
+                );
             }
 
-            logPlayer(
-                    serverPlayer,
-                    RavenLogCategory.COURIER,
-                    "log.featheredfriend.courier.raven_departed_with_scroll"
-            );
-
             // We fully handled this interaction: the scroll was turned into a courier job,
-            // the raven swapped to SCROLL variant and began its fade-out.
+            // the raven swapped to SCROLL variant and either remained perched or began fade-out.
             return InteractionResult.CONSUME;
 
         } catch (Throwable t) {
@@ -3014,6 +3091,7 @@ public final class TamedRavenScrollWatcher {
             ffTag.remove(NBT_SCROLL_SUMMONED);
             ffTag.remove(NBT_SCROLL_SUMMONED_OWNER);
             ffTag.remove(NBT_SCROLL_SUMMONED_DESPAWN_AT);
+            ffTag.remove(NBT_SCROLL_SUMMON_LINK_PAUSE_LAST_TICK);
             ffTag.remove(NBT_BOUND_RAVEN_ID);
             root.put(Constants.MOD_ID, ffTag);
         } catch (Throwable ignored) {

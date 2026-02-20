@@ -13,6 +13,7 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.client.font.ScrollUiFontMode;
 import net.z2six.featheredfriend.platform.Services;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -31,8 +32,10 @@ public class RavenNamingScreen extends Screen {
     private static final int MAX_NAME_CHARS = 26;
     private static final ResourceLocation BG_TEXTURE =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/namingscreen/naming-gui.png");
-    private static final ResourceLocation GOTHIC_FONT_ID =
+    private static final ResourceLocation JACQUARD_FONT_ID =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12");
+    private static final ResourceLocation ALAGARD_FONT_ID =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "alagard");
 
     private static final int BG_WIDTH = 206;
     private static final int BG_HEIGHT = 135;
@@ -57,7 +60,7 @@ public class RavenNamingScreen extends Screen {
     private Button doneButton;
     private Button cancelButton;
 
-    private boolean useVanillaFontForGothicText = Services.PLATFORM.isUseVanillaFontForGothicText();
+    private @NotNull ScrollUiFontMode scrollUiFontMode = Services.PLATFORM.getScrollUiFontMode();
     private int caretBlinkTicks = 0;
 
     public RavenNamingScreen(int ravenEntityId) {
@@ -300,26 +303,42 @@ public class RavenNamingScreen extends Screen {
     }
 
     private void refreshFontPreferenceIfNeeded() {
-        boolean now = Services.PLATFORM.isUseVanillaFontForGothicText();
-        if (now == this.useVanillaFontForGothicText) {
+        ScrollUiFontMode now = Services.PLATFORM.getScrollUiFontMode();
+        if (now == null) {
+            now = ScrollUiFontMode.JACQUARD;
+        }
+        if (now == this.scrollUiFontMode) {
             return;
         }
-        this.useVanillaFontForGothicText = now;
+        this.scrollUiFontMode = now;
     }
 
     private @NotNull Component gothic(@NotNull Component text) {
         try {
-            if (this.useVanillaFontForGothicText) {
+            ResourceLocation fontId = getScrollFontId();
+            if (fontId == null) {
                 return text;
             }
             MutableComponent m = text.copy();
-            Style style = m.getStyle().withFont(GOTHIC_FONT_ID);
+            Style style = m.getStyle().withFont(fontId);
             m.setStyle(style);
             return m;
         } catch (Throwable t) {
             LOG.error("[RavenNamingScreen] gothic() failed, falling back to default font", t);
             return text;
         }
+    }
+
+    private ResourceLocation getScrollFontId() {
+        return switch (safeScrollUiFontMode()) {
+            case VANILLA -> null;
+            case JACQUARD -> JACQUARD_FONT_ID;
+            case ALAGARD -> ALAGARD_FONT_ID;
+        };
+    }
+
+    private @NotNull ScrollUiFontMode safeScrollUiFontMode() {
+        return this.scrollUiFontMode == null ? ScrollUiFontMode.JACQUARD : this.scrollUiFontMode;
     }
 
     private static void drawCenteredTextInRect(@NotNull GuiGraphics g,

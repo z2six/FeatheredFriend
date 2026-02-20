@@ -22,6 +22,7 @@ import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.entity.raven.RavenArmorVisual;
 import net.z2six.featheredfriend.world.RavenCourierData;
 import org.slf4j.Logger;
 
@@ -56,9 +57,14 @@ public final class FeatheredFriendCommands {
 
     private static final String KEY_TAMED_RAVEN = "TamedRaven";
     private static final String KEY_HAS_TAMED_RAVEN = "HasTamedRaven";
+    private static final String KEY_HAS_EVER_TAMED_RAVEN = "HasEverTamedRaven";
     private static final String KEY_RAVEN_NAME = "RavenName";
     private static final String KEY_OWNER_UUID = "OwnerUUID";
     private static final String KEY_OWNER_DIMENSION = "OwnerDimension";
+    private static final String KEY_BOUND_RAVEN_ID = "BoundRavenId";
+    private static final String KEY_ARMOR_VISUAL = "EquippedArmorVisual";
+    private static final String KEY_CURRENT_HEALTH = "CurrentHealth";
+    private static final String KEY_LAST_HEALTH_UPDATE_GAME_TIME = "LastHealthUpdateGameTime";
 
     // In player .dat files, persistent data is typically under one of these roots.
     private static final String ROOT_NEOFORGE_DATA = "NeoForgeData";
@@ -548,7 +554,19 @@ public final class FeatheredFriendCommands {
             }
 
             tamed.putBoolean(KEY_HAS_TAMED_RAVEN, true);
+            tamed.putBoolean(KEY_HAS_EVER_TAMED_RAVEN, true);
             tamed.putString(KEY_RAVEN_NAME, ravenName);
+            tamed.putUUID(KEY_BOUND_RAVEN_ID, UUID.randomUUID());
+            tamed.putInt(KEY_ARMOR_VISUAL, RavenArmorVisual.NONE.id());
+            tamed.putFloat(KEY_CURRENT_HEALTH, 1.0F);
+            long nowGameTime = 0L;
+            try {
+                if (player.serverLevel() != null) {
+                    nowGameTime = Math.max(0L, player.serverLevel().getGameTime());
+                }
+            } catch (Throwable ignored) {
+            }
+            tamed.putLong(KEY_LAST_HEALTH_UPDATE_GAME_TIME, nowGameTime);
 
             // Store a couple of helpful fields (your clear command already removes these).
             try {
@@ -618,13 +636,16 @@ public final class FeatheredFriendCommands {
             }
 
             tamed.putBoolean(KEY_HAS_TAMED_RAVEN, true);
+            tamed.putBoolean(KEY_HAS_EVER_TAMED_RAVEN, true);
             tamed.putString(KEY_RAVEN_NAME, ravenName);
             tamed.putString(KEY_OWNER_UUID, playerUuid.toString());
+            tamed.putUUID(KEY_BOUND_RAVEN_ID, UUID.randomUUID());
+            tamed.putInt(KEY_ARMOR_VISUAL, RavenArmorVisual.NONE.id());
+            tamed.putFloat(KEY_CURRENT_HEALTH, 1.0F);
+            tamed.putLong(KEY_LAST_HEALTH_UPDATE_GAME_TIME, 0L);
 
             // Owner dimension is unknown offline; default to overworld.
-            if (!tamed.contains(KEY_OWNER_DIMENSION, Tag.TAG_STRING) || tamed.getString(KEY_OWNER_DIMENSION).isBlank()) {
-                tamed.putString(KEY_OWNER_DIMENSION, "minecraft:overworld");
-            }
+            tamed.putString(KEY_OWNER_DIMENSION, "minecraft:overworld");
 
             modTag.put(KEY_TAMED_RAVEN, tamed);
             persistent.put(Constants.MOD_ID, modTag);

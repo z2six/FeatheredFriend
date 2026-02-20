@@ -11,6 +11,9 @@ import net.minecraft.world.Container;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.MenuType;
+import net.z2six.featheredfriend.client.font.ScrollUiFontMode;
+import net.z2six.featheredfriend.client.ravenbadge.RavenStatusGuiAnchor;
+import net.z2six.featheredfriend.client.ravenbadge.RavenStatusGuiVisualMode;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import net.z2six.featheredfriend.network.RavenChestSelectAction;
 import net.z2six.featheredfriend.network.RavenChestChoiceInfo;
@@ -69,6 +72,18 @@ public interface IPlatformHelper {
         // no-op on platforms without courier runtime wiring
     }
 
+    default void notifyRavenBadgeHit(@NotNull RavenEntity raven, boolean dodged) {
+        // no-op on platforms without raven badge runtime wiring
+    }
+
+    default void notifyRavenBadgeThreatDetected(@NotNull RavenEntity raven, boolean hasScrollPayload) {
+        // no-op on platforms without raven badge runtime wiring
+    }
+
+    default void notifyRavenBadgeDeliveryRepath(@NotNull RavenEntity raven) {
+        // no-op on platforms without raven badge runtime wiring
+    }
+
     default boolean isScrollSummonedRaven(@NotNull RavenEntity raven) {
         return false;
     }
@@ -122,6 +137,14 @@ public interface IPlatformHelper {
         return false;
     }
 
+    default @NotNull ScrollUiFontMode getScrollUiFontMode() {
+        return ScrollUiFontMode.JACQUARD;
+    }
+
+    default void setScrollUiFontMode(@NotNull ScrollUiFontMode mode) {
+        // no-op
+    }
+
     default @NotNull String getFavoriteStampKey() {
         return "";
     }
@@ -139,6 +162,38 @@ public interface IPlatformHelper {
     }
 
     default void setRavenLogViewSettingsRaw(@NotNull String value) {
+        // no-op
+    }
+
+    default int getRavenStatusGuiX() {
+        return 12;
+    }
+
+    default int getRavenStatusGuiY() {
+        return 12;
+    }
+
+    default void setRavenStatusGuiX(int value) {
+        // no-op
+    }
+
+    default void setRavenStatusGuiY(int value) {
+        // no-op
+    }
+
+    default @NotNull RavenStatusGuiAnchor getRavenStatusGuiAnchor() {
+        return RavenStatusGuiAnchor.TOP_LEFT;
+    }
+
+    default void setRavenStatusGuiAnchor(@NotNull RavenStatusGuiAnchor anchor) {
+        // no-op
+    }
+
+    default @NotNull RavenStatusGuiVisualMode getRavenStatusGuiVisualMode() {
+        return RavenStatusGuiVisualMode.BADGE_AND_TEXT;
+    }
+
+    default void setRavenStatusGuiVisualMode(@NotNull RavenStatusGuiVisualMode mode) {
         // no-op
     }
 
@@ -295,6 +350,10 @@ public interface IPlatformHelper {
         return 0;
     }
 
+    default int getCourierTimeoutRetrySecondsClient() {
+        return 0;
+    }
+
     default void requestServerSettingsSync() {
         // no-op
     }
@@ -320,6 +379,10 @@ public interface IPlatformHelper {
     }
 
     default void sendSetScrollDeliveryCooldownSeconds(int value) {
+        // no-op
+    }
+
+    default void sendSetCourierTimeoutRetrySeconds(int value) {
         // no-op
     }
 
@@ -359,6 +422,10 @@ public interface IPlatformHelper {
     }
 
     default int getScrollDeliveryCooldownSeconds() {
+        return 0;
+    }
+
+    default int getCourierTimeoutRetrySeconds() {
         return 0;
     }
 }

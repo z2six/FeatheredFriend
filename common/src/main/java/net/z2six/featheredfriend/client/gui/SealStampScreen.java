@@ -14,6 +14,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.player.Inventory;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.client.font.ScrollUiFontMode;
 import net.z2six.featheredfriend.client.gui.widget.MultiLineScrollTextWidget;
 import net.z2six.featheredfriend.item.SealStampItem;
 import net.z2six.featheredfriend.item.SealStampCarveLogic;
@@ -44,9 +45,11 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
     private static final Logger LOG = LogUtils.getLogger();
 
-    // Gothic font id (same as used by ScrollSealingScreen / MultiLineScrollTextWidget)
-    private static final ResourceLocation GOTHIC_FONT_ID =
+    // Jacquard font id (legacy key: gothic12)
+    private static final ResourceLocation JACQUARD_FONT_ID =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "gothic12");
+    private static final ResourceLocation ALAGARD_FONT_ID =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "alagard");
 
     // New full-screen GUI texture (replaces old flat background + buttons)
     private static final ResourceLocation STAMP_UI_TEXTURE =
@@ -232,7 +235,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     private Button styleButton;
     private Button carveButton;
     private AbstractWidget scaleButton;
-    private boolean useVanillaFontForGothicText = Services.PLATFORM.isUseVanillaFontForGothicText();
+    private @NotNull ScrollUiFontMode scrollUiFontMode = Services.PLATFORM.getScrollUiFontMode();
 
     private int currentSlices = 6; // default
     private int currentStyleIndex = 0; // "Medieval"
@@ -970,11 +973,12 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
 
     private Component gothic(Component text) {
         try {
-            if (useVanillaFontForGothicText) {
+            ResourceLocation fontId = getScrollFontId();
+            if (fontId == null) {
                 return text;
             }
             MutableComponent c = text.copy();
-            Style style = c.getStyle().withFont(GOTHIC_FONT_ID);
+            Style style = c.getStyle().withFont(fontId);
             c.setStyle(style);
             return c;
         } catch (Throwable t) {
@@ -984,21 +988,32 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     }
 
     private ResourceLocation getScrollFontId() {
-        return useVanillaFontForGothicText ? null : GOTHIC_FONT_ID;
+        return switch (safeScrollUiFontMode()) {
+            case VANILLA -> null;
+            case JACQUARD -> JACQUARD_FONT_ID;
+            case ALAGARD -> ALAGARD_FONT_ID;
+        };
     }
 
     private void refreshFontPreferenceIfNeeded() {
-        boolean now = Services.PLATFORM.isUseVanillaFontForGothicText();
-        if (now == useVanillaFontForGothicText) {
+        ScrollUiFontMode now = Services.PLATFORM.getScrollUiFontMode();
+        if (now == null) {
+            now = ScrollUiFontMode.JACQUARD;
+        }
+        if (now == this.scrollUiFontMode) {
             return;
         }
-        useVanillaFontForGothicText = now;
+        this.scrollUiFontMode = now;
 
         if (this.secretField != null) {
             this.secretField.setCustomFontId(getScrollFontId());
         }
         updateButtonLabels();
         updateScaleButtonLabelFromOptions();
+    }
+
+    private @NotNull ScrollUiFontMode safeScrollUiFontMode() {
+        return this.scrollUiFontMode == null ? ScrollUiFontMode.JACQUARD : this.scrollUiFontMode;
     }
 
     private String safeString(String s) {

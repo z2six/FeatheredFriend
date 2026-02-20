@@ -17,8 +17,10 @@ import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.saveddata.SavedData;
 import net.minecraft.util.datafix.DataFixTypes;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.entity.raven.RavenArmorVisual;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import net.z2six.featheredfriend.log.RavenLogCategory;
+import net.z2six.featheredfriend.platform.Services;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -32,7 +34,8 @@ import java.util.*;
  *
  * Updated behavior (Dec 2025 changes):
  *  - Jobs can be marked FAILED (persisted) if delivery fails for non-death reasons (e.g. timeout/stuck).
- *  - Failed jobs are NOT removed automatically; sender must trigger retry later.
+ *  - Failed jobs are NOT removed automatically.
+ *    Timeout failures may be auto-retried by runtime config; other failures require sender retry.
  *  - inFlight is still runtime-only (reset on load).
  */
 public class RavenCourierData extends SavedData {
@@ -56,6 +59,9 @@ public class RavenCourierData extends SavedData {
         public final String recipientName;
         public final CompoundTag sealedScrollNbt;
         public final String ravenName;
+        public final int ravenArmorVisualId;
+        public final String senderPerchDimensionId;
+        public final long senderPerchBlockPos;
         public @Nullable UUID courierRavenUuid;
 
         /**
@@ -83,6 +89,9 @@ public class RavenCourierData extends SavedData {
                            @NotNull CompoundTag sealedScrollNbt,
                            boolean inFlight,
                            @NotNull String ravenName,
+                           int ravenArmorVisualId,
+                           @NotNull String senderPerchDimensionId,
+                           long senderPerchBlockPos,
                            @Nullable UUID courierRavenUuid,
                            boolean failed,
                            int failureCount,
@@ -96,12 +105,19 @@ public class RavenCourierData extends SavedData {
             this.sealedScrollNbt = sealedScrollNbt;
             this.inFlight = inFlight;
             this.ravenName = ravenName;
+            this.ravenArmorVisualId = Math.max(0, ravenArmorVisualId);
+            this.senderPerchDimensionId = senderPerchDimensionId == null ? "" : senderPerchDimensionId;
+            this.senderPerchBlockPos = senderPerchBlockPos;
             this.courierRavenUuid = courierRavenUuid;
 
             this.failed = failed;
             this.failureCount = failureCount;
             this.lastFailureGameTime = lastFailureGameTime;
             this.lastFailureReason = lastFailureReason;
+        }
+
+        public boolean hasSenderPerchAssignment() {
+            return senderPerchDimensionId != null && !senderPerchDimensionId.isBlank();
         }
     }
 
@@ -190,6 +206,19 @@ public class RavenCourierData extends SavedData {
                     if (ravenName == null) {
                         ravenName = "";
                     }
+                    int ravenArmorVisualId = jobTag.contains("RavenArmorVisualId", Tag.TAG_INT)
+                            ? jobTag.getInt("RavenArmorVisualId")
+                            : RavenArmorVisual.NONE.id();
+                    String senderPerchDimensionId = jobTag.contains("SenderPerchDimension", Tag.TAG_STRING)
+                            ? jobTag.getString("SenderPerchDimension")
+                            : "";
+                    long senderPerchBlockPos = jobTag.contains("SenderPerchBlockPos", Tag.TAG_LONG)
+                            ? jobTag.getLong("SenderPerchBlockPos")
+                            : 0L;
+                    if (senderPerchDimensionId == null || senderPerchDimensionId.isBlank()) {
+                        senderPerchDimensionId = "";
+                        senderPerchBlockPos = 0L;
+                    }
 
                     // Runtime-only: always reset to false on load.
                     boolean inFlight = false;
@@ -217,6 +246,9 @@ public class RavenCourierData extends SavedData {
                             sealedScrollNbt.copy(),
                             inFlight,
                             ravenName,
+                            ravenArmorVisualId,
+                            senderPerchDimensionId,
+                            senderPerchBlockPos,
                             courierRavenUuid,
                             failed,
                             Math.max(0, failureCount),
@@ -286,6 +318,11 @@ public class RavenCourierData extends SavedData {
                     jobTag.putBoolean("InFlight", job.inFlight);
 
                     jobTag.putString("RavenName", job.ravenName == null ? "" : job.ravenName);
+                    jobTag.putInt("RavenArmorVisualId", Math.max(0, job.ravenArmorVisualId));
+                    if (job.senderPerchDimensionId != null && !job.senderPerchDimensionId.isBlank()) {
+                        jobTag.putString("SenderPerchDimension", job.senderPerchDimensionId);
+                        jobTag.putLong("SenderPerchBlockPos", job.senderPerchBlockPos);
+                    }
 
                     if (job.courierRavenUuid != null) {
                         jobTag.putUUID("CourierRavenUUID", job.courierRavenUuid);
@@ -306,6 +343,42 @@ public class RavenCourierData extends SavedData {
 
         } catch (Throwable t) {
             LOG.error("[RavenCourierData] writeToNbt failed safely: {}", t.toString());
+        }
+    }
+
+    private record SenderPerchAssignment(@NotNull String dimensionId, long blockPos) {
+    }
+
+    @Nullable
+    private static SenderPerchAssignment readSenderPerchAssignment(@NotNull RavenEntity raven) {
+        try {
+            CompoundTag root = Services.PLATFORM.getEntityPersistentData(raven);
+            if (root == null) {
+                return null;
+            }
+
+            CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
+            if (ffTag == null || ffTag.isEmpty()) {
+                return null;
+            }
+
+            if (!ffTag.getBoolean("RavenChestPerchAssigned")) {
+                return null;
+            }
+            if (!ffTag.contains("RavenChestPerchDimension", Tag.TAG_STRING)
+                    || !ffTag.contains("RavenChestPerchBlockPos", Tag.TAG_LONG)) {
+                return null;
+            }
+
+            String dim = ffTag.getString("RavenChestPerchDimension");
+            long pos = ffTag.getLong("RavenChestPerchBlockPos");
+            if (dim == null || dim.isBlank()) {
+                return null;
+            }
+
+            return new SenderPerchAssignment(dim, pos);
+        } catch (Throwable ignored) {
+            return null;
         }
     }
 
@@ -428,6 +501,32 @@ public class RavenCourierData extends SavedData {
                 ravenName = Component.translatable("entity.featheredfriend.raven").getString();
             }
 
+            int ravenArmorVisualId = RavenArmorVisual.NONE.id();
+            try {
+                RavenArmorVisual visual = raven.getRavenArmorVisual();
+                if (visual == null) {
+                    visual = RavenArmorVisual.NONE;
+                }
+                ravenArmorVisualId = visual.id();
+            } catch (Throwable t) {
+                LOG.warn("[RavenCourierData] createJobFromSealedScroll: failed to read raven armor visual for raven id={}: {}",
+                        raven.getId(), t.toString());
+                ravenArmorVisualId = RavenArmorVisual.NONE.id();
+            }
+
+            String senderPerchDimensionId = "";
+            long senderPerchBlockPos = 0L;
+            try {
+                SenderPerchAssignment perch = readSenderPerchAssignment(raven);
+                if (perch != null) {
+                    senderPerchDimensionId = perch.dimensionId();
+                    senderPerchBlockPos = perch.blockPos();
+                }
+            } catch (Throwable t) {
+                LOG.warn("[RavenCourierData] createJobFromSealedScroll: failed to read sender perch assignment for raven id={}: {}",
+                        raven.getId(), t.toString());
+            }
+
             long jobId = nextJobId++;
             if (jobId <= 0L) {
                 jobId = 1L;
@@ -443,6 +542,9 @@ public class RavenCourierData extends SavedData {
                     sealed.copy(),
                     false,
                     ravenName,
+                    ravenArmorVisualId,
+                    senderPerchDimensionId,
+                    senderPerchBlockPos,
                     null,
                     false,     // failed
                     0,         // failureCount
@@ -509,6 +611,7 @@ public class RavenCourierData extends SavedData {
 
             job.failed = true;
             job.inFlight = false;
+            job.courierRavenUuid = null;
             job.failureCount = Math.max(0, job.failureCount) + 1;
             job.lastFailureGameTime = Math.max(0L, gameTime);
             job.lastFailureReason = (reason == null) ? "" : reason;
@@ -789,6 +892,97 @@ public class RavenCourierData extends SavedData {
         } catch (Throwable t) {
             LOG.error("[RavenCourierData] hasActiveNonFailedJobsAsSender failed safely: {}", t.toString());
             return false;
+        }
+    }
+
+    @Nullable
+    public DeliveryJob getMostRecentInFlightJobForSender(@NotNull UUID senderUuid) {
+        try {
+            DeliveryJob best = null;
+
+            if (jobsByRecipient.isEmpty()) {
+                return null;
+            }
+
+            for (List<DeliveryJob> jobs : jobsByRecipient.values()) {
+                if (jobs == null || jobs.isEmpty()) {
+                    continue;
+                }
+                for (DeliveryJob job : jobs) {
+                    if (job == null) {
+                        continue;
+                    }
+                    if (!senderUuid.equals(job.senderUuid)) {
+                        continue;
+                    }
+                    if (job.failed) {
+                        continue;
+                    }
+                    if (!job.inFlight) {
+                        continue;
+                    }
+                    if (job.sealedScrollNbt == null || job.sealedScrollNbt.isEmpty()) {
+                        continue;
+                    }
+
+                    if (best == null || job.jobId > best.jobId) {
+                        best = job;
+                    }
+                }
+            }
+
+            return best;
+
+        } catch (Throwable t) {
+            LOG.error("[RavenCourierData] getMostRecentInFlightJobForSender failed safely: {}", t.toString());
+            return null;
+        }
+    }
+
+    @Nullable
+    public DeliveryJob getMostRecentQueuedJobForSender(@NotNull UUID senderUuid) {
+        try {
+            DeliveryJob best = null;
+
+            if (jobsByRecipient.isEmpty()) {
+                return null;
+            }
+
+            for (List<DeliveryJob> jobs : jobsByRecipient.values()) {
+                if (jobs == null || jobs.isEmpty()) {
+                    continue;
+                }
+                for (DeliveryJob job : jobs) {
+                    if (job == null) {
+                        continue;
+                    }
+                    if (!senderUuid.equals(job.senderUuid)) {
+                        continue;
+                    }
+                    if (job.failed) {
+                        continue;
+                    }
+                    if (job.inFlight) {
+                        continue;
+                    }
+                    if (job.courierRavenUuid != null) {
+                        continue;
+                    }
+                    if (job.sealedScrollNbt == null || job.sealedScrollNbt.isEmpty()) {
+                        continue;
+                    }
+
+                    if (best == null || job.jobId > best.jobId) {
+                        best = job;
+                    }
+                }
+            }
+
+            return best;
+
+        } catch (Throwable t) {
+            LOG.error("[RavenCourierData] getMostRecentQueuedJobForSender failed safely: {}", t.toString());
+            return null;
         }
     }
 

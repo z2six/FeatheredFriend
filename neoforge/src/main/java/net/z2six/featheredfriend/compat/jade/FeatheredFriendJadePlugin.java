@@ -123,7 +123,7 @@ public final class FeatheredFriendJadePlugin implements IWailaPlugin {
         private static @NotNull List<IElement> buildHitsTextRow(@NotNull RavenEntity raven) {
             IElementHelper helper = IElementHelper.get();
             int maxHits = Math.max(1, raven.getEffectiveMaxHits());
-            int currentHits = Mth.clamp(Mth.floor(raven.getHealth()), 0, maxHits);
+            int currentHits = Mth.clamp((int) Math.ceil(Math.max(0.0F, raven.getHealth())), 0, maxHits);
 
             List<IElement> row = new ArrayList<>();
             row.add(helper.text(Component.translatable(
@@ -137,7 +137,7 @@ public final class FeatheredFriendJadePlugin implements IWailaPlugin {
         private static @NotNull List<IElement> buildFeatherIconRow(@NotNull RavenEntity raven) {
             IElementHelper helper = IElementHelper.get();
             int maxHits = Math.max(1, raven.getEffectiveMaxHits());
-            int currentHits = Mth.clamp(Mth.floor(raven.getHealth()), 0, maxHits);
+            int currentHits = Mth.clamp((int) Math.ceil(Math.max(0.0F, raven.getHealth())), 0, maxHits);
             int shown = Math.min(maxHits, MAX_FEATHERS_SHOWN);
 
             List<IElement> row = new ArrayList<>();

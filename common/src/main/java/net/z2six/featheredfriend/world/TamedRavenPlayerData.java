@@ -41,6 +41,7 @@ public final class TamedRavenPlayerData {
     private static final Logger LOG = LogUtils.getLogger();
     private static final String KEY_TAMED_RAVEN = "TamedRaven";
     private static final String KEY_HAS_TAMED_RAVEN = "HasTamedRaven";
+    private static final String KEY_HAS_EVER_TAMED_RAVEN = "HasEverTamedRaven";
     private static final String KEY_RAVEN_NAME = "RavenName";
     private static final String KEY_BOUND_RAVEN_ID = "BoundRavenId";
     private static final String KEY_ARMOR_VISUAL = "EquippedArmorVisual";
@@ -175,16 +176,17 @@ public final class TamedRavenPlayerData {
             try {
                 if (modTag.contains(KEY_TAMED_RAVEN, Tag.TAG_COMPOUND)) {
                     CompoundTag existing = modTag.getCompound(KEY_TAMED_RAVEN);
-                    if (existing.contains(KEY_ARMOR_VISUAL, Tag.TAG_INT)) {
+                    boolean hadActiveRaven = existing.getBoolean(KEY_HAS_TAMED_RAVEN);
+                    if (hadActiveRaven && existing.contains(KEY_ARMOR_VISUAL, Tag.TAG_INT)) {
                         existingArmorVisual = RavenArmorVisual.fromId(existing.getInt(KEY_ARMOR_VISUAL));
                     }
                     existingHealth = clampHealthForArmor(
-                            existing.contains(KEY_CURRENT_HEALTH, Tag.TAG_FLOAT)
+                            (hadActiveRaven && existing.contains(KEY_CURRENT_HEALTH, Tag.TAG_FLOAT))
                                     ? existing.getFloat(KEY_CURRENT_HEALTH)
-                                    : getMaxHitsForArmor(existingArmorVisual),
+                                    : (float) getMaxHitsForArmor(existingArmorVisual),
                             existingArmorVisual
                     );
-                    if (existing.contains(KEY_LAST_HEALTH_UPDATE_GAME_TIME, Tag.TAG_LONG)) {
+                    if (hadActiveRaven && existing.contains(KEY_LAST_HEALTH_UPDATE_GAME_TIME, Tag.TAG_LONG)) {
                         existingHealthUpdateTime = Math.max(0L, existing.getLong(KEY_LAST_HEALTH_UPDATE_GAME_TIME));
                     }
                 }
@@ -193,6 +195,7 @@ public final class TamedRavenPlayerData {
             CompoundTag tamed = new CompoundTag();
 
             tamed.putBoolean(KEY_HAS_TAMED_RAVEN, true);
+            tamed.putBoolean(KEY_HAS_EVER_TAMED_RAVEN, true);
             tamed.putString(
                     KEY_RAVEN_NAME,
                     ravenName != null ? ravenName : Component.translatable("entity.featheredfriend.raven").getString()
@@ -223,6 +226,41 @@ public final class TamedRavenPlayerData {
         } catch (Throwable t) {
             LOG.error("[TamedRavenPlayerData] storeTamedRavenInfo failed for player={}",
                     (player == null ? "null" : player.getGameProfile().getName()), t);
+        }
+    }
+
+    public static boolean hasEverTamedRaven(ServerPlayer player) {
+        try {
+            if (player == null) {
+                return false;
+            }
+
+            CompoundTag root = Services.PLATFORM.getPlayerPersistentData(player);
+            if (root == null || !root.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)) {
+                return false;
+            }
+
+            CompoundTag modTag = root.getCompound(Constants.MOD_ID);
+            if (modTag == null || !modTag.contains(KEY_TAMED_RAVEN, Tag.TAG_COMPOUND)) {
+                return false;
+            }
+
+            CompoundTag tamed = modTag.getCompound(KEY_TAMED_RAVEN);
+            if (tamed == null || tamed.isEmpty()) {
+                return false;
+            }
+
+            if (tamed.contains(KEY_HAS_EVER_TAMED_RAVEN, Tag.TAG_BYTE)) {
+                return tamed.getBoolean(KEY_HAS_EVER_TAMED_RAVEN);
+            }
+
+            // Backward compatibility for worlds that predate the "ever tamed" key.
+            return tamed.getBoolean(KEY_HAS_TAMED_RAVEN);
+        } catch (Throwable t) {
+            LOG.warn("[TamedRavenPlayerData] hasEverTamedRaven failed for player={}: {}",
+                    (player == null ? "null" : player.getGameProfile().getName()),
+                    t.toString());
+            return false;
         }
     }
 
@@ -418,6 +456,44 @@ public final class TamedRavenPlayerData {
         }
     }
 
+    public static boolean markStoredRavenDead(ServerPlayer player, long nowGameTime) {
+        try {
+            if (player == null) {
+                return false;
+            }
+
+            CompoundTag root = Services.PLATFORM.getPlayerPersistentData(player);
+            if (root == null || !root.contains(Constants.MOD_ID, Tag.TAG_COMPOUND)) {
+                return false;
+            }
+
+            CompoundTag modTag = root.getCompound(Constants.MOD_ID);
+            if (modTag == null || !modTag.contains(KEY_TAMED_RAVEN, Tag.TAG_COMPOUND)) {
+                return false;
+            }
+
+            CompoundTag tamed = modTag.getCompound(KEY_TAMED_RAVEN);
+            if (tamed == null || tamed.isEmpty()) {
+                return false;
+            }
+
+            tamed.putBoolean(KEY_HAS_EVER_TAMED_RAVEN, true);
+            tamed.putBoolean(KEY_HAS_TAMED_RAVEN, false);
+            tamed.putInt(KEY_ARMOR_VISUAL, RavenArmorVisual.NONE.id());
+            tamed.putFloat(KEY_CURRENT_HEALTH, 0.0F);
+            tamed.putLong(KEY_LAST_HEALTH_UPDATE_GAME_TIME, Math.max(0L, nowGameTime));
+
+            modTag.put(KEY_TAMED_RAVEN, tamed);
+            root.put(Constants.MOD_ID, modTag);
+            return true;
+        } catch (Throwable t) {
+            LOG.warn("[TamedRavenPlayerData] markStoredRavenDead failed for player={}: {}",
+                    (player == null ? "null" : player.getGameProfile().getName()),
+                    t.toString());
+            return false;
+        }
+    }
+
     public static long getCurrentServerGameTime(ServerPlayer player) {
         try {
             if (player == null) {
@@ -521,6 +597,7 @@ public final class TamedRavenPlayerData {
 
             // Hard-reset the fields we know about.
             tamed.putBoolean(KEY_HAS_TAMED_RAVEN, false);
+            tamed.remove(KEY_HAS_EVER_TAMED_RAVEN);
             tamed.remove(KEY_RAVEN_NAME);
             tamed.remove("OwnerUUID");
             tamed.remove("OwnerDimension");

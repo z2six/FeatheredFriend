@@ -27,7 +27,8 @@ import java.util.List;
  */
 public final class RavenLogScreen extends Screen {
 
-    private static final int PANEL_WIDTH = 332;
+    public static final int WINDOWED_PANEL_WIDTH = 332;
+    public static final int WINDOWED_PANEL_HEIGHT = 230;
     private static final int ROW_HEIGHT = 14;
     private static final int SCROLLBAR_WIDTH = 8;
     private static final DateTimeFormatter TS_FORMAT =
@@ -72,8 +73,8 @@ public final class RavenLogScreen extends Screen {
             this.panelWidth = Math.max(220, this.width - 20);
             this.panelHeight = Math.max(160, this.height - 20);
         } else {
-            this.panelWidth = Math.min(PANEL_WIDTH, this.width - 20);
-            this.panelHeight = Math.min(230, this.height - 20);
+            this.panelWidth = Math.min(WINDOWED_PANEL_WIDTH, this.width - 20);
+            this.panelHeight = Math.min(WINDOWED_PANEL_HEIGHT, this.height - 20);
             this.panelX = (this.width - this.panelWidth) / 2;
             this.panelY = (this.height - this.panelHeight) / 2;
         }
