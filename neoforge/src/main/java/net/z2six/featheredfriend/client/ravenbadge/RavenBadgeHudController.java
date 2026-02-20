@@ -9,6 +9,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.common.NeoForge;
+import net.z2six.featheredfriend.client.raven.RavenLinkClientController;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.config.FFClientConfig;
 import net.z2six.featheredfriend.client.ravenbadge.RavenStatusGuiVisualMode;
@@ -200,6 +201,9 @@ public final class RavenBadgeHudController {
         try {
             Minecraft mc = Minecraft.getInstance();
             if (mc == null || mc.player == null || mc.level == null) {
+                return;
+            }
+            if (RavenLinkClientController.isLinkActive()) {
                 return;
             }
 

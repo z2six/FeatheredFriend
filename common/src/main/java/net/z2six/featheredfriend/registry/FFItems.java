@@ -92,7 +92,10 @@ public final class FFItems {
 
     public static final Supplier<Item> RAVENS_EYE = register(
             "ravens_eye",
-            () -> new RavensEyeItem(new Item.Properties().stacksTo(64))
+            () -> new RavensEyeItem(
+                    new Item.Properties().stacksTo(64),
+                    "tooltip.featheredfriend.ravens_eye"
+            )
     );
 
     public static final RavenArmorStats RAVEN_ARMOR_STATS_LEATHER = new RavenArmorStats(2, 35, 10, 15, 2);

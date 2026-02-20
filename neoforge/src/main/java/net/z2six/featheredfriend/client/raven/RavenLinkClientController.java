@@ -5,6 +5,8 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.resources.sounds.AbstractTickableSoundInstance;
+import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.client.multiplayer.ClientChunkCache;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.PostChain;
@@ -65,6 +67,10 @@ public final class RavenLinkClientController {
             ResourceLocation.fromNamespaceAndPath("featheredfriend", "shaders/post/raven_link_edge_blur.json");
     private static final ResourceLocation RAVEN_LINK_OPENING_CAW_SOUND_ID =
             ResourceLocation.fromNamespaceAndPath("featheredfriend", "raven.caw_whistle");
+    private static final ResourceLocation RAVEN_LINK_TETHER1_SOUND_ID =
+            ResourceLocation.fromNamespaceAndPath("featheredfriend", "ravenlink.tether1");
+    private static final ResourceLocation RAVEN_LINK_TETHER2_SOUND_ID =
+            ResourceLocation.fromNamespaceAndPath("featheredfriend", "ravenlink.tether2");
 
     private enum VisionPhase {
         CLOSING,
@@ -127,6 +133,17 @@ public final class RavenLinkClientController {
     private static volatile @org.jetbrains.annotations.Nullable PostChain ravenLinkEdgeBlurEffect = null;
     private static volatile int ravenLinkEdgeBlurWidth = -1;
     private static volatile int ravenLinkEdgeBlurHeight = -1;
+    private static volatile @org.jetbrains.annotations.Nullable RavenLinkLoopSoundInstance ravenLinkTetherLoop1 = null;
+    private static volatile @org.jetbrains.annotations.Nullable RavenLinkLoopSoundInstance ravenLinkTetherLoop2 = null;
+    private static volatile boolean ravenLinkTether1Allowed = false;
+    private static volatile long ravenLinkTether1FadeInStartedAtMillis = 0L;
+    private static volatile long ravenLinkTether2FadeInStartedAtMillis = 0L;
+    private static volatile boolean endingTransitionActive = false;
+    private static volatile boolean endingShouldSendStopAtBlackout = false;
+    private static volatile boolean endingStopRequestSent = false;
+    private static volatile long endingStartedAtMillis = 0L;
+    private static volatile float endingTether1StartVolume = 0.0F;
+    private static volatile float endingTether2StartVolume = 0.0F;
     private static final List<VisionPixel> VISION_PIXELS = new ArrayList<>();
     private static final Set<Integer> HIDDEN_OWNER_ENTITY_IDS = ConcurrentHashMap.newKeySet();
 
@@ -153,12 +170,23 @@ public final class RavenLinkClientController {
                                        float anchorYawFromServer,
                                        float anchorPitchFromServer) {
         try {
+            stopTetherLoopSounds();
+            ravenLinkTether1Allowed = false;
+            ravenLinkTether1FadeInStartedAtMillis = 0L;
+            ravenLinkTether2FadeInStartedAtMillis = 0L;
+            endingTransitionActive = false;
+            endingShouldSendStopAtBlackout = false;
+            endingStopRequestSent = false;
+            endingStartedAtMillis = 0L;
+            endingTether1StartVolume = 0.0F;
+            endingTether2StartVolume = 0.0F;
             active = true;
             linkedRavenEntityId = ravenEntityId;
             long durMs = Math.max(0L, (long) durationTicks * 50L);
             localEndMillis = System.currentTimeMillis() + durMs;
             visionPhase = VisionPhase.CLOSING;
             visionPhaseStartedAtMillis = System.currentTimeMillis();
+            ravenLinkTether2FadeInStartedAtMillis = visionPhaseStartedAtMillis;
             transitionAnchorX = anchorX;
             transitionAnchorY = anchorY;
             transitionAnchorZ = anchorZ;
@@ -194,13 +222,19 @@ public final class RavenLinkClientController {
             }
             debugFrameLogsRemaining = ENABLE_RAVEN_LINK_DIAGNOSTICS ? 600 : 0;
             debugLastFrameSignature = "";
+            ensureTetherLoopSoundsPlaying();
+            updateTetherLoopVolumes();
         } catch (Throwable t) {
             LOG.error("[RavenLinkClientController] beginFromServer failed safely", t);
         }
     }
 
     public static void endFromServer() {
-        clearLocalState(false);
+        requestLinkEnd(false);
+    }
+
+    public static boolean isLinkActive() {
+        return active;
     }
 
     public static boolean shouldHideLinkedRavenForFirstPerson(int entityId) {
@@ -276,7 +310,9 @@ public final class RavenLinkClientController {
             }
             if (event.getNewScreen() instanceof PauseScreen) {
                 event.setCanceled(true);
-                clearLocalState(true);
+                if (canManuallyExitLinkNow()) {
+                    requestLinkEnd(true);
+                }
             }
         } catch (Throwable t) {
             LOG.debug("[RavenLinkClientController] onScreenOpening failed safely: {}", t.toString());
@@ -404,25 +440,38 @@ public final class RavenLinkClientController {
             }
 
             if (System.currentTimeMillis() >= localEndMillis) {
-                clearLocalState(true);
+                requestLinkEnd(true);
                 return;
             }
 
             if (mc.screen != null) {
-                clearLocalState(true);
-                return;
+                if (canManuallyExitLinkNow()) {
+                    requestLinkEnd(true);
+                    return;
+                }
+                if (mc.screen instanceof PauseScreen) {
+                    mc.setScreen(null);
+                }
             }
 
             // keep explicit ESC handling even when pause screen opening gets cancelled
             boolean escDown = InputConstants.isKeyDown(mc.getWindow().getWindow(), GLFW.GLFW_KEY_ESCAPE);
             if (escDown && !escWasDown) {
-                clearLocalState(true);
-                escWasDown = escDown;
-                return;
+                if (canManuallyExitLinkNow()) {
+                    requestLinkEnd(true);
+                    escWasDown = escDown;
+                    return;
+                }
             }
             escWasDown = escDown;
 
             tickVisionTransition();
+            if (!active) {
+                tickStopRetryDelivery();
+                return;
+            }
+            ensureTetherLoopSoundsPlaying();
+            updateTetherLoopVolumes();
 
             Entity desiredCamera = resolveDesiredActiveCamera(mc);
             if (desiredCamera != null && mc.getCameraEntity() != desiredCamera) {
@@ -457,6 +506,14 @@ public final class RavenLinkClientController {
             // debug overlay intentionally disabled for normal gameplay
         } catch (Throwable t) {
             LOG.error("[RavenLinkClientController] onClientTick failed safely", t);
+        }
+    }
+
+    private static boolean canManuallyExitLinkNow() {
+        try {
+            return active && !endingTransitionActive && visionPhase == VisionPhase.ACTIVE;
+        } catch (Throwable ignored) {
+            return false;
         }
     }
 
@@ -633,6 +690,18 @@ public final class RavenLinkClientController {
                     if (now - visionPhaseStartedAtMillis >= EYE_TRANSITION_DURATION_MS) {
                         visionPhase = VisionPhase.HOLD_BLACK;
                         visionPhaseStartedAtMillis = now;
+                        if (!endingTransitionActive) {
+                            ravenLinkTether1Allowed = true;
+                            if (ravenLinkTether1FadeInStartedAtMillis <= 0L) {
+                                // Begin tether1 at full-black start; it reaches full volume when eyes are fully open.
+                                ravenLinkTether1FadeInStartedAtMillis = now;
+                            }
+                        }
+                        if (endingTransitionActive) {
+                            // Keep the purple haze while eyes close, then drop it exactly at full black.
+                            releaseRavenLinkEdgeBlurEffect();
+                            sendDeferredStopAtBlackout();
+                        }
                     }
                 }
                 case HOLD_BLACK -> {
@@ -644,8 +713,13 @@ public final class RavenLinkClientController {
                 }
                 case OPENING -> {
                     if (now - visionPhaseStartedAtMillis >= EYE_TRANSITION_DURATION_MS) {
-                        visionPhase = VisionPhase.ACTIVE;
-                        visionPhaseStartedAtMillis = now;
+                        if (endingTransitionActive) {
+                            clearLocalState(false);
+                            return;
+                        } else {
+                            visionPhase = VisionPhase.ACTIVE;
+                            visionPhaseStartedAtMillis = now;
+                        }
                     }
                 }
                 case ACTIVE -> {
@@ -688,6 +762,184 @@ public final class RavenLinkClientController {
         }
     }
 
+    private static void ensureTetherLoopSoundsPlaying() {
+        try {
+            if (!active) {
+                return;
+            }
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null || mc.getSoundManager() == null) {
+                return;
+            }
+
+            if (ravenLinkTetherLoop1 == null && ravenLinkTether1Allowed) {
+                RavenLinkLoopSoundInstance loop = createRelativeLoopSound(RAVEN_LINK_TETHER1_SOUND_ID, 1.0F);
+                if (loop != null) {
+                    mc.getSoundManager().play(loop);
+                    ravenLinkTetherLoop1 = loop;
+                    if (ravenLinkTether1FadeInStartedAtMillis <= 0L) {
+                        ravenLinkTether1FadeInStartedAtMillis = System.currentTimeMillis();
+                    }
+                }
+            }
+
+            if (ravenLinkTetherLoop2 == null) {
+                RavenLinkLoopSoundInstance loop = createRelativeLoopSound(RAVEN_LINK_TETHER2_SOUND_ID, 1.0F);
+                if (loop != null) {
+                    mc.getSoundManager().play(loop);
+                    ravenLinkTetherLoop2 = loop;
+                    if (ravenLinkTether2FadeInStartedAtMillis <= 0L) {
+                        ravenLinkTether2FadeInStartedAtMillis = System.currentTimeMillis();
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            LOG.debug("[RavenLinkClientController] ensureTetherLoopSoundsPlaying failed safely: {}", t.toString());
+        }
+    }
+
+    private static void updateTetherLoopVolumes() {
+        try {
+            if (!active) {
+                return;
+            }
+            long now = System.currentTimeMillis();
+
+            float target1 = 0.0F;
+            float target2 = 0.0F;
+
+            if (endingTransitionActive) {
+                long tether1FadeDuration = Math.max(1L, EYE_TRANSITION_DURATION_MS + BLACK_HOLD_AFTER_TELEPORT_MS);
+                float p1 = Mth.clamp(
+                        (float) Math.max(0L, now - endingStartedAtMillis) / (float) tether1FadeDuration,
+                        0.0F,
+                        1.0F
+                );
+                // End sequence: tether1 fades during closing + black hold.
+                target1 = endingTether1StartVolume * (1.0F - p1);
+
+                if (visionPhase == VisionPhase.OPENING) {
+                    float p2 = Mth.clamp(
+                            (float) Math.max(0L, now - visionPhaseStartedAtMillis) / (float) Math.max(1L, EYE_TRANSITION_DURATION_MS),
+                            0.0F,
+                            1.0F
+                    );
+                    // End sequence: tether2 fades only while eyes reopen.
+                    target2 = endingTether2StartVolume * (1.0F - p2);
+                } else {
+                    target2 = endingTether2StartVolume;
+                }
+            } else {
+                if (ravenLinkTether2FadeInStartedAtMillis > 0L) {
+                    float p2 = Mth.clamp(
+                            (float) Math.max(0L, now - ravenLinkTether2FadeInStartedAtMillis) / (float) Math.max(1L, EYE_TRANSITION_DURATION_MS),
+                            0.0F,
+                            1.0F
+                    );
+                    // Begin sequence: tether2 reaches full volume by full-black.
+                    target2 = p2;
+                }
+                if (ravenLinkTether1Allowed && ravenLinkTether1FadeInStartedAtMillis > 0L) {
+                    long tether1FadeDuration = Math.max(1L, BLACK_HOLD_AFTER_TELEPORT_MS + EYE_TRANSITION_DURATION_MS);
+                    float p1 = Mth.clamp(
+                            (float) Math.max(0L, now - ravenLinkTether1FadeInStartedAtMillis) / (float) tether1FadeDuration,
+                            0.0F,
+                            1.0F
+                    );
+                    // Begin sequence: tether1 starts at full-black and reaches full when fully open.
+                    target1 = p1;
+                }
+            }
+
+            if (ravenLinkTetherLoop1 != null) {
+                ravenLinkTetherLoop1.setManagedVolume(target1);
+            }
+            if (ravenLinkTetherLoop2 != null) {
+                ravenLinkTetherLoop2.setManagedVolume(target2);
+            }
+        } catch (Throwable t) {
+            LOG.debug("[RavenLinkClientController] updateTetherLoopVolumes failed safely: {}", t.toString());
+        }
+    }
+
+    private static void requestLinkEnd(boolean sendStopRequest) {
+        try {
+            if (!active) {
+                clearLocalState(sendStopRequest);
+                return;
+            }
+
+            if (endingTransitionActive) {
+                if (sendStopRequest) {
+                    endingShouldSendStopAtBlackout = true;
+                }
+                return;
+            }
+
+            long now = System.currentTimeMillis();
+            endingTransitionActive = true;
+            endingShouldSendStopAtBlackout = sendStopRequest;
+            endingStopRequestSent = false;
+            endingStartedAtMillis = now;
+            endingTether1StartVolume = ravenLinkTetherLoop1 == null ? 0.0F : ravenLinkTetherLoop1.getManagedVolume();
+            endingTether2StartVolume = ravenLinkTetherLoop2 == null ? 0.0F : ravenLinkTetherLoop2.getManagedVolume();
+
+            visionPhase = VisionPhase.CLOSING;
+            visionPhaseStartedAtMillis = now;
+            updateTetherLoopVolumes();
+        } catch (Throwable t) {
+            LOG.debug("[RavenLinkClientController] requestLinkEnd failed safely: {}", t.toString());
+            clearLocalState(sendStopRequest);
+        }
+    }
+
+    private static void sendDeferredStopAtBlackout() {
+        try {
+            if (!endingTransitionActive || !endingShouldSendStopAtBlackout || endingStopRequestSent) {
+                return;
+            }
+            Services.PLATFORM.sendStopRavenLinkToServer();
+            pendingStopRetries = Math.max(pendingStopRetries, 4);
+            lastStopRetrySentAtMillis = System.currentTimeMillis();
+            endingStopRequestSent = true;
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void stopTetherLoopSounds() {
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc != null && mc.getSoundManager() != null) {
+                if (ravenLinkTetherLoop1 != null) {
+                    ravenLinkTetherLoop1.stopManaged();
+                    mc.getSoundManager().stop(ravenLinkTetherLoop1);
+                }
+                if (ravenLinkTetherLoop2 != null) {
+                    ravenLinkTetherLoop2.stopManaged();
+                    mc.getSoundManager().stop(ravenLinkTetherLoop2);
+                }
+            }
+        } catch (Throwable ignored) {
+        } finally {
+            ravenLinkTetherLoop1 = null;
+            ravenLinkTetherLoop2 = null;
+            ravenLinkTether1Allowed = false;
+            ravenLinkTether1FadeInStartedAtMillis = 0L;
+            ravenLinkTether2FadeInStartedAtMillis = 0L;
+        }
+    }
+
+    private static @org.jetbrains.annotations.Nullable RavenLinkLoopSoundInstance createRelativeLoopSound(
+            @org.jetbrains.annotations.NotNull ResourceLocation soundId,
+            float pitch
+    ) {
+        try {
+            return new RavenLinkLoopSoundInstance(soundId, pitch);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
     private static double getEyelidProgress() {
         try {
             long now = System.currentTimeMillis();
@@ -704,6 +956,14 @@ public final class RavenLinkClientController {
 
     private static double getVisionEffectStrength() {
         try {
+            if (endingTransitionActive) {
+                return switch (visionPhase) {
+                    // During end transition, keep haze on while eyes are closing, then remove at full black.
+                    case CLOSING -> 1.0D;
+                    case HOLD_BLACK, OPENING -> 0.0D;
+                    case ACTIVE -> 1.0D;
+                };
+            }
             return switch (visionPhase) {
                 case CLOSING, HOLD_BLACK -> 0.0D;
                 case OPENING -> Mth.clamp(1.0D - getEyelidProgress(), 0.0D, 1.0D);
@@ -1069,21 +1329,29 @@ public final class RavenLinkClientController {
                                     int height,
                                     double progress) {
         try {
-            int barHeight = Mth.clamp((int) Math.round((height * 0.5D) * progress), 0, height / 2);
+            int maxHalfClose = Math.max(1, (height + 1) / 2);
+            int barHeight = Mth.clamp((int) Math.round((height * 0.5D) * progress), 0, maxHalfClose);
             if (barHeight <= 0) {
                 return;
             }
 
-            guiGraphics.fill(0, 0, width, barHeight, 0xFF000000);
-            guiGraphics.fill(0, height - barHeight, width, height, 0xFF000000);
+            int topEnd = barHeight;
+            int bottomStart = height - barHeight;
+            guiGraphics.fill(0, 0, width, topEnd, 0xFF000000);
+            guiGraphics.fill(0, bottomStart, width, height, 0xFF000000);
+
+            // Ensure fully closed eyes have no center seam on odd/even GUI heights.
+            if (progress >= 0.999D && bottomStart > topEnd) {
+                guiGraphics.fill(0, topEnd, width, bottomStart, 0xFF000000);
+            }
 
             int feather = Math.max(2, height / 96);
             for (int i = 0; i < feather; i++) {
                 float t = 1.0F - (i / (float) feather);
                 int alpha = (int) Math.round(170.0F * t * progress);
                 int color = argb(alpha, 0, 0, 0);
-                int topY = barHeight + i;
-                int bottomY = height - barHeight - i - 1;
+                int topY = topEnd + i;
+                int bottomY = bottomStart - i - 1;
                 if (topY >= 0 && topY < height) {
                     guiGraphics.fill(0, topY, width, topY + 1, color);
                 }
@@ -1412,6 +1680,7 @@ public final class RavenLinkClientController {
         }
 
         releaseRavenLinkEdgeBlurEffect();
+        stopTetherLoopSounds();
         resetVisionPixels();
 
         active = false;
@@ -1425,9 +1694,17 @@ public final class RavenLinkClientController {
         transitionAnchorZ = 0.0D;
         transitionAnchorYaw = 0.0F;
         transitionAnchorPitch = 0.0F;
+        endingTransitionActive = false;
+        endingShouldSendStopAtBlackout = false;
+        endingStopRequestSent = false;
+        endingStartedAtMillis = 0L;
+        endingTether1StartVolume = 0.0F;
+        endingTether2StartVolume = 0.0F;
         if (!sendStopRequest) {
-            pendingStopRetries = 0;
-            lastStopRetrySentAtMillis = 0L;
+            if (pendingStopRetries <= 0) {
+                pendingStopRetries = 0;
+                lastStopRetrySentAtMillis = 0L;
+            }
         }
         escWasDown = false;
         lookYaw = 0.0F;
@@ -1605,6 +1882,47 @@ public final class RavenLinkClientController {
             hiddenLinkedRavenApplied = false;
             hiddenLinkedRavenEntityId = -1;
             hiddenLinkedRavenOriginalInvisible = false;
+        }
+    }
+
+    private static final class RavenLinkLoopSoundInstance extends AbstractTickableSoundInstance {
+        private float managedVolume = 0.0F;
+
+        private RavenLinkLoopSoundInstance(@org.jetbrains.annotations.NotNull ResourceLocation soundId, float pitch) {
+            super(SoundEvent.createVariableRangeEvent(soundId), SoundSource.NEUTRAL, SoundInstance.createUnseededRandom());
+            this.looping = true;
+            this.delay = 0;
+            this.attenuation = SoundInstance.Attenuation.NONE;
+            this.relative = true;
+            this.x = 0.0D;
+            this.y = 0.0D;
+            this.z = 0.0D;
+            this.volume = 0.0F;
+            this.pitch = Mth.clamp(pitch, 0.1F, 2.0F);
+        }
+
+        @Override
+        public void tick() {
+            // Volume is controlled externally by RavenLinkClientController each client tick.
+        }
+
+        @Override
+        public boolean canStartSilent() {
+            // We intentionally start at 0 volume and fade in.
+            return true;
+        }
+
+        private void setManagedVolume(float value) {
+            this.managedVolume = Mth.clamp(value, 0.0F, 1.0F);
+            this.volume = this.managedVolume;
+        }
+
+        private float getManagedVolume() {
+            return this.managedVolume;
+        }
+
+        private void stopManaged() {
+            this.stop();
         }
     }
 

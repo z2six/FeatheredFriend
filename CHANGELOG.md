@@ -3,12 +3,16 @@
 All notable changes to this project will be documented in this file.
 
 ---
+### Major
+- Raven Status GUI
 
 ### Minor
 - 6 new sigil generators
 
 ### Fixes
 - Fixed Raven Naming GUI being rendered below NeoForge its menu blur
+- Courier logic revamp
+- Raven dupe on recall during delivery fix
 
 ## [1.7.0.0-InDev]
 

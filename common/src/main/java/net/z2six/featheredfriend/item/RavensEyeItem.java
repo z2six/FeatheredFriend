@@ -4,7 +4,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.z2six.featheredfriend.platform.Services;
@@ -13,10 +12,10 @@ import org.jetbrains.annotations.NotNull;
 /**
  * Starts Raven Link when possible.
  */
-public class RavensEyeItem extends Item {
+public class RavensEyeItem extends TooltipItem {
 
-    public RavensEyeItem(@NotNull Properties properties) {
-        super(properties);
+    public RavensEyeItem(@NotNull Properties properties, @NotNull String tooltipKey) {
+        super(properties, tooltipKey);
     }
 
     @Override
