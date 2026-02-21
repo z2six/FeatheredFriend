@@ -3,6 +3,7 @@ package net.z2six.featheredfriend.registry;
 import com.google.common.base.Suppliers;
 import com.mojang.logging.LogUtils;
 import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.z2six.featheredfriend.block.entity.MailboxBlockEntity;
 import net.z2six.featheredfriend.block.entity.RavenChestBlockEntity;
 import org.slf4j.Logger;
 
@@ -26,6 +27,12 @@ public final class FFBlockEntities {
                         "Raven chest BlockEntityType was not bound by the current loader");
             };
 
+    private static Supplier<BlockEntityType<MailboxBlockEntity>> mailboxType =
+            () -> {
+                throw new IllegalStateException(
+                        "Mailbox BlockEntityType was not bound by the current loader");
+            };
+
     @SuppressWarnings("unchecked")
     public static final Supplier<BlockEntityType<RavenChestBlockEntity>> RAVEN_CHEST =
             (Supplier<BlockEntityType<RavenChestBlockEntity>>) (Supplier<?>) register(
@@ -33,8 +40,19 @@ public final class FFBlockEntities {
                     () -> ravenChestType.get()
             );
 
+    @SuppressWarnings("unchecked")
+    public static final Supplier<BlockEntityType<MailboxBlockEntity>> MAILBOX =
+            (Supplier<BlockEntityType<MailboxBlockEntity>>) (Supplier<?>) register(
+                    "mailbox",
+                    () -> mailboxType.get()
+            );
+
     public static void bindRavenChestType(Supplier<BlockEntityType<RavenChestBlockEntity>> supplier) {
         ravenChestType = Objects.requireNonNull(supplier, "supplier");
+    }
+
+    public static void bindMailboxType(Supplier<BlockEntityType<MailboxBlockEntity>> supplier) {
+        mailboxType = Objects.requireNonNull(supplier, "supplier");
     }
 
     private static Supplier<BlockEntityType<?>> register(String name, Supplier<BlockEntityType<?>> factory) {

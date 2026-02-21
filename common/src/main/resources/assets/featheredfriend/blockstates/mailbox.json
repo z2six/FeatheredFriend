@@ -1,0 +1,17 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "featheredfriend:block/mailbox"
+    },
+    "facing=south": {
+      "model": "featheredfriend:block/mailbox"
+    },
+    "facing=west": {
+      "model": "featheredfriend:block/mailbox"
+    },
+    "facing=east": {
+      "model": "featheredfriend:block/mailbox"
+    }
+  }
+}
+

@@ -31,16 +31,22 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.block.entity.MailboxBlockEntity;
 import net.z2six.featheredfriend.block.RavenChestBlock;
 import net.z2six.featheredfriend.registry.FFItems;
 import net.z2six.featheredfriend.item.RavenArmorStats;
 import net.z2six.featheredfriend.log.RavenLogCategory;
 import net.z2six.featheredfriend.world.TamedRavenPlayerData;
 import net.z2six.featheredfriend.world.RavenLogService;
+import net.z2six.featheredfriend.world.MailboxRegistryData;
 import net.z2six.featheredfriend.entity.raven.modules.*;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -283,6 +289,8 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     private int deliveryRearmTicks = 0;
     private int ravenChestPerchThreatCheckCooldownTicks = 0;
     private final Map<UUID, String> ravenChestPerchSeenHostiles = new HashMap<>();
+    private int scrollSummonThreatCheckCooldownTicks = 0;
+    private final Map<UUID, String> scrollSummonSeenPlayers = new HashMap<>();
     private boolean ravenFeatherDeathDropDone = false;
 
     // Idle timer + turning
@@ -363,6 +371,27 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         // Lure/follow flags
         builder.define(DATA_LURE_FOLLOW_ARMED, Boolean.FALSE);
         builder.define(DATA_LURE_FOLLOW_ACTIVE, Boolean.FALSE);
+    }
+
+    @Override
+    public @Nullable UUID getOwnerUUID() {
+        UUID ownerUuid = super.getOwnerUUID();
+        try {
+            // Many client-side HUD mods (e.g., Jade's vanilla owner provider) only request server-sent
+            // owner name data when the client can't read an owner UUID.
+            //
+            // Vanilla syncs owner UUIDs to clients for tamable mobs, but the client's username cache
+            // may not know how to resolve that UUID to a username (especially in dev/offline runs),
+            // which results in "Owner: ???" for other players.
+            //
+            // By returning null on the client, those HUD mods will request the owner name from the
+            // server, fixing the display without affecting server-side ownership logic.
+            if (this.level() != null && this.level().isClientSide) {
+                return null;
+            }
+        } catch (Throwable ignored) {
+        }
+        return ownerUuid;
     }
 
     // -----------------
@@ -1147,9 +1176,19 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     // AI tick (main, roam, idle
     // -----------------
 
+    private static final int MAILBOX_SPOT_SCAN_INTERVAL_TICKS = 20;
+    private static final double MAILBOX_SPOT_RANGE_BLOCKS = 10.0D;
+
     @Override
     public void aiStep() {
         super.aiStep();
+
+        if (!this.level().isClientSide) {
+            try {
+                tickMailboxSpottingServer();
+            } catch (Throwable ignored) {
+            }
+        }
 
         if (!this.level().isClientSide && !this.isRavenLinkControlled()) {
             try {
@@ -1424,6 +1463,118 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         }
     }
 
+    private void tickMailboxSpottingServer() {
+        try {
+            if (!(this.level() instanceof ServerLevel level) || level.isClientSide()) {
+                return;
+            }
+            if (!this.isTame()) {
+                return;
+            }
+            UUID observerUuid = this.getOwnerUUID();
+            if (observerUuid == null) {
+                return;
+            }
+
+            int interval = Math.max(1, MAILBOX_SPOT_SCAN_INTERVAL_TICKS);
+            if (((this.tickCount + this.getId()) % interval) != 0) {
+                return;
+            }
+
+            double rangeSq = MAILBOX_SPOT_RANGE_BLOCKS * MAILBOX_SPOT_RANGE_BLOCKS;
+            int baseChunkX = this.blockPosition().getX() >> 4;
+            int baseChunkZ = this.blockPosition().getZ() >> 4;
+
+            int radiusChunks = 1;
+            String dimId = level.dimension().location().toString();
+            MailboxRegistryData registry = MailboxRegistryData.get(level);
+
+            for (int dx = -radiusChunks; dx <= radiusChunks; dx++) {
+                for (int dz = -radiusChunks; dz <= radiusChunks; dz++) {
+                    ChunkAccess access = level.getChunkSource().getChunk(baseChunkX + dx, baseChunkZ + dz, ChunkStatus.FULL, false);
+                    if (!(access instanceof LevelChunk chunk)) {
+                        continue;
+                    }
+
+                    for (BlockEntity be : chunk.getBlockEntities().values()) {
+                        if (!(be instanceof MailboxBlockEntity mailbox)) {
+                            continue;
+                        }
+                        UUID mailboxOwnerUuid = mailbox.getOwnerUuid();
+                        if (mailboxOwnerUuid == null) {
+                            continue;
+                        }
+
+                        double distSq = mailbox.getBlockPos().distToCenterSqr(this.position());
+                        if (distSq > rangeSq) {
+                            continue;
+                        }
+
+                        String mailboxOwnerName = mailbox.getOwnerName();
+                        boolean added = registry.registerMailbox(
+                                observerUuid,
+                                mailboxOwnerUuid,
+                                mailboxOwnerName,
+                                dimId,
+                                mailbox.getBlockPos()
+                        );
+                        if (added) {
+                            notifyOwnerMailboxSpotted(level, observerUuid, mailboxOwnerName);
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void notifyOwnerMailboxSpotted(@NotNull ServerLevel level,
+                                           @NotNull UUID observerUuid,
+                                           @NotNull String mailboxOwnerName) {
+        String ravenName = getSafeRavenName();
+
+        try {
+            ServerPlayer owner = level.getServer().getPlayerList().getPlayer(observerUuid);
+            if (owner != null && owner.isAlive() && !owner.isRemoved()) {
+                owner.sendSystemMessage(Component.translatable(
+                        "message.featheredfriend.mailbox.spotted",
+                        ravenName,
+                        mailboxOwnerName
+                ));
+            }
+        } catch (Throwable ignored) {
+        }
+
+        try {
+            RavenLogService.logForPlayerKey(
+                    level,
+                    observerUuid,
+                    RavenLogCategory.COURIER,
+                    "log.featheredfriend.mailbox.spotted",
+                    ravenName,
+                    mailboxOwnerName
+            );
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private @NotNull String getSafeRavenName() {
+        try {
+            if (this.getCustomName() != null) {
+                String n = this.getCustomName().getString();
+                if (n != null && !n.isBlank()) {
+                    return n;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            return Component.translatable("entity.featheredfriend.raven").getString();
+        } catch (Throwable ignored) {
+            return "Raven";
+        }
+    }
+
     private void tryArmLureFollowFromNearbyPlayers() {
         try {
             if (this.level() == null || this.level().isClientSide) {
@@ -1518,6 +1669,11 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
             if (!(this.level() instanceof ServerLevel serverLevel)) {
                 return false;
+            }
+
+            try {
+                tickScrollSummonThreatLogging(serverLevel);
+            } catch (Throwable ignored) {
             }
 
             ServerPlayer target = resolveDeliveryTarget(serverLevel);
@@ -1620,11 +1776,27 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     @Nullable
     private ServerPlayer resolveDeliveryTarget(ServerLevel level) {
         try {
-            UUID ownerId = this.getOwnerUUID();
-            if (ownerId == null) {
+            UUID targetId = null;
+
+            // Courier ravens deliver to the recipient, not the sender/owner.
+            try {
+                if (this.getTags().contains(TAG_COURIER_RAVEN) || isCourierRavenForBadge()) {
+                    CompoundTag root = Services.PLATFORM.getEntityPersistentData(this);
+                    CompoundTag ffTag = root == null ? null : root.getCompound(Constants.MOD_ID);
+                    if (ffTag != null && !ffTag.isEmpty() && ffTag.hasUUID("CourierRecipientUUID")) {
+                        targetId = ffTag.getUUID("CourierRecipientUUID");
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+
+            if (targetId == null) {
+                targetId = this.getOwnerUUID();
+            }
+            if (targetId == null) {
                 return null;
             }
-            return level.getServer().getPlayerList().getPlayer(ownerId);
+            return level.getServer().getPlayerList().getPlayer(targetId);
         } catch (Throwable t) {
             return null;
         }
@@ -2920,6 +3092,25 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         && mob.distanceToSqr(this) <= (detectionRadius * detectionRadius)
         );
 
+        UUID ownerId = null;
+        try {
+            ownerId = this.getOwnerUUID();
+        } catch (Throwable ignored) {
+            ownerId = null;
+        }
+        final UUID ownerIdFinal = ownerId;
+
+        List<ServerPlayer> players = serverLevel.getEntitiesOfClass(
+                ServerPlayer.class,
+                this.getBoundingBox().inflate(detectionRadius, detectionRadius, detectionRadius),
+                p -> p != null
+                        && p.isAlive()
+                        && !p.isRemoved()
+                        && !p.isSpectator()
+                        && p.distanceToSqr(this) <= (detectionRadius * detectionRadius)
+                        && (ownerIdFinal == null || !ownerIdFinal.equals(p.getUUID()))
+        );
+
         Map<UUID, String> current = new HashMap<>();
         if (hostiles != null) {
             for (Mob hostile : hostiles) {
@@ -2927,6 +3118,24 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     continue;
                 }
                 current.put(hostile.getUUID(), hostile.getType().getDescription().getString());
+            }
+        }
+        if (players != null) {
+            for (ServerPlayer player : players) {
+                if (player == null) {
+                    continue;
+                }
+                String name;
+                try {
+                    name = player.getGameProfile().getName();
+                } catch (Throwable t) {
+                    try {
+                        name = player.getName().getString();
+                    } catch (Throwable ignored) {
+                        name = "player";
+                    }
+                }
+                current.put(player.getUUID(), name);
             }
         }
 
@@ -2965,6 +3174,117 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
         this.ravenChestPerchSeenHostiles.clear();
         this.ravenChestPerchSeenHostiles.putAll(current);
+    }
+
+    private void tickScrollSummonThreatLogging(@NotNull ServerLevel serverLevel) {
+        try {
+            if (serverLevel.isClientSide()) {
+                return;
+            }
+            if (!Services.PLATFORM.isScrollSummonedRaven(this)) {
+                if (!this.scrollSummonSeenPlayers.isEmpty() || this.scrollSummonThreatCheckCooldownTicks > 0) {
+                    this.scrollSummonSeenPlayers.clear();
+                    this.scrollSummonThreatCheckCooldownTicks = 0;
+                }
+                return;
+            }
+
+            if (this.scrollSummonThreatCheckCooldownTicks > 0) {
+                this.scrollSummonThreatCheckCooldownTicks--;
+                return;
+            }
+            this.scrollSummonThreatCheckCooldownTicks = 20;
+
+            double detectionRadius = Math.max(0.0D, this.getEffectiveThreatDetectionRadiusBlocks());
+            if (detectionRadius <= 0.0D) {
+                if (!this.scrollSummonSeenPlayers.isEmpty()) {
+                    this.scrollSummonSeenPlayers.clear();
+                    RavenLogService.logForRavenOwnerKey(
+                            this,
+                            RavenLogCategory.SUMMON,
+                            "log.featheredfriend.summon.threat_state_cleared"
+                    );
+                }
+                return;
+            }
+
+            UUID ownerId = null;
+            try {
+                ownerId = this.getOwnerUUID();
+            } catch (Throwable ignored) {
+                ownerId = null;
+            }
+            final UUID ownerIdFinal = ownerId;
+
+            List<ServerPlayer> players = serverLevel.getEntitiesOfClass(
+                    ServerPlayer.class,
+                    this.getBoundingBox().inflate(detectionRadius, detectionRadius, detectionRadius),
+                    p -> p != null
+                            && p.isAlive()
+                            && !p.isRemoved()
+                            && !p.isSpectator()
+                            && p.distanceToSqr(this) <= (detectionRadius * detectionRadius)
+                            && (ownerIdFinal == null || !ownerIdFinal.equals(p.getUUID()))
+            );
+
+            Map<UUID, String> current = new HashMap<>();
+            if (players != null) {
+                for (ServerPlayer player : players) {
+                    if (player == null) {
+                        continue;
+                    }
+                    String name;
+                    try {
+                        name = player.getGameProfile().getName();
+                    } catch (Throwable t) {
+                        try {
+                            name = player.getName().getString();
+                        } catch (Throwable ignored) {
+                            name = "player";
+                        }
+                    }
+                    current.put(player.getUUID(), name);
+                }
+            }
+
+            if (!current.isEmpty()) {
+                for (Map.Entry<UUID, String> e : current.entrySet()) {
+                    if (this.scrollSummonSeenPlayers.containsKey(e.getKey())) {
+                        continue;
+                    }
+                    RavenLogService.logForRavenOwnerKey(
+                            this,
+                            RavenLogCategory.SUMMON,
+                            "log.featheredfriend.summon.threat_detected",
+                            String.format("%.1f", detectionRadius),
+                            e.getValue()
+                    );
+                }
+
+                try {
+                    Services.PLATFORM.notifyRavenBadgeThreatDetected(this, this.getRavenVariant() == RavenVariant.SCROLL);
+                } catch (Throwable ignored) {
+                }
+            }
+
+            if (!this.scrollSummonSeenPlayers.isEmpty()) {
+                for (Map.Entry<UUID, String> e : this.scrollSummonSeenPlayers.entrySet()) {
+                    if (current.containsKey(e.getKey())) {
+                        continue;
+                    }
+                    RavenLogService.logForRavenOwnerKey(
+                            this,
+                            RavenLogCategory.SUMMON,
+                            "log.featheredfriend.summon.threat_ended",
+                            e.getValue()
+                    );
+                }
+            }
+
+            this.scrollSummonSeenPlayers.clear();
+            this.scrollSummonSeenPlayers.putAll(current);
+        } catch (Throwable ignored) {
+        }
     }
 
     private @NotNull String getSafeRavenNameForDespawn() {

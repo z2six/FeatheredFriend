@@ -10,6 +10,9 @@
   "item.featheredfriend.raven_chest": "Raven Chest",
   "block.featheredfriend.raven_chest": "Raven Chest",
   "container.featheredfriend.raven_chest": "Raven Chest",
+  "item.featheredfriend.mailbox": "Mailbox",
+  "block.featheredfriend.mailbox": "Mailbox",
+  "container.featheredfriend.mailbox": "Mailbox",
   "container.featheredfriend.enderpack": "Enderpack",
   "item.featheredfriend.raven_armor_leather": "Leather Raven Armor",
   "item.featheredfriend.raven_armor_copper": "Copper Raven Armor",
@@ -145,6 +148,7 @@
   "jade.featheredfriend.raven.health_regen": "Health Regen: %s HP/min",
   "jade.featheredfriend.raven.hits_left_value": "Hits Left: %s/%s",
   "jade.featheredfriend.raven.sneak_for_more": "Sneak for more info",
+  "jade.featheredfriend.mailbox.owner": "Owner: %s",
 
   "config.jade.plugin_featheredfriend.raven_stats": "Feathered Friend Raven Stats",
   "config.jade.plugin_featheredfriend.raven_stats.desc": "Show Feathered Friend raven courier stats.",

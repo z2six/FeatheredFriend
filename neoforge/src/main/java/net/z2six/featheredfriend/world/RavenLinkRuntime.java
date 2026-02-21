@@ -283,10 +283,18 @@ public final class RavenLinkRuntime {
 
             RavenEntity raven = findBestActiveRavenForOwner(owner.server, owner, false);
             if (raven == null || !raven.isAlive() || raven.isRemoved()) {
-                owner.sendSystemMessage(net.minecraft.network.chat.Component.translatable(
-                        "message.featheredfriend.raven_link.no_active_raven"
-                ));
-                return false;
+                RavenEntity revived = null;
+                try {
+                    revived = TamedRavenScrollWatcher.tryRevivePerishedRavenForRavenLink(owner);
+                } catch (Throwable ignored) {
+                }
+                if (revived == null || !revived.isAlive() || revived.isRemoved()) {
+                    owner.sendSystemMessage(net.minecraft.network.chat.Component.translatable(
+                            "message.featheredfriend.raven_link.no_active_raven"
+                    ));
+                    return false;
+                }
+                raven = revived;
             }
             if (raven.level() != owner.level()) {
                 RavenEntity sameDimensionRaven = findBestActiveRavenForOwner(owner.server, owner, true);

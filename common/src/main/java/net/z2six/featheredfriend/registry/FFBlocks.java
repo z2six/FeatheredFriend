@@ -5,6 +5,7 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.z2six.featheredfriend.block.MailboxBlock;
 import net.z2six.featheredfriend.block.RavenChestBlock;
 import org.slf4j.Logger;
 
@@ -31,6 +32,16 @@ public final class FFBlocks {
             )
     );
 
+    public static final Supplier<Block> MAILBOX = register(
+            "mailbox",
+            () -> new MailboxBlock(
+                    BlockBehaviour.Properties.of()
+                            .strength(2.0F)
+                            .sound(SoundType.WOOD)
+                            .noOcclusion()
+            )
+    );
+
     private static Supplier<Block> register(String name, Supplier<Block> factory) {
         Supplier<Block> memoized = Suppliers.memoize(() -> {
             try {
@@ -52,4 +63,3 @@ public final class FFBlocks {
     private FFBlocks() {
     }
 }
-

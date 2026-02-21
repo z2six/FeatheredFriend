@@ -16,6 +16,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.TicketType;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
@@ -29,15 +30,20 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.z2six.featheredfriend.client.ravenbadge.RavenBadgeEventType;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.block.MailboxBlock;
+import net.z2six.featheredfriend.block.entity.MailboxBlockEntity;
 import net.z2six.featheredfriend.config.FFServerConfig;
 import net.z2six.featheredfriend.entity.raven.RavenAIState;
 import net.z2six.featheredfriend.entity.raven.RavenAnimMode;
@@ -112,6 +118,25 @@ public final class RavenCourierRuntime {
     private static final String NBT_COURIER_DESPAWN_AT = "CourierDespawnAt";
     private static final String NBT_COURIER_LINK_PAUSE_LAST_TICK = "CourierLinkPauseLastTick";
     private static final String NBT_COURIER_LAST_THREAT_LOG_AT = "CourierLastThreatLogAt";
+
+    // Mailbox delivery attempt state (stored on courier raven entity NBT)
+    private static final String NBT_COURIER_MAILBOX_MODE = "CourierMailboxMode";
+    private static final String NBT_COURIER_MAILBOX_DIMENSION = "CourierMailboxDimension";
+    private static final String NBT_COURIER_MAILBOX_BLOCK_POS = "CourierMailboxBlockPos";
+    private static final String NBT_COURIER_MAILBOX_OWNER_UUID = "CourierMailboxOwnerUUID";
+    private static final String NBT_COURIER_MAILBOX_OWNER_UUID_STR = "CourierMailboxOwnerUUIDStr";
+    private static final String NBT_COURIER_MAILBOX_ATTEMPT_END_AT = "CourierMailboxAttemptEndAt";
+    private static final String NBT_COURIER_MAILBOX_OUTCOME = "CourierMailboxOutcome";
+    private static final String NBT_COURIER_MAILBOX_DEPOSIT_AT = "CourierMailboxDepositAt";
+    private static final String NBT_COURIER_MAILBOX_TICKET_CHUNK = "CourierMailboxTicketChunk";
+
+    private static final int COURIER_MAILBOX_DWELL_TICKS = 40; // 2 seconds
+    private static final int COURIER_MAILBOX_TICKET_RADIUS = 1;
+
+    private static final int COURIER_MAILBOX_OUTCOME_NONE = 0;
+    private static final int COURIER_MAILBOX_OUTCOME_DELIVERED = 1;
+    private static final int COURIER_MAILBOX_OUTCOME_MISSING = 2;
+    private static final int COURIER_MAILBOX_OUTCOME_FULL = 3;
     private static final String NBT_RAVEN_CHEST_PERCH_ASSIGNED = "RavenChestPerchAssigned";
     private static final String NBT_RAVEN_CHEST_PERCH_DIMENSION = "RavenChestPerchDimension";
     private static final String NBT_RAVEN_CHEST_PERCH_BLOCK_POS = "RavenChestPerchBlockPos";
@@ -157,7 +182,8 @@ public final class RavenCourierRuntime {
             NeoForge.EVENT_BUS.addListener(RavenCourierRuntime::onServerTick);
             NeoForge.EVENT_BUS.addListener(RavenCourierRuntime::onEntityInteract);
             NeoForge.EVENT_BUS.addListener(RavenCourierRuntime::onRavenDeath);
-            LOG.debug("[RavenCourierRuntime] Registered server tick + interaction + death listeners");
+            NeoForge.EVENT_BUS.addListener(RavenCourierRuntime::onPlayerLoggedOut);
+            LOG.debug("[RavenCourierRuntime] Registered server tick + interaction + death + logout listeners");
         } catch (Throwable t) {
             LOG.error("[RavenCourierRuntime] Failed to register event listeners", t);
         }
@@ -238,6 +264,62 @@ public final class RavenCourierRuntime {
         }
     }
 
+    private static void onPlayerLoggedOut(@NotNull PlayerEvent.PlayerLoggedOutEvent event) {
+        try {
+            if (!(event.getEntity() instanceof ServerPlayer player)) {
+                return;
+            }
+
+            MinecraftServer server = player.server;
+            if (server == null) {
+                return;
+            }
+
+            ServerLevel overworld = server.overworld();
+            if (overworld == null) {
+                return;
+            }
+
+            RavenCourierData data = RavenCourierData.get(overworld);
+            UUID recipientUuid = player.getUUID();
+            List<RavenCourierData.DeliveryJob> jobs = data.getJobsForRecipient(recipientUuid);
+            if (jobs.isEmpty()) {
+                return;
+            }
+
+            for (RavenCourierData.DeliveryJob job : jobs) {
+                if (job == null || job.failed || !job.inFlight || job.courierRavenUuid == null) {
+                    continue;
+                }
+
+                RavenEntity raven = findCourierRavenByUuid(server, job.courierRavenUuid);
+                if (raven == null || !raven.isAlive() || raven.isRemoved() || !isCourierRaven(raven)) {
+                    job.inFlight = false;
+                    job.courierRavenUuid = null;
+                    data.setDirty();
+                    continue;
+                }
+
+                ServerLevel ravenLevel = (raven.level() instanceof ServerLevel sl) ? sl : overworld;
+
+                // Mailbox deliveries are server-independent and should continue even if the recipient logs out.
+                if (job.mailboxDeposited || isCourierMailboxModeActive(raven)) {
+                    continue;
+                }
+
+                // If the recipient just logged out mid-delivery, redirect to mailbox if possible.
+                boolean redirected = tryDeliverOfflineRecipientToMailbox(server, ravenLevel, data, raven, job);
+                if (redirected) {
+                    continue;
+                }
+
+                cancelInFlightCourierDelivery(server, ravenLevel, data, raven, job, "recipient logged out (re-queued)");
+            }
+        } catch (Throwable t) {
+            LOG.warn("[RavenCourierRuntime] onPlayerLoggedOut failed safely: {}", t.toString());
+        }
+    }
+
     private static void dispatchPendingDeliveries(@NotNull MinecraftServer server, boolean fullScan) {
         try {
             ServerLevel overworld = server.overworld();
@@ -306,6 +388,28 @@ public final class RavenCourierRuntime {
                     }
                 }
 
+                // Safety cleanup: mailbox-deposited jobs are already complete.
+                if (job.mailboxDeposited) {
+                    RavenEntity courier = null;
+                    try {
+                        if (job.courierRavenUuid != null) {
+                            courier = findCourierRavenByUuid(server, job.courierRavenUuid);
+                        }
+                    } catch (Throwable ignored) {
+                    }
+
+                    // Keep the job around while the mailbox courier raven is still in-world so it can
+                    // complete its 2-second dwell + FX despawn. If the courier is missing (crash/restart),
+                    // remove the job immediately to prevent duplication.
+                    if (courier == null || courier.isRemoved() || !courier.isAlive()) {
+                        data.removeJob(job.jobId, job.recipientUuid);
+                        if (job.hasSenderPerchAssignment()) {
+                            maybeRespawnSenderPerchRavenForJob(overworld, job, false);
+                        }
+                    }
+                    continue;
+                }
+
                 if (job.inFlight) {
                     continue;
                 }
@@ -322,6 +426,18 @@ public final class RavenCourierRuntime {
 
                 ServerPlayer recipient = server.getPlayerList().getPlayer(recipientId);
                 if (recipient == null) {
+                    boolean dispatchedMailbox = tryDeliverQueuedJobToOfflineRecipientMailbox(server, overworld, data, job);
+                    if (dispatchedMailbox) {
+                        if (senderId != null) {
+                            busySenders.add(senderId);
+                        }
+                        busyRecipients.add(recipientId);
+
+                        dispatchedCount++;
+                        if (dispatchedCount >= MAX_NEW_DISPATCHES_PER_PASS) {
+                            break;
+                        }
+                    }
                     continue;
                 }
 
@@ -890,6 +1006,16 @@ public final class RavenCourierRuntime {
                         continue;
                     }
 
+                    if (tickMailboxCourierMode(server, ravenLevel, data, raven, job)) {
+                        dirty = true;
+                        continue;
+                    }
+
+                    if (handleInFlightRecipientOffline(server, ravenLevel, data, raven, job)) {
+                        dirty = true;
+                        continue;
+                    }
+
                     if (checkCourierLifetime(ravenLevel, data, raven, job)) {
                         continue;
                     }
@@ -977,6 +1103,16 @@ public final class RavenCourierRuntime {
                             continue;
                         }
 
+                        if (tickMailboxCourierMode(server, level, data, raven, job)) {
+                            dirty = true;
+                            continue;
+                        }
+
+                        if (handleInFlightRecipientOffline(server, level, data, raven, job)) {
+                            dirty = true;
+                            continue;
+                        }
+
                         if (checkCourierLifetime(level, data, raven, job)) {
                             continue;
                         }
@@ -1024,6 +1160,661 @@ public final class RavenCourierRuntime {
             LOG.warn("[RavenCourierRuntime] findCourierRavenByUuid failed safely for uuid={}: {}", uuid, t.toString());
         }
         return null;
+    }
+
+    private static boolean tickMailboxCourierMode(@NotNull MinecraftServer server,
+                                                 @NotNull ServerLevel level,
+                                                 @NotNull RavenCourierData data,
+                                                 @NotNull RavenEntity raven,
+                                                 @NotNull RavenCourierData.DeliveryJob job) {
+        try {
+            CompoundTag root = raven.getPersistentData();
+            if (root == null) {
+                return false;
+            }
+            CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
+            if (ffTag == null || !ffTag.getBoolean(NBT_COURIER_MAILBOX_MODE)) {
+                return false;
+            }
+
+            long now = level.getGameTime();
+            long endAt = ffTag.getLong(NBT_COURIER_MAILBOX_ATTEMPT_END_AT);
+            if (endAt <= 0L) {
+                endAt = now + COURIER_MAILBOX_DWELL_TICKS;
+                ffTag.putLong(NBT_COURIER_MAILBOX_ATTEMPT_END_AT, endAt);
+                root.put(Constants.MOD_ID, ffTag);
+            }
+
+            // If the payload has been deposited, swap the raven back to a normal (non-scroll) variant after 1 second
+            // so the player sees a clear "delivered" transition before the 2-second despawn.
+            try {
+                int outcomePreview = ffTag.contains(NBT_COURIER_MAILBOX_OUTCOME, Tag.TAG_INT)
+                        ? ffTag.getInt(NBT_COURIER_MAILBOX_OUTCOME)
+                        : COURIER_MAILBOX_OUTCOME_NONE;
+                if (outcomePreview == COURIER_MAILBOX_OUTCOME_DELIVERED) {
+                    long depositedAt = ffTag.contains(NBT_COURIER_MAILBOX_DEPOSIT_AT, Tag.TAG_LONG)
+                            ? ffTag.getLong(NBT_COURIER_MAILBOX_DEPOSIT_AT)
+                            : 0L;
+                    if (depositedAt > 0L && (now - depositedAt) >= 20L) {
+                        if (raven.getRavenVariant() == RavenVariant.SCROLL) {
+                            raven.setRavenVariant(RavenVariant.NORMAL);
+                        }
+                    }
+                }
+
+                // Keep mailbox couriers in-air and pinned while waiting.
+                raven.setDeltaMovement(Vec3.ZERO);
+                raven.hurtMarked = true;
+                raven.setNoGravity(true);
+                if (raven.getAnimMode() != RavenAnimMode.IN_AIR) {
+                    raven.setAnimMode(RavenAnimMode.IN_AIR);
+                }
+            } catch (Throwable ignored) {
+            }
+
+            if (now < endAt) {
+                return false;
+            }
+
+            int outcome = ffTag.contains(NBT_COURIER_MAILBOX_OUTCOME, Tag.TAG_INT)
+                    ? ffTag.getInt(NBT_COURIER_MAILBOX_OUTCOME)
+                    : COURIER_MAILBOX_OUTCOME_NONE;
+
+            boolean hadSenderPerchAssignment = job.hasSenderPerchAssignment();
+
+            if (outcome == COURIER_MAILBOX_OUTCOME_DELIVERED) {
+                logToJobParticipants(
+                        level,
+                        job,
+                        RavenLogCategory.COURIER,
+                        "log.featheredfriend.courier.job.completed_mailbox",
+                        job.jobId
+                );
+
+                data.removeJob(job.jobId, job.recipientUuid);
+
+                ServerPlayer ctx = findBestContextPlayer(server, job.senderUuid, job.recipientUuid);
+                if (ctx != null) {
+                    despawnCourierRaven(level, ctx, raven, "delivery complete: mailbox deposit");
+                } else {
+                    clearCourierFlags(raven);
+                    raven.discard();
+                }
+
+                if (hadSenderPerchAssignment) {
+                    maybeRespawnSenderPerchRavenForJob(level, job, false);
+                }
+
+                return true;
+            }
+
+            // Missing/full/unknown -> re-queue and try next mailbox later (or stay queued if none).
+            job.inFlight = false;
+            job.courierRavenUuid = null;
+            data.setDirty();
+
+            boolean hasAnyRemainingMailbox = false;
+            try {
+                if (job.senderUuid != null && job.recipientUuid != null) {
+                    MailboxRegistryData registry = MailboxRegistryData.get(level);
+                    hasAnyRemainingMailbox = registry.getKnownMailboxCount(job.senderUuid, job.recipientUuid) > 0;
+                }
+            } catch (Throwable ignored) {
+            }
+
+            if (hadSenderPerchAssignment && !hasAnyRemainingMailbox) {
+                maybeRespawnSenderPerchRavenForJob(level, job, true);
+            }
+
+            ServerPlayer ctx = findBestContextPlayer(server, job.senderUuid, job.recipientUuid);
+            if (ctx != null) {
+                despawnCourierRaven(level, ctx, raven, "mailbox delivery attempt finished");
+            } else {
+                clearCourierFlags(raven);
+                raven.discard();
+            }
+
+            return true;
+
+        } catch (Throwable t) {
+            LOG.warn("[RavenCourierRuntime] tickMailboxCourierMode failed safely for raven id={} jobId={}: {}",
+                    raven.getId(), job.jobId, t.toString());
+            return false;
+        }
+    }
+
+    /**
+     * If a courier raven is currently in-flight but the recipient goes offline, stop the delivery attempt.
+     *
+     * Current behavior:
+     *  - Despawn the courier raven (best-effort FX).
+     *  - Clear inFlight + courierRavenUuid so the job becomes queued again.
+     *  - If the job has a sender perch assignment, restore the perched raven carrying the scroll.
+     *
+     * Future behavior (mailbox):
+     *  - If an offline-recipient mailbox is registered, deposit the scroll there instead of re-queuing.
+     */
+    private static boolean cancelInFlightCourierDelivery(@NotNull MinecraftServer server,
+                                                         @NotNull ServerLevel level,
+                                                         @NotNull RavenCourierData data,
+                                                         @NotNull RavenEntity raven,
+                                                         @NotNull RavenCourierData.DeliveryJob job,
+                                                         @NotNull String reason) {
+        try {
+            job.inFlight = false;
+            job.courierRavenUuid = null;
+            data.setDirty();
+
+            ServerPlayer ctx = findBestContextPlayer(server, job.senderUuid, job.recipientUuid);
+            if (ctx != null) {
+                despawnCourierRaven(level, ctx, raven, reason);
+            } else {
+                clearCourierFlags(raven);
+                raven.discard();
+            }
+
+            if (job.hasSenderPerchAssignment()) {
+                maybeRespawnSenderPerchRavenForJob(level, job, true);
+            }
+            RavenBadgeRuntime.onCourierJobUpdated(level, job.senderUuid, RavenBadgeEventType.NONE);
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static boolean handleInFlightRecipientOffline(@NotNull MinecraftServer server,
+                                                         @NotNull ServerLevel level,
+                                                         @NotNull RavenCourierData data,
+                                                         @NotNull RavenEntity raven,
+                                                         @NotNull RavenCourierData.DeliveryJob job) {
+        try {
+            if (job.failed) {
+                return false;
+            }
+            if (job.recipientUuid == null) {
+                return false;
+            }
+
+            ServerPlayer recipient = server.getPlayerList().getPlayer(job.recipientUuid);
+            if (recipient != null && recipient.isAlive() && !recipient.isRemoved()) {
+                return false;
+            }
+
+            boolean redirected = tryDeliverOfflineRecipientToMailbox(server, level, data, raven, job);
+            if (redirected) {
+                return true;
+            }
+
+            if (isCourierMailboxModeActive(raven)) {
+                return false;
+            }
+
+            return cancelInFlightCourierDelivery(server, level, data, raven, job, "recipient offline (re-queued)");
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    /**
+     * Mailbox system hook (not implemented yet).
+     *
+     * Return true when the scroll payload has been deposited and the job is completed,
+     * so the in-flight courier raven can be despawned permanently.
+     */
+    private static boolean tryDeliverOfflineRecipientToMailbox(@NotNull MinecraftServer server,
+                                                              @NotNull ServerLevel level,
+                                                              @NotNull RavenCourierData data,
+                                                              @NotNull RavenEntity raven,
+                                                              @NotNull RavenCourierData.DeliveryJob job) {
+        try {
+            if (job.failed) {
+                return false;
+            }
+            if (job.senderUuid == null || job.recipientUuid == null) {
+                return false;
+            }
+            if (isCourierMailboxModeActive(raven)) {
+                return false;
+            }
+
+            MailboxRegistryData registry = MailboxRegistryData.get(level);
+            MailboxRegistryData.MailboxLocation target = registry.getFirstKnownMailbox(job.senderUuid, job.recipientUuid);
+            if (target == null) {
+                return false;
+            }
+
+            ServerLevel targetLevel = resolveLevelFromId(server, target.dimensionId());
+            if (targetLevel == null || targetLevel.isClientSide()) {
+                return false;
+            }
+
+            BlockPos mailboxPos = BlockPos.of(target.blockPos());
+            RavenEntity redirected = spawnCourierRavenForJobAtMailbox(targetLevel, mailboxPos, job);
+            if (redirected == null) {
+                return false;
+            }
+
+            startCourierMailboxAttempt(server, targetLevel, data, redirected, job, job.senderUuid, job.recipientUuid, target);
+
+            job.courierRavenUuid = redirected.getUUID();
+            job.inFlight = true;
+            data.setDirty();
+
+            clearCourierFlags(raven);
+            raven.discard();
+
+            logToJobParticipants(
+                    targetLevel,
+                    job,
+                    RavenLogCategory.COURIER,
+                    "log.featheredfriend.courier.job.redirected_to_mailbox",
+                    job.jobId
+            );
+
+            return true;
+
+        } catch (Throwable t) {
+            LOG.warn("[RavenCourierRuntime] tryDeliverOfflineRecipientToMailbox failed safely for jobId={}: {}",
+                    job.jobId, t.toString());
+            return false;
+        }
+    }
+
+    /**
+     * Mailbox system hook (not implemented yet) for queued jobs.
+     *
+     * Intended behavior:
+     *  - If recipient is offline and has a known mailbox target, deposit the sealed scroll there and complete the job
+     *    without spawning a courier raven.
+     */
+    private static boolean tryDeliverQueuedJobToOfflineRecipientMailbox(@NotNull MinecraftServer server,
+                                                                       @NotNull ServerLevel level,
+                                                                       @NotNull RavenCourierData data,
+                                                                       @NotNull RavenCourierData.DeliveryJob job) {
+        try {
+            if (job == null || job.failed) {
+                return false;
+            }
+            if (job.senderUuid == null || job.recipientUuid == null) {
+                return false;
+            }
+
+            if (job.mailboxDeposited) {
+                // Job payload already deposited; keep the job until the courier raven finishes its dwell + FX despawn.
+                // If the courier raven is missing (crash/restart), the dispatcher-level cleanup will remove the job.
+                return false;
+            }
+
+            if (job.inFlight || job.courierRavenUuid != null) {
+                return false;
+            }
+
+            MailboxRegistryData registry = MailboxRegistryData.get(level);
+            MailboxRegistryData.MailboxLocation target = registry.getFirstKnownMailbox(job.senderUuid, job.recipientUuid);
+            if (target == null) {
+                return false;
+            }
+
+            ServerLevel targetLevel = resolveLevelFromId(server, target.dimensionId());
+            if (targetLevel == null || targetLevel.isClientSide()) {
+                return false;
+            }
+
+            BlockPos mailboxPos = BlockPos.of(target.blockPos());
+            RavenEntity raven = spawnCourierRavenForJobAtMailbox(targetLevel, mailboxPos, job);
+            if (raven == null) {
+                return false;
+            }
+
+            if (job.hasSenderPerchAssignment()) {
+                despawnSenderPerchRavenForDispatch(server, job);
+            }
+
+            startCourierMailboxAttempt(server, targetLevel, data, raven, job, job.senderUuid, job.recipientUuid, target);
+
+            job.inFlight = true;
+            job.courierRavenUuid = raven.getUUID();
+            data.setDirty();
+
+            logToJobParticipants(
+                    targetLevel,
+                    job,
+                    RavenLogCategory.COURIER,
+                    "log.featheredfriend.courier.job.dispatched_mailbox",
+                    job.jobId
+            );
+
+            return true;
+
+        } catch (Throwable t) {
+            LOG.warn("[RavenCourierRuntime] tryDeliverQueuedJobToOfflineRecipientMailbox failed safely for jobId={}: {}",
+                    job == null ? -1L : job.jobId, t.toString());
+            return false;
+        }
+    }
+
+    private static boolean isCourierMailboxModeActive(@NotNull RavenEntity raven) {
+        try {
+            CompoundTag root = raven.getPersistentData();
+            if (root == null) {
+                return false;
+            }
+            CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
+            return ffTag != null && ffTag.getBoolean(NBT_COURIER_MAILBOX_MODE);
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static @Nullable ServerLevel resolveLevelFromId(@NotNull MinecraftServer server, @NotNull String dimensionId) {
+        try {
+            ResourceLocation dimLoc = ResourceLocation.tryParse(dimensionId);
+            if (dimLoc == null) {
+                return null;
+            }
+            ResourceKey<Level> dimKey = ResourceKey.create(Registries.DIMENSION, dimLoc);
+            return server.getLevel(dimKey);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    @Nullable
+    private static RavenEntity spawnCourierRavenForJobAtMailbox(@NotNull ServerLevel level,
+                                                                @NotNull BlockPos mailboxPos,
+                                                                @NotNull RavenCourierData.DeliveryJob job) {
+        try {
+            // Ensure the target chunk is available (mailboxes may be far from all players).
+            try {
+                level.getChunk(mailboxPos);
+            } catch (Throwable ignored) {
+            }
+
+            RavenEntity raven = FFEntities.RAVEN.get().create(level);
+            if (raven == null) {
+                return null;
+            }
+
+            Vec3 spawnPos = null;
+            float yaw = 0.0F;
+
+            // Prefer: 1 block in front of the mailbox, facing the mailbox, floating in-air.
+            try {
+                BlockState mailboxState = level.getBlockState(mailboxPos);
+                if (mailboxState != null && mailboxState.is(FFBlocks.MAILBOX.get())
+                        && mailboxState.hasProperty(MailboxBlock.FACING)) {
+                    Direction facing = mailboxState.getValue(MailboxBlock.FACING);
+                    BlockPos front = mailboxPos.relative(facing);
+                    if (level.getWorldBorder().isWithinBounds(front)
+                            && level.isEmptyBlock(front)
+                            && level.isEmptyBlock(front.above())) {
+                        spawnPos = new Vec3(front.getX() + 0.5D, mailboxPos.getY() + 0.5D, front.getZ() + 0.5D);
+                        yaw = facing.getOpposite().toYRot();
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+
+            if (spawnPos == null) {
+                int minY = level.getMinBuildHeight() + 1;
+                int maxY = level.getMaxBuildHeight() - 2;
+                int baseY = Mth.clamp(mailboxPos.getY() + 1, minY, maxY);
+
+                spawnPos = findSpawnNearBase(level, mailboxPos.getX(), baseY, mailboxPos.getZ(), minY, maxY);
+                if (spawnPos == null) {
+                    spawnPos = new Vec3(mailboxPos.getX() + 0.5D, baseY, mailboxPos.getZ() + 0.5D);
+                }
+            }
+
+            raven.moveTo(spawnPos.x, spawnPos.y, spawnPos.z, yaw, 0.0F);
+            try {
+                raven.setYRot(yaw);
+                raven.setYHeadRot(yaw);
+                raven.yBodyRot = yaw;
+                raven.setXRot(0.0F);
+                raven.setDeltaMovement(Vec3.ZERO);
+                raven.hurtMarked = true;
+                raven.setNoGravity(true);
+                if (raven.getAnimMode() != RavenAnimMode.IN_AIR) {
+                    raven.setAnimMode(RavenAnimMode.IN_AIR);
+                }
+            } catch (Throwable ignored) {
+            }
+
+            try {
+                raven.setTame(true, true);
+            } catch (Throwable ignored) {
+            }
+            try {
+                UUID ownerUuid = (job.senderUuid != null) ? job.senderUuid : job.recipientUuid;
+                if (ownerUuid != null) {
+                    raven.setOwnerUUID(ownerUuid);
+                }
+            } catch (Throwable ignored) {
+            }
+            try {
+                raven.setRavenVariant(RavenVariant.SCROLL);
+            } catch (Throwable ignored) {
+            }
+            try {
+                raven.setRavenArmorVisual(RavenArmorVisual.fromId(job.ravenArmorVisualId));
+            } catch (Throwable ignored) {
+            }
+            try {
+                float maxHealth = Math.max(1.0F, raven.getMaxHealth());
+                raven.setHealth(maxHealth);
+            } catch (Throwable ignored) {
+            }
+
+            String ravenName = (job.ravenName != null && !job.ravenName.isEmpty())
+                    ? job.ravenName
+                    : Component.translatable("entity.featheredfriend.raven").getString();
+            ensureRavenName(raven, ravenName);
+
+            attachCourierJobToRaven(level, raven, job);
+
+            try {
+                Teleportation tp = raven.getTeleportation();
+                if (tp != null) {
+                    tp.startFadeInOnly("courier mailbox spawn", raven);
+                }
+            } catch (Throwable ignored) {
+            }
+
+            level.addFreshEntity(raven);
+
+            // Defensive: ensure the client sees the fade-in initial alpha even on the spawn packet.
+            try {
+                Teleportation tp = raven.getTeleportation();
+                if (tp != null) {
+                    tp.setTeleportFadeAlpha(0, raven);
+                }
+            } catch (Throwable ignored) {
+            }
+
+            // Mailbox couriers should use the usual Enderpop teleport-style spawn FX.
+            try {
+                Vec3 fxPos = raven.position().add(0.0D, 0.6D, 0.0D);
+                long fxSeed =
+                        raven.getUUID().getLeastSignificantBits()
+                                ^ (long) raven.tickCount
+                                ^ mailboxPos.asLong()
+                                ^ job.jobId
+                                ^ 0xB8F3A2D1L;
+                Teleportation teleportFx = new Teleportation(raven);
+                teleportFx.spawnEnderpopBurst(
+                        level,
+                        fxPos.x,
+                        fxPos.y,
+                        fxPos.z,
+                        fxSeed,
+                        "courier mailbox spawn",
+                        raven
+                );
+            } catch (Throwable ignored) {
+            }
+
+            logToJobParticipants(
+                    level,
+                    job,
+                    RavenLogCategory.COURIER,
+                    "log.featheredfriend.courier.raven_spawned_at_mailbox",
+                    job.jobId
+            );
+
+            return raven;
+        } catch (Throwable t) {
+            LOG.warn("[RavenCourierRuntime] spawnCourierRavenForJobAtMailbox failed safely for jobId={}: {}",
+                    job.jobId, t.toString());
+            return null;
+        }
+    }
+
+    private static void startCourierMailboxAttempt(@NotNull MinecraftServer server,
+                                                   @NotNull ServerLevel level,
+                                                   @NotNull RavenCourierData data,
+                                                   @NotNull RavenEntity raven,
+                                                   @NotNull RavenCourierData.DeliveryJob job,
+                                                   @NotNull UUID observerUuid,
+                                                   @NotNull UUID mailboxOwnerUuid,
+                                                   @NotNull MailboxRegistryData.MailboxLocation target) {
+        try {
+            CompoundTag root = raven.getPersistentData();
+            CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
+
+            ffTag.putBoolean(NBT_COURIER_MAILBOX_MODE, true);
+            ffTag.putString(NBT_COURIER_MAILBOX_DIMENSION, target.dimensionId());
+            ffTag.putLong(NBT_COURIER_MAILBOX_BLOCK_POS, target.blockPos());
+            ffTag.putUUID(NBT_COURIER_MAILBOX_OWNER_UUID, mailboxOwnerUuid);
+            ffTag.putString(NBT_COURIER_MAILBOX_OWNER_UUID_STR, mailboxOwnerUuid.toString());
+
+            long now = level.getGameTime();
+            ffTag.putLong(NBT_COURIER_MAILBOX_ATTEMPT_END_AT, now + COURIER_MAILBOX_DWELL_TICKS);
+
+            // Safety: if this job already deposited its payload (e.g. crash/restart window),
+            // do not deposit again. Let tickMailboxCourierMode clean up after the dwell time.
+            if (job.mailboxDeposited) {
+                ffTag.putInt(NBT_COURIER_MAILBOX_OUTCOME, COURIER_MAILBOX_OUTCOME_DELIVERED);
+                ffTag.putLong(NBT_COURIER_MAILBOX_DEPOSIT_AT, Math.max(0L, job.mailboxDepositedGameTime));
+                root.put(Constants.MOD_ID, ffTag);
+                return;
+            }
+
+            // Keep the mailbox chunk entity-ticking while the courier raven is present.
+            try {
+                BlockPos mailboxPos = BlockPos.of(target.blockPos());
+                ChunkPos chunkPos = new ChunkPos(mailboxPos);
+                level.getChunkSource().addRegionTicket(
+                        TicketType.FORCED,
+                        chunkPos,
+                        COURIER_MAILBOX_TICKET_RADIUS,
+                        chunkPos,
+                        true
+                );
+                ffTag.putLong(NBT_COURIER_MAILBOX_TICKET_CHUNK, chunkPos.toLong());
+            } catch (Throwable ignored) {
+            }
+
+            // Evaluate mailbox presence immediately to trigger badge/log instantly.
+            BlockPos mailboxPos = BlockPos.of(target.blockPos());
+            boolean mailboxExistsForOwner = false;
+            try {
+                BlockState state = level.getBlockState(mailboxPos);
+                if (state != null && state.is(FFBlocks.MAILBOX.get())) {
+                    BlockEntity be = level.getBlockEntity(mailboxPos);
+                    if (be instanceof MailboxBlockEntity mailboxBe) {
+                        UUID beOwner = mailboxBe.getOwnerUuid();
+                        mailboxExistsForOwner = mailboxOwnerUuid.equals(beOwner);
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+
+            if (!mailboxExistsForOwner) {
+                ffTag.putInt(NBT_COURIER_MAILBOX_OUTCOME, COURIER_MAILBOX_OUTCOME_MISSING);
+                ffTag.remove(NBT_COURIER_MAILBOX_DEPOSIT_AT);
+                root.put(Constants.MOD_ID, ffTag);
+
+                try {
+                    MailboxRegistryData.get(level).removeKnownMailbox(
+                            observerUuid,
+                            mailboxOwnerUuid,
+                            target.dimensionId(),
+                            target.blockPos()
+                    );
+                } catch (Throwable ignored) {
+                }
+
+                logToJobParticipants(
+                        level,
+                        job,
+                        RavenLogCategory.COURIER,
+                        "log.featheredfriend.courier.mailbox.missing",
+                        job.jobId
+                );
+                RavenBadgeRuntime.onCourierJobUpdated(level, job.senderUuid, RavenBadgeEventType.PLAYER_NOT_FOUND);
+                return;
+            }
+
+            Item sealedScrollItem = BuiltInRegistries.ITEM.get(SEALED_SCROLL_ID);
+            if (sealedScrollItem == null) {
+                ffTag.putInt(NBT_COURIER_MAILBOX_OUTCOME, COURIER_MAILBOX_OUTCOME_FULL);
+                ffTag.remove(NBT_COURIER_MAILBOX_DEPOSIT_AT);
+                root.put(Constants.MOD_ID, ffTag);
+                return;
+            }
+
+            ItemStack toDeposit = buildDeliveredScrollStack(
+                    sealedScrollItem,
+                    job,
+                    job.recipientName,
+                    job.recipientUuid,
+                    true
+            );
+
+            boolean inserted = false;
+            try {
+                BlockEntity be = level.getBlockEntity(mailboxPos);
+                if (be instanceof MailboxBlockEntity mailboxBe) {
+                    inserted = mailboxBe.tryInsertFirstEmpty(toDeposit);
+                }
+            } catch (Throwable ignored) {
+            }
+            if (inserted) {
+                job.mailboxDeposited = true;
+                job.mailboxDepositedGameTime = now;
+                data.setDirty();
+
+                ffTag.putInt(NBT_COURIER_MAILBOX_OUTCOME, COURIER_MAILBOX_OUTCOME_DELIVERED);
+                ffTag.putLong(NBT_COURIER_MAILBOX_DEPOSIT_AT, now);
+                root.put(Constants.MOD_ID, ffTag);
+
+                logToJobParticipants(
+                        level,
+                        job,
+                        RavenLogCategory.COURIER,
+                        "log.featheredfriend.courier.mailbox.delivered",
+                        job.jobId
+                );
+                RavenBadgeRuntime.onCourierJobUpdated(level, job.senderUuid, RavenBadgeEventType.DELIVERY_SUCCESS);
+            } else {
+                ffTag.putInt(NBT_COURIER_MAILBOX_OUTCOME, COURIER_MAILBOX_OUTCOME_FULL);
+                ffTag.remove(NBT_COURIER_MAILBOX_DEPOSIT_AT);
+                root.put(Constants.MOD_ID, ffTag);
+
+                logToJobParticipants(
+                        level,
+                        job,
+                        RavenLogCategory.COURIER,
+                        "log.featheredfriend.courier.mailbox.full",
+                        job.jobId
+                );
+            }
+        } catch (Throwable t) {
+            LOG.warn("[RavenCourierRuntime] startCourierMailboxAttempt failed safely for jobId={}: {}",
+                    job.jobId, t.toString());
+        }
     }
 
     private static boolean checkCourierLifetime(@NotNull ServerLevel level,
@@ -1097,7 +1888,7 @@ public final class RavenCourierRuntime {
                 detectionRadius = DEFAULT_COURIER_THREAT_SENSE_RADIUS_BLOCKS;
             }
 
-            ThreatScanResult threats = scanCourierThreats(raven, detectionRadius, job.recipientUuid);
+            ThreatScanResult threats = scanCourierThreats(raven, detectionRadius, job.senderUuid, job.recipientUuid);
             if (threats.hasThreat()) {
                 long now = level.getGameTime();
                 CompoundTag root = raven.getPersistentData();
@@ -1143,6 +1934,7 @@ public final class RavenCourierRuntime {
     @NotNull
     private static ThreatScanResult scanCourierThreats(@NotNull RavenEntity raven,
                                                        double radiusBlocks,
+                                                       @Nullable UUID senderUuid,
                                                        @Nullable UUID recipientUuid) {
         try {
             if (!(raven.level() instanceof ServerLevel level) || level.isClientSide()) {
@@ -1173,6 +1965,7 @@ public final class RavenCourierRuntime {
                             && !p.isRemoved()
                             && !p.isSpectator()
                             && p.distanceToSqr(raven) <= radiusSq
+                            && (senderUuid == null || !senderUuid.equals(p.getUUID()))
                             && (recipientUuid == null || !recipientUuid.equals(p.getUUID()))
             );
 
@@ -1702,6 +2495,13 @@ public final class RavenCourierRuntime {
                 return;
             }
 
+            // Mailbox-delivery couriers deposit server-side and should not be interactable (prevents duplication).
+            if (isCourierMailboxModeActive(raven)) {
+                event.setCancellationResult(InteractionResult.SUCCESS);
+                event.setCanceled(true);
+                return;
+            }
+
             long jobId = getCourierJobIdFromRaven(raven);
             if (jobId <= 0L) {
                 LOG.warn("[RavenCourierRuntime] onEntityInteract: courier raven id={} has no valid CourierJobId; ignoring.", raven.getId());
@@ -2087,6 +2887,21 @@ public final class RavenCourierRuntime {
             } catch (Throwable ignored) {
             }
 
+            // If payload already deposited into mailbox, do NOT drop/duplicate.
+            if (job.mailboxDeposited) {
+                logToJobParticipants(
+                        serverLevel,
+                        job,
+                        RavenLogCategory.COMBAT,
+                        "log.featheredfriend.courier.raven_died_after_mailbox_delivery",
+                        job.jobId
+                );
+                data.removeJob(job.jobId, job.recipientUuid);
+                maybeRespawnSenderPerchRavenForJob(serverLevel, job, false);
+                clearCourierFlags(raven);
+                return;
+            }
+
             // Death COMPLETES: drop scroll + remove job.
             dropSealedScrollAtRaven(serverLevel, raven, job);
             notifySenderOfRavenDeath(serverLevel, raven, job);
@@ -2244,6 +3059,22 @@ public final class RavenCourierRuntime {
             if (root != null) {
                 CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
                 if (ffTag != null && !ffTag.isEmpty()) {
+                    // Remove forced mailbox ticket if present.
+                    try {
+                        long ticketChunk = ffTag.getLong(NBT_COURIER_MAILBOX_TICKET_CHUNK);
+                        if (ticketChunk != 0L && raven.level() instanceof ServerLevel ticketLevel) {
+                            ChunkPos cp = new ChunkPos(ticketChunk);
+                            ticketLevel.getChunkSource().removeRegionTicket(
+                                    TicketType.FORCED,
+                                    cp,
+                                    COURIER_MAILBOX_TICKET_RADIUS,
+                                    cp,
+                                    true
+                            );
+                        }
+                    } catch (Throwable ignored) {
+                    }
+
                     ffTag.remove("CourierActive");
                     ffTag.remove("CourierJobId");
                     ffTag.remove("CourierSenderUUID");
@@ -2251,6 +3082,16 @@ public final class RavenCourierRuntime {
                     ffTag.remove(NBT_COURIER_DESPAWN_AT);
                     ffTag.remove(NBT_COURIER_LINK_PAUSE_LAST_TICK);
                     ffTag.remove(NBT_COURIER_LAST_THREAT_LOG_AT);
+
+                    ffTag.remove(NBT_COURIER_MAILBOX_MODE);
+                    ffTag.remove(NBT_COURIER_MAILBOX_DIMENSION);
+                    ffTag.remove(NBT_COURIER_MAILBOX_BLOCK_POS);
+                    ffTag.remove(NBT_COURIER_MAILBOX_OWNER_UUID);
+                    ffTag.remove(NBT_COURIER_MAILBOX_OWNER_UUID_STR);
+                    ffTag.remove(NBT_COURIER_MAILBOX_ATTEMPT_END_AT);
+                    ffTag.remove(NBT_COURIER_MAILBOX_OUTCOME);
+                    ffTag.remove(NBT_COURIER_MAILBOX_DEPOSIT_AT);
+                    ffTag.remove(NBT_COURIER_MAILBOX_TICKET_CHUNK);
                     root.put(Constants.MOD_ID, ffTag);
                 }
             }

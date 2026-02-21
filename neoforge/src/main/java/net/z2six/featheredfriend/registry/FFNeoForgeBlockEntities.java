@@ -5,6 +5,7 @@ import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.block.entity.MailboxBlockEntity;
 import net.z2six.featheredfriend.block.entity.RavenChestBlockEntity;
 import org.slf4j.Logger;
 
@@ -27,8 +28,19 @@ public final class FFNeoForgeBlockEntities {
                                     .build(null)
                     );
 
+    @SuppressWarnings("unchecked")
+    public static final Supplier<BlockEntityType<MailboxBlockEntity>> MAILBOX =
+            (Supplier<BlockEntityType<MailboxBlockEntity>>) (Supplier<?>)
+                    BLOCK_ENTITY_TYPES.register(
+                            "mailbox",
+                            () -> BlockEntityType.Builder
+                                    .of(MailboxBlockEntity::new, FFBlocks.MAILBOX.get())
+                                    .build(null)
+                    );
+
     static {
         FFBlockEntities.bindRavenChestType(RAVEN_CHEST);
+        FFBlockEntities.bindMailboxType(MAILBOX);
     }
 
     private FFNeoForgeBlockEntities() {

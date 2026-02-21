@@ -5,6 +5,7 @@ import com.mojang.logging.LogUtils;
 import com.google.common.base.Suppliers;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.BlockItem;
 import net.z2six.featheredfriend.entity.raven.RavenArmorVisual;
 import net.z2six.featheredfriend.item.EnderpackItem;
 import net.z2six.featheredfriend.item.RavenArmorItem;
@@ -111,6 +112,14 @@ public final class FFItems {
                     FFBlocks.RAVEN_CHEST.get(),
                     new Item.Properties().stacksTo(1),
                     "tooltip.featheredfriend.raven_chest"
+            )
+    );
+
+    public static final Supplier<Item> MAILBOX = register(
+            "mailbox",
+            () -> new BlockItem(
+                    FFBlocks.MAILBOX.get(),
+                    new Item.Properties().stacksTo(64)
             )
     );
 

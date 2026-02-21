@@ -36,6 +36,13 @@ neoForge {
         client {
             client()
         }
+        client2 {
+            client()
+            // Second client for local multiplayer testing.
+            // Uses a separate game directory to avoid save/config/log contention with the primary client.
+            gameDirectory.set(file('run/client2'))
+            programArguments.addAll '--username', 'Dev2'
+        }
         data {
             data()
 

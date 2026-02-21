@@ -8,8 +8,12 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec2;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.block.MailboxBlock;
+import net.z2six.featheredfriend.block.entity.MailboxBlockEntity;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import org.jetbrains.annotations.NotNull;
+import snownee.jade.api.BlockAccessor;
+import snownee.jade.api.IBlockComponentProvider;
 import snownee.jade.api.EntityAccessor;
 import snownee.jade.api.IEntityComponentProvider;
 import snownee.jade.api.ITooltip;
@@ -30,6 +34,8 @@ public final class FeatheredFriendJadePlugin implements IWailaPlugin {
 
     private static final ResourceLocation RAVEN_STATS_UID =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "raven_stats");
+    private static final ResourceLocation MAILBOX_OWNER_UID =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "mailbox_owner");
     private static final ResourceLocation FEATHER_FILLED_SPRITE =
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "jade/jadefeather");
     private static final ResourceLocation FEATHER_OUTLINE_SPRITE =
@@ -40,6 +46,40 @@ public final class FeatheredFriendJadePlugin implements IWailaPlugin {
     @Override
     public void registerClient(IWailaClientRegistration registration) {
         registration.registerEntityComponent(RavenStatsProvider.INSTANCE, RavenEntity.class);
+        registration.registerBlockComponent(MailboxOwnerProvider.INSTANCE, MailboxBlock.class);
+    }
+
+    private static final class MailboxOwnerProvider implements IBlockComponentProvider {
+
+        private static final MailboxOwnerProvider INSTANCE = new MailboxOwnerProvider();
+
+        @Override
+        public @NotNull ResourceLocation getUid() {
+            return MAILBOX_OWNER_UID;
+        }
+
+        @Override
+        public void appendTooltip(ITooltip tooltip, BlockAccessor accessor, IPluginConfig config) {
+            if (!(accessor.getBlockEntity() instanceof MailboxBlockEntity mailbox)) {
+                return;
+            }
+
+            String ownerName = "";
+            try {
+                ownerName = mailbox.getOwnerName();
+            } catch (Throwable ignored) {
+            }
+
+            Component ownerValue;
+            if (ownerName == null || ownerName.isBlank()) {
+                ownerValue = Component.literal("???").withStyle(ChatFormatting.GRAY);
+            } else {
+                ownerValue = Component.literal(ownerName).withStyle(ChatFormatting.YELLOW);
+            }
+
+            tooltip.add(Component.translatable("jade.featheredfriend.mailbox.owner", ownerValue)
+                    .withStyle(ChatFormatting.GRAY));
+        }
     }
 
     private static final class RavenStatsProvider implements IEntityComponentProvider {

@@ -15,6 +15,7 @@ import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.ravenbadge.RavenBadgeBaseState;
 import net.z2six.featheredfriend.client.ravenbadge.RavenBadgeEventType;
 import net.z2six.featheredfriend.data.FFKnownPlayersData;
+import net.z2six.featheredfriend.world.MailboxRegistryData;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
@@ -995,10 +996,18 @@ public final class FFNetwork {
     public static void sendKnownPlayersTo(@NotNull ServerPlayer player,
                                           @NotNull Collection<FFKnownPlayersData.KnownPlayer> players) {
         try {
+            MailboxRegistryData mailboxRegistry = MailboxRegistryData.get(player.serverLevel());
+            UUID observerUuid = player.getUUID();
+
             List<KnownPlayerInfo> copy = new ArrayList<>();
             for (FFKnownPlayersData.KnownPlayer kp : players) {
                 if (kp == null || kp.uuid() == null || kp.name() == null || kp.name().isBlank()) continue;
-                copy.add(new KnownPlayerInfo(kp.uuid(), kp.name()));
+                int mailboxCount = 0;
+                try {
+                    mailboxCount = mailboxRegistry.getKnownMailboxCount(observerUuid, kp.uuid());
+                } catch (Throwable ignored) {
+                }
+                copy.add(new KnownPlayerInfo(kp.uuid(), kp.name(), Math.max(0, mailboxCount)));
             }
             KnownPlayersPayload payload = new KnownPlayersPayload(copy);
             PacketDistributor.sendToPlayer(player, payload);
@@ -1188,10 +1197,12 @@ public final class FFNetwork {
                     if (info == null || info.uuid() == null || info.name() == null) {
                         buf.writeUUID(new UUID(0L, 0L));
                         buf.writeUtf("", 1024);
+                        buf.writeVarInt(0);
                         continue;
                     }
                     buf.writeUUID(info.uuid());
                     buf.writeUtf(info.name(), 1024);
+                    buf.writeVarInt(Math.max(0, info.mailboxCount()));
                 }
             } catch (Throwable t) {
                 LOG.error("[FFNetwork] KnownPlayersPayload encode failed", t);
@@ -1212,12 +1223,13 @@ public final class FFNetwork {
                 for (int i = 0; i < size; i++) {
                     UUID uuid = buf.readUUID();
                     String name = buf.readUtf(1024);
+                    int mailboxCount = buf.readVarInt();
 
                     if (uuid == null) continue;
                     if (name == null || name.isBlank()) continue;
 
                     if (uuid.getMostSignificantBits() == 0L && uuid.getLeastSignificantBits() == 0L) continue;
-                    list.add(new KnownPlayerInfo(uuid, name));
+                    list.add(new KnownPlayerInfo(uuid, name, Math.max(0, mailboxCount)));
                 }
 
                 return new KnownPlayersPayload(list);

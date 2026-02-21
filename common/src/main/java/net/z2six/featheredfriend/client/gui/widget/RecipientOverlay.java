@@ -361,7 +361,7 @@ public final class RecipientOverlay {
 
         g.drawString(
                 font,
-                entry.getName(),
+                entry.getDisplayName(),
                 headX + headSize + 4,
                 yTop + 3,
                 0xFFFFFFFF,

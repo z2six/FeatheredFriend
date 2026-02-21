@@ -9,7 +9,9 @@ import net.z2six.featheredfriend.client.gui.ScrollSealingScreen;
 import net.z2six.featheredfriend.client.gui.SealStampScreen;
 import net.z2six.featheredfriend.client.gui.ScrollViewScreen;
 import net.z2six.featheredfriend.client.gui.EnderpackScreen;
+import net.z2six.featheredfriend.client.gui.MailboxScreen;
 import net.z2six.featheredfriend.menu.EnderpackMenu;
+import net.z2six.featheredfriend.menu.MailboxMenu;
 import net.z2six.featheredfriend.menu.ScrollSealingMenu;
 import net.z2six.featheredfriend.menu.SealStampMenu;
 import net.z2six.featheredfriend.menu.ScrollViewMenu;
@@ -119,6 +121,24 @@ public final class ClientScreens {
             LOG.debug("[ClientScreens] Successfully registered Enderpack chest screen");
         } catch (Throwable t) {
             LOG.error("[ClientScreens] Failed to register Enderpack screen", t);
+        }
+
+        // ---------------------------------------------------------------------
+        // Mailbox GUI (8-slot per-player storage)
+        // ---------------------------------------------------------------------
+        try {
+            LOG.debug("[ClientScreens] Registering screen for menu type: {} (mailbox)",
+                    FFNeoForgeMenus.MAILBOX_MENU.get().toString());
+
+            event.register(
+                    FFNeoForgeMenus.MAILBOX_MENU.get(),
+                    (MailboxMenu menu, net.minecraft.world.entity.player.Inventory inv, net.minecraft.network.chat.Component title) ->
+                            new MailboxScreen(menu, inv, title)
+            );
+
+            LOG.debug("[ClientScreens] Successfully registered Mailbox screen");
+        } catch (Throwable t) {
+            LOG.error("[ClientScreens] Failed to register Mailbox screen", t);
         }
     }
 }

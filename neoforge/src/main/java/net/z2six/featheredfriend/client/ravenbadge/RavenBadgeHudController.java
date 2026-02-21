@@ -203,6 +203,9 @@ public final class RavenBadgeHudController {
             if (mc == null || mc.player == null || mc.level == null) {
                 return;
             }
+            if (mc.options != null && mc.options.hideGui) {
+                return;
+            }
             if (RavenLinkClientController.isLinkActive()) {
                 return;
             }

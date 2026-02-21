@@ -11,6 +11,7 @@ import net.minecraft.client.multiplayer.ClientChunkCache;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.PostChain;
 import net.minecraft.client.renderer.ViewArea;
+import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -24,6 +25,7 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.Pose;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -31,12 +33,14 @@ import net.neoforged.neoforge.client.event.RenderHandEvent;
 import net.neoforged.neoforge.client.event.RenderLivingEvent;
 import net.neoforged.neoforge.client.event.RenderPlayerEvent;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.RenderGuiLayerEvent;
 import net.neoforged.neoforge.client.event.ViewportEvent;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.common.NeoForge;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import net.z2six.featheredfriend.platform.Services;
@@ -44,6 +48,7 @@ import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -60,6 +65,7 @@ public final class RavenLinkClientController {
     private static final boolean ENABLE_RAVEN_LINK_DIAGNOSTICS = false;
     private static final long EYE_TRANSITION_DURATION_MS = 260L;
     private static final long BLACK_HOLD_AFTER_TELEPORT_MS = 1000L;
+    private static final long END_TRANSITION_FAILSAFE_EXTRA_MS = 1500L;
     private static final double LINK_FOV_MULTIPLIER = 1.18D;
     private static final double CLOSING_CAMERA_PUSH_DISTANCE = 1.28D;
     private static final double CLOSING_CAMERA_LIFT_DISTANCE = 0.16D;
@@ -94,6 +100,7 @@ public final class RavenLinkClientController {
     private static volatile int pendingStopRetries = 0;
     private static volatile long lastStopRetrySentAtMillis = 0L;
     private static volatile boolean escWasDown = false;
+    private static volatile boolean suppressNextEscExit = false;
     private static volatile float lookYaw = 0.0F;
     private static volatile float lookPitch = 0.0F;
     private static volatile float anchorYaw = 0.0F;
@@ -116,6 +123,12 @@ public final class RavenLinkClientController {
     private static volatile @org.jetbrains.annotations.Nullable Field CLIENT_CHUNK_STORAGE_CENTER_Z_FIELD = null;
     private static volatile @org.jetbrains.annotations.Nullable Field CLIENT_CHUNK_STORAGE_RADIUS_FIELD = null;
     private static volatile boolean CLIENT_CHUNK_STORAGE_REFLECTION_READY = false;
+
+    private static volatile boolean JADE_REFLECTION_LOOKED_UP = false;
+    private static volatile boolean JADE_REFLECTION_READY = false;
+    private static volatile @org.jetbrains.annotations.Nullable Method JADE_TICK_HANDLER_INSTANCE_METHOD = null;
+    private static volatile @org.jetbrains.annotations.Nullable Field JADE_TICK_HANDLER_ROOT_ELEMENT_FIELD = null;
+    private static volatile @org.jetbrains.annotations.Nullable Method JADE_OVERLAY_RENDERER_CLEAR_STATE_METHOD = null;
     private static volatile @org.jetbrains.annotations.Nullable Field LEVEL_RENDERER_VIEW_AREA_FIELD = null;
     private static volatile @org.jetbrains.annotations.Nullable Field LEVEL_RENDERER_LAST_CAMERA_SECTION_X_FIELD = null;
     private static volatile @org.jetbrains.annotations.Nullable Field LEVEL_RENDERER_LAST_CAMERA_SECTION_Y_FIELD = null;
@@ -195,6 +208,7 @@ public final class RavenLinkClientController {
             transitionCameraProxy = null;
             resetVisionPixels();
             escWasDown = false;
+            suppressNextEscExit = false;
             Minecraft mc = Minecraft.getInstance();
             if (mc != null && mc.player != null) {
                 anchorYaw = mc.player.getYRot();
@@ -308,6 +322,14 @@ public final class RavenLinkClientController {
             if (!active) {
                 return;
             }
+            if (event.getCurrentScreen() instanceof ChatScreen && event.getNewScreen() == null) {
+                Minecraft mc = Minecraft.getInstance();
+                if (mc != null && mc.getWindow() != null) {
+                    if (InputConstants.isKeyDown(mc.getWindow().getWindow(), GLFW.GLFW_KEY_ESCAPE)) {
+                        suppressNextEscExit = true;
+                    }
+                }
+            }
             if (event.getNewScreen() instanceof PauseScreen) {
                 event.setCanceled(true);
                 if (canManuallyExitLinkNow()) {
@@ -327,6 +349,24 @@ public final class RavenLinkClientController {
             }
         } catch (Throwable t) {
             LOG.debug("[RavenLinkClientController] onRenderHand failed safely: {}", t.toString());
+        }
+    }
+
+    @SubscribeEvent
+    public static void onInputKey(InputEvent.Key event) {
+        try {
+            if (!active) {
+                return;
+            }
+            if (event.getKey() == GLFW.GLFW_KEY_F1) {
+                Minecraft mc = Minecraft.getInstance();
+                if (mc != null) {
+                    // Lock HUD visibility while linked so F1 cannot desync transition visuals/state.
+                    mc.options.hideGui = false;
+                }
+            }
+        } catch (Throwable t) {
+            LOG.debug("[RavenLinkClientController] onInputKey failed safely: {}", t.toString());
         }
     }
 
@@ -364,6 +404,18 @@ public final class RavenLinkClientController {
         }
     }
 
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onRenderGuiPre(RenderGuiEvent.Pre event) {
+        try {
+            if (!active) {
+                return;
+            }
+            suppressJadeOverlayIfPresent();
+        } catch (Throwable t) {
+            LOG.debug("[RavenLinkClientController] onRenderGuiPre failed safely: {}", t.toString());
+        }
+    }
+
     @SubscribeEvent
     public static void onRenderGuiLayerPre(RenderGuiLayerEvent.Pre event) {
         try {
@@ -391,6 +443,42 @@ public final class RavenLinkClientController {
             renderRavenLinkVisionOverlay(event.getGuiGraphics(), mc, event.getPartialTick().getGameTimeDeltaTicks());
         } catch (Throwable t) {
             LOG.debug("[RavenLinkClientController] onRenderGuiPost failed safely: {}", t.toString());
+        }
+    }
+
+    private static void suppressJadeOverlayIfPresent() {
+        try {
+            if (!JADE_REFLECTION_LOOKED_UP) {
+                JADE_REFLECTION_LOOKED_UP = true;
+                try {
+                    Class<?> tickHandlerClass = Class.forName("snownee.jade.overlay.WailaTickHandler");
+                    JADE_TICK_HANDLER_INSTANCE_METHOD = tickHandlerClass.getMethod("instance");
+                    JADE_TICK_HANDLER_ROOT_ELEMENT_FIELD = tickHandlerClass.getField("rootElement");
+
+                    Class<?> overlayRendererClass = Class.forName("snownee.jade.overlay.OverlayRenderer");
+                    JADE_OVERLAY_RENDERER_CLEAR_STATE_METHOD = overlayRendererClass.getMethod("clearState");
+
+                    JADE_REFLECTION_READY = (JADE_TICK_HANDLER_INSTANCE_METHOD != null)
+                            && (JADE_TICK_HANDLER_ROOT_ELEMENT_FIELD != null)
+                            && (JADE_OVERLAY_RENDERER_CLEAR_STATE_METHOD != null);
+                } catch (Throwable ignored) {
+                    JADE_REFLECTION_READY = false;
+                }
+            }
+
+            if (!JADE_REFLECTION_READY
+                    || JADE_TICK_HANDLER_INSTANCE_METHOD == null
+                    || JADE_TICK_HANDLER_ROOT_ELEMENT_FIELD == null
+                    || JADE_OVERLAY_RENDERER_CLEAR_STATE_METHOD == null) {
+                return;
+            }
+
+            Object tickHandler = JADE_TICK_HANDLER_INSTANCE_METHOD.invoke(null);
+            if (tickHandler != null) {
+                JADE_TICK_HANDLER_ROOT_ELEMENT_FIELD.set(tickHandler, null);
+            }
+            JADE_OVERLAY_RENDERER_CLEAR_STATE_METHOD.invoke(null);
+        } catch (Throwable ignored) {
         }
     }
 
@@ -439,29 +527,65 @@ public final class RavenLinkClientController {
                 return;
             }
 
-            if (System.currentTimeMillis() >= localEndMillis) {
+            if (mc.options.hideGui) {
+                // Keep forced HUD pipeline for Raven Link overlays regardless of F1 presses.
+                mc.options.hideGui = false;
+            }
+
+            // Prevent client-side crouch pose jitter while linked (SHIFT is used for descend).
+            // Server already forces STANDING, but the local client can still enter CROUCHING pose briefly
+            // when holding sneak on/near the ground, which makes the camera bob/shake.
+            try {
+                mc.player.setPose(Pose.STANDING);
+            } catch (Throwable ignored) {
+            }
+
+            long now = System.currentTimeMillis();
+
+            // Failsafe: never allow a broken end-transition to lock the client in black screen forever.
+            if (endingTransitionActive && endingStartedAtMillis > 0L) {
+                long maxEndingDuration = (EYE_TRANSITION_DURATION_MS * 2L)
+                        + BLACK_HOLD_AFTER_TELEPORT_MS
+                        + END_TRANSITION_FAILSAFE_EXTRA_MS;
+                if (now - endingStartedAtMillis > maxEndingDuration) {
+                    clearLocalState(false);
+                    return;
+                }
+            }
+
+            // Normal timeout should not interrupt the already-running end transition.
+            if (!endingTransitionActive && now >= localEndMillis) {
                 requestLinkEnd(true);
                 return;
             }
 
             if (mc.screen != null) {
-                if (canManuallyExitLinkNow()) {
-                    requestLinkEnd(true);
-                    return;
-                }
                 if (mc.screen instanceof PauseScreen) {
+                    if (canManuallyExitLinkNow()) {
+                        requestLinkEnd(true);
+                        return;
+                    }
                     mc.setScreen(null);
+                } else if (!(mc.screen instanceof ChatScreen)) {
+                    if (canManuallyExitLinkNow()) {
+                        requestLinkEnd(true);
+                        return;
+                    }
                 }
             }
 
             // keep explicit ESC handling even when pause screen opening gets cancelled
             boolean escDown = InputConstants.isKeyDown(mc.getWindow().getWindow(), GLFW.GLFW_KEY_ESCAPE);
             if (escDown && !escWasDown) {
-                if (canManuallyExitLinkNow()) {
+                if (suppressNextEscExit) {
+                    suppressNextEscExit = false;
+                } else if (canManuallyExitLinkNow()) {
                     requestLinkEnd(true);
                     escWasDown = escDown;
                     return;
                 }
+            } else if (!escDown) {
+                suppressNextEscExit = false;
             }
             escWasDown = escDown;
 
@@ -479,11 +603,8 @@ public final class RavenLinkClientController {
             }
             ensureLinkedRavenVisualMount(mc);
             suppressNonMovementInputs(mc);
-            if (mc.options.hideGui) {
-                mc.options.hideGui = false;
-            }
 
-            boolean allowMovementInput = visionPhase == VisionPhase.ACTIVE;
+            boolean allowMovementInput = visionPhase == VisionPhase.ACTIVE && mc.screen == null;
             boolean forward = allowMovementInput && mc.options.keyUp.isDown();
             boolean backward = allowMovementInput && mc.options.keyDown.isDown();
             boolean left = allowMovementInput && mc.options.keyLeft.isDown();
@@ -1707,6 +1828,7 @@ public final class RavenLinkClientController {
             }
         }
         escWasDown = false;
+        suppressNextEscExit = false;
         lookYaw = 0.0F;
         lookPitch = 0.0F;
         anchorYaw = 0.0F;

@@ -81,6 +81,13 @@ public class RavenCourierData extends SavedData {
         public long lastFailureGameTime;
         public String lastFailureReason;
 
+        /**
+         * Persisted: scroll payload has been deposited into the recipient's mailbox inventory.
+         * Used to prevent duplication on crashes/restarts and to suppress death/interact drops.
+         */
+        public boolean mailboxDeposited;
+        public long mailboxDepositedGameTime;
+
         public DeliveryJob(long jobId,
                            @NotNull UUID senderUuid,
                            @NotNull String senderName,
@@ -96,7 +103,9 @@ public class RavenCourierData extends SavedData {
                            boolean failed,
                            int failureCount,
                            long lastFailureGameTime,
-                           @NotNull String lastFailureReason) {
+                           @NotNull String lastFailureReason,
+                           boolean mailboxDeposited,
+                           long mailboxDepositedGameTime) {
             this.jobId = jobId;
             this.senderUuid = senderUuid;
             this.senderName = senderName;
@@ -114,6 +123,9 @@ public class RavenCourierData extends SavedData {
             this.failureCount = failureCount;
             this.lastFailureGameTime = lastFailureGameTime;
             this.lastFailureReason = lastFailureReason;
+
+            this.mailboxDeposited = mailboxDeposited;
+            this.mailboxDepositedGameTime = mailboxDepositedGameTime;
         }
 
         public boolean hasSenderPerchAssignment() {
@@ -232,6 +244,11 @@ public class RavenCourierData extends SavedData {
                             ? jobTag.getUUID("CourierRavenUUID")
                             : parseUuidSafe(jobTag.getString("CourierRavenUUIDStr"));
 
+                    boolean mailboxDeposited = jobTag.getBoolean("MailboxDeposited");
+                    long mailboxDepositedGameTime = jobTag.contains("MailboxDepositedGameTime", Tag.TAG_LONG)
+                            ? jobTag.getLong("MailboxDepositedGameTime")
+                            : 0L;
+
                     if (senderUuid == null || recipientUuid == null || sealedScrollNbt.isEmpty()) {
                         LOG.warn("[RavenCourierData] Skipping malformed job entry at index {} (missing UUIDs or SealedScroll).", i);
                         continue;
@@ -253,7 +270,9 @@ public class RavenCourierData extends SavedData {
                             failed,
                             Math.max(0, failureCount),
                             Math.max(0L, lastFailureGameTime),
-                            lastFailureReason == null ? "" : lastFailureReason
+                            lastFailureReason == null ? "" : lastFailureReason,
+                            mailboxDeposited,
+                            Math.max(0L, mailboxDepositedGameTime)
                     );
 
                     jobsByRecipient.computeIfAbsent(recipientUuid, k -> new ArrayList<>()).add(job);
@@ -335,6 +354,10 @@ public class RavenCourierData extends SavedData {
                     jobTag.putLong("LastFailureGameTime", Math.max(0L, job.lastFailureGameTime));
                     jobTag.putString("LastFailureReason", job.lastFailureReason == null ? "" : job.lastFailureReason);
 
+                    // Mailbox deposit marker (prevents duplication on restarts)
+                    jobTag.putBoolean("MailboxDeposited", job.mailboxDeposited);
+                    jobTag.putLong("MailboxDepositedGameTime", Math.max(0L, job.mailboxDepositedGameTime));
+
                     jobsList.add(jobTag);
                 }
             }
@@ -362,16 +385,21 @@ public class RavenCourierData extends SavedData {
                 return null;
             }
 
-            if (!ffTag.getBoolean("RavenChestPerchAssigned")) {
-                return null;
-            }
-            if (!ffTag.contains("RavenChestPerchDimension", Tag.TAG_STRING)
-                    || !ffTag.contains("RavenChestPerchBlockPos", Tag.TAG_LONG)) {
-                return null;
+            String dim = null;
+            long pos = 0L;
+
+            if (ffTag.getBoolean("RavenChestPerchAssigned")
+                    && ffTag.contains("RavenChestPerchDimension", Tag.TAG_STRING)
+                    && ffTag.contains("RavenChestPerchBlockPos", Tag.TAG_LONG)) {
+                dim = ffTag.getString("RavenChestPerchDimension");
+                pos = ffTag.getLong("RavenChestPerchBlockPos");
+            } else if (ffTag.contains("ScrollSummonReturnPerchDimension", Tag.TAG_STRING)
+                    && ffTag.contains("ScrollSummonReturnPerchBlockPos", Tag.TAG_LONG)) {
+                // Summoned ravens can temporarily stash the sender's perch target while they're away from the chest.
+                dim = ffTag.getString("ScrollSummonReturnPerchDimension");
+                pos = ffTag.getLong("ScrollSummonReturnPerchBlockPos");
             }
 
-            String dim = ffTag.getString("RavenChestPerchDimension");
-            long pos = ffTag.getLong("RavenChestPerchBlockPos");
             if (dim == null || dim.isBlank()) {
                 return null;
             }
@@ -549,7 +577,9 @@ public class RavenCourierData extends SavedData {
                     false,     // failed
                     0,         // failureCount
                     0L,        // lastFailureGameTime
-                    ""         // lastFailureReason
+                    "",        // lastFailureReason
+                    false,     // mailboxDeposited
+                    0L         // mailboxDepositedGameTime
             );
 
             jobsByRecipient.computeIfAbsent(recipientUuid, k -> new ArrayList<>()).add(job);

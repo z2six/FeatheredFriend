@@ -22,6 +22,7 @@ import net.z2six.featheredfriend.menu.ScrollSealingMenu;
 import net.z2six.featheredfriend.menu.ScrollViewMenu;
 import net.z2six.featheredfriend.menu.SealStampMenu;
 import net.z2six.featheredfriend.menu.EnderpackMenu;
+import net.z2six.featheredfriend.menu.MailboxMenu;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -114,6 +115,10 @@ public interface IPlatformHelper {
     }
 
     default MenuType<EnderpackMenu> getEnderpackMenuType() {
+        return null;
+    }
+
+    default MenuType<MailboxMenu> getMailboxMenuType() {
         return null;
     }
 

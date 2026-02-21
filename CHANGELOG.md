@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 
 ### Minor
 - 6 new sigil generators
+- Sound FX during Raven Link
 
 ### Fixes
 - Fixed Raven Naming GUI being rendered below NeoForge its menu blur

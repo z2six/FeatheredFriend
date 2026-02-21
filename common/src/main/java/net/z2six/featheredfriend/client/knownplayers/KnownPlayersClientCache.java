@@ -21,11 +21,13 @@ public final class KnownPlayersClientCache {
         private final UUID uuid;
         private final String name;
         private final boolean online;
+        private final int mailboxCount;
 
-        public KnownPlayerEntry(@NotNull UUID uuid, @NotNull String name, boolean online) {
+        public KnownPlayerEntry(@NotNull UUID uuid, @NotNull String name, boolean online, int mailboxCount) {
             this.uuid = uuid;
             this.name = name;
             this.online = online;
+            this.mailboxCount = Math.max(0, mailboxCount);
         }
 
         public @NotNull UUID getUuid() {
@@ -39,6 +41,14 @@ public final class KnownPlayersClientCache {
         public boolean isOnline() {
             return online;
         }
+
+        public int getMailboxCount() {
+            return mailboxCount;
+        }
+
+        public @NotNull String getDisplayName() {
+            return name + " (" + mailboxCount + ")";
+        }
     }
 
     private static final KnownPlayersClientCache INSTANCE = new KnownPlayersClientCache();
@@ -48,6 +58,7 @@ public final class KnownPlayersClientCache {
     }
 
     private final Map<UUID, String> knownNames = new ConcurrentHashMap<>();
+    private final Map<UUID, Integer> knownMailboxCounts = new ConcurrentHashMap<>();
     private volatile long lastOnlineRefreshClientTick = -1;
 
     private KnownPlayersClientCache() {
@@ -61,6 +72,7 @@ public final class KnownPlayersClientCache {
     public synchronized void replaceAllFromServer(@NotNull Collection<KnownPlayerInfo> newEntries) {
         try {
             knownNames.clear();
+            knownMailboxCounts.clear();
 
             int kept = 0;
             for (KnownPlayerInfo info : newEntries) {
@@ -71,6 +83,7 @@ public final class KnownPlayersClientCache {
                 if (name == null || name.isBlank()) continue;
 
                 knownNames.put(uuid, name);
+                knownMailboxCounts.put(uuid, Math.max(0, info.mailboxCount()));
                 kept++;
             }
 
@@ -91,6 +104,7 @@ public final class KnownPlayersClientCache {
         if (name == null || name.isBlank()) return;
         try {
             knownNames.put(uuid, name);
+            knownMailboxCounts.putIfAbsent(uuid, 0);
         } catch (Throwable t) {
             LOG.error("[KnownPlayersClientCache] upsert failed for uuid={}", uuid, t);
         }
@@ -125,7 +139,12 @@ public final class KnownPlayersClientCache {
                 if (uuid == null || name == null || name.isBlank()) continue;
 
                 boolean online = onlineNow.contains(uuid);
-                out.add(new KnownPlayerEntry(uuid, name, online));
+                int mailboxCount = 0;
+                try {
+                    mailboxCount = knownMailboxCounts.getOrDefault(uuid, 0);
+                } catch (Throwable ignored) {
+                }
+                out.add(new KnownPlayerEntry(uuid, name, online, mailboxCount));
             }
 
             out.sort(Comparator.comparing(KnownPlayerEntry::getName, String.CASE_INSENSITIVE_ORDER));
@@ -164,6 +183,7 @@ public final class KnownPlayersClientCache {
                     added++;
                 }
                 knownNames.put(uuid, name);
+                knownMailboxCounts.putIfAbsent(uuid, 0);
             }
 
             if (added > 0) {

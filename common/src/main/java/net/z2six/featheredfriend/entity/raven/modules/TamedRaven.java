@@ -2,13 +2,17 @@
 package net.z2six.featheredfriend.entity.raven.modules;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
+import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
+import net.z2six.featheredfriend.platform.Services;
 import net.z2six.featheredfriend.world.TamedRavenPlayerData;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -38,6 +42,10 @@ public final class TamedRaven {
      *  - Uses same alpha range (0..255) as Teleportation logic.
      */
     private static final int DESPAWN_FADE_TICKS = 10;
+
+    private static final String NBT_DESPAWN_FX_ACTIVE = "TamedDespawnFxActive";
+    private static final String NBT_DESPAWN_FX_START_GAME_TIME = "TamedDespawnFxStartGameTime";
+    private static final String NBT_DESPAWN_FX_TOTAL_TICKS = "TamedDespawnFxTotalTicks";
 
     private final RavenEntity raven;
 
@@ -191,19 +199,118 @@ public final class TamedRaven {
      */
     public void tickServer() {
         try {
-            if (!despawnWithFxActive) return;
             if (raven == null) return;
             if (raven.level() == null) return;
-            if (!(raven.level() instanceof ServerLevel)) return;
-            if (!raven.isAlive()) {
-                despawnWithFxActive = false;
+            if (!(raven.level() instanceof ServerLevel serverLevel)) return;
+
+            CompoundTag root = null;
+            CompoundTag ffTag = null;
+            boolean nbtActive = false;
+            long startGameTime = 0L;
+            int total = DESPAWN_FADE_TICKS;
+
+            try {
+                root = Services.PLATFORM.getEntityPersistentData(raven);
+                ffTag = (root != null) ? root.getCompound(Constants.MOD_ID) : null;
+                if (ffTag != null && !ffTag.isEmpty()) {
+                    nbtActive = ffTag.getBoolean(NBT_DESPAWN_FX_ACTIVE);
+                    if (nbtActive) {
+                        startGameTime = ffTag.contains(NBT_DESPAWN_FX_START_GAME_TIME, Tag.TAG_LONG)
+                                ? ffTag.getLong(NBT_DESPAWN_FX_START_GAME_TIME)
+                                : 0L;
+                        total = ffTag.contains(NBT_DESPAWN_FX_TOTAL_TICKS, Tag.TAG_INT)
+                                ? ffTag.getInt(NBT_DESPAWN_FX_TOTAL_TICKS)
+                                : DESPAWN_FADE_TICKS;
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+
+            if (!despawnWithFxActive && !nbtActive) {
                 return;
             }
 
-            despawnWithFxTicks++;
-            int total = Math.max(1, DESPAWN_FADE_TICKS);
+            if (!raven.isAlive()) {
+                despawnWithFxActive = false;
+                despawnWithFxTicks = 0;
+                try {
+                    if (root == null) {
+                        root = Services.PLATFORM.getEntityPersistentData(raven);
+                    }
+                    if (root != null) {
+                        if (ffTag == null) {
+                            ffTag = root.getCompound(Constants.MOD_ID);
+                        }
+                        if (ffTag != null) {
+                            ffTag.remove(NBT_DESPAWN_FX_ACTIVE);
+                            ffTag.remove(NBT_DESPAWN_FX_START_GAME_TIME);
+                            ffTag.remove(NBT_DESPAWN_FX_TOTAL_TICKS);
+                            root.put(Constants.MOD_ID, ffTag);
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
+                return;
+            }
 
-            float k = Mth.clamp((float) despawnWithFxTicks / (float) total, 0.0F, 1.0F);
+            long now = serverLevel.getGameTime();
+            total = Math.max(1, total);
+
+            // If we were activated via runtime-only fields but NBT isn't set, persist the FX state so it survives restarts.
+            if (!nbtActive) {
+                try {
+                    if (root == null) {
+                        root = Services.PLATFORM.getEntityPersistentData(raven);
+                    }
+                    if (root != null) {
+                        if (ffTag == null) {
+                            ffTag = root.getCompound(Constants.MOD_ID);
+                        }
+                        if (ffTag != null) {
+                            startGameTime = Math.max(0L, now - (long) Math.max(0, despawnWithFxTicks));
+                            ffTag.putBoolean(NBT_DESPAWN_FX_ACTIVE, true);
+                            ffTag.putLong(NBT_DESPAWN_FX_START_GAME_TIME, startGameTime);
+                            ffTag.putInt(NBT_DESPAWN_FX_TOTAL_TICKS, total);
+                            root.put(Constants.MOD_ID, ffTag);
+                            nbtActive = true;
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+
+            if (nbtActive && startGameTime <= 0L) {
+                // Active but missing start time: initialize to "now" so we still complete the despawn.
+                startGameTime = now;
+                try {
+                    if (root == null) {
+                        root = Services.PLATFORM.getEntityPersistentData(raven);
+                    }
+                    if (root != null) {
+                        if (ffTag == null) {
+                            ffTag = root.getCompound(Constants.MOD_ID);
+                        }
+                        if (ffTag != null) {
+                            ffTag.putLong(NBT_DESPAWN_FX_START_GAME_TIME, startGameTime);
+                            ffTag.putInt(NBT_DESPAWN_FX_TOTAL_TICKS, total);
+                            root.put(Constants.MOD_ID, ffTag);
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+
+            long diff = now - startGameTime;
+            if (diff < 0L) {
+                diff = 0L;
+            }
+            int elapsedTicks = (diff >= (long) total) ? total : (int) diff;
+
+            // Keep runtime fields in sync for debugging/legacy callers.
+            despawnWithFxActive = true;
+            despawnWithFxTicks = elapsedTicks;
+
+            float k = Mth.clamp((float) elapsedTicks / (float) total, 0.0F, 1.0F);
             int alpha = (int) Mth.lerp(k, 255.0F, 0.0F);
 
             try {
@@ -217,17 +324,36 @@ public final class TamedRaven {
                 }
             }
 
-            if (despawnWithFxTicks >= total) {
+            if (elapsedTicks >= total) {
                 Vec3 pos = raven.position();
                 LOG.debug("[TamedRaven] tickServer: despawn complete after fade; removing raven id={} pos={}",
                         raven.getId(), pos);
                 raven.discard();
                 despawnWithFxActive = false;
+                despawnWithFxTicks = 0;
+                try {
+                    if (root == null) {
+                        root = Services.PLATFORM.getEntityPersistentData(raven);
+                    }
+                    if (root != null) {
+                        if (ffTag == null) {
+                            ffTag = root.getCompound(Constants.MOD_ID);
+                        }
+                        if (ffTag != null) {
+                            ffTag.remove(NBT_DESPAWN_FX_ACTIVE);
+                            ffTag.remove(NBT_DESPAWN_FX_START_GAME_TIME);
+                            ffTag.remove(NBT_DESPAWN_FX_TOTAL_TICKS);
+                            root.put(Constants.MOD_ID, ffTag);
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
             }
 
         } catch (Throwable t) {
             LOG.error("[TamedRaven] tickServer failed safely", t);
             despawnWithFxActive = false;
+            despawnWithFxTicks = 0;
         }
     }
 
@@ -358,6 +484,18 @@ public final class TamedRaven {
 
             this.despawnWithFxActive = true;
             this.despawnWithFxTicks = 0;
+
+            try {
+                CompoundTag root = Services.PLATFORM.getEntityPersistentData(raven);
+                if (root != null) {
+                    CompoundTag ffTag = root.getCompound(Constants.MOD_ID);
+                    ffTag.putBoolean(NBT_DESPAWN_FX_ACTIVE, true);
+                    ffTag.putLong(NBT_DESPAWN_FX_START_GAME_TIME, serverLevel.getGameTime());
+                    ffTag.putInt(NBT_DESPAWN_FX_TOTAL_TICKS, Math.max(1, DESPAWN_FADE_TICKS));
+                    root.put(Constants.MOD_ID, ffTag);
+                }
+            } catch (Throwable ignored) {
+            }
 
             LOG.debug("[TamedRaven] beginDespawnWithFx: owner={} name='{}' id={} pos={} spawnFeathers={}",
                     owner == null ? "<none>" : owner.getGameProfile().getName(),
