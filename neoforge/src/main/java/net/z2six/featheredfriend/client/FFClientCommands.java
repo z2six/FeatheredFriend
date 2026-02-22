@@ -61,7 +61,7 @@ public final class FFClientCommands {
             LocalPlayer player = mc.player;
             ClientLevel level = mc.level;
             if (player == null || level == null) {
-                source.sendFailure(Component.literal("[FeatheredFriend] No client world is loaded."));
+                source.sendFailure(Component.translatable("message.featheredfriend.client_cmd.no_client_world"));
                 return 0;
             }
 
@@ -83,18 +83,18 @@ public final class FFClientCommands {
             }
 
             if (closestRaven == null) {
-                source.sendFailure(Component.literal("[FeatheredFriend] No raven found within 16 blocks."));
+                source.sendFailure(Component.translatable("message.featheredfriend.client_cmd.no_raven_nearby", Integer.valueOf((int) RAVEN_COMMAND_RADIUS)));
                 return 0;
             }
 
             faceRavenTowardPlayer(closestRaven, player);
             spawnHeartBurst(level, closestRaven);
 
-            source.sendSuccess(() -> Component.literal("[FeatheredFriend] The raven noticed you."), false);
+            source.sendSuccess(() -> Component.translatable("message.featheredfriend.client_cmd.raven_noticed"), false);
             return 1;
         } catch (Throwable t) {
             LOG.error("[FFClientCommands] runArchemagosLovesRavens failed safely", t);
-            source.sendFailure(Component.literal("[FeatheredFriend] Easter egg command failed; see logs."));
+            source.sendFailure(Component.translatable("message.featheredfriend.client_cmd.failed"));
             return 0;
         }
     }

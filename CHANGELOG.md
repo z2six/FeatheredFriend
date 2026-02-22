@@ -3,17 +3,29 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [1.9.0.0-InDev]
+
 ### Major
 - Raven Status GUI
+- Mailbox feature
 
 ### Minor
 - 6 new sigil generators
 - Sound FX during Raven Link
+- Respawn raven via Suspicious Feather
 
 ### Fixes
 - Fixed Raven Naming GUI being rendered below NeoForge its menu blur
 - Courier logic revamp
 - Raven dupe on recall during delivery fix
+- Fixed bug that causes Raven to follow owner instead of recipient
+- Removed black backdrop from SealStampScreen
+- Reworked "hostile player detection", now properly logs to Raven Log and shows in Status GUI
+- Tamed Raven despawns when owner logs off
+- Raven Despawning (timer) now server-independent
+- Jade hidden during Raven Link
+- Opening chat no longer exits Raven Link
+- Additional JEI compatibility
 
 ## [1.7.0.0-InDev]
 

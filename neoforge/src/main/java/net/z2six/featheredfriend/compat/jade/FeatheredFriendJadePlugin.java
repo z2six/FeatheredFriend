@@ -72,7 +72,7 @@ public final class FeatheredFriendJadePlugin implements IWailaPlugin {
 
             Component ownerValue;
             if (ownerName == null || ownerName.isBlank()) {
-                ownerValue = Component.literal("???").withStyle(ChatFormatting.GRAY);
+                ownerValue = Component.translatable("jade.featheredfriend.unknown").withStyle(ChatFormatting.GRAY);
             } else {
                 ownerValue = Component.literal(ownerName).withStyle(ChatFormatting.YELLOW);
             }

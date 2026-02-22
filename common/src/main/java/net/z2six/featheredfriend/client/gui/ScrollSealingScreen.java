@@ -1298,6 +1298,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                             int mouseX,
                             int mouseY) {
         try {
+            guiGraphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
             // Hit-tests for both gizmos
             boolean inSmallWax = isMouseInWaxAreaSmall(mouseX, mouseY);
             boolean inZoomWax = isMouseInWaxAreaZoom(mouseX, mouseY);
@@ -1613,6 +1614,20 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         } catch (Throwable t) {
             LOG.error("[ScrollSealingScreen] render failed", t);
         }
+    }
+
+    @Override
+    public void renderBackground(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        // Keep vanilla menu blur, but do NOT draw the dark menu background overlay.
+        // AbstractContainerScreen's default renderBackground(...) draws a darkened backdrop via renderTransparentBackground(...),
+        // so we bypass it and only run the blur + our own scroll UI.
+        try {
+            this.renderBlurredBackground(partialTick);
+        } catch (Throwable ignored) {
+        }
+
+        guiGraphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+        this.renderBg(guiGraphics, partialTick, mouseX, mouseY);
     }
 
     @Override

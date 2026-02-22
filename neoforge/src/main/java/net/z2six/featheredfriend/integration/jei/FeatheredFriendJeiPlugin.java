@@ -75,6 +75,20 @@ public class FeatheredFriendJeiPlugin implements IModPlugin {
                     VanillaTypes.ITEM_STACK,
                     Component.translatable("jei.featheredfriend.scroll_sealed.info")
             );
+
+            ItemStack openedScroll = new ItemStack(FFItems.SCROLL_OPENED.get());
+            registration.addIngredientInfo(
+                    openedScroll,
+                    VanillaTypes.ITEM_STACK,
+                    Component.translatable("jei.featheredfriend.scroll_opened.info")
+            );
+
+            ItemStack ravensFeather = new ItemStack(FFItems.RAVEN_FEATHER.get());
+            registration.addIngredientInfo(
+                    ravensFeather,
+                    VanillaTypes.ITEM_STACK,
+                    Component.translatable("jei.featheredfriend.raven_feather.info")
+            );
         } catch (Throwable t) {
             LOG.error(
                     "FeatheredFriendJeiPlugin: Failed to register JEI info for sealed scroll",

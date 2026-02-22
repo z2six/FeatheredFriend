@@ -772,6 +772,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         try {
 // Draw the full stamp UI texture instead of the flat coloured background.
 // This completely replaces the previous white/yellow-ish square.
+            guiGraphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
             guiGraphics.blit(
                     STAMP_UI_TEXTURE,
                     this.leftPos,
@@ -785,6 +786,7 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
                     GUI_WIDTH,
                     GUI_HEIGHT
             );
+            guiGraphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] renderBg failed", t);
         }
@@ -797,7 +799,6 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
     @Override
     public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         try {
-            this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
             super.render(guiGraphics, mouseX, mouseY, partialTick);
 
             // Debug outlines for button hitboxes (drawn on top of everything else)
@@ -818,6 +819,20 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] render failed", t);
         }
+    }
+
+    @Override
+    public void renderBackground(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        // Keep vanilla menu blur, but do NOT draw the dark menu background overlay.
+        // AbstractContainerScreen's default renderBackground(...) draws a darkened backdrop via renderTransparentBackground(...),
+        // so we bypass it and only run the blur + our own UI texture.
+        try {
+            this.renderBlurredBackground(partialTick);
+        } catch (Throwable ignored) {
+        }
+
+        guiGraphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+        this.renderBg(guiGraphics, partialTick, mouseX, mouseY);
     }
 
     @Override
