@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 - 6 new sigil generators
 - Sound FX during Raven Link
 - Respawn raven via Suspicious Feather
+- Config for disabling certain features
 
 ### Fixes
 - Fixed Raven Naming GUI being rendered below NeoForge its menu blur
