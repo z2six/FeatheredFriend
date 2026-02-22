@@ -43,6 +43,7 @@ import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.block.RavenChestBlock;
+import net.z2six.featheredfriend.config.FFServerConfig;
 import net.z2six.featheredfriend.entity.raven.RavenAIState;
 import net.z2six.featheredfriend.entity.raven.RavenAnimMode;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
@@ -272,6 +273,13 @@ public final class RavenLinkRuntime {
                 return false;
             }
 
+            if (!FFServerConfig.isSuspiciousFeatherEnabled()) {
+                owner.sendSystemMessage(net.minecraft.network.chat.Component.translatable(
+                        "message.featheredfriend.feature_disabled.suspicious_feather"
+                ));
+                return false;
+            }
+
             LinkSession existing = ACTIVE_SESSIONS.get(owner.getUUID());
             PendingLinkStart pendingExisting = PENDING_LINK_STARTS.get(owner.getUUID());
             if (existing != null || pendingExisting != null) {
@@ -415,12 +423,35 @@ public final class RavenLinkRuntime {
 
     private static void onServerTick(@NotNull ServerTickEvent.Post event) {
         try {
-            if (ACTIVE_SESSIONS.isEmpty() && PENDING_LINK_STARTS.isEmpty()) {
+            MinecraftServer server = event.getServer();
+            if (server == null) {
                 return;
             }
 
-            MinecraftServer server = event.getServer();
-            if (server == null) {
+            if (!FFServerConfig.isSuspiciousFeatherEnabled()) {
+                if (!ACTIVE_SESSIONS.isEmpty()) {
+                    List<UUID> owners = new ArrayList<>(ACTIVE_SESSIONS.keySet());
+                    for (UUID ownerId : owners) {
+                        ServerPlayer owner = server.getPlayerList().getPlayer(ownerId);
+                        if (owner != null) {
+                            stopLinkForOwner(owner, "disabled");
+                        } else {
+                            ACTIVE_SESSIONS.remove(ownerId);
+                            PENDING_LINK_STARTS.remove(ownerId);
+                            discardAnyEffigiesForOwner(server, ownerId);
+                        }
+                    }
+                }
+                if (!PENDING_LINK_STARTS.isEmpty()) {
+                    for (UUID ownerId : new ArrayList<>(PENDING_LINK_STARTS.keySet())) {
+                        PENDING_LINK_STARTS.remove(ownerId);
+                        discardAnyEffigiesForOwner(server, ownerId);
+                    }
+                }
+                return;
+            }
+
+            if (ACTIVE_SESSIONS.isEmpty() && PENDING_LINK_STARTS.isEmpty()) {
                 return;
             }
 
@@ -686,12 +717,21 @@ public final class RavenLinkRuntime {
                 FFNetwork.sendStopRavenLink(owner);
 
                 try {
+                    Object reasonArg = switch (reason) {
+                        case "client_stop" -> net.minecraft.network.chat.Component.translatable(
+                                "reason.featheredfriend.raven_link.client_stop"
+                        );
+                        case "disabled" -> net.minecraft.network.chat.Component.translatable(
+                                "reason.featheredfriend.raven_link.disabled"
+                        );
+                        default -> reason;
+                    };
                     RavenLogService.logForPlayerKey(
                             owner.serverLevel(),
                             owner.getUUID(),
                             RavenLogCategory.SYSTEM,
                             "log.featheredfriend.raven_link.ended",
-                            reason
+                            reasonArg
                     );
                 } catch (Throwable ignored) {
                 }

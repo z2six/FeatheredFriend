@@ -425,6 +425,15 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
     private @NotNull RavenArmorStats getEffectiveArmorStats() {
         try {
+            if (!Services.PLATFORM.isRavenArmorEnabled()) {
+                return new RavenArmorStats(
+                        DEFAULT_RAVEN_MAX_HITS,
+                        DEFAULT_RAVEN_DODGE_CHANCE_PERCENT,
+                        DEFAULT_RAVEN_DETECTION_RADIUS_BLOCKS,
+                        DEFAULT_RAVEN_PAYLOAD_SAFETY_PERCENT,
+                        DEFAULT_RAVEN_HEALTH_REGEN_PER_MINUTE
+                );
+            }
             RavenArmorStats equipped = FFItems.getRavenArmorStats(getRavenArmorVisual());
             if (equipped != null) {
                 return equipped;
@@ -1465,6 +1474,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
     private void tickMailboxSpottingServer() {
         try {
+            if (!Services.PLATFORM.isMailboxEnabled()) {
+                return;
+            }
             if (!(this.level() instanceof ServerLevel level) || level.isClientSide()) {
                 return;
             }
@@ -2348,6 +2360,13 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     return InteractionResult.PASS;
                 }
 
+                if (!Services.PLATFORM.isRavenArmorEnabled()) {
+                    if (!this.level().isClientSide) {
+                        player.sendSystemMessage(Component.translatable("message.featheredfriend.feature_disabled.raven_armor"));
+                    }
+                    return InteractionResult.sidedSuccess(this.level().isClientSide);
+                }
+
                 if (!this.level().isClientSide && player instanceof ServerPlayer serverPlayer) {
                     try {
                         RavenArmorVisual equippedBefore = this.getRavenArmorVisual();
@@ -2981,6 +3000,14 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
     private void enforceAssignedRavenChestPerch() {
         if (isRavenLinkControlled()) {
+            return;
+        }
+        if (!Services.PLATFORM.isSuspiciousChestEnabled()) {
+            if (this.getAIState() == RavenAIState.RAVEN_CHEST_PERCH) {
+                this.setAIState(RavenAIState.IDLE_GROUND);
+                this.setNoGravity(false);
+                this.setAnimMode(RavenAnimMode.AUTO);
+            }
             return;
         }
         if (this.isPassenger()) {

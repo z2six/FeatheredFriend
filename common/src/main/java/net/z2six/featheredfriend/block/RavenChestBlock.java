@@ -128,6 +128,9 @@ public class RavenChestBlock extends BaseEntityBlock {
         if (level.isClientSide) {
             return;
         }
+        if (!Services.PLATFORM.isSuspiciousChestEnabled()) {
+            return;
+        }
         if (!(level instanceof ServerLevel serverLevel)) {
             return;
         }

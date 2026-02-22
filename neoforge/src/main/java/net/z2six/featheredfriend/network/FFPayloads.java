@@ -29,6 +29,10 @@ import java.util.List;
  *
  * What we sync (server-owned, must be consistent for all clients):
  * - chatDisabled (global)
+ * - enableSuspiciousFeather (global feature toggle)
+ * - enableSuspiciousChest (global feature toggle)
+ * - enableRavenArmor (global feature toggle)
+ * - enableMailbox (global feature toggle)
  * - maxRavenChestsPerPlayer (global)
  * - ravenLogRetentionMinutes (global)
  * - ravenLogMaxBytesPerPlayer (global)
@@ -46,7 +50,7 @@ public final class FFPayloads {
     /**
      * Bump if you change payload shapes. Must match client + server.
      */
-    private static final String PROTOCOL_VERSION = "1";
+    private static final String PROTOCOL_VERSION = "2";
 
     private FFPayloads() {
         // no-op
@@ -85,6 +89,30 @@ public final class FFPayloads {
                     SetChatDisabledPayload.TYPE,
                     SetChatDisabledPayload.STREAM_CODEC,
                     FFPayloads::handleSetChatDisabled
+            );
+
+            registrar.playToServer(
+                    SetEnableSuspiciousFeatherPayload.TYPE,
+                    SetEnableSuspiciousFeatherPayload.STREAM_CODEC,
+                    FFPayloads::handleSetEnableSuspiciousFeather
+            );
+
+            registrar.playToServer(
+                    SetEnableSuspiciousChestPayload.TYPE,
+                    SetEnableSuspiciousChestPayload.STREAM_CODEC,
+                    FFPayloads::handleSetEnableSuspiciousChest
+            );
+
+            registrar.playToServer(
+                    SetEnableRavenArmorPayload.TYPE,
+                    SetEnableRavenArmorPayload.STREAM_CODEC,
+                    FFPayloads::handleSetEnableRavenArmor
+            );
+
+            registrar.playToServer(
+                    SetEnableMailboxPayload.TYPE,
+                    SetEnableMailboxPayload.STREAM_CODEC,
+                    FFPayloads::handleSetEnableMailbox
             );
 
             registrar.playToServer(
@@ -136,6 +164,10 @@ public final class FFPayloads {
     public static final class ClientState {
         private static volatile boolean hasSynced = false;
         private static volatile boolean chatDisabled = false;
+        private static volatile boolean suspiciousFeatherEnabled = true;
+        private static volatile boolean suspiciousChestEnabled = true;
+        private static volatile boolean ravenArmorEnabled = true;
+        private static volatile boolean mailboxEnabled = true;
         private static volatile int maxRavenChestsPerPlayer = 0;
         private static volatile int ravenLogRetentionMinutes = 0;
         private static volatile int ravenLogMaxBytesPerPlayer = 0;
@@ -154,6 +186,22 @@ public final class FFPayloads {
 
         public static boolean isChatDisabled() {
             return chatDisabled;
+        }
+
+        public static boolean isSuspiciousFeatherEnabled() {
+            return suspiciousFeatherEnabled;
+        }
+
+        public static boolean isSuspiciousChestEnabled() {
+            return suspiciousChestEnabled;
+        }
+
+        public static boolean isRavenArmorEnabled() {
+            return ravenArmorEnabled;
+        }
+
+        public static boolean isMailboxEnabled() {
+            return mailboxEnabled;
         }
 
         public static boolean canEditChat() {
@@ -185,6 +233,10 @@ public final class FFPayloads {
         }
 
         private static void applyFromServer(boolean newChatDisabled,
+                                            boolean newSuspiciousFeatherEnabled,
+                                            boolean newSuspiciousChestEnabled,
+                                            boolean newRavenArmorEnabled,
+                                            boolean newMailboxEnabled,
                                             int newMaxRavenChestsPerPlayer,
                                             int newRavenLogRetentionMinutes,
                                             int newRavenLogMaxBytesPerPlayer,
@@ -193,6 +245,10 @@ public final class FFPayloads {
                                             int newCourierTimeoutRetrySeconds,
                                             boolean newCanEditChat) {
             chatDisabled = newChatDisabled;
+            suspiciousFeatherEnabled = newSuspiciousFeatherEnabled;
+            suspiciousChestEnabled = newSuspiciousChestEnabled;
+            ravenArmorEnabled = newRavenArmorEnabled;
+            mailboxEnabled = newMailboxEnabled;
             maxRavenChestsPerPlayer = Math.max(0, newMaxRavenChestsPerPlayer);
             ravenLogRetentionMinutes = Math.max(0, newRavenLogRetentionMinutes);
             ravenLogMaxBytesPerPlayer = Math.max(0, newRavenLogMaxBytesPerPlayer);
@@ -202,13 +258,17 @@ public final class FFPayloads {
             canEditChat = newCanEditChat;
             hasSynced = true;
 
-            LOG.debug("[FFPayloads.ClientState] Applied server settings: chatDisabled={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={}",
-                    newChatDisabled, maxRavenChestsPerPlayer, ravenLogRetentionMinutes, ravenLogMaxBytesPerPlayer, enderpackDepositCooldownSeconds, scrollDeliveryCooldownSeconds, courierTimeoutRetrySeconds, newCanEditChat);
+            LOG.debug("[FFPayloads.ClientState] Applied server settings: chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={}",
+                    newChatDisabled, newSuspiciousFeatherEnabled, newSuspiciousChestEnabled, newRavenArmorEnabled, newMailboxEnabled, maxRavenChestsPerPlayer, ravenLogRetentionMinutes, ravenLogMaxBytesPerPlayer, enderpackDepositCooldownSeconds, scrollDeliveryCooldownSeconds, courierTimeoutRetrySeconds, newCanEditChat);
         }
 
         public static void clear() {
             hasSynced = false;
             chatDisabled = false;
+            suspiciousFeatherEnabled = true;
+            suspiciousChestEnabled = true;
+            ravenArmorEnabled = true;
+            mailboxEnabled = true;
             maxRavenChestsPerPlayer = 0;
             ravenLogRetentionMinutes = 0;
             ravenLogMaxBytesPerPlayer = 0;
@@ -247,6 +307,10 @@ public final class FFPayloads {
      * Server -> Client: settings snapshot.
      */
     public record ServerSettingsPayload(boolean chatDisabled,
+                                        boolean enableSuspiciousFeather,
+                                        boolean enableSuspiciousChest,
+                                        boolean enableRavenArmor,
+                                        boolean enableMailbox,
                                         int maxRavenChestsPerPlayer,
                                         int ravenLogRetentionMinutes,
                                         int ravenLogMaxBytesPerPlayer,
@@ -266,6 +330,10 @@ public final class FFPayloads {
 
         private static void encode(RegistryFriendlyByteBuf buf, ServerSettingsPayload payload) {
             buf.writeBoolean(payload.chatDisabled());
+            buf.writeBoolean(payload.enableSuspiciousFeather());
+            buf.writeBoolean(payload.enableSuspiciousChest());
+            buf.writeBoolean(payload.enableRavenArmor());
+            buf.writeBoolean(payload.enableMailbox());
             buf.writeVarInt(payload.maxRavenChestsPerPlayer());
             buf.writeVarInt(payload.ravenLogRetentionMinutes());
             buf.writeVarInt(payload.ravenLogMaxBytesPerPlayer());
@@ -277,6 +345,10 @@ public final class FFPayloads {
 
         private static ServerSettingsPayload decode(RegistryFriendlyByteBuf buf) {
             return new ServerSettingsPayload(
+                    buf.readBoolean(),
+                    buf.readBoolean(),
+                    buf.readBoolean(),
+                    buf.readBoolean(),
                     buf.readBoolean(),
                     buf.readVarInt(),
                     buf.readVarInt(),
@@ -309,6 +381,98 @@ public final class FFPayloads {
                 StreamCodec.composite(
                         ByteBufCodecs.BOOL, SetChatDisabledPayload::chatDisabled,
                         SetChatDisabledPayload::new
+                );
+
+        @Override
+        public Type<? extends net.minecraft.network.protocol.common.custom.CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    /**
+     * Client -> Server: set Suspicious Feather feature toggle. Requires permission on server.
+     */
+    public record SetEnableSuspiciousFeatherPayload(boolean value)
+            implements net.minecraft.network.protocol.common.custom.CustomPacketPayload {
+
+        public static final ResourceLocation ID =
+                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "set_enable_suspicious_feather_v1");
+
+        public static final Type<SetEnableSuspiciousFeatherPayload> TYPE = new Type<>(ID);
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, SetEnableSuspiciousFeatherPayload> STREAM_CODEC =
+                StreamCodec.composite(
+                        ByteBufCodecs.BOOL, SetEnableSuspiciousFeatherPayload::value,
+                        SetEnableSuspiciousFeatherPayload::new
+                );
+
+        @Override
+        public Type<? extends net.minecraft.network.protocol.common.custom.CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    /**
+     * Client -> Server: set Suspicious Chest feature toggle. Requires permission on server.
+     */
+    public record SetEnableSuspiciousChestPayload(boolean value)
+            implements net.minecraft.network.protocol.common.custom.CustomPacketPayload {
+
+        public static final ResourceLocation ID =
+                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "set_enable_suspicious_chest_v1");
+
+        public static final Type<SetEnableSuspiciousChestPayload> TYPE = new Type<>(ID);
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, SetEnableSuspiciousChestPayload> STREAM_CODEC =
+                StreamCodec.composite(
+                        ByteBufCodecs.BOOL, SetEnableSuspiciousChestPayload::value,
+                        SetEnableSuspiciousChestPayload::new
+                );
+
+        @Override
+        public Type<? extends net.minecraft.network.protocol.common.custom.CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    /**
+     * Client -> Server: set Raven armor feature toggle. Requires permission on server.
+     */
+    public record SetEnableRavenArmorPayload(boolean value)
+            implements net.minecraft.network.protocol.common.custom.CustomPacketPayload {
+
+        public static final ResourceLocation ID =
+                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "set_enable_raven_armor_v1");
+
+        public static final Type<SetEnableRavenArmorPayload> TYPE = new Type<>(ID);
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, SetEnableRavenArmorPayload> STREAM_CODEC =
+                StreamCodec.composite(
+                        ByteBufCodecs.BOOL, SetEnableRavenArmorPayload::value,
+                        SetEnableRavenArmorPayload::new
+                );
+
+        @Override
+        public Type<? extends net.minecraft.network.protocol.common.custom.CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    /**
+     * Client -> Server: set Mailbox feature toggle. Requires permission on server.
+     */
+    public record SetEnableMailboxPayload(boolean value)
+            implements net.minecraft.network.protocol.common.custom.CustomPacketPayload {
+
+        public static final ResourceLocation ID =
+                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "set_enable_mailbox_v1");
+
+        public static final Type<SetEnableMailboxPayload> TYPE = new Type<>(ID);
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, SetEnableMailboxPayload> STREAM_CODEC =
+                StreamCodec.composite(
+                        ByteBufCodecs.BOOL, SetEnableMailboxPayload::value,
+                        SetEnableMailboxPayload::new
                 );
 
         @Override
@@ -467,6 +631,10 @@ public final class FFPayloads {
             }
 
             boolean chatDisabledValue = FFServerConfig.isChatDisabled();
+            boolean enableSuspiciousFeatherValue = FFServerConfig.isSuspiciousFeatherEnabled();
+            boolean enableSuspiciousChestValue = FFServerConfig.isSuspiciousChestEnabled();
+            boolean enableRavenArmorValue = FFServerConfig.isRavenArmorEnabled();
+            boolean enableMailboxValue = FFServerConfig.isMailboxEnabled();
             int maxRavenChestsPerPlayerValue = FFServerConfig.getRavenChestsPerPlayer();
             int ravenLogRetentionMinutesValue = FFServerConfig.getRavenLogRetentionMinutes();
             int ravenLogMaxBytesPerPlayerValue = FFServerConfig.getRavenLogMaxBytesPerPlayer();
@@ -477,6 +645,10 @@ public final class FFPayloads {
 
             ServerSettingsPayload msg = new ServerSettingsPayload(
                     chatDisabledValue,
+                    enableSuspiciousFeatherValue,
+                    enableSuspiciousChestValue,
+                    enableRavenArmorValue,
+                    enableMailboxValue,
                     maxRavenChestsPerPlayerValue,
                     ravenLogRetentionMinutesValue,
                     ravenLogMaxBytesPerPlayerValue,
@@ -487,9 +659,13 @@ public final class FFPayloads {
             );
             PacketDistributor.sendToPlayer(player, msg);
 
-            LOG.debug("[FFPayloads] Sent settings to {}: chatDisabled={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={}",
+            LOG.debug("[FFPayloads] Sent settings to {}: chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={}",
                     player.getGameProfile().getName(),
                     chatDisabledValue,
+                    enableSuspiciousFeatherValue,
+                    enableSuspiciousChestValue,
+                    enableRavenArmorValue,
+                    enableMailboxValue,
                     maxRavenChestsPerPlayerValue,
                     ravenLogRetentionMinutesValue,
                     ravenLogMaxBytesPerPlayerValue,
@@ -574,6 +750,10 @@ public final class FFPayloads {
                 try {
                     ClientState.applyFromServer(
                             payload.chatDisabled(),
+                            payload.enableSuspiciousFeather(),
+                            payload.enableSuspiciousChest(),
+                            payload.enableRavenArmor(),
+                            payload.enableMailbox(),
                             payload.maxRavenChestsPerPlayer(),
                             payload.ravenLogRetentionMinutes(),
                             payload.ravenLogMaxBytesPerPlayer(),
@@ -628,6 +808,166 @@ public final class FFPayloads {
             });
         } catch (Throwable t) {
             LOG.error("[FFPayloads] handleSetChatDisabled failed safely", t);
+        }
+    }
+
+    private static void handleSetEnableSuspiciousFeather(SetEnableSuspiciousFeatherPayload payload, IPayloadContext context) {
+        try {
+            context.enqueueWork(() -> {
+                try {
+                    if (!(context.player() instanceof ServerPlayer sp)) {
+                        LOG.warn("[FFPayloads] SetEnableSuspiciousFeather from non-ServerPlayer; ignoring");
+                        return;
+                    }
+
+                    ServerLevel level = sp.serverLevel();
+                    if (level == null) {
+                        LOG.warn("[FFPayloads] SetEnableSuspiciousFeather: serverLevel null; ignoring");
+                        return;
+                    }
+
+                    boolean allowed = canPlayerEditServerSettings(sp);
+
+                    if (!allowed) {
+                        LOG.warn("[FFPayloads] {} tried to SetEnableSuspiciousFeather without permission/settings-screen access; denied",
+                                sp.getGameProfile().getName());
+                        sendSettingsToPlayer(level, sp);
+                        return;
+                    }
+
+                    FFServerConfig.setSuspiciousFeatherEnabled(payload.value());
+
+                    LOG.debug("[FFPayloads] {} set enableSuspiciousFeather -> {}",
+                            sp.getGameProfile().getName(), payload.value());
+
+                    broadcastSettings(level);
+
+                } catch (Throwable t) {
+                    LOG.error("[FFPayloads] handleSetEnableSuspiciousFeather work failed safely", t);
+                }
+            });
+        } catch (Throwable t) {
+            LOG.error("[FFPayloads] handleSetEnableSuspiciousFeather failed safely", t);
+        }
+    }
+
+    private static void handleSetEnableSuspiciousChest(SetEnableSuspiciousChestPayload payload, IPayloadContext context) {
+        try {
+            context.enqueueWork(() -> {
+                try {
+                    if (!(context.player() instanceof ServerPlayer sp)) {
+                        LOG.warn("[FFPayloads] SetEnableSuspiciousChest from non-ServerPlayer; ignoring");
+                        return;
+                    }
+
+                    ServerLevel level = sp.serverLevel();
+                    if (level == null) {
+                        LOG.warn("[FFPayloads] SetEnableSuspiciousChest: serverLevel null; ignoring");
+                        return;
+                    }
+
+                    boolean allowed = canPlayerEditServerSettings(sp);
+
+                    if (!allowed) {
+                        LOG.warn("[FFPayloads] {} tried to SetEnableSuspiciousChest without permission/settings-screen access; denied",
+                                sp.getGameProfile().getName());
+                        sendSettingsToPlayer(level, sp);
+                        return;
+                    }
+
+                    FFServerConfig.setSuspiciousChestEnabled(payload.value());
+
+                    LOG.debug("[FFPayloads] {} set enableSuspiciousChest -> {}",
+                            sp.getGameProfile().getName(), payload.value());
+
+                    broadcastSettings(level);
+
+                } catch (Throwable t) {
+                    LOG.error("[FFPayloads] handleSetEnableSuspiciousChest work failed safely", t);
+                }
+            });
+        } catch (Throwable t) {
+            LOG.error("[FFPayloads] handleSetEnableSuspiciousChest failed safely", t);
+        }
+    }
+
+    private static void handleSetEnableRavenArmor(SetEnableRavenArmorPayload payload, IPayloadContext context) {
+        try {
+            context.enqueueWork(() -> {
+                try {
+                    if (!(context.player() instanceof ServerPlayer sp)) {
+                        LOG.warn("[FFPayloads] SetEnableRavenArmor from non-ServerPlayer; ignoring");
+                        return;
+                    }
+
+                    ServerLevel level = sp.serverLevel();
+                    if (level == null) {
+                        LOG.warn("[FFPayloads] SetEnableRavenArmor: serverLevel null; ignoring");
+                        return;
+                    }
+
+                    boolean allowed = canPlayerEditServerSettings(sp);
+
+                    if (!allowed) {
+                        LOG.warn("[FFPayloads] {} tried to SetEnableRavenArmor without permission/settings-screen access; denied",
+                                sp.getGameProfile().getName());
+                        sendSettingsToPlayer(level, sp);
+                        return;
+                    }
+
+                    FFServerConfig.setRavenArmorEnabled(payload.value());
+
+                    LOG.debug("[FFPayloads] {} set enableRavenArmor -> {}",
+                            sp.getGameProfile().getName(), payload.value());
+
+                    broadcastSettings(level);
+
+                } catch (Throwable t) {
+                    LOG.error("[FFPayloads] handleSetEnableRavenArmor work failed safely", t);
+                }
+            });
+        } catch (Throwable t) {
+            LOG.error("[FFPayloads] handleSetEnableRavenArmor failed safely", t);
+        }
+    }
+
+    private static void handleSetEnableMailbox(SetEnableMailboxPayload payload, IPayloadContext context) {
+        try {
+            context.enqueueWork(() -> {
+                try {
+                    if (!(context.player() instanceof ServerPlayer sp)) {
+                        LOG.warn("[FFPayloads] SetEnableMailbox from non-ServerPlayer; ignoring");
+                        return;
+                    }
+
+                    ServerLevel level = sp.serverLevel();
+                    if (level == null) {
+                        LOG.warn("[FFPayloads] SetEnableMailbox: serverLevel null; ignoring");
+                        return;
+                    }
+
+                    boolean allowed = canPlayerEditServerSettings(sp);
+
+                    if (!allowed) {
+                        LOG.warn("[FFPayloads] {} tried to SetEnableMailbox without permission/settings-screen access; denied",
+                                sp.getGameProfile().getName());
+                        sendSettingsToPlayer(level, sp);
+                        return;
+                    }
+
+                    FFServerConfig.setMailboxEnabled(payload.value());
+
+                    LOG.debug("[FFPayloads] {} set enableMailbox -> {}",
+                            sp.getGameProfile().getName(), payload.value());
+
+                    broadcastSettings(level);
+
+                } catch (Throwable t) {
+                    LOG.error("[FFPayloads] handleSetEnableMailbox work failed safely", t);
+                }
+            });
+        } catch (Throwable t) {
+            LOG.error("[FFPayloads] handleSetEnableMailbox failed safely", t);
         }
     }
 

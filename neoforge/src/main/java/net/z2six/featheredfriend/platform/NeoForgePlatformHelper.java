@@ -581,6 +581,26 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public boolean isSuspiciousFeatherEnabledClient() {
+        return FFPayloads.ClientState.isSuspiciousFeatherEnabled();
+    }
+
+    @Override
+    public boolean isSuspiciousChestEnabledClient() {
+        return FFPayloads.ClientState.isSuspiciousChestEnabled();
+    }
+
+    @Override
+    public boolean isRavenArmorEnabledClient() {
+        return FFPayloads.ClientState.isRavenArmorEnabled();
+    }
+
+    @Override
+    public boolean isMailboxEnabledClient() {
+        return FFPayloads.ClientState.isMailboxEnabled();
+    }
+
+    @Override
     public boolean canEditChat() {
         return FFPayloads.ClientState.canEditChat();
     }
@@ -623,6 +643,26 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     @Override
     public void sendSetChatDisabled(boolean value) {
         PacketDistributor.sendToServer(new FFPayloads.SetChatDisabledPayload(value));
+    }
+
+    @Override
+    public void sendSetEnableSuspiciousFeather(boolean value) {
+        PacketDistributor.sendToServer(new FFPayloads.SetEnableSuspiciousFeatherPayload(value));
+    }
+
+    @Override
+    public void sendSetEnableSuspiciousChest(boolean value) {
+        PacketDistributor.sendToServer(new FFPayloads.SetEnableSuspiciousChestPayload(value));
+    }
+
+    @Override
+    public void sendSetEnableRavenArmor(boolean value) {
+        PacketDistributor.sendToServer(new FFPayloads.SetEnableRavenArmorPayload(value));
+    }
+
+    @Override
+    public void sendSetEnableMailbox(boolean value) {
+        PacketDistributor.sendToServer(new FFPayloads.SetEnableMailboxPayload(value));
     }
 
     @Override
@@ -705,6 +745,26 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     @Override
     public int getCourierTimeoutRetrySeconds() {
         return FFServerConfig.getCourierTimeoutRetrySeconds();
+    }
+
+    @Override
+    public boolean isSuspiciousFeatherEnabled() {
+        return FFServerConfig.isSuspiciousFeatherEnabled();
+    }
+
+    @Override
+    public boolean isSuspiciousChestEnabled() {
+        return FFServerConfig.isSuspiciousChestEnabled();
+    }
+
+    @Override
+    public boolean isRavenArmorEnabled() {
+        return FFServerConfig.isRavenArmorEnabled();
+    }
+
+    @Override
+    public boolean isMailboxEnabled() {
+        return FFServerConfig.isMailboxEnabled();
     }
 
     // ---------------------------------------------------------------------

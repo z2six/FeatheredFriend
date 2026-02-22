@@ -530,6 +530,9 @@ public final class TamedRavenPlayerData {
 
     private static int getMaxHitsForArmor(@NotNull RavenArmorVisual armorVisual) {
         try {
+            if (!Services.PLATFORM.isRavenArmorEnabled()) {
+                armorVisual = RavenArmorVisual.NONE;
+            }
             RavenArmorStats stats = FFItems.getRavenArmorStats(armorVisual);
             if (stats != null) {
                 return Math.max(1, stats.maxHits());
@@ -541,6 +544,9 @@ public final class TamedRavenPlayerData {
 
     private static int getHealthRegenPerMinuteForArmor(@NotNull RavenArmorVisual armorVisual) {
         try {
+            if (!Services.PLATFORM.isRavenArmorEnabled()) {
+                armorVisual = RavenArmorVisual.NONE;
+            }
             RavenArmorStats stats = FFItems.getRavenArmorStats(armorVisual);
             if (stats != null) {
                 return Math.max(0, stats.healthRegenPerMinute());

@@ -12,6 +12,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.config.FFServerConfig;
 import net.z2six.featheredfriend.client.ravenbadge.RavenBadgeBaseState;
 import net.z2six.featheredfriend.client.ravenbadge.RavenBadgeEventType;
 import net.z2six.featheredfriend.data.FFKnownPlayersData;
@@ -996,7 +997,8 @@ public final class FFNetwork {
     public static void sendKnownPlayersTo(@NotNull ServerPlayer player,
                                           @NotNull Collection<FFKnownPlayersData.KnownPlayer> players) {
         try {
-            MailboxRegistryData mailboxRegistry = MailboxRegistryData.get(player.serverLevel());
+            boolean mailboxEnabled = FFServerConfig.isMailboxEnabled();
+            MailboxRegistryData mailboxRegistry = mailboxEnabled ? MailboxRegistryData.get(player.serverLevel()) : null;
             UUID observerUuid = player.getUUID();
 
             List<KnownPlayerInfo> copy = new ArrayList<>();
@@ -1004,7 +1006,9 @@ public final class FFNetwork {
                 if (kp == null || kp.uuid() == null || kp.name() == null || kp.name().isBlank()) continue;
                 int mailboxCount = 0;
                 try {
-                    mailboxCount = mailboxRegistry.getKnownMailboxCount(observerUuid, kp.uuid());
+                    if (mailboxEnabled && mailboxRegistry != null) {
+                        mailboxCount = mailboxRegistry.getKnownMailboxCount(observerUuid, kp.uuid());
+                    }
                 } catch (Throwable ignored) {
                 }
                 copy.add(new KnownPlayerInfo(kp.uuid(), kp.name(), Math.max(0, mailboxCount)));

@@ -26,6 +26,10 @@ public final class FFConfigSyncEvents {
 
     private static int tickCounter = 0;
     private static boolean lastChatDisabled = true;
+    private static boolean lastEnableSuspiciousFeather = true;
+    private static boolean lastEnableSuspiciousChest = true;
+    private static boolean lastEnableRavenArmor = true;
+    private static boolean lastEnableMailbox = true;
     private static int lastRavenChestsPerPlayer = 0;
     private static int lastRavenLogRetentionMinutes = 0;
     private static int lastRavenLogMaxBytesPerPlayer = 0;
@@ -64,6 +68,10 @@ public final class FFConfigSyncEvents {
             }
 
             boolean chatDisabledNow = FFServerConfig.isChatDisabled();
+            boolean enableSuspiciousFeatherNow = FFServerConfig.isSuspiciousFeatherEnabled();
+            boolean enableSuspiciousChestNow = FFServerConfig.isSuspiciousChestEnabled();
+            boolean enableRavenArmorNow = FFServerConfig.isRavenArmorEnabled();
+            boolean enableMailboxNow = FFServerConfig.isMailboxEnabled();
             int ravenChestsPerPlayerNow = FFServerConfig.getRavenChestsPerPlayer();
             int ravenLogRetentionMinutesNow = FFServerConfig.getRavenLogRetentionMinutes();
             int ravenLogMaxBytesPerPlayerNow = FFServerConfig.getRavenLogMaxBytesPerPlayer();
@@ -76,6 +84,10 @@ public final class FFConfigSyncEvents {
             if (!lastInitialized) {
                 lastInitialized = true;
                 lastChatDisabled = chatDisabledNow;
+                lastEnableSuspiciousFeather = enableSuspiciousFeatherNow;
+                lastEnableSuspiciousChest = enableSuspiciousChestNow;
+                lastEnableRavenArmor = enableRavenArmorNow;
+                lastEnableMailbox = enableMailboxNow;
                 lastRavenChestsPerPlayer = ravenChestsPerPlayerNow;
                 lastRavenLogRetentionMinutes = ravenLogRetentionMinutesNow;
                 lastRavenLogMaxBytesPerPlayer = ravenLogMaxBytesPerPlayerNow;
@@ -86,6 +98,22 @@ public final class FFConfigSyncEvents {
             } else {
                 if (lastChatDisabled != chatDisabledNow) {
                     lastChatDisabled = chatDisabledNow;
+                    changed = true;
+                }
+                if (lastEnableSuspiciousFeather != enableSuspiciousFeatherNow) {
+                    lastEnableSuspiciousFeather = enableSuspiciousFeatherNow;
+                    changed = true;
+                }
+                if (lastEnableSuspiciousChest != enableSuspiciousChestNow) {
+                    lastEnableSuspiciousChest = enableSuspiciousChestNow;
+                    changed = true;
+                }
+                if (lastEnableRavenArmor != enableRavenArmorNow) {
+                    lastEnableRavenArmor = enableRavenArmorNow;
+                    changed = true;
+                }
+                if (lastEnableMailbox != enableMailboxNow) {
+                    lastEnableMailbox = enableMailboxNow;
                     changed = true;
                 }
                 if (lastRavenChestsPerPlayer != ravenChestsPerPlayerNow) {
@@ -140,9 +168,13 @@ public final class FFConfigSyncEvents {
             FFPayloads.broadcastSettings(overworld);
 
             if (LOG.isDebugEnabled()) {
-                LOG.debug("[FFConfigSyncEvents] Broadcast settings due to {} (chatDisabled={} ravenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} allowServerSettingsScreenEditing={})",
+                LOG.debug("[FFConfigSyncEvents] Broadcast settings due to {} (chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} ravenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} allowServerSettingsScreenEditing={})",
                         changed ? "config-change" : "request",
                         chatDisabledNow,
+                        enableSuspiciousFeatherNow,
+                        enableSuspiciousChestNow,
+                        enableRavenArmorNow,
+                        enableMailboxNow,
                         ravenChestsPerPlayerNow,
                         ravenLogRetentionMinutesNow,
                         ravenLogMaxBytesPerPlayerNow,

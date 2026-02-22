@@ -10,6 +10,7 @@ import net.z2six.featheredfriend.chat.ChatDisabler;
 import net.z2six.featheredfriend.client.FFClientSyncEvents;
 import net.z2six.featheredfriend.client.FFClientCommands;
 import net.z2six.featheredfriend.client.FFKeyBindings;
+import net.z2six.featheredfriend.client.FFFeatureToggleTooltips;
 import net.z2six.featheredfriend.client.ClientScreens;
 import net.z2six.featheredfriend.client.particle.FFClientParticles;
 import net.z2six.featheredfriend.client.raven.RavenLinkClientController;
@@ -159,6 +160,9 @@ public class FeatheredFriend {
 
                 RavenBadgeHudController.registerGameBus();
                 LOG.debug("[FeatheredFriend] Registered RavenBadgeHudController (client only)");
+
+                FFFeatureToggleTooltips.registerGameBus();
+                LOG.debug("[FeatheredFriend] Registered FFFeatureToggleTooltips (client only)");
 
                 JeiOverlayHider.registerGameBus();
                 LOG.debug("[FeatheredFriend] Registered JeiOverlayHider (client only)");

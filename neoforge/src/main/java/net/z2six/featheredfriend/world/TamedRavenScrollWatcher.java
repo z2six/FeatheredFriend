@@ -1574,6 +1574,10 @@ public final class TamedRavenScrollWatcher {
             }
 
             if (stack != null && !stack.isEmpty() && stack.is(Items.ENDER_EYE)) {
+                if (!Services.PLATFORM.isSuspiciousChestEnabled()) {
+                    player.sendSystemMessage(Component.translatable("message.featheredfriend.feature_disabled.suspicious_chest"));
+                    return InteractionResult.CONSUME;
+                }
                 List<RavenChestChoiceInfo> chestChoices = collectValidRavenChestChoices(level, player);
                 if (chestChoices.isEmpty()) {
                     player.sendSystemMessage(Component.translatable("message.featheredfriend.raven_chest.none_registered"));
@@ -1595,6 +1599,11 @@ public final class TamedRavenScrollWatcher {
 
             if (stack != null && !stack.isEmpty() && !FFItems.isEnderpack(stack)) {
                 return InteractionResult.PASS;
+            }
+
+            if (!Services.PLATFORM.isSuspiciousChestEnabled()) {
+                player.sendSystemMessage(Component.translatable("message.featheredfriend.feature_disabled.suspicious_chest"));
+                return InteractionResult.CONSUME;
             }
 
             if (!Services.PLATFORM.hasAccessibleEnderpack(player)) {
@@ -2513,7 +2522,9 @@ public final class TamedRavenScrollWatcher {
 
             // 4) If this job came from a Raven Chest perch assignment, keep the raven perched
             // with the scroll while the job is queued/offline. It will be dispatched by runtime.
-            if (job.hasSenderPerchAssignment()) {
+            //
+            // If Suspicious Chest is disabled, force the non-perch flow (despawn with FX).
+            if (job.hasSenderPerchAssignment() && Services.PLATFORM.isSuspiciousChestEnabled()) {
                 try {
                     ensureRavenPerchedAtSenderChest(serverLevel, serverPlayer, raven, job);
                 } catch (Throwable t) {
@@ -2732,6 +2743,11 @@ public final class TamedRavenScrollWatcher {
                                                        long blockPos,
                                                        @NotNull String label) {
         try {
+            if (!Services.PLATFORM.isSuspiciousChestEnabled()) {
+                player.sendSystemMessage(Component.translatable("message.featheredfriend.feature_disabled.suspicious_chest"));
+                return;
+            }
+
             ResourceLocation dimLoc = ResourceLocation.tryParse(dimensionId);
             if (dimLoc == null) {
                 return;
@@ -2759,6 +2775,11 @@ public final class TamedRavenScrollWatcher {
                                                       long blockPos,
                                                       @Nullable RavenChestSelectAction action) {
         try {
+            if (!Services.PLATFORM.isSuspiciousChestEnabled()) {
+                player.sendSystemMessage(Component.translatable("message.featheredfriend.feature_disabled.suspicious_chest"));
+                return;
+            }
+
             if (ravenEntityId <= 0) {
                 return;
             }

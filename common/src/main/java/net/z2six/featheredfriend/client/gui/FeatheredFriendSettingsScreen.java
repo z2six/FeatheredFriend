@@ -57,6 +57,10 @@ public class FeatheredFriendSettingsScreen extends Screen {
 
     // server-owned + synced
     private boolean chatDisabled;
+    private boolean enableSuspiciousFeather;
+    private boolean enableSuspiciousChest;
+    private boolean enableRavenArmor;
+    private boolean enableMailbox;
     private int maxRavenChestsPerPlayer;
     private int ravenLogRetentionMinutes;
     private int ravenLogMaxBytesPerPlayer;
@@ -71,6 +75,10 @@ public class FeatheredFriendSettingsScreen extends Screen {
     private Button ravenStatusGuiAnchorButton;
     private Button ravenStatusGuiVisualModeButton;
     private Button chatDisabledButton;
+    private Button enableSuspiciousFeatherButton;
+    private Button enableSuspiciousChestButton;
+    private Button enableRavenArmorButton;
+    private Button enableMailboxButton;
     private Button ravenChestsMinusButton;
     private Button ravenChestsValueButton;
     private Button ravenChestsPlusButton;
@@ -223,6 +231,130 @@ public class FeatheredFriendSettingsScreen extends Screen {
 
             this.chatDisabledButton.active = hasServerSettings && isConnectionReady();
             addScrollableButton(this.chatDisabledButton, y);
+            y += OPTION_SPACING;
+
+            this.enableSuspiciousFeatherButton = Button.builder(
+                            textForEnableSuspiciousFeather(),
+                            btn -> {
+                                boolean newValue = !enableSuspiciousFeather;
+                                enableSuspiciousFeather = newValue;
+                                btn.setMessage(textForEnableSuspiciousFeather());
+
+                                try {
+                                    if (!hasServerSettings) {
+                                        LOG.warn("[FeatheredFriendSettingsScreen] enableSuspiciousFeather toggled but server settings not synced yet; requesting sync instead");
+                                        requestServerSettings();
+                                        return;
+                                    }
+
+                                    if (!isConnectionReady()) {
+                                        LOG.warn("[FeatheredFriendSettingsScreen] Connection not ready; cannot send enableSuspiciousFeather toggle right now");
+                                        return;
+                                    }
+
+                                    Services.PLATFORM.sendSetEnableSuspiciousFeather(newValue);
+                                    LOG.debug("[FeatheredFriendSettingsScreen] Sent SetEnableSuspiciousFeatherPayload -> {}", newValue);
+                                } catch (Throwable t) {
+                                    LOG.error("[FeatheredFriendSettingsScreen] Failed to send enableSuspiciousFeather toggle", t);
+                                }
+                            })
+                    .bounds(centerX - OPTION_ROW_HALF_WIDTH, y, OPTION_ROW_WIDTH, OPTION_HEIGHT)
+                    .build();
+            this.enableSuspiciousFeatherButton.active = hasServerSettings && isConnectionReady();
+            addScrollableButton(this.enableSuspiciousFeatherButton, y);
+            y += OPTION_SPACING;
+
+            this.enableSuspiciousChestButton = Button.builder(
+                            textForEnableSuspiciousChest(),
+                            btn -> {
+                                boolean newValue = !enableSuspiciousChest;
+                                enableSuspiciousChest = newValue;
+                                btn.setMessage(textForEnableSuspiciousChest());
+
+                                try {
+                                    if (!hasServerSettings) {
+                                        LOG.warn("[FeatheredFriendSettingsScreen] enableSuspiciousChest toggled but server settings not synced yet; requesting sync instead");
+                                        requestServerSettings();
+                                        return;
+                                    }
+
+                                    if (!isConnectionReady()) {
+                                        LOG.warn("[FeatheredFriendSettingsScreen] Connection not ready; cannot send enableSuspiciousChest toggle right now");
+                                        return;
+                                    }
+
+                                    Services.PLATFORM.sendSetEnableSuspiciousChest(newValue);
+                                    LOG.debug("[FeatheredFriendSettingsScreen] Sent SetEnableSuspiciousChestPayload -> {}", newValue);
+                                } catch (Throwable t) {
+                                    LOG.error("[FeatheredFriendSettingsScreen] Failed to send enableSuspiciousChest toggle", t);
+                                }
+                            })
+                    .bounds(centerX - OPTION_ROW_HALF_WIDTH, y, OPTION_ROW_WIDTH, OPTION_HEIGHT)
+                    .build();
+            this.enableSuspiciousChestButton.active = hasServerSettings && isConnectionReady();
+            addScrollableButton(this.enableSuspiciousChestButton, y);
+            y += OPTION_SPACING;
+
+            this.enableRavenArmorButton = Button.builder(
+                            textForEnableRavenArmor(),
+                            btn -> {
+                                boolean newValue = !enableRavenArmor;
+                                enableRavenArmor = newValue;
+                                btn.setMessage(textForEnableRavenArmor());
+
+                                try {
+                                    if (!hasServerSettings) {
+                                        LOG.warn("[FeatheredFriendSettingsScreen] enableRavenArmor toggled but server settings not synced yet; requesting sync instead");
+                                        requestServerSettings();
+                                        return;
+                                    }
+
+                                    if (!isConnectionReady()) {
+                                        LOG.warn("[FeatheredFriendSettingsScreen] Connection not ready; cannot send enableRavenArmor toggle right now");
+                                        return;
+                                    }
+
+                                    Services.PLATFORM.sendSetEnableRavenArmor(newValue);
+                                    LOG.debug("[FeatheredFriendSettingsScreen] Sent SetEnableRavenArmorPayload -> {}", newValue);
+                                } catch (Throwable t) {
+                                    LOG.error("[FeatheredFriendSettingsScreen] Failed to send enableRavenArmor toggle", t);
+                                }
+                            })
+                    .bounds(centerX - OPTION_ROW_HALF_WIDTH, y, OPTION_ROW_WIDTH, OPTION_HEIGHT)
+                    .build();
+            this.enableRavenArmorButton.active = hasServerSettings && isConnectionReady();
+            addScrollableButton(this.enableRavenArmorButton, y);
+            y += OPTION_SPACING;
+
+            this.enableMailboxButton = Button.builder(
+                            textForEnableMailbox(),
+                            btn -> {
+                                boolean newValue = !enableMailbox;
+                                enableMailbox = newValue;
+                                btn.setMessage(textForEnableMailbox());
+
+                                try {
+                                    if (!hasServerSettings) {
+                                        LOG.warn("[FeatheredFriendSettingsScreen] enableMailbox toggled but server settings not synced yet; requesting sync instead");
+                                        requestServerSettings();
+                                        return;
+                                    }
+
+                                    if (!isConnectionReady()) {
+                                        LOG.warn("[FeatheredFriendSettingsScreen] Connection not ready; cannot send enableMailbox toggle right now");
+                                        return;
+                                    }
+
+                                    Services.PLATFORM.sendSetEnableMailbox(newValue);
+                                    LOG.debug("[FeatheredFriendSettingsScreen] Sent SetEnableMailboxPayload -> {}", newValue);
+                                } catch (Throwable t) {
+                                    LOG.error("[FeatheredFriendSettingsScreen] Failed to send enableMailbox toggle", t);
+                                }
+                            })
+                    .bounds(centerX - OPTION_ROW_HALF_WIDTH, y, OPTION_ROW_WIDTH, OPTION_HEIGHT)
+                    .build();
+            this.enableMailboxButton.active = hasServerSettings && isConnectionReady();
+            addScrollableButton(this.enableMailboxButton, y);
             y += OPTION_SPACING;
 
             this.ravenChestsMinusButton = Button.builder(Component.literal("-"), btn -> adjustRavenChestCap(deltaWithShift(-1)))
@@ -447,6 +579,22 @@ public class FeatheredFriendSettingsScreen extends Screen {
                 this.chatDisabledButton.setMessage(textForChatDisabled());
                 this.chatDisabledButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
             }
+            if (this.enableSuspiciousFeatherButton != null) {
+                this.enableSuspiciousFeatherButton.setMessage(textForEnableSuspiciousFeather());
+                this.enableSuspiciousFeatherButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
+            }
+            if (this.enableSuspiciousChestButton != null) {
+                this.enableSuspiciousChestButton.setMessage(textForEnableSuspiciousChest());
+                this.enableSuspiciousChestButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
+            }
+            if (this.enableRavenArmorButton != null) {
+                this.enableRavenArmorButton.setMessage(textForEnableRavenArmor());
+                this.enableRavenArmorButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
+            }
+            if (this.enableMailboxButton != null) {
+                this.enableMailboxButton.setMessage(textForEnableMailbox());
+                this.enableMailboxButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
+            }
             if (this.ravenChestsValueButton != null) {
                 this.ravenChestsValueButton.setMessage(textForRavenChestCap());
             }
@@ -566,6 +714,10 @@ public class FeatheredFriendSettingsScreen extends Screen {
             this.hasServerSettings = Services.PLATFORM.hasServerSettingsSynced();
             if (this.hasServerSettings) {
                 this.chatDisabled = Services.PLATFORM.isChatDisabledClient();
+                this.enableSuspiciousFeather = Services.PLATFORM.isSuspiciousFeatherEnabledClient();
+                this.enableSuspiciousChest = Services.PLATFORM.isSuspiciousChestEnabledClient();
+                this.enableRavenArmor = Services.PLATFORM.isRavenArmorEnabledClient();
+                this.enableMailbox = Services.PLATFORM.isMailboxEnabledClient();
                 this.canEditChat = Services.PLATFORM.canEditChat();
                 this.maxRavenChestsPerPlayer = Services.PLATFORM.getMaxRavenChestsPerPlayerClient();
                 this.ravenLogRetentionMinutes = Services.PLATFORM.getRavenLogRetentionMinutesClient();
@@ -576,6 +728,10 @@ public class FeatheredFriendSettingsScreen extends Screen {
             } else {
                 // while syncing, default to enabled + no perms
                 this.chatDisabled = false;
+                this.enableSuspiciousFeather = true;
+                this.enableSuspiciousChest = true;
+                this.enableRavenArmor = true;
+                this.enableMailbox = true;
                 this.canEditChat = false;
                 this.maxRavenChestsPerPlayer = 0;
                 this.ravenLogRetentionMinutes = 0;
@@ -585,8 +741,8 @@ public class FeatheredFriendSettingsScreen extends Screen {
                 this.courierTimeoutRetrySeconds = 0;
             }
 
-            LOG.debug("[FeatheredFriendSettingsScreen] refreshFromCacheOnly: hasServerSettings={} chatDisabled={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={} scrollUiFontMode={} ravenStatusGuiX={} ravenStatusGuiY={} ravenStatusGuiAnchor={} ravenStatusGuiVisualMode={}",
-                    hasServerSettings, chatDisabled, maxRavenChestsPerPlayer, ravenLogRetentionMinutes, ravenLogMaxBytesPerPlayer, enderpackDepositCooldownSeconds, scrollDeliveryCooldownSeconds, courierTimeoutRetrySeconds, canEditChat, scrollUiFontMode, ravenStatusGuiX, ravenStatusGuiY, ravenStatusGuiAnchor, ravenStatusGuiVisualMode);
+            LOG.debug("[FeatheredFriendSettingsScreen] refreshFromCacheOnly: hasServerSettings={} chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={} scrollUiFontMode={} ravenStatusGuiX={} ravenStatusGuiY={} ravenStatusGuiAnchor={} ravenStatusGuiVisualMode={}",
+                    hasServerSettings, chatDisabled, enableSuspiciousFeather, enableSuspiciousChest, enableRavenArmor, enableMailbox, maxRavenChestsPerPlayer, ravenLogRetentionMinutes, ravenLogMaxBytesPerPlayer, enderpackDepositCooldownSeconds, scrollDeliveryCooldownSeconds, courierTimeoutRetrySeconds, canEditChat, scrollUiFontMode, ravenStatusGuiX, ravenStatusGuiY, ravenStatusGuiAnchor, ravenStatusGuiVisualMode);
 
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendSettingsScreen] refreshFromCacheOnly failed safely", t);
@@ -611,6 +767,10 @@ public class FeatheredFriendSettingsScreen extends Screen {
             hasServerSettings = false;
             canEditChat = false;
             chatDisabled = false;
+            enableSuspiciousFeather = true;
+            enableSuspiciousChest = true;
+            enableRavenArmor = true;
+            enableMailbox = true;
             scrollUiFontMode = ScrollUiFontMode.JACQUARD;
             ravenStatusGuiX = 12;
             ravenStatusGuiY = 12;
@@ -660,6 +820,46 @@ public class FeatheredFriendSettingsScreen extends Screen {
         return Component.translatable(
                 "screen.featheredfriend.settings.chat_disabled",
                 onOff(chatDisabled)
+        );
+    }
+
+    private Component textForEnableSuspiciousFeather() {
+        if (!hasServerSettings) {
+            return Component.translatable("screen.featheredfriend.settings.enable_suspicious_feather.syncing");
+        }
+        return Component.translatable(
+                "screen.featheredfriend.settings.enable_suspicious_feather",
+                onOff(enableSuspiciousFeather)
+        );
+    }
+
+    private Component textForEnableSuspiciousChest() {
+        if (!hasServerSettings) {
+            return Component.translatable("screen.featheredfriend.settings.enable_suspicious_chest.syncing");
+        }
+        return Component.translatable(
+                "screen.featheredfriend.settings.enable_suspicious_chest",
+                onOff(enableSuspiciousChest)
+        );
+    }
+
+    private Component textForEnableRavenArmor() {
+        if (!hasServerSettings) {
+            return Component.translatable("screen.featheredfriend.settings.enable_raven_armor.syncing");
+        }
+        return Component.translatable(
+                "screen.featheredfriend.settings.enable_raven_armor",
+                onOff(enableRavenArmor)
+        );
+    }
+
+    private Component textForEnableMailbox() {
+        if (!hasServerSettings) {
+            return Component.translatable("screen.featheredfriend.settings.enable_mailbox.syncing");
+        }
+        return Component.translatable(
+                "screen.featheredfriend.settings.enable_mailbox",
+                onOff(enableMailbox)
         );
     }
 

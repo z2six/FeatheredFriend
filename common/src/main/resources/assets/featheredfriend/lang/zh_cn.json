@@ -2,6 +2,28 @@
   "entity.featheredfriend.raven": "ä¹Œé¸¦",
   "itemGroup.featheredfriend": "Feathered Friend",
 
+  "feature.featheredfriend.suspicious_feather": "Suspicious Feather",
+  "feature.featheredfriend.suspicious_chest": "Suspicious Chest",
+  "feature.featheredfriend.raven_armor": "Raven armor",
+  "feature.featheredfriend.mailbox": "Mailbox",
+  "tooltip.featheredfriend.feature_disabled": "%s is disabled on this server.",
+
+  "screen.featheredfriend.settings.enable_suspicious_feather": "Enable Suspicious Feather: %s",
+  "screen.featheredfriend.settings.enable_suspicious_feather.syncing": "Enable Suspicious Feather: Syncing...",
+  "screen.featheredfriend.settings.enable_suspicious_chest": "Enable Suspicious Chest: %s",
+  "screen.featheredfriend.settings.enable_suspicious_chest.syncing": "Enable Suspicious Chest: Syncing...",
+  "screen.featheredfriend.settings.enable_raven_armor": "Enable Raven armor: %s",
+  "screen.featheredfriend.settings.enable_raven_armor.syncing": "Enable Raven armor: Syncing...",
+  "screen.featheredfriend.settings.enable_mailbox": "Enable Mailbox: %s",
+  "screen.featheredfriend.settings.enable_mailbox.syncing": "Enable Mailbox: Syncing...",
+
+  "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend] Suspicious Feather is disabled on this server.",
+  "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend] Suspicious Chest is disabled on this server.",
+  "message.featheredfriend.feature_disabled.raven_armor": "[FeatheredFriend] Raven armor is disabled on this server.",
+  "message.featheredfriend.feature_disabled.mailbox": "[FeatheredFriend] Mailbox is disabled on this server.",
+  "reason.featheredfriend.raven_link.client_stop": "Stopped by player.",
+  "reason.featheredfriend.raven_link.disabled": "Disabled by server settings.",
+
   "item.featheredfriend.scroll_unsealed": "æœªå°å°å·è½´",
   "item.featheredfriend.scroll_sealed": "å·²å°å°å·è½´",
   "item.featheredfriend.scroll_opened": "å·²å¼€å¯å·è½´",

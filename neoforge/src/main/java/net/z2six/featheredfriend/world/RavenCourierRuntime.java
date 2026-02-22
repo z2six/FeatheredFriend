@@ -865,6 +865,9 @@ public final class RavenCourierRuntime {
                                                            @NotNull RavenCourierData.DeliveryJob job,
                                                            boolean carryScroll) {
         try {
+            if (!FFServerConfig.isSuspiciousChestEnabled()) {
+                return;
+            }
             MinecraftServer server = anyLevel.getServer();
             SenderPerchTarget perchTarget = resolveSenderPerchTarget(server, job);
             if (perchTarget == null) {
@@ -1368,6 +1371,9 @@ public final class RavenCourierRuntime {
                                                               @NotNull RavenEntity raven,
                                                               @NotNull RavenCourierData.DeliveryJob job) {
         try {
+            if (!FFServerConfig.isMailboxEnabled()) {
+                return false;
+            }
             if (job.failed) {
                 return false;
             }
@@ -1433,6 +1439,9 @@ public final class RavenCourierRuntime {
                                                                        @NotNull RavenCourierData data,
                                                                        @NotNull RavenCourierData.DeliveryJob job) {
         try {
+            if (!FFServerConfig.isMailboxEnabled()) {
+                return false;
+            }
             if (job == null || job.failed) {
                 return false;
             }

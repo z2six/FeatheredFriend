@@ -331,6 +331,22 @@ public interface IPlatformHelper {
         return false;
     }
 
+    default boolean isSuspiciousFeatherEnabledClient() {
+        return true;
+    }
+
+    default boolean isSuspiciousChestEnabledClient() {
+        return true;
+    }
+
+    default boolean isRavenArmorEnabledClient() {
+        return true;
+    }
+
+    default boolean isMailboxEnabledClient() {
+        return true;
+    }
+
     default boolean canEditChat() {
         return false;
     }
@@ -364,6 +380,22 @@ public interface IPlatformHelper {
     }
 
     default void sendSetChatDisabled(boolean value) {
+        // no-op
+    }
+
+    default void sendSetEnableSuspiciousFeather(boolean value) {
+        // no-op
+    }
+
+    default void sendSetEnableSuspiciousChest(boolean value) {
+        // no-op
+    }
+
+    default void sendSetEnableRavenArmor(boolean value) {
+        // no-op
+    }
+
+    default void sendSetEnableMailbox(boolean value) {
         // no-op
     }
 
@@ -432,5 +464,25 @@ public interface IPlatformHelper {
 
     default int getCourierTimeoutRetrySeconds() {
         return 0;
+    }
+
+    // ---------------------------------------------------------------------
+    // Server feature toggles
+    // ---------------------------------------------------------------------
+
+    default boolean isSuspiciousFeatherEnabled() {
+        return true;
+    }
+
+    default boolean isSuspiciousChestEnabled() {
+        return true;
+    }
+
+    default boolean isRavenArmorEnabled() {
+        return true;
+    }
+
+    default boolean isMailboxEnabled() {
+        return true;
     }
 }

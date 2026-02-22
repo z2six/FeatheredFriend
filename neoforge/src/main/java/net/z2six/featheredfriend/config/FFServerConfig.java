@@ -76,6 +76,33 @@ public final class FFServerConfig {
     public static final boolean DEFAULT_ALLOW_SERVER_SETTINGS_SCREEN_EDITING = true;
 
     // ---------------------------------------------------------------------
+    // Feature toggles (server-authoritative; hot-reloadable)
+    // ---------------------------------------------------------------------
+
+    /**
+     * Enable the Suspicious Feather item (Raven Link / revive).
+     */
+    public static final boolean DEFAULT_ENABLE_SUSPICIOUS_FEATHER = true;
+
+    /**
+     * Enable Suspicious Chest (Raven Chest) specific behavior.
+     * Note: disabling does not delete existing blocks/items; it just disables FeatheredFriend logic.
+     */
+    public static final boolean DEFAULT_ENABLE_SUSPICIOUS_CHEST = true;
+
+    /**
+     * Enable Raven armor items and their stat modifiers.
+     * Note: disabling does not delete existing armor items; stat modifiers are ignored.
+     */
+    public static final boolean DEFAULT_ENABLE_RAVEN_ARMOR = true;
+
+    /**
+     * Enable Mailbox block + mailbox delivery logic.
+     * Note: disabling does not delete existing mailboxes; courier delivery to mailboxes is disabled.
+     */
+    public static final boolean DEFAULT_ENABLE_MAILBOX = true;
+
+    // ---------------------------------------------------------------------
     // Spec + entries
     // ---------------------------------------------------------------------
 
@@ -90,6 +117,10 @@ public final class FFServerConfig {
     public static final ModConfigSpec.IntValue SCROLL_DELIVERY_COOLDOWN_SECONDS;
     public static final ModConfigSpec.IntValue COURIER_TIMEOUT_RETRY_SECONDS;
     public static final ModConfigSpec.BooleanValue ALLOW_SERVER_SETTINGS_SCREEN_EDITING;
+    public static final ModConfigSpec.BooleanValue ENABLE_SUSPICIOUS_FEATHER;
+    public static final ModConfigSpec.BooleanValue ENABLE_SUSPICIOUS_CHEST;
+    public static final ModConfigSpec.BooleanValue ENABLE_RAVEN_ARMOR;
+    public static final ModConfigSpec.BooleanValue ENABLE_MAILBOX;
 
     // spawning
     public static final ModConfigSpec.IntValue WILD_RAVENS_PER_PLAYER;
@@ -168,6 +199,38 @@ public final class FFServerConfig {
                         "from the in-game settings screen. TOML still remains authoritative."
                 )
                 .define("allowServerSettingsScreenEditing", DEFAULT_ALLOW_SERVER_SETTINGS_SCREEN_EDITING);
+
+        builder.push("features");
+
+        ENABLE_SUSPICIOUS_FEATHER = builder
+                .comment(
+                        "If false, Suspicious Feather cannot start Raven Link / revive.",
+                        "Existing items remain but will be inert."
+                )
+                .define("enableSuspiciousFeather", DEFAULT_ENABLE_SUSPICIOUS_FEATHER);
+
+        ENABLE_SUSPICIOUS_CHEST = builder
+                .comment(
+                        "If false, Suspicious Chest (Raven Chest) special behavior is disabled.",
+                        "Existing blocks/items remain; storage stays accessible."
+                )
+                .define("enableSuspiciousChest", DEFAULT_ENABLE_SUSPICIOUS_CHEST);
+
+        ENABLE_RAVEN_ARMOR = builder
+                .comment(
+                        "If false, Raven armor items cannot be equipped and armor stat modifiers are ignored.",
+                        "Existing armor items remain."
+                )
+                .define("enableRavenArmor", DEFAULT_ENABLE_RAVEN_ARMOR);
+
+        ENABLE_MAILBOX = builder
+                .comment(
+                        "If false, Mailbox spotting + courier delivery to mailboxes is disabled.",
+                        "Existing mailbox blocks/items remain; storage stays accessible."
+                )
+                .define("enableMailbox", DEFAULT_ENABLE_MAILBOX);
+
+        builder.pop();
 
         builder.pop();
 
@@ -466,6 +529,110 @@ public final class FFServerConfig {
             LOG.error("[FFServerConfig] isServerSettingsScreenEditingEnabled failed, using default {}",
                     DEFAULT_ALLOW_SERVER_SETTINGS_SCREEN_EDITING, t);
             return DEFAULT_ALLOW_SERVER_SETTINGS_SCREEN_EDITING;
+        }
+    }
+
+    public static boolean isSuspiciousFeatherEnabled() {
+        try {
+            return ENABLE_SUSPICIOUS_FEATHER.get();
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] isSuspiciousFeatherEnabled failed, using default {}", DEFAULT_ENABLE_SUSPICIOUS_FEATHER, t);
+            return DEFAULT_ENABLE_SUSPICIOUS_FEATHER;
+        }
+    }
+
+    public static void setSuspiciousFeatherEnabled(boolean enabled) {
+        try {
+            boolean before = isSuspiciousFeatherEnabled();
+            ENABLE_SUSPICIOUS_FEATHER.set(enabled);
+            if (before != enabled) {
+                markSettingsDirty();
+            }
+            try {
+                SERVER_SPEC.save();
+            } catch (Throwable saveErr) {
+                LOG.warn("[FFServerConfig] Failed to save SERVER config to disk after enableSuspiciousFeather update: {}", saveErr.toString());
+            }
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] setSuspiciousFeatherEnabled failed", t);
+        }
+    }
+
+    public static boolean isSuspiciousChestEnabled() {
+        try {
+            return ENABLE_SUSPICIOUS_CHEST.get();
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] isSuspiciousChestEnabled failed, using default {}", DEFAULT_ENABLE_SUSPICIOUS_CHEST, t);
+            return DEFAULT_ENABLE_SUSPICIOUS_CHEST;
+        }
+    }
+
+    public static void setSuspiciousChestEnabled(boolean enabled) {
+        try {
+            boolean before = isSuspiciousChestEnabled();
+            ENABLE_SUSPICIOUS_CHEST.set(enabled);
+            if (before != enabled) {
+                markSettingsDirty();
+            }
+            try {
+                SERVER_SPEC.save();
+            } catch (Throwable saveErr) {
+                LOG.warn("[FFServerConfig] Failed to save SERVER config to disk after enableSuspiciousChest update: {}", saveErr.toString());
+            }
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] setSuspiciousChestEnabled failed", t);
+        }
+    }
+
+    public static boolean isRavenArmorEnabled() {
+        try {
+            return ENABLE_RAVEN_ARMOR.get();
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] isRavenArmorEnabled failed, using default {}", DEFAULT_ENABLE_RAVEN_ARMOR, t);
+            return DEFAULT_ENABLE_RAVEN_ARMOR;
+        }
+    }
+
+    public static void setRavenArmorEnabled(boolean enabled) {
+        try {
+            boolean before = isRavenArmorEnabled();
+            ENABLE_RAVEN_ARMOR.set(enabled);
+            if (before != enabled) {
+                markSettingsDirty();
+            }
+            try {
+                SERVER_SPEC.save();
+            } catch (Throwable saveErr) {
+                LOG.warn("[FFServerConfig] Failed to save SERVER config to disk after enableRavenArmor update: {}", saveErr.toString());
+            }
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] setRavenArmorEnabled failed", t);
+        }
+    }
+
+    public static boolean isMailboxEnabled() {
+        try {
+            return ENABLE_MAILBOX.get();
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] isMailboxEnabled failed, using default {}", DEFAULT_ENABLE_MAILBOX, t);
+            return DEFAULT_ENABLE_MAILBOX;
+        }
+    }
+
+    public static void setMailboxEnabled(boolean enabled) {
+        try {
+            boolean before = isMailboxEnabled();
+            ENABLE_MAILBOX.set(enabled);
+            if (before != enabled) {
+                markSettingsDirty();
+            }
+            try {
+                SERVER_SPEC.save();
+            } catch (Throwable saveErr) {
+                LOG.warn("[FFServerConfig] Failed to save SERVER config to disk after enableMailbox update: {}", saveErr.toString());
+            }
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] setMailboxEnabled failed", t);
         }
     }
 
