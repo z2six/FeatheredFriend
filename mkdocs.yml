@@ -25,6 +25,8 @@ theme:
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
+  - Features:
+      - Raven Armors: features/raven-armors.md
 
 plugins:
   - search

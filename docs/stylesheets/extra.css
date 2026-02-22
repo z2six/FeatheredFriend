@@ -1,1 +1,52 @@
 /* Add any MkDocs Material overrides here. */
+
+/* ------------------------------------------------------------------------- */
+/* FeatheredFriend recipe cards (simple 3x3 crafting grid)                    */
+/* ------------------------------------------------------------------------- */
+
+.ff-recipe {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0.75rem 0;
+}
+
+.ff-recipe-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 44px);
+  grid-template-rows: repeat(3, 44px);
+  gap: 4px;
+  padding: 8px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--md-default-bg-color), #000 18%);
+  border: 1px solid color-mix(in srgb, var(--md-default-fg-color), transparent 82%);
+}
+
+.ff-slot {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--md-default-bg-color), #fff 6%);
+  border: 1px solid color-mix(in srgb, var(--md-default-fg-color), transparent 85%);
+}
+
+.ff-slot img {
+  width: 32px;
+  height: 32px;
+  image-rendering: pixelated;
+}
+
+.ff-recipe-arrow {
+  font-size: 1.6rem;
+  opacity: 0.8;
+  user-select: none;
+}
+
+.ff-recipe-result .ff-slot {
+  background: color-mix(in srgb, var(--md-accent-fg-color), transparent 90%);
+  border-color: color-mix(in srgb, var(--md-accent-fg-color), transparent 70%);
+}
