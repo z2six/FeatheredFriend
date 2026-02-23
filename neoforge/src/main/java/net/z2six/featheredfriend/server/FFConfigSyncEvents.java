@@ -37,6 +37,7 @@ public final class FFConfigSyncEvents {
     private static int lastEnderpackDepositCooldownSeconds = 0;
     private static int lastScrollDeliveryCooldownSeconds = 0;
     private static int lastCourierTimeoutRetrySeconds = 0;
+    private static int lastRavenLinkDurationSeconds = 0;
     private static boolean lastAllowServerSettingsScreenEditing = true;
     private static boolean lastInitialized = false;
 
@@ -80,6 +81,7 @@ public final class FFConfigSyncEvents {
             int enderpackDepositCooldownSecondsNow = FFServerConfig.getEnderpackDepositCooldownSeconds();
             int scrollDeliveryCooldownSecondsNow = FFServerConfig.getScrollDeliveryCooldownSeconds();
             int courierTimeoutRetrySecondsNow = FFServerConfig.getCourierTimeoutRetrySeconds();
+            int ravenLinkDurationSecondsNow = FFServerConfig.getRavenLinkDurationSeconds();
             boolean allowServerSettingsScreenEditingNow = FFServerConfig.isServerSettingsScreenEditingEnabled();
 
             boolean changed = false;
@@ -97,6 +99,7 @@ public final class FFConfigSyncEvents {
                 lastEnderpackDepositCooldownSeconds = enderpackDepositCooldownSecondsNow;
                 lastScrollDeliveryCooldownSeconds = scrollDeliveryCooldownSecondsNow;
                 lastCourierTimeoutRetrySeconds = courierTimeoutRetrySecondsNow;
+                lastRavenLinkDurationSeconds = ravenLinkDurationSecondsNow;
                 lastAllowServerSettingsScreenEditing = allowServerSettingsScreenEditingNow;
             } else {
                 if (lastChatDisabled != chatDisabledNow) {
@@ -147,6 +150,10 @@ public final class FFConfigSyncEvents {
                     lastCourierTimeoutRetrySeconds = courierTimeoutRetrySecondsNow;
                     changed = true;
                 }
+                if (lastRavenLinkDurationSeconds != ravenLinkDurationSecondsNow) {
+                    lastRavenLinkDurationSeconds = ravenLinkDurationSecondsNow;
+                    changed = true;
+                }
                 if (lastAllowServerSettingsScreenEditing != allowServerSettingsScreenEditingNow) {
                     lastAllowServerSettingsScreenEditing = allowServerSettingsScreenEditingNow;
                     changed = true;
@@ -175,7 +182,7 @@ public final class FFConfigSyncEvents {
             FFPayloads.broadcastSettings(overworld);
 
             if (LOG.isDebugEnabled()) {
-                LOG.debug("[FFConfigSyncEvents] Broadcast settings due to {} (chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} wildRavensPerPlayer={} ravenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} allowServerSettingsScreenEditing={})",
+                LOG.debug("[FFConfigSyncEvents] Broadcast settings due to {} (chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} wildRavensPerPlayer={} ravenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} ravenLinkDurationSeconds={} allowServerSettingsScreenEditing={})",
                         changed ? "config-change" : "request",
                         chatDisabledNow,
                         enableSuspiciousFeatherNow,
@@ -189,6 +196,7 @@ public final class FFConfigSyncEvents {
                         enderpackDepositCooldownSecondsNow,
                         scrollDeliveryCooldownSecondsNow,
                         courierTimeoutRetrySecondsNow,
+                        ravenLinkDurationSecondsNow,
                         allowServerSettingsScreenEditingNow);
             }
         } catch (Throwable t) {

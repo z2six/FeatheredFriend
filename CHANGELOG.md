@@ -13,8 +13,11 @@ All notable changes to this project will be documented in this file.
 - 6 new sigil generators
 - Sound FX during Raven Link
 - Respawn raven via Suspicious Feather
-- Config for disabling certain features
+- Config for disabling `Suspicious Feather`, `Suspicious Chest`, `Mailbox`, `Raven Armor`
 - Config for `max Ravens spawned per player`
+- Config for `Raven Link time`
+- Heartbeat sound FX speeds up as the timer of `Raven Link` decreases
+- Effigy pose rendering
 
 ### Fixes
 - Fixed Raven Naming GUI being rendered below NeoForge its menu blur

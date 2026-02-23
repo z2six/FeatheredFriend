@@ -50,7 +50,7 @@ public final class FFPayloads {
     /**
      * Bump if you change payload shapes. Must match client + server.
      */
-    private static final String PROTOCOL_VERSION = "3";
+    private static final String PROTOCOL_VERSION = "4";
 
     private FFPayloads() {
         // no-op
@@ -122,6 +122,12 @@ public final class FFPayloads {
             );
 
             registrar.playToServer(
+                    SetRavenLinkDurationSecondsPayload.TYPE,
+                    SetRavenLinkDurationSecondsPayload.STREAM_CODEC,
+                    FFPayloads::handleSetRavenLinkDurationSeconds
+            );
+
+            registrar.playToServer(
                     SetMaxRavenChestsPerPlayerPayload.TYPE,
                     SetMaxRavenChestsPerPlayerPayload.STREAM_CODEC,
                     FFPayloads::handleSetMaxRavenChestsPerPlayer
@@ -175,6 +181,7 @@ public final class FFPayloads {
         private static volatile boolean ravenArmorEnabled = true;
         private static volatile boolean mailboxEnabled = true;
         private static volatile int wildRavensPerPlayer = 0;
+        private static volatile int ravenLinkDurationSeconds = 0;
         private static volatile int maxRavenChestsPerPlayer = 0;
         private static volatile int ravenLogRetentionMinutes = 0;
         private static volatile int ravenLogMaxBytesPerPlayer = 0;
@@ -219,6 +226,10 @@ public final class FFPayloads {
             return wildRavensPerPlayer;
         }
 
+        public static int ravenLinkDurationSeconds() {
+            return ravenLinkDurationSeconds;
+        }
+
         public static int maxRavenChestsPerPlayer() {
             return maxRavenChestsPerPlayer;
         }
@@ -249,6 +260,7 @@ public final class FFPayloads {
                                             boolean newRavenArmorEnabled,
                                             boolean newMailboxEnabled,
                                             int newWildRavensPerPlayer,
+                                            int newRavenLinkDurationSeconds,
                                             int newMaxRavenChestsPerPlayer,
                                             int newRavenLogRetentionMinutes,
                                             int newRavenLogMaxBytesPerPlayer,
@@ -262,6 +274,7 @@ public final class FFPayloads {
             ravenArmorEnabled = newRavenArmorEnabled;
             mailboxEnabled = newMailboxEnabled;
             wildRavensPerPlayer = Math.max(0, newWildRavensPerPlayer);
+            ravenLinkDurationSeconds = Math.max(0, newRavenLinkDurationSeconds);
             maxRavenChestsPerPlayer = Math.max(0, newMaxRavenChestsPerPlayer);
             ravenLogRetentionMinutes = Math.max(0, newRavenLogRetentionMinutes);
             ravenLogMaxBytesPerPlayer = Math.max(0, newRavenLogMaxBytesPerPlayer);
@@ -271,8 +284,8 @@ public final class FFPayloads {
             canEditChat = newCanEditChat;
             hasSynced = true;
 
-            LOG.debug("[FFPayloads.ClientState] Applied server settings: chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} wildRavensPerPlayer={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={}",
-                    newChatDisabled, newSuspiciousFeatherEnabled, newSuspiciousChestEnabled, newRavenArmorEnabled, newMailboxEnabled, wildRavensPerPlayer, maxRavenChestsPerPlayer, ravenLogRetentionMinutes, ravenLogMaxBytesPerPlayer, enderpackDepositCooldownSeconds, scrollDeliveryCooldownSeconds, courierTimeoutRetrySeconds, newCanEditChat);
+            LOG.debug("[FFPayloads.ClientState] Applied server settings: chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} wildRavensPerPlayer={} ravenLinkDurationSeconds={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={}",
+                    newChatDisabled, newSuspiciousFeatherEnabled, newSuspiciousChestEnabled, newRavenArmorEnabled, newMailboxEnabled, wildRavensPerPlayer, ravenLinkDurationSeconds, maxRavenChestsPerPlayer, ravenLogRetentionMinutes, ravenLogMaxBytesPerPlayer, enderpackDepositCooldownSeconds, scrollDeliveryCooldownSeconds, courierTimeoutRetrySeconds, newCanEditChat);
         }
 
         public static void clear() {
@@ -283,6 +296,7 @@ public final class FFPayloads {
             ravenArmorEnabled = true;
             mailboxEnabled = true;
             wildRavensPerPlayer = 0;
+            ravenLinkDurationSeconds = 0;
             maxRavenChestsPerPlayer = 0;
             ravenLogRetentionMinutes = 0;
             ravenLogMaxBytesPerPlayer = 0;
@@ -326,6 +340,7 @@ public final class FFPayloads {
                                         boolean enableRavenArmor,
                                         boolean enableMailbox,
                                         int wildRavensPerPlayer,
+                                        int ravenLinkDurationSeconds,
                                         int maxRavenChestsPerPlayer,
                                         int ravenLogRetentionMinutes,
                                         int ravenLogMaxBytesPerPlayer,
@@ -350,6 +365,7 @@ public final class FFPayloads {
             buf.writeBoolean(payload.enableRavenArmor());
             buf.writeBoolean(payload.enableMailbox());
             buf.writeVarInt(payload.wildRavensPerPlayer());
+            buf.writeVarInt(payload.ravenLinkDurationSeconds());
             buf.writeVarInt(payload.maxRavenChestsPerPlayer());
             buf.writeVarInt(payload.ravenLogRetentionMinutes());
             buf.writeVarInt(payload.ravenLogMaxBytesPerPlayer());
@@ -366,6 +382,7 @@ public final class FFPayloads {
                     buf.readBoolean(),
                     buf.readBoolean(),
                     buf.readBoolean(),
+                    buf.readVarInt(),
                     buf.readVarInt(),
                     buf.readVarInt(),
                     buf.readVarInt(),
@@ -513,6 +530,29 @@ public final class FFPayloads {
                 StreamCodec.composite(
                         ByteBufCodecs.VAR_INT, SetWildRavensPerPlayerPayload::value,
                         SetWildRavensPerPlayerPayload::new
+                );
+
+        @Override
+        public Type<? extends net.minecraft.network.protocol.common.custom.CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    /**
+     * Client -> Server: set Raven Link duration (seconds). Requires permission on server.
+     */
+    public record SetRavenLinkDurationSecondsPayload(int value)
+            implements net.minecraft.network.protocol.common.custom.CustomPacketPayload {
+
+        public static final ResourceLocation ID =
+                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "set_raven_link_duration_seconds_v1");
+
+        public static final Type<SetRavenLinkDurationSecondsPayload> TYPE = new Type<>(ID);
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, SetRavenLinkDurationSecondsPayload> STREAM_CODEC =
+                StreamCodec.composite(
+                        ByteBufCodecs.VAR_INT, SetRavenLinkDurationSecondsPayload::value,
+                        SetRavenLinkDurationSecondsPayload::new
                 );
 
         @Override
@@ -676,6 +716,7 @@ public final class FFPayloads {
             boolean enableRavenArmorValue = FFServerConfig.isRavenArmorEnabled();
             boolean enableMailboxValue = FFServerConfig.isMailboxEnabled();
             int wildRavensPerPlayerValue = FFServerConfig.getWildRavensPerPlayer();
+            int ravenLinkDurationSecondsValue = FFServerConfig.getRavenLinkDurationSeconds();
             int maxRavenChestsPerPlayerValue = FFServerConfig.getRavenChestsPerPlayer();
             int ravenLogRetentionMinutesValue = FFServerConfig.getRavenLogRetentionMinutes();
             int ravenLogMaxBytesPerPlayerValue = FFServerConfig.getRavenLogMaxBytesPerPlayer();
@@ -691,6 +732,7 @@ public final class FFPayloads {
                     enableRavenArmorValue,
                     enableMailboxValue,
                     wildRavensPerPlayerValue,
+                    ravenLinkDurationSecondsValue,
                     maxRavenChestsPerPlayerValue,
                     ravenLogRetentionMinutesValue,
                     ravenLogMaxBytesPerPlayerValue,
@@ -701,7 +743,7 @@ public final class FFPayloads {
             );
             PacketDistributor.sendToPlayer(player, msg);
 
-            LOG.debug("[FFPayloads] Sent settings to {}: chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} wildRavensPerPlayer={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={}",
+            LOG.debug("[FFPayloads] Sent settings to {}: chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} wildRavensPerPlayer={} ravenLinkDurationSeconds={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={}",
                     player.getGameProfile().getName(),
                     chatDisabledValue,
                     enableSuspiciousFeatherValue,
@@ -709,6 +751,7 @@ public final class FFPayloads {
                     enableRavenArmorValue,
                     enableMailboxValue,
                     wildRavensPerPlayerValue,
+                    ravenLinkDurationSecondsValue,
                     maxRavenChestsPerPlayerValue,
                     ravenLogRetentionMinutesValue,
                     ravenLogMaxBytesPerPlayerValue,
@@ -798,6 +841,7 @@ public final class FFPayloads {
                             payload.enableRavenArmor(),
                             payload.enableMailbox(),
                             payload.wildRavensPerPlayer(),
+                            payload.ravenLinkDurationSeconds(),
                             payload.maxRavenChestsPerPlayer(),
                             payload.ravenLogRetentionMinutes(),
                             payload.ravenLogMaxBytesPerPlayer(),
@@ -1050,6 +1094,44 @@ public final class FFPayloads {
             });
         } catch (Throwable t) {
             LOG.error("[FFPayloads] handleSetWildRavensPerPlayer failed safely", t);
+        }
+    }
+
+    private static void handleSetRavenLinkDurationSeconds(SetRavenLinkDurationSecondsPayload payload, IPayloadContext context) {
+        try {
+            context.enqueueWork(() -> {
+                try {
+                    if (!(context.player() instanceof ServerPlayer sp)) {
+                        LOG.warn("[FFPayloads] SetRavenLinkDurationSeconds from non-ServerPlayer; ignoring");
+                        return;
+                    }
+
+                    ServerLevel level = sp.serverLevel();
+                    if (level == null) {
+                        LOG.warn("[FFPayloads] SetRavenLinkDurationSeconds: serverLevel null; ignoring");
+                        return;
+                    }
+
+                    boolean allowed = canPlayerEditServerSettings(sp);
+                    if (!allowed) {
+                        LOG.warn("[FFPayloads] {} tried to SetRavenLinkDurationSeconds without permission/settings-screen access; denied",
+                                sp.getGameProfile().getName());
+                        sendSettingsToPlayer(level, sp);
+                        return;
+                    }
+
+                    int clamped = Math.max(5, Math.min(600, payload.value()));
+                    FFServerConfig.setRavenLinkDurationSeconds(clamped);
+                    broadcastSettings(level);
+
+                    LOG.debug("[FFPayloads] SetRavenLinkDurationSeconds -> {} by {}", clamped, sp.getGameProfile().getName());
+
+                } catch (Throwable t) {
+                    LOG.error("[FFPayloads] handleSetRavenLinkDurationSeconds work failed safely", t);
+                }
+            });
+        } catch (Throwable t) {
+            LOG.error("[FFPayloads] handleSetRavenLinkDurationSeconds failed safely", t);
         }
     }
 

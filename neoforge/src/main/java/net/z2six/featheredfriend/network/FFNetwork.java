@@ -216,6 +216,12 @@ public final class FFNetwork {
                     FFNetwork::handleRavenLinkBlackoutAckOnServer
             );
 
+            registrar.playToServer(
+                    RavenLinkEffigyPoseSnapshotPacket.TYPE,
+                    RavenLinkEffigyPoseSnapshotPacket.STREAM_CODEC,
+                    FFNetwork::handleRavenLinkEffigyPoseSnapshotOnServer
+            );
+
             LOG.debug("[FFNetwork] Registered payload channels: known_players, request_known_players, open_raven_name_screen, open_raven_log_screen, " +
                     "seal_stamp_carve_result, wax_seal, break_seal, " +
                     "raven_name_chosen, raven_name_cancelled, whistle_for_raven, open_enderpack_request, open_raven_log_request, clear_raven_log_request, " +
@@ -570,6 +576,21 @@ public final class FFNetwork {
                 net.z2six.featheredfriend.world.RavenLinkRuntime.handleClientBlackoutAck(serverPlayer);
             } catch (Throwable t) {
                 LOG.error("[FFNetwork] Failed to handle RavenLinkBlackoutAckPacket on server", t);
+            }
+        });
+    }
+
+    private static void handleRavenLinkEffigyPoseSnapshotOnServer(@NotNull RavenLinkEffigyPoseSnapshotPacket payload,
+                                                                  @NotNull IPayloadContext context) {
+        context.enqueueWork(() -> {
+            try {
+                if (!(context.player() instanceof ServerPlayer serverPlayer)) {
+                    LOG.error("[FFNetwork] handleRavenLinkEffigyPoseSnapshotOnServer: context.player() is not a ServerPlayer");
+                    return;
+                }
+                net.z2six.featheredfriend.world.RavenLinkRuntime.handleEffigyPoseSnapshot(serverPlayer, payload);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] Failed to handle RavenLinkEffigyPoseSnapshotPacket on server", t);
             }
         });
     }
@@ -933,6 +954,69 @@ public final class FFNetwork {
             PacketDistributor.sendToServer(new RavenLinkBlackoutAckPacket());
         } catch (Throwable t) {
             LOG.error("[FFNetwork] sendRavenLinkBlackoutAckToServer failed safely", t);
+        }
+    }
+
+    public static void sendRavenLinkEffigyPoseSnapshotToServer() {
+        try {
+            float headXRot;
+            float headYRot;
+            float headZRot;
+            float bodyXRot;
+            float bodyYRot;
+            float bodyZRot;
+            float rightArmXRot;
+            float rightArmYRot;
+            float rightArmZRot;
+            float leftArmXRot;
+            float leftArmYRot;
+            float leftArmZRot;
+            float rightLegXRot;
+            float rightLegYRot;
+            float rightLegZRot;
+            float leftLegXRot;
+            float leftLegYRot;
+            float leftLegZRot;
+
+            try {
+                Class<?> cls = Class.forName("net.z2six.featheredfriend.client.raven.RavenLinkEffigyPoseCapture");
+                boolean ok = (boolean) cls.getDeclaredMethod("hasSnapshot").invoke(null);
+                if (!ok) {
+                    return;
+                }
+
+                headXRot = ((Number) cls.getDeclaredMethod("headXRot").invoke(null)).floatValue();
+                headYRot = ((Number) cls.getDeclaredMethod("headYRot").invoke(null)).floatValue();
+                headZRot = ((Number) cls.getDeclaredMethod("headZRot").invoke(null)).floatValue();
+                bodyXRot = ((Number) cls.getDeclaredMethod("bodyXRot").invoke(null)).floatValue();
+                bodyYRot = ((Number) cls.getDeclaredMethod("bodyYRot").invoke(null)).floatValue();
+                bodyZRot = ((Number) cls.getDeclaredMethod("bodyZRot").invoke(null)).floatValue();
+                rightArmXRot = ((Number) cls.getDeclaredMethod("rightArmXRot").invoke(null)).floatValue();
+                rightArmYRot = ((Number) cls.getDeclaredMethod("rightArmYRot").invoke(null)).floatValue();
+                rightArmZRot = ((Number) cls.getDeclaredMethod("rightArmZRot").invoke(null)).floatValue();
+                leftArmXRot = ((Number) cls.getDeclaredMethod("leftArmXRot").invoke(null)).floatValue();
+                leftArmYRot = ((Number) cls.getDeclaredMethod("leftArmYRot").invoke(null)).floatValue();
+                leftArmZRot = ((Number) cls.getDeclaredMethod("leftArmZRot").invoke(null)).floatValue();
+                rightLegXRot = ((Number) cls.getDeclaredMethod("rightLegXRot").invoke(null)).floatValue();
+                rightLegYRot = ((Number) cls.getDeclaredMethod("rightLegYRot").invoke(null)).floatValue();
+                rightLegZRot = ((Number) cls.getDeclaredMethod("rightLegZRot").invoke(null)).floatValue();
+                leftLegXRot = ((Number) cls.getDeclaredMethod("leftLegXRot").invoke(null)).floatValue();
+                leftLegYRot = ((Number) cls.getDeclaredMethod("leftLegYRot").invoke(null)).floatValue();
+                leftLegZRot = ((Number) cls.getDeclaredMethod("leftLegZRot").invoke(null)).floatValue();
+            } catch (Throwable ignored) {
+                return;
+            }
+
+            PacketDistributor.sendToServer(new RavenLinkEffigyPoseSnapshotPacket(
+                    headXRot, headYRot, headZRot,
+                    bodyXRot, bodyYRot, bodyZRot,
+                    rightArmXRot, rightArmYRot, rightArmZRot,
+                    leftArmXRot, leftArmYRot, leftArmZRot,
+                    rightLegXRot, rightLegYRot, rightLegZRot,
+                    leftLegXRot, leftLegYRot, leftLegZRot
+            ));
+        } catch (Throwable t) {
+            LOG.error("[FFNetwork] sendRavenLinkEffigyPoseSnapshotToServer failed safely", t);
         }
     }
 
@@ -1958,6 +2042,84 @@ public final class FFNetwork {
 
         @Override
         public @NotNull Type<RavenLinkBlackoutAckPacket> type() {
+            return TYPE;
+        }
+    }
+
+    /**
+     * Client -> Server: the local player's last-rendered humanoid model rotations, used to spawn the
+     * Raven Link effigy as a frozen "snapshot" (mid-walk, mid-jump, etc).
+     */
+    public record RavenLinkEffigyPoseSnapshotPacket(
+            float headXRot, float headYRot, float headZRot,
+            float bodyXRot, float bodyYRot, float bodyZRot,
+            float rightArmXRot, float rightArmYRot, float rightArmZRot,
+            float leftArmXRot, float leftArmYRot, float leftArmZRot,
+            float rightLegXRot, float rightLegYRot, float rightLegZRot,
+            float leftLegXRot, float leftLegYRot, float leftLegZRot
+    ) implements CustomPacketPayload {
+
+        public static final Type<RavenLinkEffigyPoseSnapshotPacket> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "raven_link_effigy_pose_snapshot"));
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, RavenLinkEffigyPoseSnapshotPacket> STREAM_CODEC =
+                StreamCodec.of(RavenLinkEffigyPoseSnapshotPacket::encode, RavenLinkEffigyPoseSnapshotPacket::decode);
+
+        private static void encode(@NotNull RegistryFriendlyByteBuf buf, @NotNull RavenLinkEffigyPoseSnapshotPacket payload) {
+            try {
+                buf.writeFloat(payload.headXRot);
+                buf.writeFloat(payload.headYRot);
+                buf.writeFloat(payload.headZRot);
+
+                buf.writeFloat(payload.bodyXRot);
+                buf.writeFloat(payload.bodyYRot);
+                buf.writeFloat(payload.bodyZRot);
+
+                buf.writeFloat(payload.rightArmXRot);
+                buf.writeFloat(payload.rightArmYRot);
+                buf.writeFloat(payload.rightArmZRot);
+
+                buf.writeFloat(payload.leftArmXRot);
+                buf.writeFloat(payload.leftArmYRot);
+                buf.writeFloat(payload.leftArmZRot);
+
+                buf.writeFloat(payload.rightLegXRot);
+                buf.writeFloat(payload.rightLegYRot);
+                buf.writeFloat(payload.rightLegZRot);
+
+                buf.writeFloat(payload.leftLegXRot);
+                buf.writeFloat(payload.leftLegYRot);
+                buf.writeFloat(payload.leftLegZRot);
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] RavenLinkEffigyPoseSnapshotPacket encode failed", t);
+            }
+        }
+
+        private static @NotNull RavenLinkEffigyPoseSnapshotPacket decode(@NotNull RegistryFriendlyByteBuf buf) {
+            try {
+                return new RavenLinkEffigyPoseSnapshotPacket(
+                        buf.readFloat(), buf.readFloat(), buf.readFloat(),
+                        buf.readFloat(), buf.readFloat(), buf.readFloat(),
+                        buf.readFloat(), buf.readFloat(), buf.readFloat(),
+                        buf.readFloat(), buf.readFloat(), buf.readFloat(),
+                        buf.readFloat(), buf.readFloat(), buf.readFloat(),
+                        buf.readFloat(), buf.readFloat(), buf.readFloat()
+                );
+            } catch (Throwable t) {
+                LOG.error("[FFNetwork] RavenLinkEffigyPoseSnapshotPacket decode failed", t);
+                return new RavenLinkEffigyPoseSnapshotPacket(
+                        0.0F, 0.0F, 0.0F,
+                        0.0F, 0.0F, 0.0F,
+                        0.0F, 0.0F, 0.0F,
+                        0.0F, 0.0F, 0.0F,
+                        0.0F, 0.0F, 0.0F,
+                        0.0F, 0.0F, 0.0F
+                );
+            }
+        }
+
+        @Override
+        public @NotNull Type<RavenLinkEffigyPoseSnapshotPacket> type() {
             return TYPE;
         }
     }

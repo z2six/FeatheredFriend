@@ -158,6 +158,9 @@ public class FeatheredFriend {
                 RavenLinkClientController.registerGameBus();
                 LOG.debug("[FeatheredFriend] Registered RavenLinkClientController (client only)");
 
+                net.z2six.featheredfriend.client.raven.RavenLinkEffigyPoseCapture.registerGameBus();
+                LOG.debug("[FeatheredFriend] Registered RavenLinkEffigyPoseCapture (client only)");
+
                 RavenBadgeHudController.registerGameBus();
                 LOG.debug("[FeatheredFriend] Registered RavenBadgeHudController (client only)");
 

@@ -355,6 +355,10 @@ public interface IPlatformHelper {
         return 0;
     }
 
+    default int getRavenLinkDurationSecondsClient() {
+        return 0;
+    }
+
     default int getMaxRavenChestsPerPlayerClient() {
         return 0;
     }
@@ -407,6 +411,10 @@ public interface IPlatformHelper {
         // no-op
     }
 
+    default void sendSetRavenLinkDurationSeconds(int value) {
+        // no-op
+    }
+
     default void sendSetMaxRavenChestsPerPlayer(int value) {
         // no-op
     }
@@ -451,6 +459,10 @@ public interface IPlatformHelper {
     }
 
     default void sendRavenLinkBlackoutAckToServer() {
+        // no-op
+    }
+
+    default void sendRavenLinkEffigyPoseSnapshotToServer() {
         // no-op
     }
 

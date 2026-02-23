@@ -99,6 +99,7 @@ public final class RavenLinkRuntime {
     private static final long LINK_INPUT_TIMEOUT_TICKS = 40L;
     private static final long MANUAL_STREAM_FULL_RESYNC_INTERVAL_TICKS = 20L;
     private static final float LINK_OWNER_FLY_SPEED = 0.06F;
+    private static final long EFFIGY_POSE_SNAPSHOT_MAX_AGE_TICKS = 40L;
 
     private static final String TAG_SCROLL_SUMMONED = "ff_scroll_summoned";
     private static final String TAG_COURIER_RAVEN = "ff_courier_raven";
@@ -114,6 +115,7 @@ public final class RavenLinkRuntime {
 
     private static final Map<UUID, LinkSession> ACTIVE_SESSIONS = new ConcurrentHashMap<>();
     private static final Map<UUID, PendingLinkStart> PENDING_LINK_STARTS = new ConcurrentHashMap<>();
+    private static final Map<UUID, EffigyPoseSnapshot> LAST_EFFIGY_POSE_SNAPSHOTS = new ConcurrentHashMap<>();
     private static volatile @Nullable Method APPLY_CHUNK_TRACKING_VIEW_METHOD = null;
     private static volatile boolean APPLY_CHUNK_TRACKING_VIEW_LOOKED_UP = false;
     private static volatile @Nullable Field PLAYER_CHUNK_SENDER_PENDING_CHUNKS_FIELD = null;
@@ -326,10 +328,11 @@ public final class RavenLinkRuntime {
                     now + LINK_START_BLACKOUT_ACK_TIMEOUT_TICKS
             ));
 
+            int durationTicks = safeLinkDurationTicksFromConfig();
             FFNetwork.sendStartRavenLink(
                     owner,
                     raven.getId(),
-                    (int) (LINK_DURATION_TICKS + LINK_START_DELAY_TICKS + LINK_START_BLACKOUT_ACK_TIMEOUT_TICKS),
+                    (int) ((long) durationTicks + LINK_START_DELAY_TICKS + LINK_START_BLACKOUT_ACK_TIMEOUT_TICKS),
                     session.ownerAnchorPos.x,
                     session.ownerAnchorPos.y + owner.getEyeHeight(owner.getPose()),
                     session.ownerAnchorPos.z,
@@ -344,6 +347,34 @@ public final class RavenLinkRuntime {
         }
     }
 
+    private static int safeLinkDurationTicksFromConfig() {
+        try {
+            int seconds = FFServerConfig.getRavenLinkDurationSeconds();
+            return Math.max(5, Math.min(600, seconds)) * 20;
+        } catch (Throwable ignored) {
+            return (int) LINK_DURATION_TICKS;
+        }
+    }
+
+    private static @Nullable EffigyPoseSnapshot consumeFreshEffigyPoseSnapshot(@NotNull ServerPlayer owner) {
+        try {
+            UUID ownerId = owner.getUUID();
+            EffigyPoseSnapshot snap = LAST_EFFIGY_POSE_SNAPSHOTS.get(ownerId);
+            if (snap == null) {
+                return null;
+            }
+            long now = owner.serverLevel().getGameTime();
+            if (now - snap.receivedAtGameTime > EFFIGY_POSE_SNAPSHOT_MAX_AGE_TICKS) {
+                LAST_EFFIGY_POSE_SNAPSHOTS.remove(ownerId);
+                return null;
+            }
+            LAST_EFFIGY_POSE_SNAPSHOTS.remove(ownerId);
+            return snap;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
     public static void handleClientBlackoutAck(@NotNull ServerPlayer owner) {
         try {
             PendingLinkStart pending = PENDING_LINK_STARTS.get(owner.getUUID());
@@ -351,6 +382,88 @@ public final class RavenLinkRuntime {
                 return;
             }
             pending.blackoutAcked = true;
+        } catch (Throwable ignored) {
+        }
+    }
+
+    public static void handleEffigyPoseSnapshot(@NotNull ServerPlayer owner,
+                                                @NotNull FFNetwork.RavenLinkEffigyPoseSnapshotPacket payload) {
+        try {
+            long now = owner.serverLevel().getGameTime();
+            UUID ownerId = owner.getUUID();
+
+            EffigyPoseSnapshot snapshot = new EffigyPoseSnapshot(
+                    payload.headXRot(), payload.headYRot(), payload.headZRot(),
+                    payload.bodyXRot(), payload.bodyYRot(), payload.bodyZRot(),
+                    payload.rightArmXRot(), payload.rightArmYRot(), payload.rightArmZRot(),
+                    payload.leftArmXRot(), payload.leftArmYRot(), payload.leftArmZRot(),
+                    payload.rightLegXRot(), payload.rightLegYRot(), payload.rightLegZRot(),
+                    payload.leftLegXRot(), payload.leftLegYRot(), payload.leftLegZRot(),
+                    now
+            );
+
+            LAST_EFFIGY_POSE_SNAPSHOTS.put(ownerId, snapshot);
+
+            PendingLinkStart pending = PENDING_LINK_STARTS.get(ownerId);
+            if (pending != null) {
+                applySnapshotToSession(pending.session, snapshot);
+            }
+
+            LinkSession session = ACTIVE_SESSIONS.get(ownerId);
+            if (session != null) {
+                applySnapshotToSession(session, snapshot);
+                applySnapshotToExistingEffigy(owner.server, session, snapshot);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void applySnapshotToSession(@NotNull LinkSession session, @NotNull EffigyPoseSnapshot snapshot) {
+        try {
+            session.effigyPoseSnapshotPresent = true;
+            session.effigyHeadXRot = snapshot.headXRot;
+            session.effigyHeadYRot = snapshot.headYRot;
+            session.effigyHeadZRot = snapshot.headZRot;
+            session.effigyBodyXRot = snapshot.bodyXRot;
+            session.effigyBodyYRot = snapshot.bodyYRot;
+            session.effigyBodyZRot = snapshot.bodyZRot;
+            session.effigyRightArmXRot = snapshot.rightArmXRot;
+            session.effigyRightArmYRot = snapshot.rightArmYRot;
+            session.effigyRightArmZRot = snapshot.rightArmZRot;
+            session.effigyLeftArmXRot = snapshot.leftArmXRot;
+            session.effigyLeftArmYRot = snapshot.leftArmYRot;
+            session.effigyLeftArmZRot = snapshot.leftArmZRot;
+            session.effigyRightLegXRot = snapshot.rightLegXRot;
+            session.effigyRightLegYRot = snapshot.rightLegYRot;
+            session.effigyRightLegZRot = snapshot.rightLegZRot;
+            session.effigyLeftLegXRot = snapshot.leftLegXRot;
+            session.effigyLeftLegYRot = snapshot.leftLegYRot;
+            session.effigyLeftLegZRot = snapshot.leftLegZRot;
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void applySnapshotToExistingEffigy(@Nullable MinecraftServer server,
+                                                      @NotNull LinkSession session,
+                                                      @NotNull EffigyPoseSnapshot snapshot) {
+        try {
+            if (server == null || session.effigyUuid == null) {
+                return;
+            }
+            for (ServerLevel level : server.getAllLevels()) {
+                Entity e = level.getEntity(session.effigyUuid);
+                if (e instanceof RavenLinkEffigyEntity effigy) {
+                    effigy.setPoseSnapshot(
+                            snapshot.headXRot, snapshot.headYRot, snapshot.headZRot,
+                            snapshot.bodyXRot, snapshot.bodyYRot, snapshot.bodyZRot,
+                            snapshot.rightArmXRot, snapshot.rightArmYRot, snapshot.rightArmZRot,
+                            snapshot.leftArmXRot, snapshot.leftArmYRot, snapshot.leftArmZRot,
+                            snapshot.rightLegXRot, snapshot.rightLegYRot, snapshot.rightLegZRot,
+                            snapshot.leftLegXRot, snapshot.leftLegYRot, snapshot.leftLegZRot
+                    );
+                    break;
+                }
+            }
         } catch (Throwable ignored) {
         }
     }
@@ -502,6 +615,15 @@ public final class RavenLinkRuntime {
                     continue;
                 }
 
+                if (!session.endRequested) {
+                    if (session.linkStartedAtGameTime > 0L) {
+                        long desiredEnd = session.linkStartedAtGameTime + safeLinkDurationTicksFromConfig();
+                        if (desiredEnd != session.endsAtGameTime) {
+                            session.endsAtGameTime = desiredEnd;
+                        }
+                    }
+                }
+
                 if (session.endRequested) {
                     if (now >= session.endForceStopAtGameTime) {
                         toStop.add(ownerId);
@@ -549,7 +671,7 @@ public final class RavenLinkRuntime {
                         ownerPassengerCount = owner.getPassengers().size();
                     } catch (Throwable ignored) {
                     }
-                    LOG.info(
+                    LOG.debug(
                             "[RavenLinkStream] owner='{}' center=({}, {}) pendingBefore={} sentTick={} pendingAfter={} loaded={} radius={} mounted={} ravenPassenger={} vehicle={} ownerPassengers={}",
                             safePlayerName(owner),
                             session.streamCenter == null ? 0 : session.streamCenter.x,
@@ -650,7 +772,9 @@ public final class RavenLinkRuntime {
                     raven.forceExitRavenChestPerchForLink();
                 }
 
-                pending.session.endsAtGameTime = owner.serverLevel().getGameTime() + LINK_DURATION_TICKS;
+                long startedAt = owner.serverLevel().getGameTime();
+                pending.session.linkStartedAtGameTime = startedAt;
+                pending.session.endsAtGameTime = startedAt + safeLinkDurationTicksFromConfig();
                 ACTIVE_SESSIONS.put(ownerId, pending.session);
                 applyLinkedRavenState(raven);
                 FFNetwork.sendRavenLinkOwnerVisibilityToAll(server, owner.getId(), true);
@@ -1970,15 +2094,22 @@ public final class RavenLinkRuntime {
         LinkSession s = new LinkSession();
         s.ownerUuid = owner.getUUID();
         s.ravenUuid = raven.getUUID();
-        s.endsAtGameTime = owner.serverLevel().getGameTime() + LINK_DURATION_TICKS;
+        s.linkStartedAtGameTime = 0L;
+        s.endsAtGameTime = 0L;
         s.ownerAnchorDimension = owner.serverLevel().dimension();
         s.ownerAnchorPos = owner.position();
         s.ownerAnchorChunk = owner.chunkPosition();
         s.ownerAnchorYaw = owner.getYRot();
         s.ownerAnchorPitch = owner.getXRot();
+        s.ownerStartPose = owner.getPose();
         s.ownerOriginalTrackingView = owner.getChunkTrackingView();
         s.input = new LinkInput(false, false, false, false, false, false, raven.getYRot(), raven.getXRot());
         s.lastInputGameTime = owner.serverLevel().getGameTime();
+
+        EffigyPoseSnapshot snap = consumeFreshEffigyPoseSnapshot(owner);
+        if (snap != null) {
+            applySnapshotToSession(s, snap);
+        }
 
         PerchAssignment perch = readPerchAssignment(raven);
         if (perch != null) {
@@ -2082,6 +2213,26 @@ public final class RavenLinkRuntime {
             effigy.setXRot(session.ownerAnchorPitch);
             effigy.copyVisualsFromOwner(owner);
             effigy.setLinkedOwnerUuid(owner.getUUID());
+            try {
+                Pose pose = session.ownerStartPose == null ? Pose.STANDING : session.ownerStartPose;
+                effigy.setPose(pose);
+                effigy.setShiftKeyDown(pose == Pose.CROUCHING);
+            } catch (Throwable ignored) {
+            }
+
+            try {
+                if (session.effigyPoseSnapshotPresent) {
+                    effigy.setPoseSnapshot(
+                            session.effigyHeadXRot, session.effigyHeadYRot, session.effigyHeadZRot,
+                            session.effigyBodyXRot, session.effigyBodyYRot, session.effigyBodyZRot,
+                            session.effigyRightArmXRot, session.effigyRightArmYRot, session.effigyRightArmZRot,
+                            session.effigyLeftArmXRot, session.effigyLeftArmYRot, session.effigyLeftArmZRot,
+                            session.effigyRightLegXRot, session.effigyRightLegYRot, session.effigyRightLegZRot,
+                            session.effigyLeftLegXRot, session.effigyLeftLegYRot, session.effigyLeftLegZRot
+                    );
+                }
+            } catch (Throwable ignored) {
+            }
             effigy.setDeltaMovement(Vec3.ZERO);
             effigy.hurtMarked = true;
 
@@ -2191,6 +2342,17 @@ public final class RavenLinkRuntime {
         }
     }
 
+    private record EffigyPoseSnapshot(
+            float headXRot, float headYRot, float headZRot,
+            float bodyXRot, float bodyYRot, float bodyZRot,
+            float rightArmXRot, float rightArmYRot, float rightArmZRot,
+            float leftArmXRot, float leftArmYRot, float leftArmZRot,
+            float rightLegXRot, float rightLegYRot, float rightLegZRot,
+            float leftLegXRot, float leftLegYRot, float leftLegZRot,
+            long receivedAtGameTime
+    ) {
+    }
+
     private record PerchAssignment(@NotNull ResourceKey<Level> dimension, @NotNull BlockPos blockPos) {
     }
 
@@ -2220,12 +2382,33 @@ public final class RavenLinkRuntime {
     private static final class LinkSession {
         private UUID ownerUuid;
         private UUID ravenUuid;
+        private long linkStartedAtGameTime;
         private long endsAtGameTime;
         private ResourceKey<Level> ownerAnchorDimension;
         private Vec3 ownerAnchorPos;
         private ChunkPos ownerAnchorChunk;
         private float ownerAnchorYaw;
         private float ownerAnchorPitch;
+        private Pose ownerStartPose;
+        private boolean effigyPoseSnapshotPresent;
+        private float effigyHeadXRot;
+        private float effigyHeadYRot;
+        private float effigyHeadZRot;
+        private float effigyBodyXRot;
+        private float effigyBodyYRot;
+        private float effigyBodyZRot;
+        private float effigyRightArmXRot;
+        private float effigyRightArmYRot;
+        private float effigyRightArmZRot;
+        private float effigyLeftArmXRot;
+        private float effigyLeftArmYRot;
+        private float effigyLeftArmZRot;
+        private float effigyRightLegXRot;
+        private float effigyRightLegYRot;
+        private float effigyRightLegZRot;
+        private float effigyLeftLegXRot;
+        private float effigyLeftLegYRot;
+        private float effigyLeftLegZRot;
         private boolean ownerWasInvisible;
         private boolean ownerHadInvisibilityEffect;
         private boolean ownerAbilitiesInvulnerable;

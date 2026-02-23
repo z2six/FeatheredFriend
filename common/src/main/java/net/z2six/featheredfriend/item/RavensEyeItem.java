@@ -25,6 +25,10 @@ public class RavensEyeItem extends TooltipItem {
         ItemStack held = player.getItemInHand(hand);
         try {
             if (level.isClientSide()) {
+                try {
+                    Services.PLATFORM.sendRavenLinkEffigyPoseSnapshotToServer();
+                } catch (Throwable ignored) {
+                }
                 return InteractionResultHolder.success(held);
             }
             if (player instanceof ServerPlayer serverPlayer) {

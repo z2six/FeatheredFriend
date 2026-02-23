@@ -77,6 +77,8 @@ public final class RavenLinkClientController {
             ResourceLocation.fromNamespaceAndPath("featheredfriend", "ravenlink.tether1");
     private static final ResourceLocation RAVEN_LINK_TETHER2_SOUND_ID =
             ResourceLocation.fromNamespaceAndPath("featheredfriend", "ravenlink.tether2");
+    private static final float TETHER2_PITCH_START = 1.0F;
+    private static final float TETHER2_PITCH_END = 1.5F;
 
     private enum VisionPhase {
         CLOSING,
@@ -88,6 +90,7 @@ public final class RavenLinkClientController {
     private static volatile boolean registered = false;
     private static volatile boolean active = false;
     private static volatile int linkedRavenEntityId = -1;
+    private static volatile long localStartMillis = 0L;
     private static volatile long localEndMillis = 0L;
     private static volatile VisionPhase visionPhase = VisionPhase.CLOSING;
     private static volatile long visionPhaseStartedAtMillis = 0L;
@@ -198,7 +201,9 @@ public final class RavenLinkClientController {
             active = true;
             linkedRavenEntityId = ravenEntityId;
             long durMs = Math.max(0L, (long) durationTicks * 50L);
-            localEndMillis = System.currentTimeMillis() + durMs;
+            long start = System.currentTimeMillis();
+            localStartMillis = start;
+            localEndMillis = start + durMs;
             visionPhase = VisionPhase.CLOSING;
             visionPhaseStartedAtMillis = System.currentTimeMillis();
             ravenLinkTether2FadeInStartedAtMillis = visionPhaseStartedAtMillis;
@@ -559,11 +564,8 @@ public final class RavenLinkClientController {
                 }
             }
 
-            // Normal timeout should not interrupt the already-running end transition.
-            if (!endingTransitionActive && now >= localEndMillis) {
-                requestLinkEnd(true);
-                return;
-            }
+            // Server is authoritative for Raven Link end timing (especially with hot-reloadable durations).
+            // We intentionally do NOT auto-stop purely based on the client clock here.
 
             if (mc.screen != null) {
                 if (mc.screen instanceof PauseScreen) {
@@ -941,6 +943,16 @@ public final class RavenLinkClientController {
 
             float target1 = 0.0F;
             float target2 = 0.0F;
+            float pitch2 = TETHER2_PITCH_START;
+
+            if (endingTransitionActive) {
+                pitch2 = TETHER2_PITCH_END;
+            } else if (localStartMillis > 0L && localEndMillis > localStartMillis) {
+                double denom = (double) (localEndMillis - localStartMillis);
+                double p = denom <= 0.0D ? 0.0D : ((double) (now - localStartMillis) / denom);
+                float t = (float) Mth.clamp(p, 0.0D, 1.0D);
+                pitch2 = TETHER2_PITCH_START + (TETHER2_PITCH_END - TETHER2_PITCH_START) * t;
+            }
 
             if (endingTransitionActive) {
                 long tether1FadeDuration = Math.max(1L, EYE_TRANSITION_DURATION_MS + BLACK_HOLD_AFTER_TELEPORT_MS);
@@ -990,6 +1002,7 @@ public final class RavenLinkClientController {
             }
             if (ravenLinkTetherLoop2 != null) {
                 ravenLinkTetherLoop2.setManagedVolume(target2);
+                ravenLinkTetherLoop2.setManagedPitch(pitch2);
             }
         } catch (Throwable t) {
             LOG.debug("[RavenLinkClientController] updateTetherLoopVolumes failed safely: {}", t.toString());
@@ -1820,6 +1833,7 @@ public final class RavenLinkClientController {
         active = false;
         linkedRavenEntityId = -1;
         localEndMillis = 0L;
+        localStartMillis = 0L;
         visionPhase = VisionPhase.CLOSING;
         visionPhaseStartedAtMillis = 0L;
         transitionCameraProxy = null;
@@ -2023,6 +2037,7 @@ public final class RavenLinkClientController {
 
     private static final class RavenLinkLoopSoundInstance extends AbstractTickableSoundInstance {
         private float managedVolume = 0.0F;
+        private float managedPitch = 1.0F;
 
         private RavenLinkLoopSoundInstance(@org.jetbrains.annotations.NotNull ResourceLocation soundId, float pitch) {
             super(SoundEvent.createVariableRangeEvent(soundId), SoundSource.NEUTRAL, SoundInstance.createUnseededRandom());
@@ -2051,6 +2066,11 @@ public final class RavenLinkClientController {
         private void setManagedVolume(float value) {
             this.managedVolume = Mth.clamp(value, 0.0F, 1.0F);
             this.volume = this.managedVolume;
+        }
+
+        private void setManagedPitch(float value) {
+            this.managedPitch = Mth.clamp(value, 0.1F, 2.0F);
+            this.pitch = this.managedPitch;
         }
 
         private float getManagedVolume() {

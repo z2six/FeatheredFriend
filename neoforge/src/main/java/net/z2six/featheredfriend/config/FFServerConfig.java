@@ -70,6 +70,11 @@ public final class FFServerConfig {
     public static final int DEFAULT_COURIER_TIMEOUT_RETRY_SECONDS = 60;
 
     /**
+     * Raven Link duration in seconds.
+     */
+    public static final int DEFAULT_RAVEN_LINK_DURATION_SECONDS = 30;
+
+    /**
      * If false, OPs cannot view/edit server-owned settings through the in-game settings screen.
      * This remains configurable only via server TOML.
      */
@@ -116,6 +121,7 @@ public final class FFServerConfig {
     public static final ModConfigSpec.IntValue ENDERPACK_DEPOSIT_COOLDOWN_SECONDS;
     public static final ModConfigSpec.IntValue SCROLL_DELIVERY_COOLDOWN_SECONDS;
     public static final ModConfigSpec.IntValue COURIER_TIMEOUT_RETRY_SECONDS;
+    public static final ModConfigSpec.IntValue RAVEN_LINK_DURATION_SECONDS;
     public static final ModConfigSpec.BooleanValue ALLOW_SERVER_SETTINGS_SCREEN_EDITING;
     public static final ModConfigSpec.BooleanValue ENABLE_SUSPICIOUS_FEATHER;
     public static final ModConfigSpec.BooleanValue ENABLE_SUSPICIOUS_CHEST;
@@ -192,6 +198,15 @@ public final class FFServerConfig {
                         "0 disables automatic timeout retry."
                 )
                 .defineInRange("courierTimeoutRetrySeconds", DEFAULT_COURIER_TIMEOUT_RETRY_SECONDS, 0, 86_400);
+
+        RAVEN_LINK_DURATION_SECONDS = builder
+                .comment(
+                        "How long Raven Link lasts (seconds).",
+                        "Hot-reloadable and server-authoritative.",
+                        "",
+                        "Note: changing this value immediately affects ongoing Raven Links as well."
+                )
+                .defineInRange("ravenLinkDurationSeconds", DEFAULT_RAVEN_LINK_DURATION_SECONDS, 5, 600);
 
         ALLOW_SERVER_SETTINGS_SCREEN_EDITING = builder
                 .comment(
@@ -538,6 +553,35 @@ public final class FFServerConfig {
             }
         } catch (Throwable t) {
             LOG.error("[FFServerConfig] setCourierTimeoutRetrySeconds failed", t);
+        }
+    }
+
+    public static int getRavenLinkDurationSeconds() {
+        try {
+            int v = RAVEN_LINK_DURATION_SECONDS.get();
+            return Math.max(5, Math.min(600, v));
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] getRavenLinkDurationSeconds failed, using default {}", DEFAULT_RAVEN_LINK_DURATION_SECONDS, t);
+            return DEFAULT_RAVEN_LINK_DURATION_SECONDS;
+        }
+    }
+
+    public static void setRavenLinkDurationSeconds(int value) {
+        try {
+            int clamped = Math.max(5, Math.min(600, value));
+            int before = getRavenLinkDurationSeconds();
+            RAVEN_LINK_DURATION_SECONDS.set(clamped);
+            if (before != clamped) {
+                markSettingsDirty();
+            }
+            try {
+                SERVER_SPEC.save();
+            } catch (Throwable saveErr) {
+                LOG.warn("[FFServerConfig] Failed to save SERVER config to disk after raven link duration update: {}",
+                        saveErr.toString());
+            }
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] setRavenLinkDurationSeconds failed", t);
         }
     }
 

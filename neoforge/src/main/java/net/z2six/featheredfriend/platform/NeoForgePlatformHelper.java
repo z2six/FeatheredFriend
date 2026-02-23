@@ -611,6 +611,11 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public int getRavenLinkDurationSecondsClient() {
+        return FFPayloads.ClientState.ravenLinkDurationSeconds();
+    }
+
+    @Override
     public int getMaxRavenChestsPerPlayerClient() {
         return FFPayloads.ClientState.maxRavenChestsPerPlayer();
     }
@@ -676,6 +681,11 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public void sendSetRavenLinkDurationSeconds(int value) {
+        PacketDistributor.sendToServer(new FFPayloads.SetRavenLinkDurationSecondsPayload(value));
+    }
+
+    @Override
     public void sendSetMaxRavenChestsPerPlayer(int value) {
         PacketDistributor.sendToServer(new FFPayloads.SetMaxRavenChestsPerPlayerPayload(value));
     }
@@ -730,6 +740,11 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     @Override
     public void sendRavenLinkBlackoutAckToServer() {
         FFNetwork.sendRavenLinkBlackoutAckToServer();
+    }
+
+    @Override
+    public void sendRavenLinkEffigyPoseSnapshotToServer() {
+        FFNetwork.sendRavenLinkEffigyPoseSnapshotToServer();
     }
 
     @Override

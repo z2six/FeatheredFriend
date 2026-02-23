@@ -62,6 +62,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
     private boolean enableRavenArmor;
     private boolean enableMailbox;
     private int wildRavensPerPlayer;
+    private int ravenLinkDurationSeconds;
     private int maxRavenChestsPerPlayer;
     private int ravenLogRetentionMinutes;
     private int ravenLogMaxBytesPerPlayer;
@@ -83,6 +84,9 @@ public class FeatheredFriendSettingsScreen extends Screen {
     private Button wildRavensMinusButton;
     private Button wildRavensValueButton;
     private Button wildRavensPlusButton;
+    private Button ravenLinkDurationMinusButton;
+    private Button ravenLinkDurationValueButton;
+    private Button ravenLinkDurationPlusButton;
     private Button ravenChestsMinusButton;
     private Button ravenChestsValueButton;
     private Button ravenChestsPlusButton;
@@ -381,6 +385,25 @@ public class FeatheredFriendSettingsScreen extends Screen {
             addScrollableButton(this.wildRavensPlusButton, y);
             y += OPTION_SPACING;
 
+            this.ravenLinkDurationMinusButton = Button.builder(Component.literal("-"), btn -> adjustRavenLinkDurationSeconds(deltaWithShift(-5)))
+                    .bounds(stepperMinusX(centerX), y, STEP_BUTTON_WIDTH, OPTION_HEIGHT)
+                    .build();
+            this.ravenLinkDurationValueButton = Button.builder(textForRavenLinkDurationSeconds(), btn -> {})
+                    .bounds(stepperValueX(centerX), y, STEP_VALUE_WIDTH, OPTION_HEIGHT)
+                    .build();
+            this.ravenLinkDurationValueButton.active = false;
+            this.ravenLinkDurationPlusButton = Button.builder(Component.literal("+"), btn -> adjustRavenLinkDurationSeconds(deltaWithShift(5)))
+                    .bounds(stepperPlusX(centerX), y, STEP_BUTTON_WIDTH, OPTION_HEIGHT)
+                    .build();
+
+            this.ravenLinkDurationMinusButton.active = editActive;
+            this.ravenLinkDurationPlusButton.active = editActive;
+
+            addScrollableButton(this.ravenLinkDurationMinusButton, y);
+            addScrollableButton(this.ravenLinkDurationValueButton, y);
+            addScrollableButton(this.ravenLinkDurationPlusButton, y);
+            y += OPTION_SPACING;
+
             this.ravenChestsMinusButton = Button.builder(Component.literal("-"), btn -> adjustRavenChestCap(deltaWithShift(-1)))
                     .bounds(stepperMinusX(centerX), y, STEP_BUTTON_WIDTH, OPTION_HEIGHT)
                     .build();
@@ -499,6 +522,9 @@ public class FeatheredFriendSettingsScreen extends Screen {
             this.wildRavensMinusButton = null;
             this.wildRavensValueButton = null;
             this.wildRavensPlusButton = null;
+            this.ravenLinkDurationMinusButton = null;
+            this.ravenLinkDurationValueButton = null;
+            this.ravenLinkDurationPlusButton = null;
             this.ravenChestsMinusButton = null;
             this.ravenChestsValueButton = null;
             this.ravenChestsPlusButton = null;
@@ -630,6 +656,15 @@ public class FeatheredFriendSettingsScreen extends Screen {
             if (this.wildRavensPlusButton != null) {
                 this.wildRavensPlusButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
             }
+            if (this.ravenLinkDurationValueButton != null) {
+                this.ravenLinkDurationValueButton.setMessage(textForRavenLinkDurationSeconds());
+            }
+            if (this.ravenLinkDurationMinusButton != null) {
+                this.ravenLinkDurationMinusButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
+            }
+            if (this.ravenLinkDurationPlusButton != null) {
+                this.ravenLinkDurationPlusButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
+            }
             if (this.ravenChestsValueButton != null) {
                 this.ravenChestsValueButton.setMessage(textForRavenChestCap());
             }
@@ -755,6 +790,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
                 this.enableMailbox = Services.PLATFORM.isMailboxEnabledClient();
                 this.canEditChat = Services.PLATFORM.canEditChat();
                 this.wildRavensPerPlayer = Services.PLATFORM.getWildRavensPerPlayerClient();
+                this.ravenLinkDurationSeconds = Services.PLATFORM.getRavenLinkDurationSecondsClient();
                 this.maxRavenChestsPerPlayer = Services.PLATFORM.getMaxRavenChestsPerPlayerClient();
                 this.ravenLogRetentionMinutes = Services.PLATFORM.getRavenLogRetentionMinutesClient();
                 this.ravenLogMaxBytesPerPlayer = Services.PLATFORM.getRavenLogMaxBytesPerPlayerClient();
@@ -770,6 +806,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
                 this.enableMailbox = true;
                 this.canEditChat = false;
                 this.wildRavensPerPlayer = 0;
+                this.ravenLinkDurationSeconds = 0;
                 this.maxRavenChestsPerPlayer = 0;
                 this.ravenLogRetentionMinutes = 0;
                 this.ravenLogMaxBytesPerPlayer = 0;
@@ -778,8 +815,8 @@ public class FeatheredFriendSettingsScreen extends Screen {
                 this.courierTimeoutRetrySeconds = 0;
             }
 
-            LOG.debug("[FeatheredFriendSettingsScreen] refreshFromCacheOnly: hasServerSettings={} chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} wildRavensPerPlayer={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={} scrollUiFontMode={} ravenStatusGuiX={} ravenStatusGuiY={} ravenStatusGuiAnchor={} ravenStatusGuiVisualMode={}",
-                    hasServerSettings, chatDisabled, enableSuspiciousFeather, enableSuspiciousChest, enableRavenArmor, enableMailbox, wildRavensPerPlayer, maxRavenChestsPerPlayer, ravenLogRetentionMinutes, ravenLogMaxBytesPerPlayer, enderpackDepositCooldownSeconds, scrollDeliveryCooldownSeconds, courierTimeoutRetrySeconds, canEditChat, scrollUiFontMode, ravenStatusGuiX, ravenStatusGuiY, ravenStatusGuiAnchor, ravenStatusGuiVisualMode);
+            LOG.debug("[FeatheredFriendSettingsScreen] refreshFromCacheOnly: hasServerSettings={} chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} wildRavensPerPlayer={} ravenLinkDurationSeconds={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={} scrollUiFontMode={} ravenStatusGuiX={} ravenStatusGuiY={} ravenStatusGuiAnchor={} ravenStatusGuiVisualMode={}",
+                    hasServerSettings, chatDisabled, enableSuspiciousFeather, enableSuspiciousChest, enableRavenArmor, enableMailbox, wildRavensPerPlayer, ravenLinkDurationSeconds, maxRavenChestsPerPlayer, ravenLogRetentionMinutes, ravenLogMaxBytesPerPlayer, enderpackDepositCooldownSeconds, scrollDeliveryCooldownSeconds, courierTimeoutRetrySeconds, canEditChat, scrollUiFontMode, ravenStatusGuiX, ravenStatusGuiY, ravenStatusGuiAnchor, ravenStatusGuiVisualMode);
 
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendSettingsScreen] refreshFromCacheOnly failed safely", t);
@@ -814,6 +851,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
             ravenStatusGuiAnchor = RavenStatusGuiAnchor.TOP_LEFT;
             ravenStatusGuiVisualMode = RavenStatusGuiVisualMode.BADGE_AND_TEXT;
             wildRavensPerPlayer = 0;
+            ravenLinkDurationSeconds = 0;
             maxRavenChestsPerPlayer = 0;
             ravenLogRetentionMinutes = 0;
             ravenLogMaxBytesPerPlayer = 0;
@@ -908,6 +946,16 @@ public class FeatheredFriendSettingsScreen extends Screen {
         return Component.translatable(
                 "screen.featheredfriend.settings.wild_ravens_per_player",
                 Integer.valueOf(Math.max(0, Math.min(16, wildRavensPerPlayer)))
+        );
+    }
+
+    private Component textForRavenLinkDurationSeconds() {
+        if (!hasServerSettings) {
+            return Component.translatable("screen.featheredfriend.settings.raven_link_duration_seconds.syncing");
+        }
+        return Component.translatable(
+                "screen.featheredfriend.settings.raven_link_duration_seconds",
+                Integer.valueOf(Math.max(5, Math.min(600, ravenLinkDurationSeconds)))
         );
     }
 
@@ -1142,6 +1190,26 @@ public class FeatheredFriendSettingsScreen extends Screen {
             LOG.debug("[FeatheredFriendSettingsScreen] Sent SetWildRavensPerPlayerPayload -> {}", newValue);
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendSettingsScreen] adjustWildRavensPerPlayer failed safely", t);
+        }
+    }
+
+    private void adjustRavenLinkDurationSeconds(int delta) {
+        try {
+            if (!hasServerSettings || !canEditChat || !isConnectionReady()) {
+                return;
+            }
+            int newValue = Math.max(5, Math.min(600, this.ravenLinkDurationSeconds + delta));
+            if (newValue == this.ravenLinkDurationSeconds) {
+                return;
+            }
+            this.ravenLinkDurationSeconds = newValue;
+            if (this.ravenLinkDurationValueButton != null) {
+                this.ravenLinkDurationValueButton.setMessage(textForRavenLinkDurationSeconds());
+            }
+            Services.PLATFORM.sendSetRavenLinkDurationSeconds(newValue);
+            LOG.debug("[FeatheredFriendSettingsScreen] Sent SetRavenLinkDurationSecondsPayload -> {}", newValue);
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriendSettingsScreen] adjustRavenLinkDurationSeconds failed safely", t);
         }
     }
 
