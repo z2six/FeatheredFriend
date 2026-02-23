@@ -2,7 +2,7 @@
 
 Scrolls are FeatheredFriend's "mail system". You write one, seal it with wax + a sigil, then hand it to your tamed Raven and let the bird do the awkward social interaction for you.
 
-If you just want the short version:
+TLDR:
 
 1. Craft an **Unsealed Scroll** (paper -> scroll).
 2. Write your message + pick a recipient.

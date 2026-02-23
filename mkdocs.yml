@@ -4,6 +4,8 @@ use_directory_urls: false
 
 theme:
   name: material
+  logo: assets/images/branding/logo.png
+  favicon: assets/images/branding/logo.png
   features:
     - navigation.top
     - content.code.copy
