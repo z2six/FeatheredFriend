@@ -72,9 +72,8 @@ Here’s an example recording (sequence: **Iron → Iron → Gold → Iron → G
 3. **Right-click** the Raven with the correct nugget for the next step.
 4. Repeat until the sequence is done.
 
-??? warning "Mess up the order = you just scared it off"
-    If you feed the wrong nugget, the Raven will still take it… and then immediately peace out (despawn with FX).
-    So yeah: bring extras, and don’t spam-click random nuggets.
+??? warning "Don't mess up the order of nuggets"
+    If you feed the wrong nugget, the Raven will still take it… But will deem your IQ too low and refuse to let you tame it (thus, it'll despawn).
 
 ---
 
