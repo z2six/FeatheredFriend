@@ -346,6 +346,25 @@ public final class FFServerConfig {
         }
     }
 
+    public static void setWildRavensPerPlayer(int value) {
+        try {
+            int clamped = Math.max(0, Math.min(16, value));
+            int before = getWildRavensPerPlayer();
+            WILD_RAVENS_PER_PLAYER.set(clamped);
+            if (before != clamped) {
+                markSettingsDirty();
+            }
+            try {
+                SERVER_SPEC.save();
+            } catch (Throwable saveErr) {
+                LOG.warn("[FFServerConfig] Failed to save SERVER config to disk after wild raven cap update: {}",
+                        saveErr.toString());
+            }
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] setWildRavensPerPlayer failed", t);
+        }
+    }
+
     public static int getRavenChestsPerPlayer() {
         try {
             int v = RAVEN_CHESTS_PER_PLAYER.get();

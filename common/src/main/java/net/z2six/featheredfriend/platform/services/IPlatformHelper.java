@@ -351,6 +351,10 @@ public interface IPlatformHelper {
         return false;
     }
 
+    default int getWildRavensPerPlayerClient() {
+        return 0;
+    }
+
     default int getMaxRavenChestsPerPlayerClient() {
         return 0;
     }
@@ -399,6 +403,10 @@ public interface IPlatformHelper {
         // no-op
     }
 
+    default void sendSetWildRavensPerPlayer(int value) {
+        // no-op
+    }
+
     default void sendSetMaxRavenChestsPerPlayer(int value) {
         // no-op
     }
@@ -439,6 +447,10 @@ public interface IPlatformHelper {
     }
 
     default void sendStopRavenLinkToServer() {
+        // no-op
+    }
+
+    default void sendRavenLinkBlackoutAckToServer() {
         // no-op
     }
 

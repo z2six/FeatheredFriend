@@ -71,6 +71,8 @@
   "screen.featheredfriend.settings.enable_raven_armor.syncing": "Enable Raven armor: Syncing...",
   "screen.featheredfriend.settings.enable_mailbox": "Enable Mailbox: %s",
   "screen.featheredfriend.settings.enable_mailbox.syncing": "Enable Mailbox: Syncing...",
+  "screen.featheredfriend.settings.wild_ravens_per_player": "Wild Ravens per player: %s",
+  "screen.featheredfriend.settings.wild_ravens_per_player.syncing": "Wild Ravens per player: Syncing...",
   "screen.featheredfriend.settings.raven_chests_per_player": "Raven Chests per player: %s",
   "screen.featheredfriend.settings.raven_chests_per_player.syncing": "Raven Chests per player: Syncing...",
   "screen.featheredfriend.settings.raven_log_retention": "Raven log retention (minutes): %s",

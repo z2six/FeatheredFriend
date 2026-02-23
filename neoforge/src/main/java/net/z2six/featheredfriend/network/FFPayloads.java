@@ -50,7 +50,7 @@ public final class FFPayloads {
     /**
      * Bump if you change payload shapes. Must match client + server.
      */
-    private static final String PROTOCOL_VERSION = "2";
+    private static final String PROTOCOL_VERSION = "3";
 
     private FFPayloads() {
         // no-op
@@ -116,6 +116,12 @@ public final class FFPayloads {
             );
 
             registrar.playToServer(
+                    SetWildRavensPerPlayerPayload.TYPE,
+                    SetWildRavensPerPlayerPayload.STREAM_CODEC,
+                    FFPayloads::handleSetWildRavensPerPlayer
+            );
+
+            registrar.playToServer(
                     SetMaxRavenChestsPerPlayerPayload.TYPE,
                     SetMaxRavenChestsPerPlayerPayload.STREAM_CODEC,
                     FFPayloads::handleSetMaxRavenChestsPerPlayer
@@ -168,6 +174,7 @@ public final class FFPayloads {
         private static volatile boolean suspiciousChestEnabled = true;
         private static volatile boolean ravenArmorEnabled = true;
         private static volatile boolean mailboxEnabled = true;
+        private static volatile int wildRavensPerPlayer = 0;
         private static volatile int maxRavenChestsPerPlayer = 0;
         private static volatile int ravenLogRetentionMinutes = 0;
         private static volatile int ravenLogMaxBytesPerPlayer = 0;
@@ -208,6 +215,10 @@ public final class FFPayloads {
             return canEditChat;
         }
 
+        public static int wildRavensPerPlayer() {
+            return wildRavensPerPlayer;
+        }
+
         public static int maxRavenChestsPerPlayer() {
             return maxRavenChestsPerPlayer;
         }
@@ -237,6 +248,7 @@ public final class FFPayloads {
                                             boolean newSuspiciousChestEnabled,
                                             boolean newRavenArmorEnabled,
                                             boolean newMailboxEnabled,
+                                            int newWildRavensPerPlayer,
                                             int newMaxRavenChestsPerPlayer,
                                             int newRavenLogRetentionMinutes,
                                             int newRavenLogMaxBytesPerPlayer,
@@ -249,6 +261,7 @@ public final class FFPayloads {
             suspiciousChestEnabled = newSuspiciousChestEnabled;
             ravenArmorEnabled = newRavenArmorEnabled;
             mailboxEnabled = newMailboxEnabled;
+            wildRavensPerPlayer = Math.max(0, newWildRavensPerPlayer);
             maxRavenChestsPerPlayer = Math.max(0, newMaxRavenChestsPerPlayer);
             ravenLogRetentionMinutes = Math.max(0, newRavenLogRetentionMinutes);
             ravenLogMaxBytesPerPlayer = Math.max(0, newRavenLogMaxBytesPerPlayer);
@@ -258,8 +271,8 @@ public final class FFPayloads {
             canEditChat = newCanEditChat;
             hasSynced = true;
 
-            LOG.debug("[FFPayloads.ClientState] Applied server settings: chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={}",
-                    newChatDisabled, newSuspiciousFeatherEnabled, newSuspiciousChestEnabled, newRavenArmorEnabled, newMailboxEnabled, maxRavenChestsPerPlayer, ravenLogRetentionMinutes, ravenLogMaxBytesPerPlayer, enderpackDepositCooldownSeconds, scrollDeliveryCooldownSeconds, courierTimeoutRetrySeconds, newCanEditChat);
+            LOG.debug("[FFPayloads.ClientState] Applied server settings: chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} wildRavensPerPlayer={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={}",
+                    newChatDisabled, newSuspiciousFeatherEnabled, newSuspiciousChestEnabled, newRavenArmorEnabled, newMailboxEnabled, wildRavensPerPlayer, maxRavenChestsPerPlayer, ravenLogRetentionMinutes, ravenLogMaxBytesPerPlayer, enderpackDepositCooldownSeconds, scrollDeliveryCooldownSeconds, courierTimeoutRetrySeconds, newCanEditChat);
         }
 
         public static void clear() {
@@ -269,6 +282,7 @@ public final class FFPayloads {
             suspiciousChestEnabled = true;
             ravenArmorEnabled = true;
             mailboxEnabled = true;
+            wildRavensPerPlayer = 0;
             maxRavenChestsPerPlayer = 0;
             ravenLogRetentionMinutes = 0;
             ravenLogMaxBytesPerPlayer = 0;
@@ -311,6 +325,7 @@ public final class FFPayloads {
                                         boolean enableSuspiciousChest,
                                         boolean enableRavenArmor,
                                         boolean enableMailbox,
+                                        int wildRavensPerPlayer,
                                         int maxRavenChestsPerPlayer,
                                         int ravenLogRetentionMinutes,
                                         int ravenLogMaxBytesPerPlayer,
@@ -334,6 +349,7 @@ public final class FFPayloads {
             buf.writeBoolean(payload.enableSuspiciousChest());
             buf.writeBoolean(payload.enableRavenArmor());
             buf.writeBoolean(payload.enableMailbox());
+            buf.writeVarInt(payload.wildRavensPerPlayer());
             buf.writeVarInt(payload.maxRavenChestsPerPlayer());
             buf.writeVarInt(payload.ravenLogRetentionMinutes());
             buf.writeVarInt(payload.ravenLogMaxBytesPerPlayer());
@@ -350,6 +366,7 @@ public final class FFPayloads {
                     buf.readBoolean(),
                     buf.readBoolean(),
                     buf.readBoolean(),
+                    buf.readVarInt(),
                     buf.readVarInt(),
                     buf.readVarInt(),
                     buf.readVarInt(),
@@ -473,6 +490,29 @@ public final class FFPayloads {
                 StreamCodec.composite(
                         ByteBufCodecs.BOOL, SetEnableMailboxPayload::value,
                         SetEnableMailboxPayload::new
+                );
+
+        @Override
+        public Type<? extends net.minecraft.network.protocol.common.custom.CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    /**
+     * Client -> Server: set wild raven spawn cap (per online player). Requires permission on server.
+     */
+    public record SetWildRavensPerPlayerPayload(int value)
+            implements net.minecraft.network.protocol.common.custom.CustomPacketPayload {
+
+        public static final ResourceLocation ID =
+                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "set_wild_ravens_per_player_v1");
+
+        public static final Type<SetWildRavensPerPlayerPayload> TYPE = new Type<>(ID);
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, SetWildRavensPerPlayerPayload> STREAM_CODEC =
+                StreamCodec.composite(
+                        ByteBufCodecs.VAR_INT, SetWildRavensPerPlayerPayload::value,
+                        SetWildRavensPerPlayerPayload::new
                 );
 
         @Override
@@ -635,6 +675,7 @@ public final class FFPayloads {
             boolean enableSuspiciousChestValue = FFServerConfig.isSuspiciousChestEnabled();
             boolean enableRavenArmorValue = FFServerConfig.isRavenArmorEnabled();
             boolean enableMailboxValue = FFServerConfig.isMailboxEnabled();
+            int wildRavensPerPlayerValue = FFServerConfig.getWildRavensPerPlayer();
             int maxRavenChestsPerPlayerValue = FFServerConfig.getRavenChestsPerPlayer();
             int ravenLogRetentionMinutesValue = FFServerConfig.getRavenLogRetentionMinutes();
             int ravenLogMaxBytesPerPlayerValue = FFServerConfig.getRavenLogMaxBytesPerPlayer();
@@ -649,6 +690,7 @@ public final class FFPayloads {
                     enableSuspiciousChestValue,
                     enableRavenArmorValue,
                     enableMailboxValue,
+                    wildRavensPerPlayerValue,
                     maxRavenChestsPerPlayerValue,
                     ravenLogRetentionMinutesValue,
                     ravenLogMaxBytesPerPlayerValue,
@@ -659,13 +701,14 @@ public final class FFPayloads {
             );
             PacketDistributor.sendToPlayer(player, msg);
 
-            LOG.debug("[FFPayloads] Sent settings to {}: chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={}",
+            LOG.debug("[FFPayloads] Sent settings to {}: chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} wildRavensPerPlayer={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={}",
                     player.getGameProfile().getName(),
                     chatDisabledValue,
                     enableSuspiciousFeatherValue,
                     enableSuspiciousChestValue,
                     enableRavenArmorValue,
                     enableMailboxValue,
+                    wildRavensPerPlayerValue,
                     maxRavenChestsPerPlayerValue,
                     ravenLogRetentionMinutesValue,
                     ravenLogMaxBytesPerPlayerValue,
@@ -754,6 +797,7 @@ public final class FFPayloads {
                             payload.enableSuspiciousChest(),
                             payload.enableRavenArmor(),
                             payload.enableMailbox(),
+                            payload.wildRavensPerPlayer(),
                             payload.maxRavenChestsPerPlayer(),
                             payload.ravenLogRetentionMinutes(),
                             payload.ravenLogMaxBytesPerPlayer(),
@@ -968,6 +1012,44 @@ public final class FFPayloads {
             });
         } catch (Throwable t) {
             LOG.error("[FFPayloads] handleSetEnableMailbox failed safely", t);
+        }
+    }
+
+    private static void handleSetWildRavensPerPlayer(SetWildRavensPerPlayerPayload payload, IPayloadContext context) {
+        try {
+            context.enqueueWork(() -> {
+                try {
+                    if (!(context.player() instanceof ServerPlayer sp)) {
+                        LOG.warn("[FFPayloads] SetWildRavensPerPlayer from non-ServerPlayer; ignoring");
+                        return;
+                    }
+
+                    ServerLevel level = sp.serverLevel();
+                    if (level == null) {
+                        LOG.warn("[FFPayloads] SetWildRavensPerPlayer: serverLevel null; ignoring");
+                        return;
+                    }
+
+                    boolean allowed = canPlayerEditServerSettings(sp);
+                    if (!allowed) {
+                        LOG.warn("[FFPayloads] {} tried to SetWildRavensPerPlayer without permission/settings-screen access; denied",
+                                sp.getGameProfile().getName());
+                        sendSettingsToPlayer(level, sp);
+                        return;
+                    }
+
+                    int clamped = Math.max(0, Math.min(16, payload.value()));
+                    FFServerConfig.setWildRavensPerPlayer(clamped);
+                    broadcastSettings(level);
+
+                    LOG.debug("[FFPayloads] SetWildRavensPerPlayer -> {} by {}", clamped, sp.getGameProfile().getName());
+
+                } catch (Throwable t) {
+                    LOG.error("[FFPayloads] handleSetWildRavensPerPlayer work failed safely", t);
+                }
+            });
+        } catch (Throwable t) {
+            LOG.error("[FFPayloads] handleSetWildRavensPerPlayer failed safely", t);
         }
     }
 

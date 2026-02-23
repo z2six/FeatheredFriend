@@ -154,6 +154,7 @@ public final class RavenLinkClientController {
     private static volatile boolean endingTransitionActive = false;
     private static volatile boolean endingShouldSendStopAtBlackout = false;
     private static volatile boolean endingStopRequestSent = false;
+    private static volatile boolean startBlackoutAckSent = false;
     private static volatile long endingStartedAtMillis = 0L;
     private static volatile float endingTether1StartVolume = 0.0F;
     private static volatile float endingTether2StartVolume = 0.0F;
@@ -190,6 +191,7 @@ public final class RavenLinkClientController {
             endingTransitionActive = false;
             endingShouldSendStopAtBlackout = false;
             endingStopRequestSent = false;
+            startBlackoutAckSent = false;
             endingStartedAtMillis = 0L;
             endingTether1StartVolume = 0.0F;
             endingTether2StartVolume = 0.0F;
@@ -245,6 +247,10 @@ public final class RavenLinkClientController {
 
     public static void endFromServer() {
         requestLinkEnd(false);
+    }
+
+    public static void beginEndSequenceFromServer() {
+        requestLinkEnd(true);
     }
 
     public static boolean isLinkActive() {
@@ -812,6 +818,13 @@ public final class RavenLinkClientController {
                         visionPhase = VisionPhase.HOLD_BLACK;
                         visionPhaseStartedAtMillis = now;
                         if (!endingTransitionActive) {
+                            if (!startBlackoutAckSent) {
+                                startBlackoutAckSent = true;
+                                try {
+                                    Services.PLATFORM.sendRavenLinkBlackoutAckToServer();
+                                } catch (Throwable ignored) {
+                                }
+                            }
                             ravenLinkTether1Allowed = true;
                             if (ravenLinkTether1FadeInStartedAtMillis <= 0L) {
                                 // Begin tether1 at full-black start; it reaches full volume when eyes are fully open.
@@ -1818,6 +1831,7 @@ public final class RavenLinkClientController {
         endingTransitionActive = false;
         endingShouldSendStopAtBlackout = false;
         endingStopRequestSent = false;
+        startBlackoutAckSent = false;
         endingStartedAtMillis = 0L;
         endingTether1StartVolume = 0.0F;
         endingTether2StartVolume = 0.0F;

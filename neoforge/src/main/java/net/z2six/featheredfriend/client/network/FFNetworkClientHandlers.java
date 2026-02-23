@@ -115,7 +115,7 @@ public final class FFNetworkClientHandlers {
     }
 
     public static void handleStopRavenLinkOnClient(@NotNull FFNetwork.StopRavenLinkPayload payload,
-                                                    @NotNull IPayloadContext context) {
+                                                     @NotNull IPayloadContext context) {
         try {
             RavenLinkClientController.endFromServer();
         } catch (Throwable t) {
@@ -123,8 +123,17 @@ public final class FFNetworkClientHandlers {
         }
     }
 
+    public static void handleBeginRavenLinkEndOnClient(@NotNull FFNetwork.BeginRavenLinkEndPayload payload,
+                                                       @NotNull IPayloadContext context) {
+        try {
+            RavenLinkClientController.beginEndSequenceFromServer();
+        } catch (Throwable t) {
+            LOG.error("[FFNetworkClientHandlers] handleBeginRavenLinkEndOnClient failed", t);
+        }
+    }
+
     public static void handleRavenLinkStateOnClient(@NotNull FFNetwork.RavenLinkStatePayload payload,
-                                                     @NotNull IPayloadContext context) {
+                                                      @NotNull IPayloadContext context) {
         try {
             RavenLinkClientController.updateRavenStateFromServer(
                     payload.ravenEntityId(),

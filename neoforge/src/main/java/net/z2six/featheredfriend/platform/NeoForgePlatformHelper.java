@@ -606,6 +606,11 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public int getWildRavensPerPlayerClient() {
+        return FFPayloads.ClientState.wildRavensPerPlayer();
+    }
+
+    @Override
     public int getMaxRavenChestsPerPlayerClient() {
         return FFPayloads.ClientState.maxRavenChestsPerPlayer();
     }
@@ -666,6 +671,11 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public void sendSetWildRavensPerPlayer(int value) {
+        PacketDistributor.sendToServer(new FFPayloads.SetWildRavensPerPlayerPayload(value));
+    }
+
+    @Override
     public void sendSetMaxRavenChestsPerPlayer(int value) {
         PacketDistributor.sendToServer(new FFPayloads.SetMaxRavenChestsPerPlayerPayload(value));
     }
@@ -715,6 +725,11 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     @Override
     public void sendStopRavenLinkToServer() {
         FFNetwork.sendStopRavenLinkRequestToServer();
+    }
+
+    @Override
+    public void sendRavenLinkBlackoutAckToServer() {
+        FFNetwork.sendRavenLinkBlackoutAckToServer();
     }
 
     @Override

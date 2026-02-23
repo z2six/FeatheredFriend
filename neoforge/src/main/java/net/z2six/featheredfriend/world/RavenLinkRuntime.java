@@ -82,6 +82,8 @@ public final class RavenLinkRuntime {
     // Delay actual server-side link start slightly so the client "eyes closing"
     // transition is already fully covering the view before effigy spawn/teleport.
     private static final long LINK_START_DELAY_TICKS = 10L;
+    private static final long LINK_START_BLACKOUT_ACK_TIMEOUT_TICKS = 80L;
+    private static final long LINK_END_GRACE_FAILSAFE_TICKS = 80L;
     private static final double LINK_HORIZONTAL_SPEED = 0.25D;
     private static final double LINK_VERTICAL_SPEED = 0.18D;
     private static final double LINK_ACCEL_FACTOR = 0.22D;
@@ -318,12 +320,16 @@ public final class RavenLinkRuntime {
             LinkSession session = buildSession(owner, raven);
             ServerLevel tickLevel = owner.server.overworld();
             long now = tickLevel == null ? 0L : tickLevel.getGameTime();
-            PENDING_LINK_STARTS.put(owner.getUUID(), new PendingLinkStart(session, now + LINK_START_DELAY_TICKS));
+            PENDING_LINK_STARTS.put(owner.getUUID(), new PendingLinkStart(
+                    session,
+                    now + LINK_START_DELAY_TICKS,
+                    now + LINK_START_BLACKOUT_ACK_TIMEOUT_TICKS
+            ));
 
             FFNetwork.sendStartRavenLink(
                     owner,
                     raven.getId(),
-                    (int) (LINK_DURATION_TICKS + LINK_START_DELAY_TICKS),
+                    (int) (LINK_DURATION_TICKS + LINK_START_DELAY_TICKS + LINK_START_BLACKOUT_ACK_TIMEOUT_TICKS),
                     session.ownerAnchorPos.x,
                     session.ownerAnchorPos.y + owner.getEyeHeight(owner.getPose()),
                     session.ownerAnchorPos.z,
@@ -335,6 +341,17 @@ public final class RavenLinkRuntime {
             LOG.warn("[RavenLinkRuntime] tryStartLink failed safely for player='{}': {}",
                     safePlayerName(owner), t.toString());
             return false;
+        }
+    }
+
+    public static void handleClientBlackoutAck(@NotNull ServerPlayer owner) {
+        try {
+            PendingLinkStart pending = PENDING_LINK_STARTS.get(owner.getUUID());
+            if (pending == null) {
+                return;
+            }
+            pending.blackoutAcked = true;
+        } catch (Throwable ignored) {
         }
     }
 
@@ -377,7 +394,11 @@ public final class RavenLinkRuntime {
                 discardAnyEffigiesForOwner(owner.server, owner.getUUID());
                 return;
             }
-            stopSession(owner.server, owner, session, reason);
+            String effectiveReason = reason;
+            if (session.endRequested && session.forcedStopReason != null && !session.forcedStopReason.isBlank()) {
+                effectiveReason = session.forcedStopReason;
+            }
+            stopSession(owner.server, owner, session, effectiveReason);
         } catch (Throwable t) {
             LOG.warn("[RavenLinkRuntime] stopLinkForOwner failed safely for player='{}': {}",
                     safePlayerName(owner), t.toString());
@@ -481,9 +502,13 @@ public final class RavenLinkRuntime {
                     continue;
                 }
 
-                if (now >= session.endsAtGameTime) {
-                    toStop.add(ownerId);
-                    continue;
+                if (session.endRequested) {
+                    if (now >= session.endForceStopAtGameTime) {
+                        toStop.add(ownerId);
+                        continue;
+                    }
+                } else if (now >= session.endsAtGameTime) {
+                    requestGracefulEnd(server, owner, session, "timeout_or_invalid", now);
                 }
                 RavenEntity raven = findRavenByUuid(server, session.ravenUuid);
                 if (raven == null || !raven.isAlive() || raven.isRemoved()) {
@@ -493,8 +518,14 @@ public final class RavenLinkRuntime {
 
                 tickRemoteStream(server, owner, raven, session, now);
                 if (session.forcedStopReason != null && !session.forcedStopReason.isBlank()) {
-                    toStop.add(ownerId);
-                    continue;
+                    if (session.endRequested) {
+                        if (now >= session.endForceStopAtGameTime) {
+                            toStop.add(ownerId);
+                            continue;
+                        }
+                    } else {
+                        requestGracefulEnd(server, owner, session, session.forcedStopReason, now);
+                    }
                 }
 
                 applyLinkedRavenState(raven);
@@ -585,6 +616,14 @@ public final class RavenLinkRuntime {
                     continue;
                 }
 
+                if (!pending.blackoutAcked) {
+                    if (now >= pending.abortAtGameTime) {
+                        FFNetwork.sendStopRavenLink(owner);
+                        toRemove.add(ownerId);
+                    }
+                    continue;
+                }
+
                 boolean perchAssignmentTemporarilyCleared = false;
                 if (pending.session.returnToAssignedPerch) {
                     perchAssignmentTemporarilyCleared = clearPerchAssignmentForLink(raven);
@@ -632,6 +671,41 @@ public final class RavenLinkRuntime {
             }
         } catch (Throwable t) {
             LOG.warn("[RavenLinkRuntime] processPendingLinkStarts failed safely: {}", t.toString());
+        }
+    }
+
+    private static void requestGracefulEnd(@NotNull MinecraftServer server,
+                                          @NotNull ServerPlayer owner,
+                                          @NotNull LinkSession session,
+                                          @NotNull String reason,
+                                          long now) {
+        try {
+            if (session.endRequested) {
+                return;
+            }
+
+            session.endRequested = true;
+            session.endRequestedAtGameTime = now;
+            session.endForceStopAtGameTime = now + LINK_END_GRACE_FAILSAFE_TICKS;
+
+            if (reason != null && !reason.isBlank()) {
+                session.forcedStopReason = reason;
+            } else if (session.forcedStopReason == null || session.forcedStopReason.isBlank()) {
+                session.forcedStopReason = "timeout_or_invalid";
+            }
+
+            FFNetwork.sendBeginRavenLinkEnd(owner);
+
+        } catch (Throwable t) {
+            // Failsafe: if we can't request gracefully, stop ASAP.
+            session.endRequested = true;
+            session.endRequestedAtGameTime = now;
+            session.endForceStopAtGameTime = now;
+            if (session.forcedStopReason == null || session.forcedStopReason.isBlank()) {
+                session.forcedStopReason = (reason == null || reason.isBlank()) ? "timeout_or_invalid" : reason;
+            }
+            LOG.warn("[RavenLinkRuntime] requestGracefulEnd failed safely owner='{}': {}",
+                    safePlayerName(owner), t.toString());
         }
     }
 
@@ -2133,10 +2207,13 @@ public final class RavenLinkRuntime {
     private static final class PendingLinkStart {
         private final LinkSession session;
         private final long startAtGameTime;
+        private final long abortAtGameTime;
+        private volatile boolean blackoutAcked = false;
 
-        private PendingLinkStart(@NotNull LinkSession session, long startAtGameTime) {
+        private PendingLinkStart(@NotNull LinkSession session, long startAtGameTime, long abortAtGameTime) {
             this.session = session;
             this.startAtGameTime = startAtGameTime;
+            this.abortAtGameTime = abortAtGameTime;
         }
     }
 
@@ -2171,6 +2248,9 @@ public final class RavenLinkRuntime {
         private ResourceKey<Level> ticketDimension;
         private ChunkPos ticketChunk;
         private String forcedStopReason;
+        private boolean endRequested;
+        private long endRequestedAtGameTime;
+        private long endForceStopAtGameTime;
         private final Set<Long> manualChunksSent = new HashSet<>();
         private final ArrayDeque<ChunkPos> manualPendingChunkSends = new ArrayDeque<>();
         private ChunkPos manualStreamCenter;

@@ -1,39 +1,39 @@
 # Wild Ravens
 
-Wild Ravens are the ones you spot **chilling on treetops** like they own the server. They’re not pets yet. They’re… vibes.
+Wild Ravens are the ones you spot **chilling on treetops** like they own the server. They're not pets yet. They're... vibes.
 
-<figure>
-  <img alt="A wild Raven perched on a canopy" src="../assets/incoming/wildraven-c.png">
-  <figcaption>TONIGHT WILL BE THE NIGHT WHERE I WILL FIGHT FOR YOU</figcaption>
+<figure markdown>
+![A wild Raven perched on a canopy](../assets/incoming/wildraven-c.png)
+<figcaption>TONIGHT WILL BE THE NIGHT WHERE I WILL FIGHT FOR YOU</figcaption>
 </figure>
 
 ---
 
 ## Finding them (where they show up)
 
-Most of the time they’ll spawn **above leaves**, so look up:
+Most of the time they'll spawn **above leaves**, so look up:
 
 - forest canopies
 - big oak roofs
 - anywhere with a lot of leaf blocks and open air above them
 
-If you’re expecting them to spawn on the ground like chickens… yeah, no. Scan the treeline.
+If you're expecting them to spawn on the ground like chickens... yeah, no. Scan the treeline.
 
 ??? info "Spawn nerd notes"
-    - FeatheredFriend’s natural spawner tries periodically (not every tick).
+    - FeatheredFriend's natural spawner tries periodically (not every tick).
     - It picks random columns around players, scans down until it finds leaves, then spawns a Raven **one block above**.
-    - It also enforces a per-player wild Raven cap (server config controls the number).
+    - It also enforces a per-player wild Raven cap (server owners can tweak it in server settings).
 
 ---
 
 ## How they behave (a.k.a. why they keep leaving)
 
-Wild Ravens don’t like being rushed.
+Wild Ravens don't like being rushed.
 
-- Get too close (around “personal space” range) and they’ll **fly off**.
+- Get too close (around "personal space" range) and they'll **fly off**.
 - Get *way* too close (face-first sprinting) and they can **blink away** instead.
 
-But if you’re holding the right snack, they suddenly become your best friend.
+But if you're holding the right snack, they suddenly become your best friend.
 
 ---
 
@@ -46,22 +46,24 @@ You can lure a Wild Raven by holding either:
 
 Keep the nugget in **either hand**. If you put it away, the Raven loses interest fast.
 
-Also: if you’re on a server with multiple players, the Raven won’t “yoink-target-swap” every second. Once it’s focused on you, it’s basically locked in unless you drop the lure.
+Also: if you're on a server with multiple players, the Raven won't "yoink-target-swap" every second. Once it's focused on you, it's basically locked in unless you drop the lure.
 
 ---
 
-## Taming (the nugget “song”)
+## Taming (the nugget "song")
 
-Every Wild Raven has its own little taming combo: a **sequence of Iron + Gold nuggets**, length **3–6**.
+Every Wild Raven has its own little taming combo: a **sequence of Iron + Gold nuggets**, length **3-6**.
 
-You don’t get a UI telling you the combo. You get *bird audio*.
+You don't get a UI telling you the combo. You get *bird audio*.
 
 - **Low pitch caw** = Iron
 - **High pitch caw** = Gold
 
-Here’s an example recording (sequence: **Iron → Iron → Gold → Iron → Gold**):
+Here's an example recording (sequence: **Iron -> Iron -> Gold -> Iron -> Gold**):
 
-<audio controls>
+If the audio widget refuses to cooperate, open the file directly: [tamingcawingexample.mp3](../assets/incoming/tamingcawingexample.mp3)
+
+<audio controls preload="none">
   <source src="../assets/incoming/tamingcawingexample.mp3" type="audio/mpeg">
 </audio>
 
@@ -73,18 +75,22 @@ Here’s an example recording (sequence: **Iron → Iron → Gold → Iron → G
 4. Repeat until the sequence is done.
 
 ??? warning "Don't mess up the order of nuggets"
-    If you feed the wrong nugget, the Raven will still take it… But will deem your IQ too low and refuse to let you tame it (thus, it'll despawn).
+    If you feed the wrong nugget, the Raven will still take it (yes, the nugget gets consumed - unless you're in Creative),
+    and then it immediately decides your IQ is too subpar to be trusted with bird ownership and **despawns with FX**.
+
+    Translation: you don't get to "continue the combo". You go find another Wild Raven and try again. Bring extras and don't spam-click.
 
 ---
 
-## “Okay, it’s tamed… now what?”
+## "Okay, it's tamed... now what?"
 
-Once you finish the full nugget sequence, you’ll get a **naming prompt**. After that, the Wild Raven despawns (on purpose) because it’s now stored as *your* Raven companion.
+Once you finish the full nugget sequence, you'll get a **naming prompt**. After that, the Wild Raven despawns (on purpose) because it's now stored as *your* Raven companion.
 
-Here’s what that naming screen looks like:
+Here's what that naming screen looks like:
 
 ![Raven naming screen](../assets/incoming/ravennamingscreen.png)
 
-One important rule: **you can only have one Raven companion per player**. If you already have a Raven, Wild Ravens won’t let you start the taming process again.
+One important rule: **you can only have one Raven companion per player**. If you already have a Raven, Wild Ravens won't let you start the taming process again.
 
-*(We’ll link the full “Your Raven” / summoning / Raven Link stuff here once that chapter exists.)*
+*(We'll link the full "Your Raven" / summoning / Raven Link stuff here once that chapter exists.)*
+

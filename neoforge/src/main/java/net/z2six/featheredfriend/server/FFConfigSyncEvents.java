@@ -30,6 +30,7 @@ public final class FFConfigSyncEvents {
     private static boolean lastEnableSuspiciousChest = true;
     private static boolean lastEnableRavenArmor = true;
     private static boolean lastEnableMailbox = true;
+    private static int lastWildRavensPerPlayer = 0;
     private static int lastRavenChestsPerPlayer = 0;
     private static int lastRavenLogRetentionMinutes = 0;
     private static int lastRavenLogMaxBytesPerPlayer = 0;
@@ -72,6 +73,7 @@ public final class FFConfigSyncEvents {
             boolean enableSuspiciousChestNow = FFServerConfig.isSuspiciousChestEnabled();
             boolean enableRavenArmorNow = FFServerConfig.isRavenArmorEnabled();
             boolean enableMailboxNow = FFServerConfig.isMailboxEnabled();
+            int wildRavensPerPlayerNow = FFServerConfig.getWildRavensPerPlayer();
             int ravenChestsPerPlayerNow = FFServerConfig.getRavenChestsPerPlayer();
             int ravenLogRetentionMinutesNow = FFServerConfig.getRavenLogRetentionMinutes();
             int ravenLogMaxBytesPerPlayerNow = FFServerConfig.getRavenLogMaxBytesPerPlayer();
@@ -88,6 +90,7 @@ public final class FFConfigSyncEvents {
                 lastEnableSuspiciousChest = enableSuspiciousChestNow;
                 lastEnableRavenArmor = enableRavenArmorNow;
                 lastEnableMailbox = enableMailboxNow;
+                lastWildRavensPerPlayer = wildRavensPerPlayerNow;
                 lastRavenChestsPerPlayer = ravenChestsPerPlayerNow;
                 lastRavenLogRetentionMinutes = ravenLogRetentionMinutesNow;
                 lastRavenLogMaxBytesPerPlayer = ravenLogMaxBytesPerPlayerNow;
@@ -114,6 +117,10 @@ public final class FFConfigSyncEvents {
                 }
                 if (lastEnableMailbox != enableMailboxNow) {
                     lastEnableMailbox = enableMailboxNow;
+                    changed = true;
+                }
+                if (lastWildRavensPerPlayer != wildRavensPerPlayerNow) {
+                    lastWildRavensPerPlayer = wildRavensPerPlayerNow;
                     changed = true;
                 }
                 if (lastRavenChestsPerPlayer != ravenChestsPerPlayerNow) {
@@ -168,13 +175,14 @@ public final class FFConfigSyncEvents {
             FFPayloads.broadcastSettings(overworld);
 
             if (LOG.isDebugEnabled()) {
-                LOG.debug("[FFConfigSyncEvents] Broadcast settings due to {} (chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} ravenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} allowServerSettingsScreenEditing={})",
+                LOG.debug("[FFConfigSyncEvents] Broadcast settings due to {} (chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} wildRavensPerPlayer={} ravenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} allowServerSettingsScreenEditing={})",
                         changed ? "config-change" : "request",
                         chatDisabledNow,
                         enableSuspiciousFeatherNow,
                         enableSuspiciousChestNow,
                         enableRavenArmorNow,
                         enableMailboxNow,
+                        wildRavensPerPlayerNow,
                         ravenChestsPerPlayerNow,
                         ravenLogRetentionMinutesNow,
                         ravenLogMaxBytesPerPlayerNow,
