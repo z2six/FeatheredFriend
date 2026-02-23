@@ -3,7 +3,7 @@
 Wild Ravens are the ones you spot **chilling on treetops** like they own the server. They're not pets yet. They're... vibes.
 
 <figure markdown>
-![A wild Raven perched on a canopy](../assets/incoming/wildraven-c.png)
+![A wild Raven perched on a canopy](../assets/images/features/wild-ravens/wildraven-c.png)
 <figcaption>TONIGHT WILL BE THE NIGHT WHERE I WILL FIGHT FOR YOU</figcaption>
 </figure>
 
@@ -59,13 +59,7 @@ You don't get a UI telling you the combo. You get *bird audio*.
 - **Low pitch caw** = Iron
 - **High pitch caw** = Gold
 
-Here's an example recording (sequence: **Iron -> Iron -> Gold -> Iron -> Gold**):
-
-If the audio widget refuses to cooperate, open the file directly: [tamingcawingexample.mp3](../assets/incoming/tamingcawingexample.mp3)
-
-<audio controls preload="none">
-  <source src="../assets/incoming/tamingcawingexample.mp3" type="audio/mpeg">
-</audio>
+Example sequence you might hear: **Iron -> Iron -> Gold -> Iron -> Gold**
 
 ### Step-by-step tame
 
@@ -86,11 +80,6 @@ If the audio widget refuses to cooperate, open the file directly: [tamingcawinge
 
 Once you finish the full nugget sequence, you'll get a **naming prompt**. After that, the Wild Raven despawns (on purpose) because it's now stored as *your* Raven companion.
 
-Here's what that naming screen looks like:
-
-![Raven naming screen](../assets/incoming/ravennamingscreen.png)
-
 One important rule: **you can only have one Raven companion per player**. If you already have a Raven, Wild Ravens won't let you start the taming process again.
 
 *(We'll link the full "Your Raven" / summoning / Raven Link stuff here once that chapter exists.)*
-

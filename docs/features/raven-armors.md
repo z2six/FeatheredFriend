@@ -10,7 +10,7 @@ TLDR: **Netherite is the tanky “deliver it no matter what” pick. Gold is the
 
 Here’s a Raven in Diamond armor, just so you know what you’re aiming for:
 
-![A Raven wearing Diamond Raven Armor](../assets/incoming/ravenarmor-c.png)
+![A Raven wearing Diamond Raven Armor](../assets/images/features/raven-armors/ravenarmor-c.png)
 
 ---
 
@@ -41,8 +41,6 @@ These show up in the item tooltip as **Courier Stats**.
 
 ??? tip "Using Jade? Crouch."
     Jade can show the full breakdown when you crouch while looking at your Raven:
-
-    ![Jade showing Raven stats and armor courier stats](../assets/incoming/ravenarmor-jade.png)
 
 ??? info "Under the hood (exact rules)"
     - Damage amount doesn’t matter: **one landed hit = one hit**.

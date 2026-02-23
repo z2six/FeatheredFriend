@@ -30,6 +30,7 @@ nav:
       - Raven Armors: features/raven-armors.md
       - Wild Ravens: features/wild-ravens.md
       - Sigils: features/sigils.md
+      - Scrolls: features/scrolls.md
 
 plugins:
   - search
