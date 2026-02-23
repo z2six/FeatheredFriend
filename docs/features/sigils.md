@@ -9,19 +9,35 @@ If you only read one thing: **carving a Seal Stamp is permanent**. Want a differ
 
 ---
 
+## Examples
+
+=== "Example 1"
+    ![Example sigil 1](../assets/images/features/sigils/sigil1.png)
+
+=== "Example 2"
+    ![Example sigil 2](../assets/images/features/sigils/sigil2.png)
+
+=== "Example 3"
+    ![Example sigil 3](../assets/images/features/sigils/sigil3.png)
+
+=== "Example 4"
+    ![Example sigil 4](../assets/images/features/sigils/sigil4.png)
+
+---
+
 ## Crafting the Seal Stamp
 
 Any planks work (oak/spruce/birch/etc). The recipe is a 1-wide shape, so you can craft it in any column.
 
 <div class="ff-recipe">
   <div class="ff-recipe-grid" aria-label="Seal Stamp recipe">
-    <div class="ff-slot"></div><div class="ff-slot"><img alt="Stick" src="../../assets/images/items/minecraft/stick.png"></div><div class="ff-slot"></div>
-    <div class="ff-slot"></div><div class="ff-slot"><img alt="Stick" src="../../assets/images/items/minecraft/stick.png"></div><div class="ff-slot"></div>
-    <div class="ff-slot"></div><div class="ff-slot"><img alt="Oak Planks (any planks)" src="../../assets/images/items/minecraft/oak_planks.png"></div><div class="ff-slot"></div>
+    <div class="ff-slot"></div><div class="ff-slot"><img alt="Stick" src="../assets/images/items/minecraft/stick.png"></div><div class="ff-slot"></div>
+    <div class="ff-slot"></div><div class="ff-slot"><img alt="Stick" src="../assets/images/items/minecraft/stick.png"></div><div class="ff-slot"></div>
+    <div class="ff-slot"></div><div class="ff-slot"><img alt="Oak Planks (any planks)" src="../assets/images/items/minecraft/oak_planks.png"></div><div class="ff-slot"></div>
   </div>
   <div class="ff-recipe-arrow">→</div>
   <div class="ff-recipe-result">
-    <div class="ff-slot"><img alt="Seal Stamp" src="../../assets/images/items/featheredfriend/seal_stamp.png"></div>
+    <div class="ff-slot"><img alt="Seal Stamp" src="../assets/images/items/featheredfriend/seal_stamp.png"></div>
   </div>
 </div>
 
@@ -98,20 +114,3 @@ Same Secret + same Etchings + same Style = same sigil, every time.
     - `CustomData.SealedScroll.Seed` (long)
     - `CustomData.SealedScroll.Slices` (int)
     - `CustomData.SealedScroll.Style` (int)
-
----
-
-## Examples
-
-=== "Example 1"
-    ![Example sigil 1](../assets/images/features/sigils/sigil1.png)
-
-=== "Example 2"
-    ![Example sigil 2](../assets/images/features/sigils/sigil2.png)
-
-=== "Example 3"
-    ![Example sigil 3](../assets/images/features/sigils/sigil3.png)
-
-=== "Example 4"
-    ![Example sigil 4](../assets/images/features/sigils/sigil4.png)
-
