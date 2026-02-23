@@ -8,6 +8,10 @@ Raven armor is **gear for your Raven**, not for you. Think of it like a “couri
 
 If you only read one thing: **Netherite is the tanky “deliver it no matter what” pick. Gold is the “don’t get hit in the first place” pick.**
 
+Here’s a Raven in Diamond armor, just so you know what you’re aiming for:
+
+![A Raven wearing Diamond Raven Armor](../assets/incoming/ravenarmor-c.png)
+
 ---
 
 ## How to equip / remove
@@ -25,7 +29,7 @@ Your Raven swaps to that armor instantly, and the previous armor (if any) pops b
 
 ---
 
-## What the stats mean (in human words)
+## What the stats mean
 
 These show up in the item tooltip as **Courier Stats**.
 
@@ -34,6 +38,11 @@ These show up in the item tooltip as **Courier Stats**.
 - **Detection Radius**: how far (in blocks, **3D**) your Raven notices threats for the Raven Log / Status badge.
 - **Payload Safety**: chance the Raven **keeps the scroll** when it takes a hit during delivery.
 - **Health Regen**: how fast the Raven recovers over time (HP per minute).
+
+??? tip "Using Jade? Crouch."
+    Jade can show the full breakdown when you crouch while looking at your Raven:
+
+    ![Jade showing Raven stats and armor courier stats](../assets/incoming/ravenarmor-jade.png)
 
 ??? info "Under the hood (exact rules)"
     - Damage amount doesn’t matter: **one landed hit = one hit**.
@@ -171,7 +180,7 @@ All Raven Armors use the same shape — you’re basically making a tiny “plat
 
 ---
 
-## FAQ (short, but useful)
+## FAQ
 
 **Does armor stick to my Raven forever?**  
 It sticks to *your Raven* until you swap/remove it. If your Raven dies, the armor drops as an item where it died.

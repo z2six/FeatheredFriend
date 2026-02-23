@@ -7,6 +7,8 @@ A living backlog of planned work for the mod.
 
 ---
 
+- arc spikes white particle FX for cawing/notice enemy
+
 ## Major
 
 ### Raven Status GUI — “Badge”
