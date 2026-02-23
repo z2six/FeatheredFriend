@@ -6,7 +6,7 @@ Raven armor is **gear for your Raven**, not for you. Think of it like a “couri
 - It changes how far your Raven can **sense trouble** (hostile mobs / players).
 - It can help your Raven **keep the scroll safe** when taking a hit.
 
-If you only read one thing: **Netherite is the tanky “deliver it no matter what” pick. Gold is the “don’t get hit in the first place” pick.**
+TLDR: **Netherite is the tanky “deliver it no matter what” pick. Gold is the “don’t get hit in the first place” pick.**
 
 Here’s a Raven in Diamond armor, just so you know what you’re aiming for:
 

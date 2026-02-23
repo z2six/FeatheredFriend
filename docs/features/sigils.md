@@ -5,7 +5,7 @@ Sigils are the *wax-seal designs* you stamp onto scrolls. They're cosmetic, but 
 - they make your scroll look like it actually came from someone (not a printer)
 - they also lock in the "Sender" name the scroll shows later (your Seal Stamp's owner name)
 
-If you only read one thing: **carving a Seal Stamp is permanent**. Want a different sigil later? Make a new stamp.
+TLDR: **carving a Seal Stamp is permanent**. Want a different sigil later? Make a new stamp.
 
 ---
 
@@ -71,20 +71,25 @@ Your sigil gets used when you **seal a scroll**.
 4. **Left-click** a stamp to select it.
 5. Click inside the **wax area** to stamp the scroll.
 
+### Favorite stamps (so you don’t keep re-picking it)
+
+In the Seal Stamp selector:
+
+- **Left-click** a stamp to select it.
+- **Right-click** a stamp to set it as your **favorite** (right-click it again to clear the favorite).
+
+Next time you seal a scroll, the selector tries to **auto-select your favorite** immediately.
+
+Two gotchas:
+
+- The selector only shows **up to 9** stamps. If you’re carrying a whole stamp collection, your favorite might not be in the shown list.
+- Favorites are **client-side** and saved to your client config (so it sticks after restart), not to the server.
+
 Rules that matter:
 
 - The stamp must be **Etched**, otherwise sealing refuses to go through.
 - The scroll stores your sigil as numbers (seed/slices/style) — **your Secret text is not stored** on the scroll.
 - The scroll's **SenderName** is taken from the stamp's saved **Owner** name.
-
-??? tip "Favorite stamp (right-click)"
-    In the stamp selector overlay:
-
-    - **Left-click** = select stamp
-    - **Right-click** = toggle favorite
-
-    If you set a favorite, the overlay will auto-select it the next time you seal a scroll.
-    This is saved **client-side** (your config), not on the server.
 
 ??? info "Curios support (optional)"
     If you're using Curios, the stamp selector can also pick up Seal Stamps equipped in Curios slots (it uses a dedicated Seal Stamp Curios slot).
