@@ -82,6 +82,10 @@ Here’s an example recording (sequence: **Iron → Iron → Gold → Iron → G
 
 Once you finish the full nugget sequence, you’ll get a **naming prompt**. After that, the Wild Raven despawns (on purpose) because it’s now stored as *your* Raven companion.
 
+Here’s what that naming screen looks like:
+
+![Raven naming screen](../assets/incoming/ravennamingscreen.png)
+
 One important rule: **you can only have one Raven companion per player**. If you already have a Raven, Wild Ravens won’t let you start the taming process again.
 
 *(We’ll link the full “Your Raven” / summoning / Raven Link stuff here once that chapter exists.)*
