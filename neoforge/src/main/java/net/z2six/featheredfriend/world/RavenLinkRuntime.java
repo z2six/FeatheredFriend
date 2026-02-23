@@ -49,6 +49,7 @@ import net.z2six.featheredfriend.entity.raven.RavenAnimMode;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import net.z2six.featheredfriend.entity.ravenlink.RavenLinkEffigyEntity;
 import net.z2six.featheredfriend.entity.raven.modules.Teleportation;
+import net.z2six.featheredfriend.log.FFLogThrottle;
 import net.z2six.featheredfriend.log.RavenLogCategory;
 import net.z2six.featheredfriend.network.FFNetwork;
 import net.z2six.featheredfriend.registry.FFEntities;
@@ -267,7 +268,11 @@ public final class RavenLinkRuntime {
                 }
             }
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] onServerTickPre failed safely: {}", t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.onServerTickPre", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] onServerTickPre failed safely", t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] onServerTickPre failed safely: {}", t.toString());
+            }
         }
     }
 
@@ -494,8 +499,13 @@ public final class RavenLinkRuntime {
             );
             session.lastInputGameTime = owner.serverLevel().getGameTime();
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] handleLinkInput failed safely for player='{}': {}",
-                    safePlayerName(owner), t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.handleLinkInput", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] handleLinkInput failed safely for player='{}'",
+                        safePlayerName(owner), t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] handleLinkInput failed safely for player='{}': {}",
+                        safePlayerName(owner), t.toString());
+            }
         }
     }
 
@@ -779,6 +789,16 @@ public final class RavenLinkRuntime {
                 applyLinkedRavenState(raven);
                 FFNetwork.sendRavenLinkOwnerVisibilityToAll(server, owner.getId(), true);
 
+                try {
+                    LOG.info("[RavenLinkRuntime] Raven Link started owner='{}' ravenId={} dim={} pos={}",
+                            safePlayerName(owner),
+                            raven.getId(),
+                            owner.serverLevel().dimension().location(),
+                            owner.blockPosition().toShortString()
+                    );
+                } catch (Throwable ignored) {
+                }
+
                 RavenLogService.logForPlayerKey(
                         owner.serverLevel(),
                         owner.getUUID(),
@@ -934,6 +954,28 @@ public final class RavenLinkRuntime {
                 } catch (Throwable ignored) {
                 }
             }
+
+            try {
+                String ownerName = owner == null ? "<offline>" : safePlayerName(owner);
+                long now = 0L;
+                try {
+                    if (owner != null) {
+                        now = owner.serverLevel().getGameTime();
+                    } else if (server != null && server.overworld() != null) {
+                        now = server.overworld().getGameTime();
+                    }
+                } catch (Throwable ignored) {
+                }
+                long startedAt = Math.max(0L, session.linkStartedAtGameTime);
+                long durationTicks = (now > 0L && startedAt > 0L) ? Math.max(0L, now - startedAt) : -1L;
+
+                LOG.info("[RavenLinkRuntime] Raven Link ended owner='{}' reason='{}' durationTicks={}",
+                        ownerName,
+                        reason,
+                        durationTicks
+                );
+            } catch (Throwable ignored) {
+            }
         } catch (Throwable t) {
             LOG.warn("[RavenLinkRuntime] stopSession failed safely owner={} reason='{}': {}",
                     owner == null ? "<offline>" : safePlayerName(owner),
@@ -1028,8 +1070,12 @@ public final class RavenLinkRuntime {
             raven.setDeltaMovement(blended);
             raven.hurtMarked = true;
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] tickManualMovement failed safely for raven id={}: {}",
-                    raven.getId(), t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.tickManualMovement", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] tickManualMovement failed safely for raven id={}", raven.getId(), t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] tickManualMovement failed safely for raven id={}: {}",
+                        raven.getId(), t.toString());
+            }
         }
     }
 
@@ -1109,9 +1155,14 @@ public final class RavenLinkRuntime {
                 );
             }
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] restoreOwnerAfterLink failed safely owner={}: {}",
-                    owner == null ? "<offline>" : safePlayerName(owner),
-                    t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.restoreOwnerAfterLink", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] restoreOwnerAfterLink failed safely owner={}",
+                        owner == null ? "<offline>" : safePlayerName(owner), t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] restoreOwnerAfterLink failed safely owner={}: {}",
+                        owner == null ? "<offline>" : safePlayerName(owner),
+                        t.toString());
+            }
         }
     }
 
@@ -1146,8 +1197,13 @@ public final class RavenLinkRuntime {
             raven.fallDistance = owner.fallDistance;
             raven.hurtMarked = true;
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] syncRavenToOwner failed safely owner='{}' ravenId={}: {}",
-                    safePlayerName(owner), raven.getId(), t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.syncRavenToOwner", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] syncRavenToOwner failed safely owner='{}' ravenId={}",
+                        safePlayerName(owner), raven.getId(), t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] syncRavenToOwner failed safely owner='{}' ravenId={}: {}",
+                        safePlayerName(owner), raven.getId(), t.toString());
+            }
         }
     }
 
@@ -1169,24 +1225,31 @@ public final class RavenLinkRuntime {
                         String vehicleInfo = vehicle == null
                                 ? "none"
                                 : vehicle.getType().toShortString() + "#" + vehicle.getId();
-                        LOG.info(
-                                "[RavenLinkMountFail] owner='{}' ravenId={} started={} mounted={} ravenPassenger={} vehicle={} ownerPassengers={}",
-                                safePlayerName(owner),
-                                raven.getId(),
-                                started,
-                                mounted,
-                                raven.isPassenger(),
-                                vehicleInfo,
-                                owner.getPassengers().size()
-                        );
+                        if (FFLogThrottle.shouldLog("RavenLinkRuntime.mount_fail_summary", 30_000L)) {
+                            LOG.warn(
+                                    "[RavenLinkMountFail] owner='{}' ravenId={} started={} mounted={} ravenPassenger={} vehicle={} ownerPassengers={}",
+                                    safePlayerName(owner),
+                                    raven.getId(),
+                                    started,
+                                    mounted,
+                                    raven.isPassenger(),
+                                    vehicleInfo,
+                                    owner.getPassengers().size()
+                            );
+                        }
                     }
                 } catch (Throwable ignored) {
                 }
             }
             return mounted;
         } catch (Throwable t) {
-            LOG.info("[RavenLinkRuntime] ensureRavenMountedToOwner failed safely owner='{}' ravenId={}: {}",
-                    safePlayerName(owner), raven.getId(), t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.ensureRavenMountedToOwner", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] ensureRavenMountedToOwner failed safely owner='{}' ravenId={}",
+                        safePlayerName(owner), raven.getId(), t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] ensureRavenMountedToOwner failed safely owner='{}' ravenId={}: {}",
+                        safePlayerName(owner), raven.getId(), t.toString());
+            }
             return false;
         }
     }
@@ -1212,8 +1275,13 @@ public final class RavenLinkRuntime {
             owner.setPose(Pose.STANDING);
             session.lastInputGameTime = owner.serverLevel().getGameTime();
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] enforceOwnerLinkState failed safely for player='{}': {}",
-                    safePlayerName(owner), t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.enforceOwnerLinkState", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] enforceOwnerLinkState failed safely for player='{}'",
+                        safePlayerName(owner), t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] enforceOwnerLinkState failed safely for player='{}': {}",
+                        safePlayerName(owner), t.toString());
+            }
         }
     }
 
@@ -1240,7 +1308,11 @@ public final class RavenLinkRuntime {
             return f;
         } catch (Throwable t) {
             ENTITY_NO_PHYSICS_FIELD_LOOKED_UP = true;
-            LOG.debug("[RavenLinkRuntime] getEntityNoPhysicsField unavailable: {}", t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.getEntityNoPhysicsField", 60_000L)) {
+                LOG.warn("[RavenLinkRuntime] getEntityNoPhysicsField unavailable", t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] getEntityNoPhysicsField unavailable: {}", t.toString());
+            }
             return null;
         }
     }
@@ -1288,8 +1360,13 @@ public final class RavenLinkRuntime {
                 );
             }
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] enforceOwnerFreeze failed safely for player='{}': {}",
-                    safePlayerName(owner), t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.enforceOwnerFreeze", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] enforceOwnerFreeze failed safely for player='{}'",
+                        safePlayerName(owner), t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] enforceOwnerFreeze failed safely for player='{}': {}",
+                        safePlayerName(owner), t.toString());
+            }
         }
     }
 
@@ -1312,9 +1389,14 @@ public final class RavenLinkRuntime {
                     session.lastStreamRadius
             );
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] sendRavenLinkState failed safely for owner='{}': {}",
-                    safePlayerName(owner),
-                    t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.sendRavenLinkState", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] sendRavenLinkState failed safely for owner='{}'",
+                        safePlayerName(owner), t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] sendRavenLinkState failed safely for owner='{}': {}",
+                        safePlayerName(owner),
+                        t.toString());
+            }
         }
     }
 
@@ -1384,8 +1466,13 @@ public final class RavenLinkRuntime {
             raven.setAnimMode(RavenAnimMode.NO_AIR);
             playTeleportFx(targetLevel, raven, "raven-link-return-perch.to", true, false);
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] returnRavenToAssignedPerch failed safely for raven id={}: {}",
-                    raven.getId(), t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.returnRavenToAssignedPerch", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] returnRavenToAssignedPerch failed safely for raven id={}",
+                        raven.getId(), t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] returnRavenToAssignedPerch failed safely for raven id={}: {}",
+                        raven.getId(), t.toString());
+            }
             raven.setAnimMode(RavenAnimMode.AUTO);
         }
     }
@@ -1473,8 +1560,13 @@ public final class RavenLinkRuntime {
             session.lastChunksLoaded = 0;
             session.lastStreamRadius = viewDistance;
         } catch (Throwable t) {
-            LOG.warn("[RavenLinkRuntime] tickRemoteStream failed safely owner='{}': {}",
-                    safePlayerName(owner), t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.tickRemoteStream", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] tickRemoteStream failed safely owner='{}'",
+                        safePlayerName(owner), t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] tickRemoteStream failed safely owner='{}': {}",
+                        safePlayerName(owner), t.toString());
+            }
             session.forcedStopReason = "stream_failed";
         }
     }
@@ -1503,7 +1595,11 @@ public final class RavenLinkRuntime {
             session.ticketDimension = level.dimension();
             session.ticketChunk = targetChunk;
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] ensureStreamTicket failed safely: {}", t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.ensureStreamTicket", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] ensureStreamTicket failed safely", t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] ensureStreamTicket failed safely: {}", t.toString());
+            }
         }
     }
 
@@ -1531,7 +1627,11 @@ public final class RavenLinkRuntime {
             session.effigyTicketDimension = level.dimension();
             session.effigyTicketChunk = targetChunk;
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] ensureEffigyTicket failed safely: {}", t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.ensureEffigyTicket", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] ensureEffigyTicket failed safely", t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] ensureEffigyTicket failed safely: {}", t.toString());
+            }
         }
     }
 
@@ -1551,7 +1651,11 @@ public final class RavenLinkRuntime {
                 );
             }
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] clearStreamTicket failed safely: {}", t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.clearStreamTicket", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] clearStreamTicket failed safely", t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] clearStreamTicket failed safely: {}", t.toString());
+            }
         } finally {
             session.ticketDimension = null;
             session.ticketChunk = null;
@@ -1574,7 +1678,11 @@ public final class RavenLinkRuntime {
                 );
             }
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] clearEffigyTicket failed safely: {}", t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.clearEffigyTicket", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] clearEffigyTicket failed safely", t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] clearEffigyTicket failed safely: {}", t.toString());
+            }
         } finally {
             session.effigyTicketDimension = null;
             session.effigyTicketChunk = null;
@@ -1611,9 +1719,14 @@ public final class RavenLinkRuntime {
             session.lastChunksLoaded = 0;
             session.lastStreamRadius = 0;
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] restoreOwnerChunkStreaming failed safely owner={}: {}",
-                    owner == null ? "<offline>" : safePlayerName(owner),
-                    t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.restoreOwnerChunkStreaming", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] restoreOwnerChunkStreaming failed safely owner={}",
+                        owner == null ? "<offline>" : safePlayerName(owner), t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] restoreOwnerChunkStreaming failed safely owner={}: {}",
+                        owner == null ? "<offline>" : safePlayerName(owner),
+                        t.toString());
+            }
         }
     }
 
@@ -1682,9 +1795,14 @@ public final class RavenLinkRuntime {
             session.lastStreamRadius = radius;
             session.nextManualResyncGameTime = now + MANUAL_STREAM_FULL_RESYNC_INTERVAL_TICKS;
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] tickManualChunkStream failed safely owner='{}': {}",
-                    safePlayerName(owner),
-                    t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.tickManualChunkStream", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] tickManualChunkStream failed safely owner='{}'",
+                        safePlayerName(owner), t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] tickManualChunkStream failed safely owner='{}': {}",
+                        safePlayerName(owner),
+                        t.toString());
+            }
         }
     }
 
@@ -1726,9 +1844,14 @@ public final class RavenLinkRuntime {
             session.manualStreamCenter = center;
             session.manualStreamRadius = radius;
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] rebuildManualChunkTargets failed safely owner='{}': {}",
-                    safePlayerName(owner),
-                    t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.rebuildManualChunkTargets", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] rebuildManualChunkTargets failed safely owner='{}'",
+                        safePlayerName(owner), t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] rebuildManualChunkTargets failed safely owner='{}': {}",
+                        safePlayerName(owner),
+                        t.toString());
+            }
         }
     }
 
@@ -1770,9 +1893,14 @@ public final class RavenLinkRuntime {
                     ));
             owner.connection.send(packet);
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] sendChunkDirect failed safely owner='{}': {}",
-                    safePlayerName(owner),
-                    t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.sendChunkDirect", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] sendChunkDirect failed safely owner='{}'",
+                        safePlayerName(owner), t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] sendChunkDirect failed safely owner='{}': {}",
+                        safePlayerName(owner),
+                        t.toString());
+            }
         }
     }
 
@@ -1791,8 +1919,13 @@ public final class RavenLinkRuntime {
             method.invoke(chunkMap, owner, targetView);
             return true;
         } catch (Throwable t) {
-            LOG.warn("[RavenLinkRuntime] applyChunkTrackingView failed safely owner='{}': {}",
-                    safePlayerName(owner), t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.applyChunkTrackingView", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] applyChunkTrackingView failed safely owner='{}'",
+                        safePlayerName(owner), t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] applyChunkTrackingView failed safely owner='{}': {}",
+                        safePlayerName(owner), t.toString());
+            }
             return false;
         }
     }
@@ -1873,8 +2006,13 @@ public final class RavenLinkRuntime {
             PLAYER_CHUNK_SENDER_MAX_UNACKED_BATCHES_FIELD.setInt(sender, 0);
             PLAYER_CHUNK_SENDER_BATCH_QUOTA_FIELD.setFloat(sender, 0.0F);
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] suppressVanillaChunkSender failed safely owner='{}': {}",
-                    safePlayerName(owner), t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.suppressVanillaChunkSender", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] suppressVanillaChunkSender failed safely owner='{}'",
+                        safePlayerName(owner), t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] suppressVanillaChunkSender failed safely owner='{}': {}",
+                        safePlayerName(owner), t.toString());
+            }
         }
     }
 
@@ -1897,8 +2035,13 @@ public final class RavenLinkRuntime {
             PLAYER_CHUNK_SENDER_MAX_UNACKED_BATCHES_FIELD.setInt(sender, 1);
             PLAYER_CHUNK_SENDER_BATCH_QUOTA_FIELD.setFloat(sender, 1.0F);
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] restoreVanillaChunkSender failed safely owner='{}': {}",
-                    safePlayerName(owner), t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.restoreVanillaChunkSender", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] restoreVanillaChunkSender failed safely owner='{}'",
+                        safePlayerName(owner), t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] restoreVanillaChunkSender failed safely owner='{}': {}",
+                        safePlayerName(owner), t.toString());
+            }
         }
     }
 
@@ -2242,8 +2385,13 @@ public final class RavenLinkRuntime {
             ensureEffigyTicket(session, anchorLevel, effigy.chunkPosition());
             return effigy;
         } catch (Throwable t) {
-            LOG.debug("[RavenLinkRuntime] spawnEffigyForSession failed safely owner='{}': {}",
-                    safePlayerName(owner), t.toString());
+            if (FFLogThrottle.shouldLog("RavenLinkRuntime.spawnEffigyForSession", 10_000L)) {
+                LOG.warn("[RavenLinkRuntime] spawnEffigyForSession failed safely owner='{}'",
+                        safePlayerName(owner), t);
+            } else {
+                LOG.debug("[RavenLinkRuntime] spawnEffigyForSession failed safely owner='{}': {}",
+                        safePlayerName(owner), t.toString());
+            }
             return null;
         }
     }

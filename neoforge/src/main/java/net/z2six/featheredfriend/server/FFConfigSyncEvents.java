@@ -8,6 +8,7 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.z2six.featheredfriend.config.FFServerConfig;
 import net.z2six.featheredfriend.network.FFPayloads;
 import net.z2six.featheredfriend.world.RavenLogService;
+import net.z2six.featheredfriend.log.FFLogThrottle;
 import org.slf4j.Logger;
 
 /**
@@ -167,7 +168,11 @@ public final class FFConfigSyncEvents {
                 try {
                     RavenLogService.pruneAll(overworld);
                 } catch (Throwable t) {
-                    LOG.warn("[FFConfigSyncEvents] RavenLog prune failed safely: {}", t.toString());
+                    if (FFLogThrottle.shouldLog("FFConfigSyncEvents.RavenLog.pruneAll", 30_000L)) {
+                        LOG.warn("[FFConfigSyncEvents] RavenLog prune failed safely", t);
+                    } else {
+                        LOG.debug("[FFConfigSyncEvents] RavenLog prune failed safely: {}", t.toString());
+                    }
                 }
             }
 
@@ -181,22 +186,24 @@ public final class FFConfigSyncEvents {
 
             FFPayloads.broadcastSettings(overworld);
 
+            LOG.info("[FFConfigSyncEvents] Broadcast server settings due to {} (chatDisabled={} suspiciousFeather={} suspiciousChest={} ravenArmor={} mailbox={} wildRavensPerPlayer={} ravenChestsPerPlayer={} ravenLinkDurationSeconds={})",
+                    changed ? "config-change" : "request",
+                    chatDisabledNow,
+                    enableSuspiciousFeatherNow,
+                    enableSuspiciousChestNow,
+                    enableRavenArmorNow,
+                    enableMailboxNow,
+                    wildRavensPerPlayerNow,
+                    ravenChestsPerPlayerNow,
+                    ravenLinkDurationSecondsNow);
+
             if (LOG.isDebugEnabled()) {
-                LOG.debug("[FFConfigSyncEvents] Broadcast settings due to {} (chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} wildRavensPerPlayer={} ravenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} ravenLinkDurationSeconds={} allowServerSettingsScreenEditing={})",
-                        changed ? "config-change" : "request",
-                        chatDisabledNow,
-                        enableSuspiciousFeatherNow,
-                        enableSuspiciousChestNow,
-                        enableRavenArmorNow,
-                        enableMailboxNow,
-                        wildRavensPerPlayerNow,
-                        ravenChestsPerPlayerNow,
+                LOG.debug("[FFConfigSyncEvents] Broadcast settings full snapshot (ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} allowServerSettingsScreenEditing={})",
                         ravenLogRetentionMinutesNow,
                         ravenLogMaxBytesPerPlayerNow,
                         enderpackDepositCooldownSecondsNow,
                         scrollDeliveryCooldownSecondsNow,
                         courierTimeoutRetrySecondsNow,
-                        ravenLinkDurationSecondsNow,
                         allowServerSettingsScreenEditingNow);
             }
         } catch (Throwable t) {

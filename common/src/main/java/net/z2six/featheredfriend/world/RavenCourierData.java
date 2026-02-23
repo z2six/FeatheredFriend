@@ -711,6 +711,26 @@ public class RavenCourierData extends SavedData {
         return List.copyOf(list);
     }
 
+    /**
+     * Fast "is empty" check used by runtime tick loops to avoid allocations when there are no jobs.
+     */
+    public boolean hasAnyJobs() {
+        try {
+            if (jobsByRecipient.isEmpty()) {
+                return false;
+            }
+            for (List<DeliveryJob> list : jobsByRecipient.values()) {
+                if (list != null && !list.isEmpty()) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (Throwable t) {
+            LOG.error("[RavenCourierData] hasAnyJobs failed safely: {}", t.toString());
+            return false;
+        }
+    }
+
     @NotNull
     public List<DeliveryJob> getAllJobsFlat() {
         List<DeliveryJob> out = new ArrayList<>();

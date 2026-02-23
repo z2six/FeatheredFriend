@@ -41,6 +41,7 @@ import net.z2six.featheredfriend.entity.raven.modules.TamedRaven;
 import net.z2six.featheredfriend.entity.raven.modules.Teleportation;
 import net.z2six.featheredfriend.item.EnderpackStorage;
 import net.z2six.featheredfriend.log.RavenLogCategory;
+import net.z2six.featheredfriend.log.FFLogThrottle;
 import net.z2six.featheredfriend.network.RavenChestChoiceInfo;
 import net.z2six.featheredfriend.network.RavenChestSelectAction;
 import net.z2six.featheredfriend.platform.Services;
@@ -65,6 +66,7 @@ import net.minecraft.world.InteractionResult;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -150,6 +152,9 @@ public final class TamedRavenScrollWatcher {
 
     /** How often we run a server-wide lifecycle sweep for scroll-summoned ravens. */
     private static final int SCROLL_GLOBAL_LIFECYCLE_INTERVAL_TICKS = 20; // 1s
+
+    /** How often we try to discover legacy/unindexed scroll-summoned ravens near online players. */
+    private static final int SCROLL_DISCOVERY_INTERVAL_TICKS = 100; // 5s
 
     private static final class ScrollRavenCache {
         private long lastScanGameTime = 0L;
@@ -342,6 +347,7 @@ public final class TamedRavenScrollWatcher {
     }
 
     private static long lastScrollSummonedLifecycleTick = -1L;
+    private static long lastScrollSummonedDiscoveryTick = -1L;
 
     /**
      * Server-wide lifecycle sweep for scroll-summoned ravens.
@@ -366,44 +372,181 @@ public final class TamedRavenScrollWatcher {
             }
             lastScrollSummonedLifecycleTick = nowOverworld;
 
+            tickIndexedScrollSummonedRavens(server, overworld);
+            discoverAndTickUnindexedScrollSummonedRavens(server, overworld, nowOverworld);
+        } catch (Throwable t) {
+            LOG.error("[TamedRavenScrollWatcher] tickScrollSummonedRavenLifecycle failed safely", t);
+        }
+    }
+
+    private static void tickIndexedScrollSummonedRavens(@NotNull MinecraftServer server, @NotNull ServerLevel overworld) {
+        try {
+            ScrollSummonedRavenIndexData index = ScrollSummonedRavenIndexData.get(overworld);
+            List<ScrollSummonedRavenIndexData.Entry> entries = index.getAllEntries();
+            if (entries.isEmpty()) {
+                return;
+            }
+
+            for (ScrollSummonedRavenIndexData.Entry entry : entries) {
+                if (entry == null || entry.ownerUuid() == null || entry.ravenUuid() == null) {
+                    continue;
+                }
+
+                RavenEntity raven = resolveRavenFromIndexEntry(server, entry);
+                if (raven == null) {
+                    // Raven may simply be unloaded right now; keep the entry so it can be handled when it loads again.
+                    continue;
+                }
+                if (!raven.isAlive() || raven.isRemoved()) {
+                    index.removeIfMatches(entry.ownerUuid(), entry.ravenUuid());
+                    continue;
+                }
+
+                if (!isScrollSummonedRaven(raven)) {
+                    index.removeIfMatches(entry.ownerUuid(), entry.ravenUuid());
+                    continue;
+                }
+
+                if (!(raven.level() instanceof ServerLevel ravenLevel)) {
+                    index.removeIfMatches(entry.ownerUuid(), entry.ravenUuid());
+                    continue;
+                }
+
+                tickOneScrollSummonedRaven(server, ravenLevel, raven, ravenLevel.getGameTime());
+
+                if (raven.isRemoved() || !raven.isAlive()) {
+                    index.removeIfMatches(entry.ownerUuid(), entry.ravenUuid());
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static @Nullable RavenEntity resolveRavenFromIndexEntry(@NotNull MinecraftServer server,
+                                                                    @NotNull ScrollSummonedRavenIndexData.Entry entry) {
+        try {
+            UUID ravenUuid = entry.ravenUuid();
+            if (ravenUuid == null) {
+                return null;
+            }
+
+            // Fast path: use the stored dimension if available.
+            String dimId = entry.dimensionId();
+            if (dimId != null && !dimId.isBlank()) {
+                ResourceLocation dimLoc = ResourceLocation.tryParse(dimId);
+                if (dimLoc != null) {
+                    ResourceKey<Level> dimKey = ResourceKey.create(Registries.DIMENSION, dimLoc);
+                    ServerLevel level = server.getLevel(dimKey);
+                    if (level != null) {
+                        Entity e = level.getEntity(ravenUuid);
+                        if (e instanceof RavenEntity r) {
+                            return r;
+                        }
+                    }
+                }
+            }
+
+            // Fallback: search all levels (in case the raven moved dimensions).
             for (ServerLevel level : server.getAllLevels()) {
                 if (level == null) {
                     continue;
                 }
+                Entity e = level.getEntity(ravenUuid);
+                if (e instanceof RavenEntity r) {
+                    return r;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
 
-                long now = level.getGameTime();
+    /**
+     * Safety net:
+     * - If a scroll-summoned raven exists but isn't in the persistent index (old version, crash, etc),
+     *   we still want to find it once it becomes loaded and clean it up even when the owner is offline.
+     *
+     * This stays cheap by scanning only around online players (loaded areas) and running infrequently.
+     */
+    private static void discoverAndTickUnindexedScrollSummonedRavens(@NotNull MinecraftServer server,
+                                                                     @NotNull ServerLevel overworld,
+                                                                     long nowOverworld) {
+        try {
+            if (lastScrollSummonedDiscoveryTick > 0L
+                    && (nowOverworld - lastScrollSummonedDiscoveryTick) < SCROLL_DISCOVERY_INTERVAL_TICKS) {
+                return;
+            }
+            lastScrollSummonedDiscoveryTick = nowOverworld;
 
-                WorldBorder border = level.getWorldBorder();
-                double cx = border.getCenterX();
-                double cz = border.getCenterZ();
-                double half = Math.min(border.getSize() * 0.5D, 30_000_000D);
-                AABB worldBox = new AABB(
-                        cx - half,
-                        level.getMinBuildHeight(),
-                        cz - half,
-                        cx + half,
-                        level.getMaxBuildHeight(),
-                        cz + half
-                );
+            List<ServerPlayer> players = server.getPlayerList().getPlayers();
+            if (players == null || players.isEmpty()) {
+                return;
+            }
 
-                List<RavenEntity> candidates = level.getEntitiesOfClass(
+            ScrollSummonedRavenIndexData index = ScrollSummonedRavenIndexData.get(overworld);
+            Set<UUID> handledRavens = new HashSet<>();
+
+            for (ServerPlayer player : players) {
+                if (player == null || !player.isAlive() || player.isRemoved()) {
+                    continue;
+                }
+
+                ServerLevel level = player.serverLevel();
+                if (level == null) {
+                    continue;
+                }
+
+                AABB box = new AABB(player.blockPosition()).inflate(128.0D);
+                List<RavenEntity> ravens = level.getEntitiesOfClass(
                         RavenEntity.class,
-                        worldBox,
-                        e -> e != null && e.isAlive() && !e.isRemoved()
+                        box,
+                        r -> r != null && r.isAlive() && !r.isRemoved() && isScrollSummonedRaven(r)
                 );
+                if (ravens.isEmpty()) {
+                    continue;
+                }
 
-                for (RavenEntity raven : candidates) {
+                for (RavenEntity raven : ravens) {
                     if (raven == null || !raven.isAlive() || raven.isRemoved()) {
                         continue;
                     }
-                    if (!isScrollSummonedRaven(raven)) {
+                    UUID ravenId = raven.getUUID();
+                    if (ravenId == null || handledRavens.contains(ravenId)) {
                         continue;
                     }
-                    tickOneScrollSummonedRaven(server, level, raven, now);
+                    handledRavens.add(ravenId);
+
+                    UUID ownerId = null;
+                    try {
+                        ownerId = raven.getOwnerUUID();
+                    } catch (Throwable ignored) {
+                    }
+                    if (ownerId == null) {
+                        try {
+                            CompoundTag root = raven.getPersistentData();
+                            CompoundTag ffTag = root == null ? null : root.getCompound(Constants.MOD_ID);
+                            if (ffTag != null && ffTag.contains(NBT_SCROLL_SUMMONED_OWNER, Tag.TAG_STRING)) {
+                                ownerId = UUID.fromString(ffTag.getString(NBT_SCROLL_SUMMONED_OWNER));
+                            }
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                    if (ownerId == null) {
+                        continue;
+                    }
+
+                    ScrollSummonedRavenIndexData.Entry existing = index.getForOwner(ownerId);
+                    if (existing != null && existing.ravenUuid() != null && !existing.ravenUuid().equals(ravenId)) {
+                        // Prefer the already-indexed raven to avoid churn. Dedup will clean this later for online owners.
+                        despawnOneScrollSummonedRavenOwnerUnavailable(level, raven, "duplicate scroll raven discovered (unindexed)");
+                        continue;
+                    }
+
+                    index.setForOwner(ownerId, ravenId, level.dimension().location().toString());
+                    tickOneScrollSummonedRaven(server, level, raven, level.getGameTime());
                 }
             }
-        } catch (Throwable t) {
-            LOG.error("[TamedRavenScrollWatcher] tickScrollSummonedRavenLifecycle failed safely", t);
+        } catch (Throwable ignored) {
         }
     }
 
@@ -1187,6 +1330,10 @@ public final class TamedRavenScrollWatcher {
             }
 
             level.addFreshEntity(raven);
+            try {
+                ScrollSummonedRavenIndexData.get(level).setForOwner(owner.getUUID(), raven.getUUID(), level.dimension().location().toString());
+            } catch (Throwable ignored) {
+            }
 
             playScrollSummonSpawnFx(level, owner, raven);
             LOG.debug("[TamedRavenScrollWatcher] spawnSummonedRaven: spawned id={} name='{}' for player='{}' at {}",
@@ -3318,8 +3465,13 @@ public final class TamedRavenScrollWatcher {
             setEquippedCurio.invoke(curiosHandler, identifier, index, stack);
             return true;
         } catch (Throwable t) {
-            LOG.debug("[TamedRavenScrollWatcher] tryReturnEnderpackToCuriosSlot failed safely for player='{}': {}",
-                    safePlayerName(player), t.toString());
+            if (FFLogThrottle.shouldLog("TamedRavenScrollWatcher.tryReturnEnderpackToCuriosSlot", 30_000L)) {
+                LOG.warn("[TamedRavenScrollWatcher] tryReturnEnderpackToCuriosSlot failed safely for player='{}'",
+                        safePlayerName(player), t);
+            } else {
+                LOG.debug("[TamedRavenScrollWatcher] tryReturnEnderpackToCuriosSlot failed safely for player='{}': {}",
+                        safePlayerName(player), t.toString());
+            }
             return false;
         }
     }
@@ -3500,6 +3652,29 @@ public final class TamedRavenScrollWatcher {
     }
 
     private static void clearScrollSummonedTracking(@NotNull RavenEntity raven) {
+        try {
+            if (raven.level() instanceof ServerLevel level) {
+                UUID ownerId = null;
+                try {
+                    ownerId = raven.getOwnerUUID();
+                } catch (Throwable ignored) {
+                }
+                if (ownerId == null) {
+                    try {
+                        CompoundTag root = raven.getPersistentData();
+                        CompoundTag ffTag = root == null ? null : root.getCompound(Constants.MOD_ID);
+                        if (ffTag != null && ffTag.contains(NBT_SCROLL_SUMMONED_OWNER, Tag.TAG_STRING)) {
+                            ownerId = UUID.fromString(ffTag.getString(NBT_SCROLL_SUMMONED_OWNER));
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                }
+                if (ownerId != null) {
+                    ScrollSummonedRavenIndexData.get(level).removeIfMatches(ownerId, raven.getUUID());
+                }
+            }
+        } catch (Throwable ignored) {
+        }
         try {
             if (raven.getTags().contains(TAG_SCROLL_SUMMONED)) {
                 raven.removeTag(TAG_SCROLL_SUMMONED);

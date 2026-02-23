@@ -31,6 +31,7 @@ All notable changes to this project will be documented in this file.
 - Jade hidden during Raven Link
 - Opening chat no longer exits Raven Link
 - Additional JEI compatibility
+- Turned back on and added some INFO-level logs for future bugfixing
 
 ## [1.7.0.0-InDev]
 

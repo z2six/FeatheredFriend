@@ -53,6 +53,7 @@ import net.z2six.featheredfriend.entity.raven.RavenVariant;
 import net.z2six.featheredfriend.entity.raven.modules.TamedRaven;
 import net.z2six.featheredfriend.entity.raven.modules.Teleportation;
 import net.z2six.featheredfriend.log.RavenLogCategory;
+import net.z2six.featheredfriend.log.FFLogThrottle;
 import net.z2six.featheredfriend.registry.FFBlocks;
 import net.z2six.featheredfriend.registry.FFEntities;
 import net.z2six.featheredfriend.world.TamedRavenPlayerData;
@@ -329,6 +330,9 @@ public final class RavenCourierRuntime {
             }
 
             RavenCourierData data = RavenCourierData.get(overworld);
+            if (!fullScan && !data.hasAnyJobs()) {
+                return;
+            }
             List<RavenCourierData.DeliveryJob> allJobs = data.getAllJobsFlat();
 
             Set<UUID> busySenders = new HashSet<>();
@@ -522,6 +526,17 @@ public final class RavenCourierRuntime {
                 LOG.warn("[RavenCourierRuntime] handleCourierRavenFailure: failed to mark jobId={} as failed (reason='{}'; still despawning raven).",
                         job.jobId, failureReason);
             }
+
+            try {
+                LOG.info("[RavenCourierRuntime] Courier job failed jobId={} reason='{}' sender='{}' recipient='{}'",
+                        job.jobId,
+                        failureReason,
+                        job.senderName,
+                        job.recipientName
+                );
+            } catch (Throwable ignored) {
+            }
+
             logToJobParticipants(
                     level,
                     job,
@@ -1248,6 +1263,12 @@ public final class RavenCourierRuntime {
                     maybeRespawnSenderPerchRavenForJob(level, job, false);
                 }
 
+                try {
+                    LOG.info("[RavenCourierRuntime] Mailbox delivery completed jobId={} sender='{}' recipient='{}'",
+                            job.jobId, job.senderName, job.recipientName);
+                } catch (Throwable ignored) {
+                }
+
                 return true;
             }
 
@@ -1280,8 +1301,13 @@ public final class RavenCourierRuntime {
             return true;
 
         } catch (Throwable t) {
-            LOG.warn("[RavenCourierRuntime] tickMailboxCourierMode failed safely for raven id={} jobId={}: {}",
-                    raven.getId(), job.jobId, t.toString());
+            if (FFLogThrottle.shouldLog("RavenCourierRuntime.tickMailboxCourierMode", 10_000L)) {
+                LOG.warn("[RavenCourierRuntime] tickMailboxCourierMode failed safely for raven id={} jobId={}",
+                        raven.getId(), job.jobId, t);
+            } else {
+                LOG.debug("[RavenCourierRuntime] tickMailboxCourierMode failed safely for raven id={} jobId={}: {}",
+                        raven.getId(), job.jobId, t.toString());
+            }
             return false;
         }
     }
@@ -1321,7 +1347,14 @@ public final class RavenCourierRuntime {
             }
             RavenBadgeRuntime.onCourierJobUpdated(level, job.senderUuid, RavenBadgeEventType.NONE);
             return true;
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            if (FFLogThrottle.shouldLog("RavenCourierRuntime.cancelInFlightCourierDelivery", 10_000L)) {
+                LOG.warn("[RavenCourierRuntime] cancelInFlightCourierDelivery failed safely jobId={} reason='{}'",
+                        job.jobId, reason, t);
+            } else {
+                LOG.debug("[RavenCourierRuntime] cancelInFlightCourierDelivery failed safely jobId={} reason='{}': {}",
+                        job.jobId, reason, t.toString());
+            }
             return false;
         }
     }
@@ -1354,7 +1387,13 @@ public final class RavenCourierRuntime {
             }
 
             return cancelInFlightCourierDelivery(server, level, data, raven, job, "recipient offline (re-queued)");
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            if (FFLogThrottle.shouldLog("RavenCourierRuntime.handleInFlightRecipientOffline", 10_000L)) {
+                LOG.warn("[RavenCourierRuntime] handleInFlightRecipientOffline failed safely jobId={}", job.jobId, t);
+            } else {
+                LOG.debug("[RavenCourierRuntime] handleInFlightRecipientOffline failed safely jobId={}: {}",
+                        job.jobId, t.toString());
+            }
             return false;
         }
     }
@@ -1418,11 +1457,27 @@ public final class RavenCourierRuntime {
                     job.jobId
             );
 
+            try {
+                LOG.info("[RavenCourierRuntime] Redirected courier jobId={} to mailbox (recipient offline) sender='{}' recipient='{}' mailboxDim='{}' mailboxPos={}",
+                        job.jobId,
+                        job.senderName,
+                        job.recipientName,
+                        target.dimensionId(),
+                        BlockPos.of(target.blockPos()).toShortString()
+                );
+            } catch (Throwable ignored) {
+            }
+
             return true;
 
         } catch (Throwable t) {
-            LOG.warn("[RavenCourierRuntime] tryDeliverOfflineRecipientToMailbox failed safely for jobId={}: {}",
-                    job.jobId, t.toString());
+            if (FFLogThrottle.shouldLog("RavenCourierRuntime.tryDeliverOfflineRecipientToMailbox", 10_000L)) {
+                LOG.warn("[RavenCourierRuntime] tryDeliverOfflineRecipientToMailbox failed safely for jobId={}",
+                        job.jobId, t);
+            } else {
+                LOG.debug("[RavenCourierRuntime] tryDeliverOfflineRecipientToMailbox failed safely for jobId={}: {}",
+                        job.jobId, t.toString());
+            }
             return false;
         }
     }
@@ -1494,11 +1549,28 @@ public final class RavenCourierRuntime {
                     job.jobId
             );
 
+            try {
+                LOG.info("[RavenCourierRuntime] Dispatched courier jobId={} to mailbox (recipient offline) sender='{}' recipient='{}' mailboxDim='{}' mailboxPos={}",
+                        job.jobId,
+                        job.senderName,
+                        job.recipientName,
+                        target.dimensionId(),
+                        BlockPos.of(target.blockPos()).toShortString()
+                );
+            } catch (Throwable ignored) {
+            }
+
             return true;
 
         } catch (Throwable t) {
-            LOG.warn("[RavenCourierRuntime] tryDeliverQueuedJobToOfflineRecipientMailbox failed safely for jobId={}: {}",
-                    job == null ? -1L : job.jobId, t.toString());
+            long jobId = job == null ? -1L : job.jobId;
+            if (FFLogThrottle.shouldLog("RavenCourierRuntime.tryDeliverQueuedJobToOfflineRecipientMailbox", 10_000L)) {
+                LOG.warn("[RavenCourierRuntime] tryDeliverQueuedJobToOfflineRecipientMailbox failed safely for jobId={}",
+                        jobId, t);
+            } else {
+                LOG.debug("[RavenCourierRuntime] tryDeliverQueuedJobToOfflineRecipientMailbox failed safely for jobId={}: {}",
+                        jobId, t.toString());
+            }
             return false;
         }
     }
