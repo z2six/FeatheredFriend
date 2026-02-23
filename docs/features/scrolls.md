@@ -12,7 +12,7 @@ If you just want the short version:
 6. Give the **Sealed Scroll** to your tamed Raven.
 
 <figure markdown>
-![Writing a scroll message](../assets/images/features/scrolls/writing-message-in-scroll.jpg)
+![Writing a scroll message](../assets/images/features/scrolls/writing-message-in-scroll.png)
 <figcaption>Scroll editor (Unsealed Scroll). This is where the whole thing starts.</figcaption>
 </figure>
 
@@ -45,7 +45,7 @@ Right-click an **Unsealed Scroll** to open the editor.
 Click into the **Recipient** line while it's empty, and you'll get a little player list overlay.
 
 <figure markdown>
-![Selecting a recipient](../assets/images/features/scrolls/selecting-a-recipient.jpg)
+![Selecting a recipient](../assets/images/features/scrolls/selecting-a-recipient.png)
 <figcaption>The recipient list. Green dot = online, red dot = offline. The number in parentheses is mailbox count.</figcaption>
 </figure>
 
@@ -106,14 +106,14 @@ Signing is the "okay, I'm done writing" step.
 Once the scroll is fully closed, you'll get a Seal Stamp selector.
 
 <figure markdown>
-![Selecting a seal stamp](../assets/images/features/scrolls/selecting-a-seal-stamp.jpg)
+![Selecting a seal stamp](../assets/images/features/scrolls/sealing-scroll-with-wax-and-sigil.png)
 <figcaption>Pick a stamp. No etched stamp = no seal.</figcaption>
 </figure>
 
 Then click the wax area to stamp it:
 
 <figure markdown>
-![Sealing with wax and sigil](../assets/images/features/scrolls/sealing-scroll-with-wax-and-sigil.jpg)
+![Sealing with wax and sigil](../assets/images/features/scrolls/selecting-a-seal-stamp.png)
 <figcaption>Click the wax to seal. That consumes 1 Unsealed Scroll and gives you a Sealed Scroll.</figcaption>
 </figure>
 
@@ -131,7 +131,7 @@ If you want the full deep-dive on stamps (carving, favorites, etc.), see [Sigils
 Hold the **Sealed Scroll** and right-click **your tamed Raven**.
 
 <figure markdown>
-![Giving a sealed scroll to your Raven](../assets/images/features/scrolls/give-scroll-to-raven.jpg)
+![Giving a sealed scroll to your Raven](../assets/images/features/scrolls/give-scroll-to-raven.png)
 <figcaption>Hand the sealed scroll to your Raven to queue a delivery job.</figcaption>
 </figure>
 
@@ -180,4 +180,3 @@ Anything you *don't* take gets delivered to you automatically when you close the
 ??? info "Under the hood (why attachments can't be duped)"
     When you break the seal, the server replaces `scroll_sealed` with `scroll_opened` and copies the saved scroll data over, but it strips the `Attachments` tag from the opened item.
     Attachments are delivered from a server-side snapshot taken when you opened the scroll view, and only after the seal was actually broken.
-
