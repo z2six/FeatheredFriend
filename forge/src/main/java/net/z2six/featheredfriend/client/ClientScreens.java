@@ -1,44 +1,66 @@
+// neoforge/src/main/java/net/z2six/featheredfriend/client/ClientScreens.java
 package net.z2six.featheredfriend.client;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.gui.screens.MenuScreens;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.ScrollSealingScreen;
-import net.z2six.featheredfriend.client.gui.ScrollViewScreen;
 import net.z2six.featheredfriend.client.gui.SealStampScreen;
-import net.z2six.featheredfriend.forge.menu.ScrollSealingMenu;
-import net.z2six.featheredfriend.forge.menu.ScrollViewMenu;
-import net.z2six.featheredfriend.forge.menu.SealStampMenu;
-import net.z2six.featheredfriend.registry.FFForgeMenus;
+import net.z2six.featheredfriend.client.gui.ScrollViewScreen;
+import net.z2six.featheredfriend.client.gui.EnderpackScreen;
+import net.z2six.featheredfriend.client.gui.MailboxScreen;
+import net.z2six.featheredfriend.client.gui.RavenChestScreen;
+import net.z2six.featheredfriend.menu.EnderpackMenu;
+import net.z2six.featheredfriend.menu.MailboxMenu;
+import net.z2six.featheredfriend.menu.RavenChestMenu;
+import net.z2six.featheredfriend.menu.ScrollSealingMenu;
+import net.z2six.featheredfriend.menu.SealStampMenu;
+import net.z2six.featheredfriend.menu.ScrollViewMenu;
+import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
 import org.slf4j.Logger;
 
 /**
- * Registers all container-based GUIs (menu → screen) on the Forge client side.
+ * // neoforge/src/main/java/net/z2six/featheredfriend/client/ClientScreens.java
+ *
+ * Registers all container-based GUIs (menu → screen) on the NeoForge client side.
+ *
+ * IMPORTANT:
+ *  - This must live in the NeoForge source set.
+ *  - registerModBus(...) must be called from FeatheredFriend on Dist.CLIENT.
+ *  - We register:
+ *      * scroll_sealing  -> ScrollSealingScreen
+ *      * seal_stamp      -> SealStampScreen
+ *      * scroll_view     -> ScrollViewScreen
  */
-@Mod.EventBusSubscriber(
-        value = Dist.CLIENT,
-        bus = Mod.EventBusSubscriber.Bus.MOD,
-        modid = Constants.MOD_ID
-)
 public final class ClientScreens {
 
     private static final Logger LOG = LogUtils.getLogger();
 
     private ClientScreens() {
+        // no-op
     }
 
-    @SubscribeEvent
+    public static void registerModBus(IEventBus modEventBus) {
+        try {
+            modEventBus.addListener(ClientScreens::onClientSetup);
+            LOG.debug("[ClientScreens] Registered on MOD event bus");
+        } catch (Throwable t) {
+            LOG.error("[ClientScreens] Failed to register MOD event bus listener", t);
+        }
+    }
+
     public static void onClientSetup(FMLClientSetupEvent event) {
-        LOG.debug("[ClientScreens] Client setup: registering menu screens");
+        LOG.debug("[ClientScreens] onClientSetup fired for modId='{}'", Constants.MOD_ID);
 
         event.enqueueWork(() -> {
+            // -----------------------------------------------------------------
+            // Scroll sealing GUI
+            // -----------------------------------------------------------------
             try {
                 MenuScreens.register(
-                        FFForgeMenus.SCROLL_SEALING_MENU.get(),
+                        FFNeoForgeMenus.SCROLL_SEALING_MENU.get(),
                         (ScrollSealingMenu menu, net.minecraft.world.entity.player.Inventory inv, net.minecraft.network.chat.Component title) ->
                                 new ScrollSealingScreen(menu, inv, title)
                 );
@@ -47,9 +69,12 @@ public final class ClientScreens {
                 LOG.error("[ClientScreens] Failed to register ScrollSealingScreen", t);
             }
 
+            // -----------------------------------------------------------------
+            // Seal Stamp carving GUI
+            // -----------------------------------------------------------------
             try {
                 MenuScreens.register(
-                        FFForgeMenus.SEAL_STAMP_MENU.get(),
+                        FFNeoForgeMenus.SEAL_STAMP_MENU.get(),
                         (SealStampMenu menu, net.minecraft.world.entity.player.Inventory inv, net.minecraft.network.chat.Component title) ->
                                 new SealStampScreen(menu, inv, title)
                 );
@@ -58,15 +83,60 @@ public final class ClientScreens {
                 LOG.error("[ClientScreens] Failed to register SealStampScreen", t);
             }
 
+            // -----------------------------------------------------------------
+            // Scroll view GUI (sealed / opened scrolls)
+            // -----------------------------------------------------------------
             try {
                 MenuScreens.register(
-                        FFForgeMenus.SCROLL_VIEW_MENU.get(),
+                        FFNeoForgeMenus.SCROLL_VIEW_MENU.get(),
                         (ScrollViewMenu menu, net.minecraft.world.entity.player.Inventory inv, net.minecraft.network.chat.Component title) ->
                                 new ScrollViewScreen(menu, inv, title)
                 );
                 LOG.debug("[ClientScreens] Registered ScrollViewScreen");
             } catch (Throwable t) {
                 LOG.error("[ClientScreens] Failed to register ScrollViewScreen", t);
+            }
+
+            // -----------------------------------------------------------------
+            // Enderpack GUI
+            // -----------------------------------------------------------------
+            try {
+                MenuScreens.register(
+                        FFNeoForgeMenus.ENDERPACK_MENU.get(),
+                        (EnderpackMenu menu, net.minecraft.world.entity.player.Inventory inv, net.minecraft.network.chat.Component title) ->
+                                new EnderpackScreen(menu, inv, title)
+                );
+                LOG.debug("[ClientScreens] Registered EnderpackScreen");
+            } catch (Throwable t) {
+                LOG.error("[ClientScreens] Failed to register EnderpackScreen", t);
+            }
+
+            // -----------------------------------------------------------------
+            // Mailbox GUI (9-slot storage)
+            // -----------------------------------------------------------------
+            try {
+                MenuScreens.register(
+                        FFNeoForgeMenus.MAILBOX_MENU.get(),
+                        (MailboxMenu menu, net.minecraft.world.entity.player.Inventory inv, net.minecraft.network.chat.Component title) ->
+                                new MailboxScreen(menu, inv, title)
+                );
+                LOG.debug("[ClientScreens] Registered MailboxScreen");
+            } catch (Throwable t) {
+                LOG.error("[ClientScreens] Failed to register MailboxScreen", t);
+            }
+
+            // -----------------------------------------------------------------
+            // Raven Chest GUI (Suspicious Chest)
+            // -----------------------------------------------------------------
+            try {
+                MenuScreens.register(
+                        FFNeoForgeMenus.RAVEN_CHEST_MENU.get(),
+                        (RavenChestMenu menu, net.minecraft.world.entity.player.Inventory inv, net.minecraft.network.chat.Component title) ->
+                                new RavenChestScreen(menu, inv, title)
+                );
+                LOG.debug("[ClientScreens] Registered RavenChestScreen");
+            } catch (Throwable t) {
+                LOG.error("[ClientScreens] Failed to register RavenChestScreen", t);
             }
         });
     }

@@ -1,17 +1,16 @@
-// forge/src/main/java/net/z2six/featheredfriend/integration/jei/JeiOverlayHider.java
+// neoforge/src/main/java/net/z2six/featheredfriend/integration/jei/JeiOverlayHider.java
 package net.z2six.featheredfriend.integration.jei;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
-import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
-import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.EnderPearlInventoryScreen;
 import net.z2six.featheredfriend.client.gui.ScrollSealingScreen;
 import net.z2six.featheredfriend.client.gui.SealStampScreen;
 import net.z2six.featheredfriend.client.gui.ScrollViewScreen;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 import java.lang.reflect.Method;
@@ -20,15 +19,38 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Client-only helper that hides the JEI ingredient list overlay while our custom GUIs are open.
+ * neoforge/src/main/java/net/z2six/featheredfriend/integration/jei/JeiOverlayHider.java
+ *
+ * JeiOverlayHider
+ *
+ * Client-only helper that hides the JEI ingredient list overlay while our
+ * custom FeatheredFriend GUIs are open:
+ *  - ScrollSealingScreen
+ *  - SealStampScreen
+ *  - EnderPearlInventoryScreen (attachments inventory GUI)
+ *  - ScrollViewScreen (sealed/opened scroll viewer)
+ *
+ * Design:
+ *  - JEI runtime (IJeiRuntime) is stored as an Object to avoid tight coupling.
+ *  - Each client tick, we check the current screen:
+ *      * If it's one of our GUIs -> hide overlay.
+ *      * Otherwise -> restore overlay (if we hid it).
+ *  - We use reflection to:
+ *      * Call runtime.getIngredientListOverlay()
+ *      * On the overlay, find appropriate visibility getter/setter methods by name pattern:
+ *          - setVisible / isVisible
+ *          - setEnabled / isEnabled
+ *          - setListDisplayed / isListDisplayed
+ *          - any single-boolean-arg "set*" that looks like visibility control
+ *  - If anything fails, we log and gracefully give up, never crashing the game.
  */
-@Mod.EventBusSubscriber(modid = Constants.MOD_ID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class JeiOverlayHider {
 
     private static final Logger LOG = LogUtils.getLogger();
 
     // JEI runtime (IJeiRuntime), stored as Object to avoid direct dependency.
     private static volatile Object jeiRuntime = null;
+    private static volatile boolean REGISTERED = false;
 
     // Remember previous visible/enabled state so we can restore it.
     private static volatile Boolean previousOverlayState = null;
@@ -41,10 +63,24 @@ public final class JeiOverlayHider {
         // no-op
     }
 
+    public static void registerGameBus() {
+        try {
+            if (REGISTERED) {
+                LOG.debug("[JeiOverlayHider] already registered on MinecraftForge EVENT_BUS; skipping");
+                return;
+            }
+            MinecraftForge.EVENT_BUS.register(JeiOverlayHider.class);
+            REGISTERED = true;
+            LOG.debug("[JeiOverlayHider] Registered on MinecraftForge EVENT_BUS");
+        } catch (Throwable t) {
+            LOG.error("[JeiOverlayHider] Failed to register on MinecraftForge EVENT_BUS", t);
+        }
+    }
+
     /**
      * Called from FeatheredFriendJeiPlugin.onRuntimeAvailable(IJeiRuntime).
      */
-    public static void setRuntime(Object runtime) {
+    public static void setRuntime(@NotNull Object runtime) {
         try {
             jeiRuntime = runtime;
             loggedMissingRuntime = false;
@@ -55,19 +91,17 @@ public final class JeiOverlayHider {
     }
 
     /**
-     * Runs every client tick (END phase). We:
+     * Runs every client tick (POST). We:
      *  - Check the current screen.
      *  - If it's one of our custom GUIs, hide the JEI overlay.
      *  - Otherwise, restore the overlay if we previously hid it.
      */
     @SubscribeEvent
-    public static void onClientTick(TickEvent.ClientTickEvent event) {
-        // NeoForge had ClientTickEvent.Post; Forge uses TickEvent phases.
-        if (event.phase != TickEvent.Phase.END) {
-            return;
-        }
-
+    public static void onClientTick(@NotNull TickEvent.ClientTickEvent event) {
         try {
+            if (event.phase != TickEvent.Phase.END) {
+                return;
+            }
             if (jeiRuntime == null) {
                 if (!loggedMissingRuntime) {
                     LOG.debug("[JeiOverlayHider] JEI runtime is null; overlay will not be modified yet");
@@ -81,6 +115,11 @@ public final class JeiOverlayHider {
                 return;
             }
 
+            // Our GUIs where we want JEI overlay hidden:
+            //  - ScrollSealingScreen
+            //  - SealStampScreen (etching GUI)
+            //  - EnderPearlInventoryScreen (attachments inventory GUI)
+            //  - ScrollViewScreen (sealed/opened scroll viewer)
             boolean isOurScreen =
                     (mc.screen instanceof ScrollSealingScreen) ||
                             (mc.screen instanceof SealStampScreen) ||
@@ -181,7 +220,7 @@ public final class JeiOverlayHider {
     /**
      * Reflectively calls runtime.getIngredientListOverlay().
      */
-    private static Object getIngredientOverlay(Object runtime) {
+    private static Object getIngredientOverlay(@NotNull Object runtime) {
         try {
             Class<?> runtimeClass = runtime.getClass();
             Method getOverlay;
@@ -198,7 +237,8 @@ public final class JeiOverlayHider {
                 return null;
             }
 
-            LOG.debug("[JeiOverlayHider] Obtained JEI ingredient overlay instance: {}", overlay.getClass().getName());
+            LOG.debug("[JeiOverlayHider] Obtained JEI ingredient overlay instance: {}",
+                    overlay.getClass().getName());
             return overlay;
         } catch (Throwable t) {
             LOG.error("[JeiOverlayHider] Failed to obtain JEI ingredient overlay via reflection", t);
@@ -206,6 +246,9 @@ public final class JeiOverlayHider {
         }
     }
 
+    /**
+     * Holds the visibility getter/setter pair for an overlay object.
+     */
     private static final class VisibilityMethods {
         final Method getter;
         final Method setter;
@@ -216,7 +259,10 @@ public final class JeiOverlayHider {
         }
     }
 
-    private static VisibilityMethods findVisibilityMethods(Object overlay) {
+    /**
+     * Try to find suitable visibility getter/setter methods on the overlay object.
+     */
+    private static VisibilityMethods findVisibilityMethods(@NotNull Object overlay) {
         Class<?> clazz = overlay.getClass();
         Method bestSetter = null;
         Method bestGetter = null;
@@ -230,12 +276,14 @@ public final class JeiOverlayHider {
                 String name = m.getName();
                 Class<?>[] params = m.getParameterTypes();
 
+                // Setter candidate: set*(boolean)
                 if (name.startsWith("set") &&
                         params.length == 1 &&
                         (params[0] == boolean.class || params[0] == Boolean.class)) {
                     setterCandidates.add(m);
                 }
 
+                // Getter candidate: is*/get* returning boolean
                 if (params.length == 0 &&
                         (m.getReturnType() == boolean.class || m.getReturnType() == Boolean.class) &&
                         (name.startsWith("is") || name.startsWith("get"))) {
@@ -246,8 +294,12 @@ public final class JeiOverlayHider {
             bestSetter = pickBestVisibilitySetter(setterCandidates);
             bestGetter = pickMatchingGetter(bestSetter, getterCandidates);
 
-            if (bestSetter != null) bestSetter.setAccessible(true);
-            if (bestGetter != null) bestGetter.setAccessible(true);
+            if (bestSetter != null) {
+                bestSetter.setAccessible(true);
+            }
+            if (bestGetter != null) {
+                bestGetter.setAccessible(true);
+            }
 
             if (bestSetter != null) {
                 LOG.debug("[JeiOverlayHider] Using visibility setter '{}' and getter '{}' on JEI overlay class {}",
@@ -255,7 +307,8 @@ public final class JeiOverlayHider {
                         bestGetter != null ? bestGetter.getName() : "<none>",
                         clazz.getName());
             } else {
-                LOG.debug("[JeiOverlayHider] No suitable visibility setter discovered on JEI overlay class {}", clazz.getName());
+                LOG.debug("[JeiOverlayHider] No suitable visibility setter discovered on JEI overlay class {}",
+                        clazz.getName());
             }
         } catch (Throwable t) {
             LOG.error("[JeiOverlayHider] Error while discovering visibility methods on overlay class {}", clazz.getName(), t);
@@ -296,7 +349,13 @@ public final class JeiOverlayHider {
         }
 
         String setterName = setter.getName();
-        String suffix = setterName.startsWith("set") ? setterName.substring(3) : setterName;
+        String suffix;
+
+        if (setterName.startsWith("set")) {
+            suffix = setterName.substring(3);
+        } else {
+            suffix = setterName;
+        }
 
         Method best = null;
         int bestScore = -1;

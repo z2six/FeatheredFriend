@@ -44,5 +44,19 @@
     "sounds": [
       "featheredfriend:raven/whistle"
     ]
+  },
+
+  "ravenlink.tether1": {
+    "category": "neutral",
+    "sounds": [
+      "featheredfriend:ravenlink/tether1"
+    ]
+  },
+
+  "ravenlink.tether2": {
+    "category": "neutral",
+    "sounds": [
+      "featheredfriend:ravenlink/tether2"
+    ]
   }
 }

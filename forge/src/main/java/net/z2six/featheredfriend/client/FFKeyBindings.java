@@ -1,4 +1,4 @@
-// FFKeyBindings.java
+// neoforge/src/main/java/net/z2six/featheredfriend/client/FFKeyBindings.java
 package net.z2six.featheredfriend.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
@@ -6,22 +6,34 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.network.chat.Component;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.FeatheredFriendSettingsScreen;
-import net.z2six.featheredfriend.network.FFNetwork;
-import net.z2six.featheredfriend.world.TamedRavenScrollWatcher;
+import org.jetbrains.annotations.NotNull;
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 
+import net.minecraft.network.chat.Component;
+import net.z2six.featheredfriend.network.FFNetwork;
+import net.z2six.featheredfriend.platform.Services;
+
 /**
+ * neoforge/src/main/java/net/z2six/featheredfriend/client/FFKeyBindings.java
+ *
  * Client-only keybindings:
  *  - Open FeatheredFriend settings GUI.
- *  - Manual raven whistle (sends server request; server validates).
+ *  - Manual raven whistle (currently just plays the whistle sound locally).
+ *
+ * Registration:
+ *  - Call FFKeyBindings.register(modEventBus) from the NeoForge side of your main mod class,
+ *    inside the Dist.CLIENT branch.
  */
 public final class FFKeyBindings {
 
@@ -29,12 +41,14 @@ public final class FFKeyBindings {
 
     private static KeyMapping OPEN_SETTINGS_KEY;
     private static KeyMapping WHISTLE_KEY;
+    private static KeyMapping OPEN_ENDERPACK_KEY;
+    private static KeyMapping OPEN_RAVEN_LOG_KEY;
 
     private FFKeyBindings() {
         // no-op
     }
 
-    public static void register(IEventBus modEventBus) {
+    public static void register(@NotNull IEventBus modEventBus) {
         try {
             modEventBus.addListener(FFKeyBindings::onRegisterKeyMappings);
             MinecraftForge.EVENT_BUS.addListener(FFKeyBindings::onClientTick);
@@ -48,10 +62,12 @@ public final class FFKeyBindings {
     // Key mapping registration
     // ---------------------------------------------------------------------
 
-    private static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
+    private static void onRegisterKeyMappings(@NotNull RegisterKeyMappingsEvent event) {
         try {
+            // Key category for all FeatheredFriend keybinds.
             final String category = "key.categories." + Constants.MOD_ID;
 
+            // Settings menu: default unbound (use UNKNOWN), player can bind manually.
             OPEN_SETTINGS_KEY = new KeyMapping(
                     "key." + Constants.MOD_ID + ".open_settings",
                     InputConstants.Type.KEYSYM,
@@ -59,6 +75,7 @@ public final class FFKeyBindings {
                     category
             );
 
+            // Manual whistle: default key 'K' (arbitrary but easy to reach).
             WHISTLE_KEY = new KeyMapping(
                     "key." + Constants.MOD_ID + ".whistle",
                     InputConstants.Type.KEYSYM,
@@ -66,10 +83,26 @@ public final class FFKeyBindings {
                     category
             );
 
+            OPEN_ENDERPACK_KEY = new KeyMapping(
+                    "key." + Constants.MOD_ID + ".open_enderpack",
+                    InputConstants.Type.KEYSYM,
+                    GLFW.GLFW_KEY_UNKNOWN,
+                    category
+            );
+
+            OPEN_RAVEN_LOG_KEY = new KeyMapping(
+                    "key." + Constants.MOD_ID + ".open_raven_log",
+                    InputConstants.Type.KEYSYM,
+                    GLFW.GLFW_KEY_UNKNOWN,
+                    category
+            );
+
             event.register(OPEN_SETTINGS_KEY);
             event.register(WHISTLE_KEY);
+            event.register(OPEN_ENDERPACK_KEY);
+            event.register(OPEN_RAVEN_LOG_KEY);
 
-            LOG.debug("[FFKeyBindings] Registered key mappings: open_settings, whistle.");
+            LOG.debug("[FFKeyBindings] Registered key mappings: open_settings, whistle, open_enderpack, open_raven_log.");
 
         } catch (Throwable t) {
             LOG.error("[FFKeyBindings] onRegisterKeyMappings failed safely", t);
@@ -80,12 +113,11 @@ public final class FFKeyBindings {
     // Client tick: handle key presses
     // ---------------------------------------------------------------------
 
-    private static void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) {
-            return;
-        }
-
+    private static void onClientTick(@NotNull TickEvent.ClientTickEvent event) {
         try {
+            if (event.phase != TickEvent.Phase.END) {
+                return;
+            }
             Minecraft mc = Minecraft.getInstance();
             if (mc == null) {
                 return;
@@ -115,28 +147,27 @@ public final class FFKeyBindings {
                 }
             }
 
+            if (OPEN_ENDERPACK_KEY != null) {
+                while (OPEN_ENDERPACK_KEY.consumeClick()) {
+                    Services.PLATFORM.sendOpenEnderpackToServer();
+                }
+            }
+
+            if (OPEN_RAVEN_LOG_KEY != null) {
+                while (OPEN_RAVEN_LOG_KEY.consumeClick()) {
+                    Services.PLATFORM.sendOpenRavenLogToServer();
+                }
+            }
+
         } catch (Throwable t) {
             LOG.error("[FFKeyBindings] onClientTick failed safely", t);
         }
     }
 
-    private static void handleWhistleKey(Minecraft mc, LocalPlayer player) {
+    private static void handleWhistleKey(@NotNull Minecraft mc, @NotNull LocalPlayer player) {
         try {
-            boolean holdingClientSide = false;
-            try {
-                holdingClientSide = TamedRavenScrollWatcher.isHoldingSealedScroll(player);
-            } catch (Throwable t) {
-                LOG.warn("[FFKeyBindings] Whistle: failed to check isHoldingSealedScroll client-side for player='{}': {}",
-                        player.getGameProfile().getName(), t.toString());
-            }
-
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("[FFKeyBindings] Whistle key pressed: sending request to server (clientHoldingSealedScroll={}) player='{}'",
-                        holdingClientSide, player.getGameProfile().getName());
-            } else {
-                LOG.debug("[FFKeyBindings] Whistle key pressed: sending request to server player='{}'",
-                        player.getGameProfile().getName());
-            }
+            LOG.debug("[FFKeyBindings] Whistle key pressed: sending request to server player='{}'",
+                    player.getGameProfile().getName());
 
             try {
                 FFNetwork.sendWhistleForRaven();
@@ -148,7 +179,7 @@ public final class FFKeyBindings {
 
                 try {
                     player.displayClientMessage(
-                            Component.literal("[FeatheredFriend] Failed to whistle for your raven (network error)."),
+                            Component.translatable("message.featheredfriend.whistle.network_error"),
                             true
                     );
                 } catch (Throwable msgErr) {

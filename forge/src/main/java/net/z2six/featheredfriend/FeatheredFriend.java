@@ -1,4 +1,4 @@
-// MainFile: forge/src/main/java/net/z2six/featheredfriend/FeatheredFriend.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/FeatheredFriend.java
 package net.z2six.featheredfriend;
 
 import com.mojang.logging.LogUtils;
@@ -9,20 +9,33 @@ import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.z2six.featheredfriend.chat.ChatDisabler;
 import net.z2six.featheredfriend.client.FFClientSyncEvents;
-import net.z2six.featheredfriend.client.FFForgeClient;
+import net.z2six.featheredfriend.client.FFClientCommands;
 import net.z2six.featheredfriend.client.FFKeyBindings;
+import net.z2six.featheredfriend.client.FFFeatureToggleTooltips;
+import net.z2six.featheredfriend.client.ClientScreens;
 import net.z2six.featheredfriend.client.particle.FFClientParticles;
+import net.z2six.featheredfriend.client.raven.RavenLinkClientController;
 import net.z2six.featheredfriend.client.raven.RavenClientEvents;
+import net.z2six.featheredfriend.client.ravenbadge.RavenBadgeHudController;
 import net.z2six.featheredfriend.command.FeatheredFriendCommands;
-import net.z2six.featheredfriend.config.FFCalendarConfig;
+import net.z2six.featheredfriend.config.FFServerConfig;
 import net.z2six.featheredfriend.config.FFClientConfig;
 import net.z2six.featheredfriend.events.FFPlayerEvents;
 import net.z2six.featheredfriend.network.FFNetwork;
 import net.z2six.featheredfriend.network.FFPayloads;
-import net.z2six.featheredfriend.registry.*;
-import net.z2six.featheredfriend.registry.FFForgeMenus;
+import net.z2six.featheredfriend.registry.FFCreativeTabsNeoForge;
+import net.z2six.featheredfriend.registry.FFNeoForgeBlockEntities;
+import net.z2six.featheredfriend.registry.FFNeoForgeBlocks;
+import net.z2six.featheredfriend.registry.FFNeoForgeEntities;
+import net.z2six.featheredfriend.registry.FFNeoForgeItems;
+import net.z2six.featheredfriend.registry.FFNeoForgeMenus;
+import net.z2six.featheredfriend.registry.FFNeoForgeParticles;
 import net.z2six.featheredfriend.server.FFServerSyncEvents;
+import net.z2six.featheredfriend.server.FFConfigSyncEvents;
+import net.z2six.featheredfriend.integration.jei.JeiOverlayHider;
 import net.z2six.featheredfriend.world.RavenCourierRuntime;
+import net.z2six.featheredfriend.world.RavenBadgeRuntime;
+import net.z2six.featheredfriend.world.RavenLinkRuntime;
 import net.z2six.featheredfriend.world.RavenSpawnEvents;
 import net.z2six.featheredfriend.world.TamedRavenScrollWatcher;
 import org.slf4j.Logger;
@@ -33,9 +46,8 @@ public class FeatheredFriend {
     private static final Logger LOG = LogUtils.getLogger();
 
     public FeatheredFriend() {
-        LOG.debug("[FeatheredFriend] Initializing Forge side");
-
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
+        LOG.debug("[FeatheredFriend] Initializing Forge side");
 
         // ---------------------------------------------------------------------
         // Common init
@@ -50,15 +62,15 @@ public class FeatheredFriend {
         // Configs
         // ---------------------------------------------------------------------
         try {
-            // Server config (calendar + settings default)
-            FFCalendarConfig.register();
-            LOG.debug("[FeatheredFriend] Registered FFCalendarConfig (SERVER)");
+            // Server config (settings + spawning)
+            FFServerConfig.register();
+            LOG.debug("[FeatheredFriend] Registered FFServerConfig (SERVER)");
         } catch (Throwable t) {
-            LOG.error("[FeatheredFriend] FFCalendarConfig.register() failed", t);
+            LOG.error("[FeatheredFriend] FFServerConfig.register() failed", t);
         }
 
         try {
-            // Client config (autoSummon preference). Safe to call on server; it will self-skip.
+            // Client config. Safe to call on server; it will self-skip.
             FFClientConfig.register();
             LOG.debug("[FeatheredFriend] Registered FFClientConfig (CLIENT if applicable)");
         } catch (Throwable t) {
@@ -69,35 +81,29 @@ public class FeatheredFriend {
         // Registries
         // ---------------------------------------------------------------------
         try {
-            FFForgeItems.register(modEventBus);
+            FFNeoForgeBlocks.register(modEventBus);
+            FFNeoForgeBlockEntities.register(modEventBus);
+            FFNeoForgeItems.register(modEventBus);
             FFCreativeTabsNeoForge.register(modEventBus);
-            FFForgeMenus.register(modEventBus);
+            FFNeoForgeMenus.register(modEventBus);
 
-            FFForgeParticles.register(modEventBus);
+            FFNeoForgeParticles.register(modEventBus);
 
-            LOG.debug("[FeatheredFriend] Registered registries (items/tabs/menus/particles)");
+            LOG.debug("[FeatheredFriend] Registered NeoForge registries (items/tabs/menus/particles)");
         } catch (Throwable t) {
-            LOG.error("[FeatheredFriend] Failed to register registries", t);
+            LOG.error("[FeatheredFriend] Failed to register NeoForge registries", t);
         }
 
         try {
-            FFForgeEntities.register(modEventBus);
-            LOG.debug("[FeatheredFriend] Registered entity registries");
+            FFNeoForgeEntities.register(modEventBus);
+            LOG.debug("[FeatheredFriend] Registered NeoForge entity registries");
         } catch (Throwable t) {
-            LOG.error("[FeatheredFriend] Failed to register entities", t);
+            LOG.error("[FeatheredFriend] Failed to register NeoForge entities", t);
         }
 
         // ---------------------------------------------------------------------
         // Networking
         // ---------------------------------------------------------------------
-        try {
-            // Register SimpleChannel messages during FMLCommonSetupEvent
-            FFNetwork.register(modEventBus);
-            LOG.debug("[FeatheredFriend] Registered FFNetwork common-setup hook");
-        } catch (Throwable t) {
-            LOG.error("[FeatheredFriend] Failed to hook FFNetwork payload registration listener", t);
-        }
-
         try {
             // New payload system for server settings sync (chatDisabled, canEditChat, etc.)
             // This MUST be registered on the mod event bus.
@@ -118,6 +124,16 @@ public class FeatheredFriend {
         // ---------------------------------------------------------------------
         // Client-only registrations
         // ---------------------------------------------------------------------
+        try {
+            if (FMLEnvironment.dist == Dist.CLIENT) {
+                ClientScreens.registerModBus(modEventBus);
+                LOG.debug("[FeatheredFriend] Hooked client menu screen registration listener");
+            } else {
+                LOG.debug("[FeatheredFriend] Skipping client menu screen registration on non-client dist");
+            }
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriend] Failed to hook client menu screen registration", t);
+        }
 
         try {
             if (FMLEnvironment.dist == Dist.CLIENT) {
@@ -129,6 +145,24 @@ public class FeatheredFriend {
 
                 FFKeyBindings.register(modEventBus);
                 LOG.debug("[FeatheredFriend] Registered FFKeyBindings (client only)");
+
+                FFClientCommands.registerGameBus();
+                LOG.debug("[FeatheredFriend] Registered FFClientCommands (client only)");
+
+                RavenLinkClientController.registerGameBus();
+                LOG.debug("[FeatheredFriend] Registered RavenLinkClientController (client only)");
+
+                net.z2six.featheredfriend.client.raven.RavenLinkEffigyPoseCapture.registerGameBus();
+                LOG.debug("[FeatheredFriend] Registered RavenLinkEffigyPoseCapture (client only)");
+
+                RavenBadgeHudController.registerGameBus();
+                LOG.debug("[FeatheredFriend] Registered RavenBadgeHudController (client only)");
+
+                FFFeatureToggleTooltips.registerGameBus();
+                LOG.debug("[FeatheredFriend] Registered FFFeatureToggleTooltips (client only)");
+
+                JeiOverlayHider.registerGameBus();
+                LOG.debug("[FeatheredFriend] Registered JeiOverlayHider (client only)");
             } else {
                 LOG.debug("[FeatheredFriend] Skipping client-only listeners on non-client dist");
             }
@@ -168,6 +202,20 @@ public class FeatheredFriend {
         }
 
         try {
+            RavenBadgeRuntime.register();
+            LOG.debug("[FeatheredFriend] Registered RavenBadgeRuntime");
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriend] Failed to register RavenBadgeRuntime", t);
+        }
+
+        try {
+            RavenLinkRuntime.register();
+            LOG.debug("[FeatheredFriend] Registered RavenLinkRuntime");
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriend] Failed to register RavenLinkRuntime", t);
+        }
+
+        try {
             ChatDisabler.register();
             LOG.debug("[FeatheredFriend] Registered ChatDisabler");
         } catch (Throwable t) {
@@ -183,6 +231,14 @@ public class FeatheredFriend {
             LOG.debug("[FeatheredFriend] Registered FFServerSyncEvents (server login sync)");
         } catch (Throwable t) {
             LOG.error("[FeatheredFriend] Failed to register FFServerSyncEvents", t);
+        }
+
+        try {
+            // Server: hot-reload + GUI changes -> re-sync to clients (chatDisabled, etc.)
+            FFConfigSyncEvents.registerGameBus();
+            LOG.debug("[FeatheredFriend] Registered FFConfigSyncEvents (hot-reload settings sync)");
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriend] Failed to register FFConfigSyncEvents", t);
         }
 
         try {

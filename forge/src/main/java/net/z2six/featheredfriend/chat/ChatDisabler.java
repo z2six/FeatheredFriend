@@ -1,10 +1,9 @@
-// ChatDisabler.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/chat/ChatDisabler.java
 package net.z2six.featheredfriend.chat;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraftforge.api.distmarker.Dist;
@@ -13,12 +12,13 @@ import net.minecraftforge.client.event.ClientChatReceivedEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.ServerChatEvent;
 import net.minecraftforge.fml.loading.FMLEnvironment;
+import net.z2six.featheredfriend.config.FFServerConfig;
 import net.z2six.featheredfriend.network.FFPayloads;
-import net.z2six.featheredfriend.world.FeatheredFriendSettingsData;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 /**
- * Forge chat disabler.
+ * NeoForge-only chat disabler.
  *
  * Behavior:
  *  - SERVER:
@@ -40,7 +40,6 @@ public final class ChatDisabler {
     private ChatDisabler() {
         // no-op
     }
-
     public static void register() {
         try {
             MinecraftForge.EVENT_BUS.addListener(ChatDisabler::onServerChat);
@@ -60,28 +59,16 @@ public final class ChatDisabler {
     // SERVER
     // ---------------------------------------------------------------------
 
-    private static void onServerChat(ServerChatEvent event) {
+    private static void onServerChat(@NotNull ServerChatEvent event) {
         try {
             ServerPlayer sender = event.getPlayer();
             if (sender == null) return;
 
-            ServerLevel level = sender.serverLevel();
-            FeatheredFriendSettingsData settings = FeatheredFriendSettingsData.get(level);
-            if (!settings.isChatDisabled()) {
+            if (!FFServerConfig.isChatDisabled()) {
                 return;
             }
 
-            String raw;
-            try {
-                // Forge 1.20.1: keep the same intent; raw text is used only for logging.
-                raw = event.getRawText();
-            } catch (Throwable ignored) {
-                try {
-                    raw = event.getMessage().getString();
-                } catch (Throwable ignored2) {
-                    raw = "<unknown>";
-                }
-            }
+            String raw = event.getRawText();
 
             LOG.debug("[ChatDisabler] Blocking server chat from '{}' (raw='{}')",
                     safePlayerName(sender), raw);
@@ -89,9 +76,7 @@ public final class ChatDisabler {
             event.setCanceled(true);
 
             try {
-                sender.sendSystemMessage(Component.literal(
-                        "[FeatheredFriend] Global player chat is disabled on this server."
-                ));
+                sender.sendSystemMessage(Component.translatable("message.featheredfriend.chat_disabled.server"));
             } catch (Throwable msgErr) {
                 LOG.warn("[ChatDisabler] Failed to message sender='{}': {}",
                         safePlayerName(sender), msgErr.toString());
@@ -106,7 +91,7 @@ public final class ChatDisabler {
     // CLIENT: outgoing
     // ---------------------------------------------------------------------
 
-    private static void onClientSendChat(ClientChatEvent event) {
+    private static void onClientSendChat(@NotNull ClientChatEvent event) {
         try {
             if (!isChatDisabledClient()) return;
 
@@ -126,7 +111,7 @@ public final class ChatDisabler {
                 Minecraft mc = Minecraft.getInstance();
                 if (mc != null && mc.player != null) {
                     mc.player.displayClientMessage(
-                            Component.literal("[FeatheredFriend] Chat is disabled on this server."), true
+                            Component.translatable("message.featheredfriend.chat_disabled.client"), true
                     );
                 }
             } catch (Throwable ignored) {
@@ -141,14 +126,13 @@ public final class ChatDisabler {
     // CLIENT: incoming
     // ---------------------------------------------------------------------
 
-    private static void onClientReceiveChat(ClientChatReceivedEvent event) {
+    private static void onClientReceiveChat(@NotNull ClientChatReceivedEvent event) {
         try {
             if (!isChatDisabledClient()) return;
 
             Component msg = event.getMessage();
             String msgStr = (msg == null) ? "<null>" : msg.getString();
 
-            // Forge 1.20.1 still uses these nested types (Player/System).
             if (event instanceof ClientChatReceivedEvent.Player) {
                 LOG.debug("[ChatDisabler] Blocking incoming PLAYER chat message: '{}'", msgStr);
                 event.setCanceled(true);
@@ -176,8 +160,8 @@ public final class ChatDisabler {
     private static boolean isChatDisabledClient() {
         try {
             if (FMLEnvironment.dist != Dist.CLIENT) {
-                // Should never be called on server, but be conservative.
-                return true;
+                // Should never be called on server.
+                return false;
             }
 
             // If we have synced server settings, ALWAYS use them.
@@ -188,33 +172,29 @@ public final class ChatDisabler {
             }
 
             Minecraft mc = Minecraft.getInstance();
-            if (mc == null) return true;
+            if (mc == null) return false;
 
             // Integrated server: we can read the true world-owned setting.
             if (mc.hasSingleplayerServer()) {
                 var server = mc.getSingleplayerServer();
                 if (server != null) {
-                    ServerLevel overworld = server.overworld();
-                    if (overworld != null) {
-                        FeatheredFriendSettingsData data = FeatheredFriendSettingsData.get(overworld);
-                        boolean v = data.isChatDisabled();
-                        LOG.debug("[ChatDisabler] isChatDisabledClient: integrated server world value -> {}", v);
-                        return v;
-                    }
+                    boolean v = FFServerConfig.isChatDisabled();
+                    LOG.debug("[ChatDisabler] isChatDisabledClient: integrated server config value -> {}", v);
+                    return v;
                 }
             }
 
-            // Dedicated server, but not yet synced: conservative behavior is "disabled" until we know.
-            LOG.debug("[ChatDisabler] isChatDisabledClient: not synced yet -> default true");
-            return true;
+            // Dedicated server, but not yet synced: default to enabled.
+            LOG.debug("[ChatDisabler] isChatDisabledClient: not synced yet -> default false");
+            return false;
 
         } catch (Throwable t) {
             LOG.error("[ChatDisabler] isChatDisabledClient failed safely", t);
-            return true;
+            return false;
         }
     }
 
-    private static String safePlayerName(Player player) {
+    private static String safePlayerName(@NotNull Player player) {
         try {
             return player.getGameProfile().getName();
         } catch (Throwable ignored) {

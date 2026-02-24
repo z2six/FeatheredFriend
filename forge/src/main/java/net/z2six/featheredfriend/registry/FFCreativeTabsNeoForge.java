@@ -1,35 +1,60 @@
+// neoforge/src/main/java/net/z2six/featheredfriend/registry/FFCreativeTabsNeoForge.java
 package net.z2six.featheredfriend.registry;
 
-import net.minecraft.world.item.CreativeModeTabs;
-import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.CreativeModeTab;
+import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.registries.DeferredRegister;
+import net.minecraftforge.registries.RegistryObject;
 import net.z2six.featheredfriend.Constants;
 import org.slf4j.Logger;
 
 /**
- * Adds FeatheredFriend items to vanilla creative tabs on Forge.
+ * Registers the FeatheredFriend creative tab on NeoForge.
  */
 public final class FFCreativeTabsNeoForge {
 
     private static final Logger LOG = Constants.LOG;
 
+    public static final DeferredRegister<CreativeModeTab> TABS =
+            DeferredRegister.create(Registries.CREATIVE_MODE_TAB, Constants.MOD_ID);
+
+    public static final RegistryObject<CreativeModeTab> FEATHERED_FRIEND_TAB =
+            TABS.register("featheredfriend", () -> CreativeModeTab.builder()
+                    .title(Component.translatable("itemGroup.featheredfriend"))
+                    .icon(() -> new ItemStack(FFItems.SCROLL_SEALED.get()))
+                    .displayItems((parameters, output) -> {
+                        output.accept(FFItems.SCROLL_UNSEALED.get());
+                        output.accept(FFItems.SCROLL_SEALED.get());
+                        output.accept(FFItems.SCROLL_OPENED.get());
+                        output.accept(FFItems.SEAL_STAMP.get());
+                        output.accept(FFItems.ENDERPACK.get());
+                        output.accept(FFItems.RAVEN_FEATHER.get());
+                        output.accept(FFItems.RAVENS_EYE.get());
+
+                        output.accept(FFItems.RAVEN_CHEST.get());
+                        output.accept(FFItems.MAILBOX.get());
+                        output.accept(FFItems.RAVEN_ARMOR_LEATHER.get());
+                        output.accept(FFItems.RAVEN_ARMOR_COPPER.get());
+                        output.accept(FFItems.RAVEN_ARMOR_IRON.get());
+                        output.accept(FFItems.RAVEN_ARMOR_GOLD.get());
+                        output.accept(FFItems.RAVEN_ARMOR_DIAMOND.get());
+                        output.accept(FFItems.RAVEN_ARMOR_NETHERITE.get());
+                    })
+                    .build()
+            );
+
     private FFCreativeTabsNeoForge() {
+        // no instances
     }
 
+    /**
+     * Hook up tab registration to the mod event bus.
+     */
     public static void register(IEventBus modEventBus) {
-        LOG.debug("FFCreativeTabsNeoForge: Registering BuildCreativeModeTabContentsEvent listener");
-        modEventBus.addListener(FFCreativeTabsNeoForge::onBuildCreativeTabContents);
-    }
-
-    public static void onBuildCreativeTabContents(BuildCreativeModeTabContentsEvent event) {
-
-        if (event.getTabKey() == CreativeModeTabs.INGREDIENTS) {
-            LOG.debug("FFCreativeTabsNeoForge: Populating Ingredients tab with FeatheredFriend items");
-
-            try { event.accept(FFItems.SCROLL_UNSEALED.get()); } catch (Throwable t) { LOG.error("Failed to add SCROLL_UNSEALED", t); }
-            try { event.accept(FFItems.SCROLL_SEALED.get()); } catch (Throwable t) { LOG.error("Failed to add SCROLL_SEALED", t); }
-            try { event.accept(FFItems.SCROLL_OPENED.get()); } catch (Throwable t) { LOG.error("Failed to add SCROLL_OPENED", t); }
-            try { event.accept(FFItems.SEAL_STAMP.get()); } catch (Throwable t) { LOG.error("Failed to add SEAL_STAMP", t); }
-        }
+        LOG.debug("FFCreativeTabsNeoForge: Registering FeatheredFriend creative tab");
+        TABS.register(modEventBus);
     }
 }

@@ -1,19 +1,19 @@
-// forge/src/main/java/net/z2six/featheredfriend/client/particle/FFClientParticles.java
+// neoforge/src/main/java/net/z2six/featheredfriend/client/particle/FFClientParticles.java
 package net.z2six.featheredfriend.client.particle;
 
 import com.mojang.logging.LogUtils;
 import net.minecraftforge.client.event.RegisterParticleProvidersEvent;
 import net.z2six.featheredfriend.entity.raven.modules.FeatherParticles;
-import net.z2six.featheredfriend.registry.FFForgeParticles;
+import net.z2six.featheredfriend.registry.FFNeoForgeParticles;
 import org.slf4j.Logger;
 
 /**
- * forge/src/main/java/net/z2six/featheredfriend/client/particle/FFClientParticles.java
+ * neoforge/src/main/java/net/z2six/featheredfriend/client/particle/FFClientParticles.java
  *
- * Client-only particle provider registration (Forge 1.20.1).
+ * Client-only particle provider registration (NeoForge 1.21.1 safe).
  *
  * IMPORTANT:
- * - No @EventBusSubscriber required if you register this listener manually on Dist.CLIENT.
+ * - No @EventBusSubscriber. Register this listener from FeatheredFriend.java only on Dist.CLIENT.
  * - Registers the particle *provider* (factory), not the particle type.
  */
 public final class FFClientParticles {
@@ -26,13 +26,13 @@ public final class FFClientParticles {
     public static void onRegisterParticleProviders(RegisterParticleProvidersEvent event) {
         LOG.debug("[FFClientParticles] Registering particle providers");
         try {
-            // Enderpop
-            event.registerSpriteSet(FFForgeParticles.ENDERPOP.get(), EnderpopParticle.Factory::new);
+            // Enderpop (existing)
+            event.registerSpriteSet(FFNeoForgeParticles.ENDERPOP.get(), EnderpopParticle.Factory::new);
             LOG.debug("[FFClientParticles] Registered provider for ENDERPOP");
 
-            // Feather burst
+            // Feather burst: use FeatherParticles as the provider factory.
             event.registerSpriteSet(
-                    FFForgeParticles.FEATHER.get(),
+                    FFNeoForgeParticles.FEATHER.get(),
                     FeatherParticles::createProvider
             );
             LOG.debug("[FFClientParticles] Registered provider for FEATHER");

@@ -2,6 +2,7 @@
 package net.z2six.featheredfriend.menu;
 
 import net.minecraft.world.item.ItemStack;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * ScrollAttachmentProvider
@@ -27,6 +28,7 @@ public interface ScrollAttachmentProvider {
      * Returns the stack currently stored in the attachment slot at the given index.
      * Implementations should NEVER return null; use ItemStack.EMPTY instead.
      */
+    @NotNull
     ItemStack getAttachmentStack(int index);
 
     /**

@@ -1,4 +1,4 @@
-// forge/src/main/java/net/z2six/featheredfriend/integration/jei/FeatheredFriendJeiPlugin.java
+// neoforge/src/main/java/net/z2six/featheredfriend/integration/jei/FeatheredFriendJeiPlugin.java
 package net.z2six.featheredfriend.integration.jei;
 
 import mezz.jei.api.IModPlugin;
@@ -7,6 +7,7 @@ import mezz.jei.api.constants.VanillaTypes;
 import mezz.jei.api.gui.handlers.IGuiContainerHandler;
 import mezz.jei.api.registration.IGuiHandlerRegistration;
 import mezz.jei.api.registration.IRecipeRegistration;
+import mezz.jei.api.runtime.IJeiRuntime;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -14,8 +15,8 @@ import net.minecraft.world.item.ItemStack;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.client.gui.EnderPearlInventoryScreen;
 import net.z2six.featheredfriend.client.gui.ScrollSealingScreen;
-import net.z2six.featheredfriend.client.gui.ScrollViewScreen;
 import net.z2six.featheredfriend.client.gui.SealStampScreen;
+import net.z2six.featheredfriend.client.gui.ScrollViewScreen;
 import net.z2six.featheredfriend.registry.FFItems;
 import org.slf4j.Logger;
 
@@ -23,7 +24,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * forge/src/main/java/net/z2six/featheredfriend/integration/jei/FeatheredFriendJeiPlugin.java
+ * neoforge/src/main/java/net/z2six/featheredfriend/integration/jei/FeatheredFriendJeiPlugin.java
  *
  * JEI integration for FeatheredFriend.
  *
@@ -56,7 +57,7 @@ public class FeatheredFriendJeiPlugin implements IModPlugin {
                             "falling back to 'featheredfriend:jei_plugin_fallback'",
                     t
             );
-            return new ResourceLocation("featheredfriend", "jei_plugin_fallback");
+            return new ResourceLocation(Constants.MOD_ID, "jei_plugin_fallback");
         }
     }
 
@@ -71,6 +72,20 @@ public class FeatheredFriendJeiPlugin implements IModPlugin {
                     sealedScroll,
                     VanillaTypes.ITEM_STACK,
                     Component.translatable("jei.featheredfriend.scroll_sealed.info")
+            );
+
+            ItemStack openedScroll = new ItemStack(FFItems.SCROLL_OPENED.get());
+            registration.addIngredientInfo(
+                    openedScroll,
+                    VanillaTypes.ITEM_STACK,
+                    Component.translatable("jei.featheredfriend.scroll_opened.info")
+            );
+
+            ItemStack ravensFeather = new ItemStack(FFItems.RAVEN_FEATHER.get());
+            registration.addIngredientInfo(
+                    ravensFeather,
+                    VanillaTypes.ITEM_STACK,
+                    Component.translatable("jei.featheredfriend.raven_feather.info")
             );
         } catch (Throwable t) {
             LOG.error(
@@ -240,6 +255,16 @@ public class FeatheredFriendJeiPlugin implements IModPlugin {
             );
         } catch (Throwable t) {
             LOG.error("FeatheredFriendJeiPlugin: registerGuiHandlers failed for ScrollViewScreen", t);
+        }
+    }
+
+    @Override
+    public void onRuntimeAvailable(IJeiRuntime jeiRuntime) {
+        try {
+            JeiOverlayHider.setRuntime(jeiRuntime);
+            LOG.debug("FeatheredFriendJeiPlugin: JEI runtime available and passed to JeiOverlayHider");
+        } catch (Throwable t) {
+            LOG.error("FeatheredFriendJeiPlugin: Failed to pass JEI runtime to JeiOverlayHider", t);
         }
     }
 }

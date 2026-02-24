@@ -49,11 +49,23 @@ sourceSets.main.resources.srcDir 'src/generated/resources'
 repositories {
     maven { url = "https://maven.blamejared.com" }
     maven { url = "https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/" }
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = "Modrinth"
+                url = "https://api.modrinth.com/maven"
+            }
+        }
+        filter {
+            includeGroup "maven.modrinth"
+        }
+    }
 }
 
 // Define JEI version for this subproject.
 // (Keep it here so you don't need to touch gradle.properties.)
 def jei_version = "15.20.0.127"
+def jade_version = "11.11.1+forge"
 
 dependencies {
     compileOnly project(":common")
@@ -69,6 +81,10 @@ dependencies {
 
     // runtime mod jar
     modRuntimeOnly "mezz.jei:jei-1.20.1-forge:${jei_version}"
+
+    // Jade (Forge 1.20.1) - optional dependency (API used for our plugin)
+    modCompileOnly "maven.modrinth:jade:${jade_version}"
+    modRuntimeOnly "maven.modrinth:jade:${jade_version}"
 
     // Optional (but recommended if you keep @NotNull/@Nullable in common code)
     compileOnly "org.jetbrains:annotations:24.1.0"

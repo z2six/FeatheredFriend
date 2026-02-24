@@ -3,13 +3,11 @@ package net.z2six.featheredfriend.network;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.Tag;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
-import net.z2six.featheredfriend.Constants;
-
+import net.z2six.featheredfriend.util.StackCustomDataUtil;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 /**
@@ -17,7 +15,7 @@ import org.slf4j.Logger;
  *
  * C2S payload sent when the player finishes carving a seal stamp in the GUI.
  *
- * Writes into the stamp's CustomData payload:
+ * Writes into the stamp's CustomData component:
  *
  *   CustomData: {
  *     SealStamp: {
@@ -28,9 +26,10 @@ import org.slf4j.Logger;
  *     }
  *   }
  *
- * Forge 1.20.1 note:
- * - We store the former DataComponents.CUSTOM_DATA payload under ItemStack tag sub-compound "CustomData".
- * - Uses FriendlyByteBuf for encode/decode.
+ * Slot mapping:
+ *  - 0–35: inventory slots (if used)
+ *  - 36:   main hand
+ *  - 37:   off hand
  */
 public record SealStampCarveResultPacket(
         int stampSlot,
@@ -42,34 +41,25 @@ public record SealStampCarveResultPacket(
 
     private static final Logger LOG = LogUtils.getLogger();
 
-    public static final ResourceLocation ID = new ResourceLocation(Constants.MOD_ID, "seal_stamp_carve_result");
-
-    // Where we store the former "minecraft:custom_data" payload in 1.20.1
-    private static final String STACK_CUSTOM_DATA_KEY = "CustomData";
-
-    // ---------------------------------------------------------------------
-    // Codec
-    // ---------------------------------------------------------------------
-
-    public static void encode(SealStampCarveResultPacket msg, FriendlyByteBuf buf) {
+    public static void encode(@NotNull SealStampCarveResultPacket msg, @NotNull FriendlyByteBuf buf) {
         try {
             buf.writeInt(msg.stampSlot);
             buf.writeLong(msg.seed);
             buf.writeInt(msg.slices);
             buf.writeInt(msg.style);
-            buf.writeUtf(msg.ownerName);
+            buf.writeUtf(msg.ownerName != null ? msg.ownerName : "", 64);
         } catch (Throwable t) {
             LOG.error("[SealStampCarveResultPacket] encode failed", t);
         }
     }
 
-    public static SealStampCarveResultPacket decode(FriendlyByteBuf buf) {
+    public static @NotNull SealStampCarveResultPacket decode(@NotNull FriendlyByteBuf buf) {
         try {
             int slot = buf.readInt();
             long seed = buf.readLong();
             int slices = buf.readInt();
             int style = buf.readInt();
-            String owner = buf.readUtf();
+            String owner = buf.readUtf(64);
             return new SealStampCarveResultPacket(slot, seed, slices, style, owner);
         } catch (Throwable t) {
             LOG.error("[SealStampCarveResultPacket] decode failed, returning safe default", t);
@@ -81,7 +71,7 @@ public record SealStampCarveResultPacket(
     // Server-side handler
     // ---------------------------------------------------------------------
 
-    public static void handle(SealStampCarveResultPacket msg, ServerPlayer player) {
+    public static void handle(@NotNull SealStampCarveResultPacket msg, @NotNull ServerPlayer player) {
         try {
             if (msg.stampSlot() < 0) {
                 LOG.error("[SealStampCarveResultPacket] Invalid stampSlot {}", msg.stampSlot());
@@ -107,11 +97,7 @@ public record SealStampCarveResultPacket(
                 return;
             }
 
-            // Read existing CustomData payload from stack tag sub-compound "CustomData"
-            CompoundTag root = getCustomDataCopy(stack);
-            if (root == null) {
-                root = new CompoundTag();
-            }
+            CompoundTag root = StackCustomDataUtil.getCopy(stack);
 
             // SealStamp subtree
             CompoundTag sealRoot = new CompoundTag();
@@ -122,8 +108,7 @@ public record SealStampCarveResultPacket(
 
             root.put("SealStamp", sealRoot);
 
-            // Write back into the custom payload
-            setCustomData(stack, root);
+            StackCustomDataUtil.set(stack, root);
 
             LOG.debug(
                     "[SealStampCarveResultPacket] Wrote seal data to slot {} for player {} (seed={} slices={} style={} owner='{}')",
@@ -137,32 +122,6 @@ public record SealStampCarveResultPacket(
 
         } catch (Throwable t) {
             LOG.error("[SealStampCarveResultPacket] handle failed", t);
-        }
-    }
-
-    // ---------------------------------------------------------------------
-    // CustomData compatibility (1.20.1)
-    // ---------------------------------------------------------------------
-
-    private static CompoundTag getCustomDataCopy(ItemStack stack) {
-        try {
-            CompoundTag tag = stack.getTag();
-            if (tag == null) return new CompoundTag();
-            if (!tag.contains(STACK_CUSTOM_DATA_KEY, Tag.TAG_COMPOUND)) return new CompoundTag();
-            CompoundTag cd = tag.getCompound(STACK_CUSTOM_DATA_KEY);
-            return cd == null ? new CompoundTag() : cd.copy();
-        } catch (Throwable t) {
-            LOG.error("[SealStampCarveResultPacket] getCustomDataCopy failed", t);
-            return new CompoundTag();
-        }
-    }
-
-    private static void setCustomData(ItemStack stack, CompoundTag customDataRoot) {
-        try {
-            CompoundTag tag = stack.getOrCreateTag();
-            tag.put(STACK_CUSTOM_DATA_KEY, customDataRoot);
-        } catch (Throwable t) {
-            LOG.error("[SealStampCarveResultPacket] setCustomData failed", t);
         }
     }
 }

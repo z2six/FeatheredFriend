@@ -14,9 +14,17 @@ legacyForge {
     }
 }
 
+repositories {
+    maven { url = "https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/" }
+}
+
 dependencies {
     compileOnly group: 'org.spongepowered', name: 'mixin', version: '0.8.5'
     implementation group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.1'
+
+    // GeckoLib types are referenced from common code (GeoBlockEntity, GeoItem, etc.).
+    // This is compile-only; the loader module provides the actual mod dependency at runtime.
+    modCompileOnly "software.bernie.geckolib:geckolib-forge-1.20.1:4.7.3"
 }
 
 configurations {

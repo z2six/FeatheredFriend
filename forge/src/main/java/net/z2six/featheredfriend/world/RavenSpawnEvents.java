@@ -1,9 +1,10 @@
-// MainFile: forge/src/main/java/net/z2six/featheredfriend/world/RavenSpawnEvents.java
+// MainFile: neoforge/src/main/java/net/z2six/featheredfriend/world/RavenSpawnEvents.java
 package net.z2six.featheredfriend.world;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.util.RandomSource;
@@ -14,25 +15,33 @@ import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.TickEvent;
 import net.z2six.featheredfriend.Constants;
-import net.z2six.featheredfriend.config.FFCalendarConfig;
+import net.z2six.featheredfriend.config.FFServerConfig;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 /**
- * forge/src/main/java/net/z2six/featheredfriend/world/RavenSpawnEvents.java
+ * neoforge/src/main/java/net/z2six/featheredfriend/world/RavenSpawnEvents.java
  *
  * Natural spawner for Ravens.
  *
  * NOTE (critical reality check):
  * - This file ONLY controls ravens spawned by THIS handler (manual addFreshEntity()).
  * - If you also added your raven to biome spawn lists (BiomeModifier / datapack add_spawns / BiomeModifications),
- *   then vanilla's mob spawner will spawn ravens normally on ground (no leaves requirement) and ignore this file’s cap.
+ *   then vanilla's mob spawner will spawn ravens normally on ground (no leaves requirement) and ignore this fileâ€™s cap.
  *
  * This implementation therefore:
  *  - Keeps the original "leaves-top spawn" behavior.
@@ -108,15 +117,32 @@ public final class RavenSpawnEvents {
 
     /**
      * Optional global safety cap: total WILD ravens allowed in this level.
-     * This prevents runaway spawn bug floods even if other logic is broken.
+     * This prevents raven spawn bugged floods even if other logic is broken.
      *
      * Rule of thumb: (players * 2) + buffer.
      */
+    /**
+     * Additional allowance above the player-count cap.
+     *
+     * Design goal for FeatheredFriend: never have more wild ravens than online players.
+     */
     private static final int GLOBAL_WILD_RAVEN_BUFFER = 0;
+
+    private static final int WILD_RAVEN_SCAN_CACHE_TICKS = 20;
+    private static final double WILD_RAVEN_SCAN_CACHE_MOVE_DIST_SQR = 8.0D * 8.0D;
+
+    private static final Map<UUID, WildRavenScanCache> WILD_RAVEN_SCAN_CACHE = new HashMap<>();
+
+    private static final class WildRavenScanCache {
+        long lastGameTime;
+        BlockPos lastPlayerPos;
+        ResourceKey<Level> lastLevelKey;
+        List<Entity> wildRavens;
+    }
 
     private static int wildRavensPerPlayer() {
         try {
-            return Math.max(0, FFCalendarConfig.getWildRavensPerPlayer());
+            return Math.max(0, FFServerConfig.getWildRavensPerPlayer());
         } catch (Throwable t) {
             return 1;
         }
@@ -138,8 +164,8 @@ public final class RavenSpawnEvents {
             }
             REGISTERED = true;
 
-            net.minecraftforge.common.MinecraftForge.EVENT_BUS.addListener(RavenSpawnEvents::onLevelTick);
-            LOG.debug("[RavenSpawnEvents] Registered TickEvent.LevelTickEvent listener. ENABLE_SPAWNING={}", ENABLE_SPAWNING);
+            MinecraftForge.EVENT_BUS.addListener(RavenSpawnEvents::onLevelTickPost);
+            LOG.debug("[RavenSpawnEvents] Registered LevelTickEvent.Post listener. ENABLE_SPAWNING={}", ENABLE_SPAWNING);
         } catch (Throwable t) {
             LOG.error("[RavenSpawnEvents] Failed to register listeners", t);
         }
@@ -149,11 +175,10 @@ public final class RavenSpawnEvents {
     // EVENT HANDLER
     // ---------------------------------------------------------------------
 
-    private static void onLevelTick(net.minecraftforge.event.TickEvent.LevelTickEvent event) {
-        if (event.phase != net.minecraftforge.event.TickEvent.Phase.END) {
+    private static void onLevelTickPost(TickEvent.LevelTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) {
             return;
         }
-
         if (!(event.level instanceof net.minecraft.server.level.ServerLevel level)) {
             return;
         }
@@ -165,6 +190,7 @@ public final class RavenSpawnEvents {
         try {
             final long gameTime = level.getGameTime();
 
+            // We use the registry lookup each run to avoid stale references in dev reload edge cases.
             final EntityType<?> ravenType = BuiltInRegistries.ENTITY_TYPE.get(RAVEN_ID);
             if (ravenType == null) {
                 if ((gameTime % DEBUG_LOG_INTERVAL_TICKS) == 0L) {
@@ -178,19 +204,35 @@ public final class RavenSpawnEvents {
                 return;
             }
 
+            Set<UUID> activePlayers = new HashSet<>();
+            for (Player p : players) {
+                if (p != null) {
+                    activePlayers.add(p.getUUID());
+                }
+            }
+            if (!WILD_RAVEN_SCAN_CACHE.isEmpty()) {
+                WILD_RAVEN_SCAN_CACHE.keySet().removeIf(id -> !activePlayers.contains(id));
+            }
+
+            // Defense-in-depth: global cap for WILD ravens.
+            // If this trips, something is spawning too many ravens (this handler, vanilla spawn lists, or another mod).
+            // We only cull if ravens are near a player (we do not roam the entire world).
             if ((gameTime % CLEANUP_INTERVAL_TICKS) == 0L) {
                 enforceGlobalWildRavenCapNearPlayers(level, players, ravenType, gameTime);
             }
 
+            // Per-player cleanup always runs on CLEANUP_INTERVAL_TICKS.
             if ((gameTime % CLEANUP_INTERVAL_TICKS) == 0L) {
                 for (Player player : players) {
                     if (player == null || player.isSpectator()) {
                         continue;
                     }
+                    // Even if player is too high for spawning, we still want cleanup in case they fly into a raven swarm.
                     cullExtraWildRavensNearPlayer(level, player, ravenType, gameTime);
                 }
             }
 
+            // Spawn checks run on CHECK_INTERVAL_TICKS.
             if ((gameTime % CHECK_INTERVAL_TICKS) != 0L) {
                 return;
             }
@@ -212,21 +254,19 @@ public final class RavenSpawnEvents {
                     continue;
                 }
 
+                // Skip spawns when player is far above the terrain (sky rigs).
                 if (isPlayerTooHighAboveSurface(level, player, gameTime)) {
                     continue;
                 }
 
-                final int localCap = wildRavensPerPlayer();
-                if (localCap <= 0) {
-                    // Spawning disabled via config (culling still runs in cleanup path).
-                    continue;
-                }
-
                 final int wildCount = countWildRavensNearPlayer(level, player, ravenType, gameTime);
+                final int localCap = wildRavensPerPlayer();
                 if (wildCount >= localCap) {
+                    // Hard cap reached: never spawn more here.
                     continue;
                 }
 
+                // Decide spawn chance based on local WILD population.
                 final double spawnChance = (wildCount <= 0) ? SPAWN_CHANCE_EMPTY_AREA : SPAWN_CHANCE_WITH_ONE_RAVEN;
 
                 final RandomSource rnd = level.getRandom();
@@ -246,8 +286,10 @@ public final class RavenSpawnEvents {
                     continue;
                 }
 
+                // Before we actually spawn, re-check the cap to minimize behavior if multiple handlers exist.
                 final int wildCountPreSpawn = countWildRavensNearPlayer(level, player, ravenType, gameTime);
-                if (wildCountPreSpawn >= localCap) {
+                final int localCapNow = wildRavensPerPlayer();
+                if (wildCountPreSpawn >= localCapNow) {
                     if ((gameTime % DEBUG_LOG_INTERVAL_TICKS) == 0L) {
                         LOG.debug(
                                 "[RavenSpawnEvents] Spawn aborted: cap already reached near player {} (wildCountPreSpawn={}).",
@@ -277,7 +319,7 @@ public final class RavenSpawnEvents {
                 }
             }
         } catch (Throwable t) {
-            LOG.error("[RavenSpawnEvents] onLevelTick failed", t);
+            LOG.error("[RavenSpawnEvents] onLevelTickPost failed", t);
         }
     }
 
@@ -395,6 +437,56 @@ public final class RavenSpawnEvents {
         }
     }
 
+    private static List<Entity> getWildRavensNearPlayerCached(net.minecraft.server.level.ServerLevel level,
+                                                              Player player,
+                                                              EntityType<?> ravenType,
+                                                              long gameTime) {
+        try {
+            UUID playerId = player.getUUID();
+            BlockPos pos = player.blockPosition();
+
+            WildRavenScanCache cache = WILD_RAVEN_SCAN_CACHE.get(playerId);
+            if (cache != null && cache.wildRavens != null && cache.lastPlayerPos != null) {
+                long dt = gameTime - cache.lastGameTime;
+                boolean sameLevel = cache.lastLevelKey != null && cache.lastLevelKey.equals(level.dimension());
+                double dx = pos.getX() - cache.lastPlayerPos.getX();
+                double dy = pos.getY() - cache.lastPlayerPos.getY();
+                double dz = pos.getZ() - cache.lastPlayerPos.getZ();
+                double distSqr = dx * dx + dy * dy + dz * dz;
+                if (sameLevel && dt >= 0 && dt <= WILD_RAVEN_SCAN_CACHE_TICKS && distSqr <= WILD_RAVEN_SCAN_CACHE_MOVE_DIST_SQR) {
+                    cache.wildRavens.removeIf(e -> e == null || !e.isAlive() || !isWildRaven(e, ravenType));
+                    return cache.wildRavens;
+                }
+            }
+
+            final AABB box = player.getBoundingBox().inflate(LOCAL_RAVEN_RADIUS);
+            List<Entity> matches = level.getEntitiesOfClass(
+                    Entity.class,
+                    box,
+                    e -> isWildRaven(e, ravenType)
+            );
+
+            if (matches == null) {
+                matches = new ArrayList<>();
+            } else {
+                matches.removeIf(e -> e == null || !e.isAlive() || !isWildRaven(e, ravenType));
+            }
+
+            if (cache == null) {
+                cache = new WildRavenScanCache();
+                WILD_RAVEN_SCAN_CACHE.put(playerId, cache);
+            }
+            cache.lastGameTime = gameTime;
+            cache.lastPlayerPos = pos;
+            cache.lastLevelKey = level.dimension();
+            cache.wildRavens = matches;
+
+            return matches;
+        } catch (Throwable t) {
+            return new ArrayList<>();
+        }
+    }
+
     /**
      * Count WILD ravens within LOCAL_RAVEN_RADIUS of player.
      */
@@ -403,15 +495,7 @@ public final class RavenSpawnEvents {
                                                  EntityType<?> ravenType,
                                                  long gameTime) {
         try {
-            final AABB box = player.getBoundingBox().inflate(LOCAL_RAVEN_RADIUS);
-
-            // Use getEntitiesOfClass(Entity.class) to avoid overload ambiguity and keep broad compatibility.
-            final List<Entity> matches = level.getEntitiesOfClass(
-                    Entity.class,
-                    box,
-                    e -> isWildRaven(e, ravenType)
-            );
-
+            final List<Entity> matches = getWildRavensNearPlayerCached(level, player, ravenType, gameTime);
             final int count = (matches == null) ? 0 : matches.size();
 
             if ((gameTime % DEBUG_LOG_INTERVAL_TICKS) == 0L) {
@@ -427,29 +511,24 @@ public final class RavenSpawnEvents {
         } catch (Throwable t) {
             LOG.error("[RavenSpawnEvents] countWildRavensNearPlayer failed", t);
             // Fail-safe: if counting fails, pretend cap is reached to avoid accidental floods.
-            return Math.max(1, wildRavensPerPlayer());
+            return wildRavensPerPlayer();
         }
     }
 
     /**
      * Hard enforcement: if >2 WILD ravens are near this player, despawn extras immediately.
-     * We remove the farthest ones first (keeps local pair close to player).
+     * We remove the farthest ones first (keeps local raven close to player).
      */
     private static void cullExtraWildRavensNearPlayer(net.minecraft.server.level.ServerLevel level,
                                                       Player player,
                                                       EntityType<?> ravenType,
                                                       long gameTime) {
         try {
-            final AABB box = player.getBoundingBox().inflate(LOCAL_RAVEN_RADIUS);
-
-            final List<Entity> wildRavens = level.getEntitiesOfClass(
-                    Entity.class,
-                    box,
-                    e -> isWildRaven(e, ravenType)
-            );
+            final List<Entity> cached = getWildRavensNearPlayerCached(level, player, ravenType, gameTime);
+            final List<Entity> wildRavens = (cached == null) ? new ArrayList<>() : new ArrayList<>(cached);
 
             int localCap = wildRavensPerPlayer();
-            if (wildRavens == null || wildRavens.size() <= localCap) {
+            if (wildRavens.size() <= localCap) {
                 return;
             }
 
@@ -517,8 +596,7 @@ public final class RavenSpawnEvents {
             for (Player p : players) {
                 if (p == null || p.isSpectator()) continue;
 
-                final AABB box = p.getBoundingBox().inflate(LOCAL_RAVEN_RADIUS);
-                List<Entity> local = level.getEntitiesOfClass(Entity.class, box, e -> isWildRaven(e, ravenType));
+                List<Entity> local = getWildRavensNearPlayerCached(level, p, ravenType, gameTime);
                 if (local != null && !local.isEmpty()) {
                     gathered.addAll(local);
                 }
@@ -746,12 +824,12 @@ public final class RavenSpawnEvents {
                             level,
                             level.getCurrentDifficultyAt(pos),
                             MobSpawnType.NATURAL,
-                            null,   // SpawnGroupData
-                            null    // CompoundTag
+                            null,
+                            null
                     );
                 } catch (Throwable t) {
                     LOG.warn(
-                            "[RavenSpawnEvents] finalizeSpawn failed for raven at {} – continuing with spawned entity",
+                            "[RavenSpawnEvents] finalizeSpawn failed for raven at {} â€“ continuing with spawned entity",
                             pos,
                             t
                     );
