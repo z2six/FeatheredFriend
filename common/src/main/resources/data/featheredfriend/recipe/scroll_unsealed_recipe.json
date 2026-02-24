@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "P",
+    "P"
+  ],
+  "key": {
+    "P": {
+      "item": "minecraft:paper"
+    }
+  },
+  "result": {
+    "id": "featheredfriend:scroll_unsealed",
+    "count": 1
+  }
+}

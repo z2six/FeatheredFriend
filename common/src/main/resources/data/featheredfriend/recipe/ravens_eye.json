@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "E",
+    "F"
+  ],
+  "key": {
+    "E": {
+      "item": "minecraft:ender_eye"
+    },
+    "F": {
+      "item": "featheredfriend:raven_feather"
+    }
+  },
+  "result": {
+    "id": "featheredfriend:ravens_eye",
+    "count": 1
+  }
+}

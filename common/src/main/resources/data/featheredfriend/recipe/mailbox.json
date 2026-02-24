@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "GCG",
+    "GBG"
+  ],
+  "key": {
+    "G": { "item": "minecraft:gold_nugget" },
+    "C": { "item": "minecraft:chest" },
+    "B": { "item": "minecraft:blackstone" }
+  },
+  "result": {
+    "id": "featheredfriend:mailbox",
+    "count": 1
+  }
+}

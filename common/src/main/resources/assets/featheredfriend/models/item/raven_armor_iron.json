@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "featheredfriend:item/armor/raven_armor_iron"
+  }
+}

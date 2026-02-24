@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "   ",
+    "YYY",
+    " YY"
+  ],
+  "key": {
+    "Y": { "item": "minecraft:copper_ingot" }
+  },
+  "result": {
+    "id": "featheredfriend:raven_armor_copper",
+    "count": 1
+  }
+}
+

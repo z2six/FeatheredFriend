@@ -1,0 +1,169 @@
+package net.z2six.featheredfriend.menu;
+
+import net.minecraft.core.HolderLookup;
+import net.minecraft.world.Container;
+import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
+import net.z2six.featheredfriend.item.EnderpackStackRef;
+import net.z2six.featheredfriend.item.EnderpackStorage;
+import net.z2six.featheredfriend.platform.Services;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
+
+/**
+ * Item-backed 3x9 container for Enderpack contents.
+ */
+public class EnderpackMenu extends AbstractContainerMenu {
+
+    private static final int ROWS = 3;
+    private static final int COLS = 9;
+    private static final int SLOT_COUNT = ROWS * COLS;
+
+    private final Container enderpackContainer = new SimpleContainer(SLOT_COUNT);
+    private final Inventory playerInventory;
+
+    private @Nullable EnderpackStackRef stackRef;
+    private @Nullable HolderLookup.Provider registries;
+
+    public EnderpackMenu(int containerId, @NotNull Inventory playerInventory) {
+        super(Services.PLATFORM.getEnderpackMenuType(), containerId);
+        this.playerInventory = playerInventory;
+
+        // Enderpack slots (3x9)
+        for (int row = 0; row < ROWS; row++) {
+            for (int col = 0; col < COLS; col++) {
+                int index = col + row * COLS;
+                int x = 8 + col * 18;
+                int y = 18 + row * 18;
+                this.addSlot(new Slot(this.enderpackContainer, index, x, y));
+            }
+        }
+
+        // Player inventory (3x9)
+        for (int row = 0; row < 3; row++) {
+            for (int col = 0; col < 9; col++) {
+                int index = col + row * 9 + 9;
+                int x = 8 + col * 18;
+                int y = 84 + row * 18;
+                this.addSlot(new Slot(playerInventory, index, x, y));
+            }
+        }
+
+        // Hotbar (1x9)
+        for (int col = 0; col < 9; col++) {
+            int x = 8 + col * 18;
+            int y = 142;
+            this.addSlot(new Slot(playerInventory, col, x, y));
+        }
+    }
+
+    public void bindServerStorage(@NotNull EnderpackStackRef stackRef,
+                                  @NotNull HolderLookup.Provider registries) {
+        this.stackRef = stackRef;
+        this.registries = registries;
+        loadFromBoundStack();
+    }
+
+    private void loadFromBoundStack() {
+        try {
+            if (this.stackRef == null || this.registries == null) {
+                return;
+            }
+            ItemStack stack = this.stackRef.getCurrentStack();
+            List<ItemStack> loaded = EnderpackStorage.load(stack, this.registries);
+            for (int i = 0; i < SLOT_COUNT; i++) {
+                ItemStack s = (i < loaded.size()) ? loaded.get(i) : ItemStack.EMPTY;
+                this.enderpackContainer.setItem(i, s == null ? ItemStack.EMPTY : s.copy());
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void saveToBoundStack() {
+        try {
+            if (this.stackRef == null || this.registries == null) {
+                return;
+            }
+            ItemStack stack = this.stackRef.getCurrentStack();
+            if (!EnderpackStorage.isEnderpack(stack)) {
+                stack = new ItemStack(net.z2six.featheredfriend.registry.FFItems.ENDERPACK.get());
+            }
+
+            net.minecraft.core.NonNullList<ItemStack> toSave =
+                    net.minecraft.core.NonNullList.withSize(SLOT_COUNT, ItemStack.EMPTY);
+            for (int i = 0; i < SLOT_COUNT; i++) {
+                ItemStack s = this.enderpackContainer.getItem(i);
+                toSave.set(i, (s == null || s.isEmpty()) ? ItemStack.EMPTY : s.copy());
+            }
+
+            EnderpackStorage.save(stack, toSave, this.registries);
+            this.stackRef.setCurrentStack(stack);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @Override
+    public @NotNull ItemStack quickMoveStack(@NotNull Player player, int index) {
+        try {
+            if (index < 0 || index >= this.slots.size()) {
+                return ItemStack.EMPTY;
+            }
+
+            Slot slot = this.slots.get(index);
+            if (slot == null || !slot.hasItem()) {
+                return ItemStack.EMPTY;
+            }
+
+            ItemStack source = slot.getItem();
+            ItemStack original = source.copy();
+
+            if (index < SLOT_COUNT) {
+                if (!this.moveItemStackTo(source, SLOT_COUNT, this.slots.size(), true)) {
+                    return ItemStack.EMPTY;
+                }
+            } else {
+                if (!this.moveItemStackTo(source, 0, SLOT_COUNT, false)) {
+                    return ItemStack.EMPTY;
+                }
+            }
+
+            if (source.isEmpty()) {
+                slot.set(ItemStack.EMPTY);
+            } else {
+                slot.setChanged();
+            }
+
+            slot.onTake(player, source);
+            return original;
+        } catch (Throwable ignored) {
+            return ItemStack.EMPTY;
+        }
+    }
+
+    @Override
+    public boolean stillValid(@NotNull Player player) {
+        return true;
+    }
+
+    @Override
+    public void removed(@NotNull Player player) {
+        super.removed(player);
+        if (!player.level().isClientSide()) {
+            saveToBoundStack();
+        }
+    }
+
+    public @NotNull Container getEnderpackContainer() {
+        return this.enderpackContainer;
+    }
+
+    public @NotNull Inventory getPlayerInventory() {
+        return this.playerInventory;
+    }
+}

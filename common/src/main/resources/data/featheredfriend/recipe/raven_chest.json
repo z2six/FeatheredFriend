@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "GEG",
+    "BCB",
+    "GBG"
+  ],
+  "key": {
+    "G": { "item": "minecraft:gold_ingot" },
+    "E": { "item": "minecraft:ender_eye" },
+    "B": { "item": "minecraft:blackstone" },
+    "C": { "item": "minecraft:chest" }
+  },
+  "result": {
+    "id": "featheredfriend:raven_chest",
+    "count": 1
+  }
+}
+

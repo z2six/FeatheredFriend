@@ -1,0 +1,64 @@
+// neoforge/src/main/java/net/z2six/featheredfriend/registry/FFNeoForgeMenus.java
+package net.z2six.featheredfriend.registry;
+
+import com.mojang.logging.LogUtils;
+import net.minecraft.world.flag.FeatureFlags;
+import net.minecraft.world.inventory.MenuType;
+import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.registries.DeferredRegister;
+import net.minecraftforge.registries.ForgeRegistries;
+import net.minecraftforge.registries.RegistryObject;
+import net.z2six.featheredfriend.Constants;
+import net.z2six.featheredfriend.menu.ScrollSealingMenu;
+import net.z2six.featheredfriend.menu.ScrollViewMenu;
+import net.z2six.featheredfriend.menu.SealStampMenu;
+import net.z2six.featheredfriend.menu.EnderpackMenu;
+import net.z2six.featheredfriend.menu.MailboxMenu;
+import net.z2six.featheredfriend.menu.RavenChestMenu;
+import net.z2six.featheredfriend.registry.FFMenus;
+import org.slf4j.Logger;
+
+/**
+ * FFNeoForgeMenus
+ *
+ * NeoForge-side menu registrations.
+ */
+public final class FFNeoForgeMenus {
+
+    private static final Logger LOG = LogUtils.getLogger();
+
+    public static final DeferredRegister<MenuType<?>> MENUS =
+            DeferredRegister.create(ForgeRegistries.MENU_TYPES, Constants.MOD_ID);
+
+    public static final RegistryObject<MenuType<ScrollSealingMenu>> SCROLL_SEALING_MENU =
+            MENUS.register(FFMenus.SCROLL_SEALING_ID,
+                    () -> new MenuType<>(ScrollSealingMenu::new, FeatureFlags.DEFAULT_FLAGS));
+
+    public static final RegistryObject<MenuType<SealStampMenu>> SEAL_STAMP_MENU =
+            MENUS.register(FFMenus.SEAL_STAMP_ID,
+                    () -> new MenuType<>(SealStampMenu::new, FeatureFlags.DEFAULT_FLAGS));
+
+    public static final RegistryObject<MenuType<ScrollViewMenu>> SCROLL_VIEW_MENU =
+            MENUS.register(FFMenus.SCROLL_VIEW_ID,
+                    () -> new MenuType<>(ScrollViewMenu::new, FeatureFlags.DEFAULT_FLAGS));
+
+    public static final RegistryObject<MenuType<EnderpackMenu>> ENDERPACK_MENU =
+            MENUS.register(FFMenus.ENDERPACK_ID,
+                    () -> new MenuType<>(EnderpackMenu::new, FeatureFlags.DEFAULT_FLAGS));
+
+    public static final RegistryObject<MenuType<MailboxMenu>> MAILBOX_MENU =
+            MENUS.register(FFMenus.MAILBOX_ID,
+                    () -> new MenuType<>(MailboxMenu::new, FeatureFlags.DEFAULT_FLAGS));
+
+    public static final RegistryObject<MenuType<RavenChestMenu>> RAVEN_CHEST_MENU =
+            MENUS.register(FFMenus.RAVEN_CHEST_ID,
+                    () -> new MenuType<>(RavenChestMenu::new, FeatureFlags.DEFAULT_FLAGS));
+
+    private FFNeoForgeMenus() {
+    }
+
+    public static void register(IEventBus modEventBus) {
+        LOG.debug("[FFNeoForgeMenus] Registering menu deferred register on mod event bus");
+        MENUS.register(modEventBus);
+    }
+}

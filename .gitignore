@@ -26,3 +26,8 @@ run
 /neoforge/.eclipse/configurations/NeoForge Data (
 /neoforge/.eclipse/configurations/NeoForge Server (
 /.vscode/settings.json
+/curios_api_javap.txt
+/curios_curio_stack_handler_javap.txt
+/curios_entity_manager_javap.txt
+/curios_slot_manager_javap.txt
+/.aiignore

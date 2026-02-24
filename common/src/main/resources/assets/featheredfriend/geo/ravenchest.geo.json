@@ -1,0 +1,73 @@
+{
+	"format_version": "1.12.0",
+	"minecraft:geometry": [
+		{
+			"description": {
+				"identifier": "geometry.unknown",
+				"texture_width": 128,
+				"texture_height": 128,
+				"visible_bounds_width": 3,
+				"visible_bounds_height": 3.5,
+				"visible_bounds_offset": [0, 1.25, 0]
+			},
+			"bones": [
+				{
+					"name": "RavenChest",
+					"pivot": [0, 0, 0],
+					"cubes": [
+						{"origin": [-7.5, 0, -7], "size": [15, 11, 14], "uv": [0, 0]},
+						{"origin": [-7, 0.5, -6.5], "size": [14, 10, 13], "inflate": 0.25, "uv": [0, 26]},
+						{"origin": [7.25, 9, -2], "size": [2, 2, 4], "uv": [59, 53]},
+						{"origin": [-9.25, 9, -2], "size": [2, 2, 4], "uv": [59, 53], "mirror": true},
+						{"origin": [-1, 0, 6.75], "size": [2, 26, 2], "uv": [113, 5]},
+						{"origin": [-1, 24, -0.25], "size": [2, 2, 7], "uv": [84, 8]},
+						{"origin": [-4, 24, -0.25], "size": [8, 2, 0], "uv": [90, 20]}
+					]
+				},
+				{
+					"name": "Top",
+					"parent": "RavenChest",
+					"pivot": [0, 10.5, 6.5],
+					"cubes": [
+						{"origin": [-7.5, 10.75, -7], "size": [15, 3, 14], "inflate": 0.25, "uv": [0, 50]},
+						{"origin": [-7.5, 10.75, -7], "size": [15, 3, 14], "uv": [55, 26]}
+					]
+				},
+				{
+					"name": "Lock",
+					"parent": "Top",
+					"pivot": [0, 12.5, -7],
+					"cubes": [
+						{"origin": [-2, 8.75, -8], "size": [4, 6, 2], "uv": [59, 44]},
+						{"origin": [-3, 8.75, -7.5], "size": [6, 7, 0], "uv": [81, 45]}
+					]
+				},
+				{
+					"name": "Eye",
+					"parent": "Top",
+					"pivot": [0, 14.25, 0],
+					"cubes": [
+						{"origin": [-3, 12.75, -3], "size": [6, 3, 6], "uv": [59, 0]},
+						{"origin": [-3, 12.75, -3], "size": [6, 3, 6], "inflate": 0.25, "uv": [43, 28]}
+					]
+				},
+				{
+					"name": "HandleLeft",
+					"parent": "RavenChest",
+					"pivot": [7.75, 10, 0],
+					"cubes": [
+						{"origin": [6.75, 4, -3.5], "size": [2, 6, 7], "uv": [59, 10]}
+					]
+				},
+				{
+					"name": "HandleRight",
+					"parent": "RavenChest",
+					"pivot": [-7.75, 10, 0],
+					"cubes": [
+						{"origin": [-8.75, 4, -3.5], "size": [2, 6, 7], "uv": [59, 10], "mirror": true}
+					]
+				}
+			]
+		}
+	]
+}
