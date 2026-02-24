@@ -1,4 +1,4 @@
-{
+﻿{
   "entity.featheredfriend.raven": "Uwak",
   "itemGroup.featheredfriend": "Feathered Friend",
   "feature.featheredfriend.suspicious_feather": "Magandang Balahibo",
@@ -28,7 +28,7 @@
   "item.featheredfriend.scroll_sealed.description": "Nakuha sa pamamagitan ng pagtatatak sa isang Walang tatak na Scroll sa Scroll Sealing GUI.",
   "item.featheredfriend.scroll_opened.description": "Nakuha sa pamamagitan ng pagbubukas ng Sealed Scroll.",
   "jei.featheredfriend.scroll_sealed.info": "Nalilikha ang Sealed Scrolls mula sa Unfiunded Scrolls sa loob ng Scroll Sealing GUI.",
-  "jei.featheredfriend.scroll_opened.info": "Ang bukás na Scrolls ay ginagawa sa pamamagitan ng pagbasag sa tatak sa isang Sealed Scroll (bukin ang balumbon at basagin ang wax seal).",
+  "jei.featheredfriend.scroll_opened.info": "Ang bukÃ¡s na Scrolls ay ginagawa sa pamamagitan ng pagbasag sa tatak sa isang Sealed Scroll (bukin ang balumbon at basagin ang wax seal).",
   "jei.featheredfriend.raven_feather.info": "Ang mga Balahibo ng Raven ay ibinababa kapag namatay ang isang Raven.",
   "key.categories.featheredfriend": "Feathered Friend",
   "key.featheredfriend.open_settings": "Feathered FriendIlagay ang menu",
@@ -82,6 +82,9 @@
   "screen.featheredfriend.settings.scroll_delivery_cooldown.syncing": "Ang paghahatid ng aklat ay lumamig: Pagkukunwang...",
   "screen.featheredfriend.settings.courier_timeout_retry": "Ang Courier timeout auto-retry (mga segundo):%s",
   "screen.featheredfriend.settings.courier_timeout_retry.syncing": "Courier timeout auto-retry: Syncing...",
+  "screen.featheredfriend.settings.brush_raven_cooldown": "Brush raven cooldown (seconds): %s",
+  "screen.featheredfriend.settings.brush_raven_cooldown.syncing": "Brush raven cooldown: Syncing...",
+  "message.featheredfriend.raven.brush_cooldown": "Ayaw munang masuklay ng kaibigang may balahibo na ito ngayon. Baka mamaya?",
   "screen.featheredfriend.settings.status.synced": "Pinagsama ang mga setting ng server",
   "screen.featheredfriend.settings.status.waiting": "Hinihintay ang mga setting ng server...",
   "hud.featheredfriend.raven_badge.base.idle_no_scroll": "IDLE",
@@ -101,7 +104,7 @@
   "screen.featheredfriend.raven_log.none": "Walang talaan na ipakikita.",
   "screen.featheredfriend.raven_log.settings": "Mga Pagtatakda",
   "screen.featheredfriend.raven_log.clear": "Malinaw na mga troso",
-  "screen.featheredfriend.raven_log.fullscreen": "Punô",
+  "screen.featheredfriend.raven_log.fullscreen": "PunÃ´",
   "screen.featheredfriend.raven_log.windowed": "Nakasuot",
   "screen.featheredfriend.raven_log.category.summon": "Pagbuo",
   "screen.featheredfriend.raven_log.category.courier": "Courier",
@@ -168,7 +171,7 @@
   "log.featheredfriend.courier.job.dispatched_mailbox": "Recipient ay offline. Ipinadala ng Courier raven sa mailbox para sa trabaho #%s.",
   "log.featheredfriend.courier.job.redirected_to_mailbox": "Si Recipient ay nag-alsa. Ang Courier raven ay bumaling sa mailbox para sa trabaho #%s.",
   "log.featheredfriend.courier.mailbox.missing": "Hindi makakita ang Courier raven ng nakarekord na buson para sa trabaho #%s.",
-  "log.featheredfriend.courier.mailbox.full": "Nakahanap ang Courier raven ng mailbox subalit ito'y punô ng trabaho #%s.",
+  "log.featheredfriend.courier.mailbox.full": "Nakahanap ang Courier raven ng mailbox subalit ito'y punÃ´ ng trabaho #%s.",
   "log.featheredfriend.courier.mailbox.delivered": "Ang Courier raven ay nagbigay ng trabaho #%ssa isang buson.",
   "log.featheredfriend.courier.job.completed_mailbox": "Trabaho sa paghahatid ng Courier #%stapos. Ang Scroll ay dinala sa isang buson.",
   "log.featheredfriend.courier.job.completed_retrieved": "Trabaho sa paghahatid ng Courier #%stapos. Ang Scroll ay nakuha ng tumanggap nito.",
@@ -249,7 +252,7 @@
   "tooltip.featheredfriend.seal_stamp.uncarved": "Hindi Nakasakay",
   "tooltip.featheredfriend.enderpack": "Mga tindahan para sa iyoFeathered Friendupang ihatid sa bahay.",
   "tooltip.featheredfriend.ravens_eye": "Maaaring gamitin upang makipag-ugnayan sa iyongFeathered Friend.",
-  "tooltip.featheredfriend.raven_chest": "Hindi maliwanag kung ito ay buháy...",
+  "tooltip.featheredfriend.raven_chest": "Hindi maliwanag kung ito ay buhÃ¡y...",
   "tooltip.featheredfriend.raven_armor_leather": "Liwanag na proteksiyon para sa isang kasama sa raven.",
   "tooltip.featheredfriend.raven_armor_copper": "Saligang proteksiyon para sa isang kasama sa raven.",
   "tooltip.featheredfriend.raven_armor_iron": "Maaasahang proteksiyong metal para sa isang kasama sa raven.",
@@ -264,7 +267,7 @@
   "tooltip.featheredfriend.raven_armor.stat.payload_safety": "Kaligtasan:%s%%",
   "tooltip.featheredfriend.raven_armor.stat.health_regen": "Regen ng Kalusugan:%sHP/min",
   "tooltip.featheredfriend.raven_armor.stat.help.max_hits": "(Ang nakatanim na lupa ay maaaring makaligtas ang raven)",
-  "tooltip.featheredfriend.raven_armor.stat.help.dodge_chance": "(change vs base 25％ ilagan ang pagkakataon)",
+  "tooltip.featheredfriend.raven_armor.stat.help.dodge_chance": "(change vs base 25ï¼… ilagan ang pagkakataon)",
   "tooltip.featheredfriend.raven_armor.stat.help.detection_radius": "(3D galit na pagtutop verit)",
   "tooltip.featheredfriend.raven_armor.stat.help.payload_safety": "(Mag - ingat sa pagbabayad kapag tinamaan)",
   "tooltip.featheredfriend.raven_armor.stat.help.health_regen": "(alpas na paggaling ng kalusugan sa bawat minuto)",
@@ -307,7 +310,7 @@
   "message.featheredfriend.courier.retrieved.from": "mula sa%s",
   "message.featheredfriend.courier.retrieved.addressed_to": "kinakausap%s",
   "message.featheredfriend.courier.retrieved.suffix.inventory": ".",
-  "message.featheredfriend.courier.retrieved.suffix.dropped": "(Ang iyong imbentaryo ay punô, kaya ito ay inihulog sa malapit).",
+  "message.featheredfriend.courier.retrieved.suffix.dropped": "(Ang iyong imbentaryo ay punÃ´, kaya ito ay inihulog sa malapit).",
   "message.featheredfriend.courier.raven_death.fallback_name": "iyong uwak",
   "message.featheredfriend.courier.raven_death.base": "[FeatheredFriend]Ang iyong uwak,%s, namatay",
   "message.featheredfriend.courier.raven_death.recipient": "habang naghahatid ng isang balumbon%s",
@@ -364,3 +367,5 @@
   "message.featheredfriend.wild_raven.tame_wrong_nugget_whisper": "Isang pabulong na tinig ang pumupulupot sa iyong isipan: \"Ang mga balahibong ito ay hindi mo kaibigan... Magaan ang iyong isip. Bigyang pansin...\"",
   "message.featheredfriend.wild_raven.tame_success_whisper": "Isang pabulong na tinig ang naikintal sa iyong isipan: \"Ang iyong mga pandamdam ay matalas... Ang iyong sariliFeathered FriendSang-ayon sa iyo.\""
 }
+
+

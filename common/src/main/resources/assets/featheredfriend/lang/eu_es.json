@@ -1,4 +1,4 @@
-{
+﻿{
   "entity.featheredfriend.raven": "Raven",
   "itemGroup.featheredfriend": "Feathered Friend",
   "feature.featheredfriend.suspicious_feather": "Suspicious Feather",
@@ -82,6 +82,9 @@
   "screen.featheredfriend.settings.scroll_delivery_cooldown.syncing": "Korritu bidalketaren hoztea: Sinkronizatu...",
   "screen.featheredfriend.settings.courier_timeout_retry": "Courier denbora-mugako auto-saiakera (segundoak):%s",
   "screen.featheredfriend.settings.courier_timeout_retry.syncing": "Mezularitza automatikoaren denbora-muga: sinkronizatzen...",
+  "screen.featheredfriend.settings.brush_raven_cooldown": "Brush raven cooldown (seconds): %s",
+  "screen.featheredfriend.settings.brush_raven_cooldown.syncing": "Brush raven cooldown: Syncing...",
+  "message.featheredfriend.raven.brush_cooldown": "Lumadun lagun honek ez du orain eskuilatua izan nahi. Agian geroago?",
   "screen.featheredfriend.settings.status.synced": "Zerbitzariaren ezarpenak sinkronizatuta",
   "screen.featheredfriend.settings.status.waiting": "Zerbitzariaren ezarpenen zain...",
   "hud.featheredfriend.raven_badge.base.idle_no_scroll": "IDLE",
@@ -264,7 +267,7 @@
   "tooltip.featheredfriend.raven_armor.stat.payload_safety": "Ordainketaren segurtasuna:%s%%",
   "tooltip.featheredfriend.raven_armor.stat.health_regen": "Osasuna:%sHP/min",
   "tooltip.featheredfriend.raven_armor.stat.help.max_hits": "(lurrek beleek bizirik iraun dezakete)",
-  "tooltip.featheredfriend.raven_armor.stat.help.dodge_chance": "(aldaketa ％ 25eko hesi-aukeraren aurka)",
+  "tooltip.featheredfriend.raven_armor.stat.help.dodge_chance": "(aldaketa ï¼… 25eko hesi-aukeraren aurka)",
   "tooltip.featheredfriend.raven_armor.stat.help.detection_radius": "(3D detekzio-erradioa)",
   "tooltip.featheredfriend.raven_armor.stat.help.payload_safety": "(sariak jasotzeko aukera)",
   "tooltip.featheredfriend.raven_armor.stat.help.health_regen": "(Osasun berreskurapena minutuko)",
@@ -364,3 +367,5 @@
   "message.featheredfriend.wild_raven.tame_wrong_nugget_whisper": "Ahots xuxurlari batek kizkurtzen dizu: \"luma hauek ez dira zure lagunak... Zure pentsamenduak hauskorrak dira. Arreta gehiago jarri...",
   "message.featheredfriend.wild_raven.tame_success_whisper": "Ahots xuxurlari bat duzu buruan: ZureaFeathered FriendZu onartzen zaitu.\""
 }
+
+

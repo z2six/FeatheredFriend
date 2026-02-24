@@ -39,6 +39,7 @@ import java.util.List;
  * - enderpackDepositCooldownSeconds (global)
  * - scrollDeliveryCooldownSeconds (global)
  * - courierTimeoutRetrySeconds (global)
+ * - brushRavenCooldownSeconds (global)
  * - canEditChat (per-player "can edit server settings in UI" check, computed server-side)
  *
  * Client-only preferences are handled by FFClientConfig (not server-owned).
@@ -50,7 +51,7 @@ public final class FFPayloads {
     /**
      * Bump if you change payload shapes. Must match client + server.
      */
-    private static final String PROTOCOL_VERSION = "4";
+    private static final String PROTOCOL_VERSION = "5";
 
     private FFPayloads() {
         // no-op
@@ -163,6 +164,12 @@ public final class FFPayloads {
                     FFPayloads::handleSetCourierTimeoutRetrySeconds
             );
 
+            registrar.playToServer(
+                    SetBrushRavenCooldownSecondsPayload.TYPE,
+                    SetBrushRavenCooldownSecondsPayload.STREAM_CODEC,
+                    FFPayloads::handleSetBrushRavenCooldownSeconds
+            );
+
             LOG.debug("[FFPayloads] Registered settings payloads OK (protocol={})", PROTOCOL_VERSION);
         } catch (Throwable t) {
             LOG.error("[FFPayloads] onRegisterPayloadHandlers failed safely", t);
@@ -188,6 +195,7 @@ public final class FFPayloads {
         private static volatile int enderpackDepositCooldownSeconds = 0;
         private static volatile int scrollDeliveryCooldownSeconds = 0;
         private static volatile int courierTimeoutRetrySeconds = 0;
+        private static volatile int brushRavenCooldownSeconds = 0;
         private static volatile boolean canEditChat = false;
 
         private ClientState() {
@@ -254,6 +262,10 @@ public final class FFPayloads {
             return courierTimeoutRetrySeconds;
         }
 
+        public static int brushRavenCooldownSeconds() {
+            return brushRavenCooldownSeconds;
+        }
+
         private static void applyFromServer(boolean newChatDisabled,
                                             boolean newSuspiciousFeatherEnabled,
                                             boolean newSuspiciousChestEnabled,
@@ -267,6 +279,7 @@ public final class FFPayloads {
                                             int newEnderpackDepositCooldownSeconds,
                                             int newScrollDeliveryCooldownSeconds,
                                             int newCourierTimeoutRetrySeconds,
+                                            int newBrushRavenCooldownSeconds,
                                             boolean newCanEditChat) {
             chatDisabled = newChatDisabled;
             suspiciousFeatherEnabled = newSuspiciousFeatherEnabled;
@@ -281,11 +294,12 @@ public final class FFPayloads {
             enderpackDepositCooldownSeconds = Math.max(0, newEnderpackDepositCooldownSeconds);
             scrollDeliveryCooldownSeconds = Math.max(0, newScrollDeliveryCooldownSeconds);
             courierTimeoutRetrySeconds = Math.max(0, newCourierTimeoutRetrySeconds);
+            brushRavenCooldownSeconds = Math.max(0, newBrushRavenCooldownSeconds);
             canEditChat = newCanEditChat;
             hasSynced = true;
 
-            LOG.debug("[FFPayloads.ClientState] Applied server settings: chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} wildRavensPerPlayer={} ravenLinkDurationSeconds={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={}",
-                    newChatDisabled, newSuspiciousFeatherEnabled, newSuspiciousChestEnabled, newRavenArmorEnabled, newMailboxEnabled, wildRavensPerPlayer, ravenLinkDurationSeconds, maxRavenChestsPerPlayer, ravenLogRetentionMinutes, ravenLogMaxBytesPerPlayer, enderpackDepositCooldownSeconds, scrollDeliveryCooldownSeconds, courierTimeoutRetrySeconds, newCanEditChat);
+            LOG.debug("[FFPayloads.ClientState] Applied server settings: chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} wildRavensPerPlayer={} ravenLinkDurationSeconds={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} brushRavenCooldownSeconds={} canEditChat={}",
+                    newChatDisabled, newSuspiciousFeatherEnabled, newSuspiciousChestEnabled, newRavenArmorEnabled, newMailboxEnabled, wildRavensPerPlayer, ravenLinkDurationSeconds, maxRavenChestsPerPlayer, ravenLogRetentionMinutes, ravenLogMaxBytesPerPlayer, enderpackDepositCooldownSeconds, scrollDeliveryCooldownSeconds, courierTimeoutRetrySeconds, brushRavenCooldownSeconds, newCanEditChat);
         }
 
         public static void clear() {
@@ -303,6 +317,7 @@ public final class FFPayloads {
             enderpackDepositCooldownSeconds = 0;
             scrollDeliveryCooldownSeconds = 0;
             courierTimeoutRetrySeconds = 0;
+            brushRavenCooldownSeconds = 0;
             canEditChat = false;
             LOG.debug("[FFPayloads.ClientState] Cleared client cache");
         }
@@ -347,6 +362,7 @@ public final class FFPayloads {
                                         int enderpackDepositCooldownSeconds,
                                         int scrollDeliveryCooldownSeconds,
                                         int courierTimeoutRetrySeconds,
+                                        int brushRavenCooldownSeconds,
                                         boolean canEditChat)
             implements net.minecraft.network.protocol.common.custom.CustomPacketPayload {
 
@@ -372,6 +388,7 @@ public final class FFPayloads {
             buf.writeVarInt(payload.enderpackDepositCooldownSeconds());
             buf.writeVarInt(payload.scrollDeliveryCooldownSeconds());
             buf.writeVarInt(payload.courierTimeoutRetrySeconds());
+            buf.writeVarInt(payload.brushRavenCooldownSeconds());
             buf.writeBoolean(payload.canEditChat());
         }
 
@@ -382,6 +399,7 @@ public final class FFPayloads {
                     buf.readBoolean(),
                     buf.readBoolean(),
                     buf.readBoolean(),
+                    buf.readVarInt(),
                     buf.readVarInt(),
                     buf.readVarInt(),
                     buf.readVarInt(),
@@ -699,6 +717,29 @@ public final class FFPayloads {
         }
     }
 
+    /**
+     * Client -> Server: set brush-raven cooldown (seconds). Requires permission on server.
+     */
+    public record SetBrushRavenCooldownSecondsPayload(int value)
+            implements net.minecraft.network.protocol.common.custom.CustomPacketPayload {
+
+        public static final ResourceLocation ID =
+                ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "set_brush_raven_cooldown_seconds_v1");
+
+        public static final Type<SetBrushRavenCooldownSecondsPayload> TYPE = new Type<>(ID);
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, SetBrushRavenCooldownSecondsPayload> STREAM_CODEC =
+                StreamCodec.composite(
+                        ByteBufCodecs.VAR_INT, SetBrushRavenCooldownSecondsPayload::value,
+                        SetBrushRavenCooldownSecondsPayload::new
+                );
+
+        @Override
+        public Type<? extends net.minecraft.network.protocol.common.custom.CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
     // ---------------------------------------------------------------------
     // Server-side send helpers
     // ---------------------------------------------------------------------
@@ -723,6 +764,7 @@ public final class FFPayloads {
             int enderpackDepositCooldownSecondsValue = FFServerConfig.getEnderpackDepositCooldownSeconds();
             int scrollDeliveryCooldownSecondsValue = FFServerConfig.getScrollDeliveryCooldownSeconds();
             int courierTimeoutRetrySecondsValue = FFServerConfig.getCourierTimeoutRetrySeconds();
+            int brushRavenCooldownSecondsValue = FFServerConfig.getBrushRavenCooldownSeconds();
             boolean canEditChatValue = canPlayerEditServerSettings(player);
 
             ServerSettingsPayload msg = new ServerSettingsPayload(
@@ -739,11 +781,12 @@ public final class FFPayloads {
                     enderpackDepositCooldownSecondsValue,
                     scrollDeliveryCooldownSecondsValue,
                     courierTimeoutRetrySecondsValue,
+                    brushRavenCooldownSecondsValue,
                     canEditChatValue
             );
             PacketDistributor.sendToPlayer(player, msg);
 
-            LOG.debug("[FFPayloads] Sent settings to {}: chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} wildRavensPerPlayer={} ravenLinkDurationSeconds={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={}",
+            LOG.debug("[FFPayloads] Sent settings to {}: chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} wildRavensPerPlayer={} ravenLinkDurationSeconds={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} brushRavenCooldownSeconds={} canEditChat={}",
                     player.getGameProfile().getName(),
                     chatDisabledValue,
                     enableSuspiciousFeatherValue,
@@ -758,6 +801,7 @@ public final class FFPayloads {
                     enderpackDepositCooldownSecondsValue,
                     scrollDeliveryCooldownSecondsValue,
                     courierTimeoutRetrySecondsValue,
+                    brushRavenCooldownSecondsValue,
                     canEditChatValue);
 
         } catch (Throwable t) {
@@ -848,6 +892,7 @@ public final class FFPayloads {
                             payload.enderpackDepositCooldownSeconds(),
                             payload.scrollDeliveryCooldownSeconds(),
                             payload.courierTimeoutRetrySeconds(),
+                            payload.brushRavenCooldownSeconds(),
                             payload.canEditChat()
                     );
                 } catch (Throwable t) {
@@ -1367,6 +1412,45 @@ public final class FFPayloads {
             });
         } catch (Throwable t) {
             LOG.error("[FFPayloads] handleSetCourierTimeoutRetrySeconds failed safely", t);
+        }
+    }
+
+    private static void handleSetBrushRavenCooldownSeconds(SetBrushRavenCooldownSecondsPayload payload, IPayloadContext context) {
+        try {
+            context.enqueueWork(() -> {
+                try {
+                    if (!(context.player() instanceof ServerPlayer sp)) {
+                        LOG.warn("[FFPayloads] SetBrushRavenCooldownSeconds from non-ServerPlayer; ignoring");
+                        return;
+                    }
+
+                    ServerLevel level = sp.serverLevel();
+                    if (level == null) {
+                        LOG.warn("[FFPayloads] SetBrushRavenCooldownSeconds: serverLevel null; ignoring");
+                        return;
+                    }
+
+                    boolean allowed = canPlayerEditServerSettings(sp);
+                    if (!allowed) {
+                        LOG.warn("[FFPayloads] {} tried to SetBrushRavenCooldownSeconds without permission/settings-screen access; denied",
+                                sp.getGameProfile().getName());
+                        sendSettingsToPlayer(level, sp);
+                        return;
+                    }
+
+                    int clamped = Math.max(0, Math.min(86_400, payload.value()));
+                    FFServerConfig.setBrushRavenCooldownSeconds(clamped);
+
+                    LOG.debug("[FFPayloads] {} set brushRavenCooldownSeconds -> {}",
+                            sp.getGameProfile().getName(), clamped);
+
+                    broadcastSettings(level);
+                } catch (Throwable t) {
+                    LOG.error("[FFPayloads] handleSetBrushRavenCooldownSeconds work failed safely", t);
+                }
+            });
+        } catch (Throwable t) {
+            LOG.error("[FFPayloads] handleSetBrushRavenCooldownSeconds failed safely", t);
         }
     }
 }

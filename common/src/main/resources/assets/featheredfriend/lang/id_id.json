@@ -1,4 +1,4 @@
-{
+﻿{
   "entity.featheredfriend.raven": "Raven",
   "itemGroup.featheredfriend": "Feathered Friend",
   "feature.featheredfriend.suspicious_feather": "Feather Mencurigakan",
@@ -82,6 +82,9 @@
   "screen.featheredfriend.settings.scroll_delivery_cooldown.syncing": "Gulungan pengantaran dingin: Sinkronisasi...",
   "screen.featheredfriend.settings.courier_timeout_retry": "timeout kuier auto- coba (detik):%s",
   "screen.featheredfriend.settings.courier_timeout_retry.syncing": "Waktu istirahat kurir auto- coba lagi: sinkronisasi...",
+  "screen.featheredfriend.settings.brush_raven_cooldown": "Brush raven cooldown (seconds): %s",
+  "screen.featheredfriend.settings.brush_raven_cooldown.syncing": "Brush raven cooldown: Syncing...",
+  "message.featheredfriend.raven.brush_cooldown": "Teman berbulu ini sedang tidak ingin disikat sekarang. Mungkin nanti?",
   "screen.featheredfriend.settings.status.synced": "Pengaturan server disinkronkan",
   "screen.featheredfriend.settings.status.waiting": "Menunggu pengaturan server...",
   "hud.featheredfriend.raven_badge.base.idle_no_scroll": "IDLE",
@@ -264,7 +267,7 @@
   "tooltip.featheredfriend.raven_armor.stat.payload_safety": "Keselamatan muatan:%s%%",
   "tooltip.featheredfriend.raven_armor.stat.health_regen": "Regen Kesehatan:%sHP / min",
   "tooltip.featheredfriend.raven_armor.stat.help.max_hits": "(Mendarat hits gagak bisa bertahan)",
-  "tooltip.featheredfriend.raven_armor.stat.help.dodge_chance": "(Perubahan vs dasar 25％ menghindari kesempatan)",
+  "tooltip.featheredfriend.raven_armor.stat.help.dodge_chance": "(Perubahan vs dasar 25ï¼… menghindari kesempatan)",
   "tooltip.featheredfriend.raven_armor.stat.help.detection_radius": "(Radius deteksi musuh 3D)",
   "tooltip.featheredfriend.raven_armor.stat.help.payload_safety": "(kesempatan untuk menjaga muatan ketika memukul)",
   "tooltip.featheredfriend.raven_armor.stat.help.health_regen": "(pemulihan kesehatan pasif per menit)",
@@ -321,7 +324,7 @@
   "jade.featheredfriend.raven.hits_left_value": "Hits Kiri:%s/%s",
   "jade.featheredfriend.raven.sneak_for_more": "Menyelinap untuk info lebih lanjut",
   "jade.featheredfriend.mailbox.owner": "Pemilik:%s",
-  "jade.featheredfriend.unknown": "♪ ♪",
+  "jade.featheredfriend.unknown": "â™ª â™ª",
   "config.jade.plugin_featheredfriend.raven_stats": "Feathered FriendRaven Stats",
   "config.jade.plugin_featheredfriend.raven_stats.desc": "TampilkanFeathered FriendStatistik kurir gagak.",
   "config.jade.plugin_featheredfriend.mailbox_owner": "Feathered FriendPemilik kotak surat",
@@ -364,3 +367,5 @@
   "message.featheredfriend.wild_raven.tame_wrong_nugget_whisper": "\"Bulu-bulu ini bukan temanmu\"... Pikiranmu rapuh. Perhatikan lebih dekat \"...",
   "message.featheredfriend.wild_raven.tame_success_whisper": "Sebuah suara berbisik mengendap dalam pikiran Anda: \"indra Anda tajam... AndaFeathered Friendmenyetujui Anda. \""
 }
+
+

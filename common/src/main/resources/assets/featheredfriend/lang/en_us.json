@@ -1,4 +1,4 @@
-{
+﻿{
   "entity.featheredfriend.raven": "Raven",
   "itemGroup.featheredfriend": "Feathered Friend",
 
@@ -87,6 +87,9 @@
   "screen.featheredfriend.settings.scroll_delivery_cooldown.syncing": "Scroll delivery cooldown: Syncing...",
   "screen.featheredfriend.settings.courier_timeout_retry": "Courier timeout auto-retry (seconds): %s",
   "screen.featheredfriend.settings.courier_timeout_retry.syncing": "Courier timeout auto-retry: Syncing...",
+  "screen.featheredfriend.settings.brush_raven_cooldown": "Brush raven cooldown (seconds): %s",
+  "screen.featheredfriend.settings.brush_raven_cooldown.syncing": "Brush raven cooldown: Syncing...",
+  "message.featheredfriend.raven.brush_cooldown": "This feathered friend does not want to be brushed right now. Maybe later?",
   "screen.featheredfriend.settings.status.synced": "Server settings synced",
   "screen.featheredfriend.settings.status.waiting": "Waiting for server settings...",
   "hud.featheredfriend.raven_badge.base.idle_no_scroll": "IDLE",
@@ -384,6 +387,7 @@
   "message.featheredfriend.wild_raven.tame_wrong_nugget_whisper": "A whispering voice curls through your mind: \"These feathers are not your friend... Your thoughts are brittle. Pay closer attention...\"",
   "message.featheredfriend.wild_raven.tame_success_whisper": "A whispering voice settles in your mind: \"Your senses are sharp... Your Feathered Friend approves of you.\""
 }
+
 
 
 

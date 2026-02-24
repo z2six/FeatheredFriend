@@ -38,6 +38,7 @@ public final class FFConfigSyncEvents {
     private static int lastEnderpackDepositCooldownSeconds = 0;
     private static int lastScrollDeliveryCooldownSeconds = 0;
     private static int lastCourierTimeoutRetrySeconds = 0;
+    private static int lastBrushRavenCooldownSeconds = 0;
     private static int lastRavenLinkDurationSeconds = 0;
     private static boolean lastAllowServerSettingsScreenEditing = true;
     private static boolean lastInitialized = false;
@@ -82,6 +83,7 @@ public final class FFConfigSyncEvents {
             int enderpackDepositCooldownSecondsNow = FFServerConfig.getEnderpackDepositCooldownSeconds();
             int scrollDeliveryCooldownSecondsNow = FFServerConfig.getScrollDeliveryCooldownSeconds();
             int courierTimeoutRetrySecondsNow = FFServerConfig.getCourierTimeoutRetrySeconds();
+            int brushRavenCooldownSecondsNow = FFServerConfig.getBrushRavenCooldownSeconds();
             int ravenLinkDurationSecondsNow = FFServerConfig.getRavenLinkDurationSeconds();
             boolean allowServerSettingsScreenEditingNow = FFServerConfig.isServerSettingsScreenEditingEnabled();
 
@@ -100,6 +102,7 @@ public final class FFConfigSyncEvents {
                 lastEnderpackDepositCooldownSeconds = enderpackDepositCooldownSecondsNow;
                 lastScrollDeliveryCooldownSeconds = scrollDeliveryCooldownSecondsNow;
                 lastCourierTimeoutRetrySeconds = courierTimeoutRetrySecondsNow;
+                lastBrushRavenCooldownSeconds = brushRavenCooldownSecondsNow;
                 lastRavenLinkDurationSeconds = ravenLinkDurationSecondsNow;
                 lastAllowServerSettingsScreenEditing = allowServerSettingsScreenEditingNow;
             } else {
@@ -151,6 +154,10 @@ public final class FFConfigSyncEvents {
                     lastCourierTimeoutRetrySeconds = courierTimeoutRetrySecondsNow;
                     changed = true;
                 }
+                if (lastBrushRavenCooldownSeconds != brushRavenCooldownSecondsNow) {
+                    lastBrushRavenCooldownSeconds = brushRavenCooldownSecondsNow;
+                    changed = true;
+                }
                 if (lastRavenLinkDurationSeconds != ravenLinkDurationSecondsNow) {
                     lastRavenLinkDurationSeconds = ravenLinkDurationSecondsNow;
                     changed = true;
@@ -198,12 +205,13 @@ public final class FFConfigSyncEvents {
                     ravenLinkDurationSecondsNow);
 
             if (LOG.isDebugEnabled()) {
-                LOG.debug("[FFConfigSyncEvents] Broadcast settings full snapshot (ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} allowServerSettingsScreenEditing={})",
+                LOG.debug("[FFConfigSyncEvents] Broadcast settings full snapshot (ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} brushRavenCooldownSeconds={} allowServerSettingsScreenEditing={})",
                         ravenLogRetentionMinutesNow,
                         ravenLogMaxBytesPerPlayerNow,
                         enderpackDepositCooldownSecondsNow,
                         scrollDeliveryCooldownSecondsNow,
                         courierTimeoutRetrySecondsNow,
+                        brushRavenCooldownSecondsNow,
                         allowServerSettingsScreenEditingNow);
             }
         } catch (Throwable t) {

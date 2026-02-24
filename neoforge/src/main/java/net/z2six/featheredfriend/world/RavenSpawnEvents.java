@@ -16,12 +16,14 @@ import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.config.FFServerConfig;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
@@ -75,7 +77,7 @@ public final class RavenSpawnEvents {
     // ---------------------------------------------------------------------
 
     /** How often to run spawn attempts per level. 20 ticks = 1 second. */
-    private static final int CHECK_INTERVAL_TICKS = 200;
+    private static final int CHECK_INTERVAL_TICKS = 40;
 
     /** How often to run cleanup (culling) checks. */
     private static final int CLEANUP_INTERVAL_TICKS = 100;
@@ -83,18 +85,25 @@ public final class RavenSpawnEvents {
     /** Local population radius around each player for counting / culling. */
     private static final double LOCAL_RAVEN_RADIUS = 96.0D;
 
-    /** Spawn chances per CHECK depending on local WILD population. */
-    private static final double SPAWN_CHANCE_EMPTY_AREA = 0.02D;      // rarer than before
-    private static final double SPAWN_CHANCE_WITH_ONE_RAVEN = 0.001D; // much rarer
+    /**
+     * Spawn chance per CHECK when a player has 0 wild ravens nearby and is still under cap.
+     * This is deliberately higher because we hard-cap with the server config (wildRavensPerPlayer)
+     * and cull extras defensively.
+     */
+    private static final double SPAWN_CHANCE_AT_ZERO = 0.35D;
 
     /** How far from player we sample random columns for leaves-top spawns. */
     private static final int SEARCH_RADIUS_BLOCKS = 64;
 
     /** How many random columns we try each check before giving up. */
-    private static final int CANDIDATE_COLUMNS_PER_CHECK = 64;
+    private static final int CANDIDATE_COLUMNS_PER_CHECK = 24;
 
-    /** How far down from surface we scan to find leaves. */
-    private static final int MAX_DOWNWARD_SCAN = 96;
+    /**
+     * "Surface slack" scan: some blocks can sit on top of leaves (snow layer, vines, etc).
+     * We only scan a few blocks down because scanning deep is expensive and almost never helpful
+     * for "spawn on tree canopy" logic.
+     */
+    private static final int MAX_SURFACE_SLACK = 4;
 
     /** Require at least this many air blocks above the spawn position. */
     private static final int REQUIRED_AIR_ABOVE = 2;
@@ -128,7 +137,7 @@ public final class RavenSpawnEvents {
      */
     private static final int GLOBAL_WILD_RAVEN_BUFFER = 0;
 
-    private static final int WILD_RAVEN_SCAN_CACHE_TICKS = 20;
+    private static final int WILD_RAVEN_SCAN_CACHE_TICKS = 80;
     private static final double WILD_RAVEN_SCAN_CACHE_MOVE_DIST_SQR = 8.0D * 8.0D;
 
     private static final Map<UUID, WildRavenScanCache> WILD_RAVEN_SCAN_CACHE = new HashMap<>();
@@ -263,8 +272,8 @@ public final class RavenSpawnEvents {
                     continue;
                 }
 
-                // Decide spawn chance based on local WILD population.
-                final double spawnChance = (wildCount <= 0) ? SPAWN_CHANCE_EMPTY_AREA : SPAWN_CHANCE_WITH_ONE_RAVEN;
+                // Decide spawn chance based on how close we are to local cap.
+                final double spawnChance = computeSpawnChanceUnderCap(wildCount, localCap);
 
                 final RandomSource rnd = level.getRandom();
                 if (rnd.nextDouble() >= spawnChance) {
@@ -298,6 +307,7 @@ public final class RavenSpawnEvents {
                 }
 
                 if (spawnRaven(level, ravenType, spawnPos, gameTime)) {
+                    invalidateWildRavenCache(player);
                     if ((gameTime % SPAWN_LOG_INTERVAL_TICKS) == 0L) {
                         LOG.debug(
                                 "[RavenSpawnEvents] Spawned WILD raven at {} near player {} (wildCountBeforeSpawn={})",
@@ -563,6 +573,9 @@ public final class RavenSpawnEvents {
                         localCap
                 );
             }
+            if (removed > 0) {
+                invalidateWildRavenCache(player);
+            }
         } catch (Throwable t) {
             LOG.error("[RavenSpawnEvents] cullExtraWildRavensNearPlayer failed", t);
         }
@@ -666,9 +679,17 @@ public final class RavenSpawnEvents {
                         globalCap,
                         removed
                 );
+                WILD_RAVEN_SCAN_CACHE.clear();
             }
         } catch (Throwable t) {
             LOG.error("[RavenSpawnEvents] enforceGlobalWildRavenCapNearPlayers failed", t);
+        }
+    }
+
+    private static void invalidateWildRavenCache(@NotNull Player player) {
+        try {
+            WILD_RAVEN_SCAN_CACHE.remove(player.getUUID());
+        } catch (Throwable ignored) {
         }
     }
 
@@ -693,9 +714,9 @@ public final class RavenSpawnEvents {
                 continue;
             }
 
-            final int topY;
+            final int height;
             try {
-                topY = level.getHeight(
+                height = level.getHeight(
                         net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE,
                         x,
                         z
@@ -704,46 +725,96 @@ public final class RavenSpawnEvents {
                 continue;
             }
 
-            final int minY = Math.max(level.getMinBuildHeight(), topY - MAX_DOWNWARD_SCAN);
-            for (int y = topY; y >= minY; y--) {
-                final BlockPos leavesPos = new BlockPos(x, y, z);
-                final BlockState state = level.getBlockState(leavesPos);
+            // getHeight(WORLD_SURFACE) returns "first air block above the surface" for most columns,
+            // so start by checking the block BELOW that (the actual surface).
+            final int surfaceY = height - 1;
+            if (surfaceY <= level.getMinBuildHeight()) {
+                continue;
+            }
+
+            // Fast path: only scan a few blocks down from the surface.
+            // If the top-most block is a solid non-canopy block, scanning is pointless.
+            for (int slack = 0; slack <= MAX_SURFACE_SLACK; slack++) {
+                final int y = surfaceY - slack;
+                if (y <= level.getMinBuildHeight()) {
+                    break;
+                }
+
+                final BlockPos canopyPos = new BlockPos(x, y, z);
+                final BlockState state;
+                try {
+                    state = level.getBlockState(canopyPos);
+                } catch (Throwable ignored) {
+                    break;
+                }
                 if (state == null) {
-                    continue;
+                    break;
                 }
 
-                if (!state.is(BlockTags.LEAVES)) {
-                    continue;
+                if (state.is(BlockTags.LEAVES)) {
+                    final BlockPos spawnPos = canopyPos.above();
+
+                    if (!isAirColumn(level, spawnPos, REQUIRED_AIR_ABOVE)) {
+                        break;
+                    }
+
+                    if (!level.getWorldBorder().isWithinBounds(spawnPos)) {
+                        break;
+                    }
+
+                    if (!level.isEmptyBlock(spawnPos)) {
+                        break;
+                    }
+
+                    // Keep spawn within local population-control radius (horizontal clamp).
+                    final double dxp = (spawnPos.getX() + 0.5D) - (origin.getX() + 0.5D);
+                    final double dzp = (spawnPos.getZ() + 0.5D) - (origin.getZ() + 0.5D);
+                    final double distSq = dxp * dxp + dzp * dzp;
+                    final double maxDist = LOCAL_RAVEN_RADIUS - 1.0D;
+                    if (distSq > (maxDist * maxDist)) {
+                        break;
+                    }
+
+                    return spawnPos;
                 }
 
-                final BlockPos spawnPos = leavesPos.above();
-
-                if (!isAirColumn(level, spawnPos, REQUIRED_AIR_ABOVE)) {
-                    continue;
+                // If the surface block is not even a plausible canopy cover, don't bother scanning down.
+                if (slack == 0 && !isPlausibleCanopyCover(state)) {
+                    break;
                 }
-
-                if (!level.getWorldBorder().isWithinBounds(spawnPos)) {
-                    continue;
-                }
-
-                if (!level.isEmptyBlock(spawnPos)) {
-                    continue;
-                }
-
-                // Keep spawn within local population-control radius (horizontal clamp).
-                final double dxp = (spawnPos.getX() + 0.5D) - (origin.getX() + 0.5D);
-                final double dzp = (spawnPos.getZ() + 0.5D) - (origin.getZ() + 0.5D);
-                final double distSq = dxp * dxp + dzp * dzp;
-                final double maxDist = LOCAL_RAVEN_RADIUS - 1.0D;
-                if (distSq > (maxDist * maxDist)) {
-                    continue;
-                }
-
-                return spawnPos;
             }
         }
 
         return null;
+    }
+
+    private static boolean isPlausibleCanopyCover(@NotNull BlockState state) {
+        try {
+            // Common "sits on top of leaves" blocks. Kept conservative on purpose.
+            if (state.is(Blocks.SNOW)) return true; // snow layer
+            if (state.is(Blocks.VINE)) return true;
+            if (state.is(Blocks.GLOW_LICHEN)) return true;
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
+
+    private static double computeSpawnChanceUnderCap(int wildCount, int localCap) {
+        try {
+            if (localCap <= 0) {
+                return 0.0D;
+            }
+            if (wildCount <= 0) {
+                return SPAWN_CHANCE_AT_ZERO;
+            }
+            // Linear falloff: closer to cap => lower chance.
+            // Example: cap=3: counts 0/1/2 => ~0.35 / 0.23 / 0.12.
+            double ratio = (double) wildCount / (double) localCap;
+            double chance = SPAWN_CHANCE_AT_ZERO * Math.max(0.05D, (1.0D - ratio));
+            return Math.max(0.0D, Math.min(SPAWN_CHANCE_AT_ZERO, chance));
+        } catch (Throwable ignored) {
+            return 0.0D;
+        }
     }
 
     private static boolean isAirColumn(net.minecraft.server.level.ServerLevel level, BlockPos start, int airBlocksNeeded) {

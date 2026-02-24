@@ -388,6 +388,10 @@ public interface IPlatformHelper {
         return 0;
     }
 
+    default int getBrushRavenCooldownSecondsClient() {
+        return 0;
+    }
+
     default void requestServerSettingsSync() {
         // no-op
     }
@@ -444,6 +448,10 @@ public interface IPlatformHelper {
         // no-op
     }
 
+    default void sendSetBrushRavenCooldownSeconds(int value) {
+        // no-op
+    }
+
     default boolean tryStartRavenLink(@NotNull ServerPlayer player) {
         return false;
     }
@@ -492,6 +500,10 @@ public interface IPlatformHelper {
     }
 
     default int getCourierTimeoutRetrySeconds() {
+        return 0;
+    }
+
+    default int getBrushRavenCooldownSeconds() {
         return 0;
     }
 

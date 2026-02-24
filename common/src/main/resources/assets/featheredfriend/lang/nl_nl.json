@@ -1,4 +1,4 @@
-{
+﻿{
   "entity.featheredfriend.raven": "Raven",
   "itemGroup.featheredfriend": "Feathered Friend",
   "feature.featheredfriend.suspicious_feather": "Verdachte veer",
@@ -28,7 +28,7 @@
   "item.featheredfriend.scroll_sealed.description": "Verkrijgbaar door het afdichten van een Niet-gesloten Scroll in de Scroll Sealing GUI.",
   "item.featheredfriend.scroll_opened.description": "Gewonnen door het openen van een verzegelde rol.",
   "jei.featheredfriend.scroll_sealed.info": "Verzegelde Scrolls zijn gemaakt van Niet-verzegelde Scrolls in de Scroll Sealing GUI.",
-  "jei.featheredfriend.scroll_opened.info": "Opened Scrolls worden gecreëerd door het verbreken van de zegel op een verzegelde rol (open de rol en breken de wasafdichting).",
+  "jei.featheredfriend.scroll_opened.info": "Opened Scrolls worden gecreÃ«erd door het verbreken van de zegel op een verzegelde rol (open de rol en breken de wasafdichting).",
   "jei.featheredfriend.raven_feather.info": "Raven's Feathers worden gedropt als een Raven sterft.",
   "key.categories.featheredfriend": "Feathered Friend",
   "key.featheredfriend.open_settings": "Feathered Friendinstellingenmenu",
@@ -82,6 +82,9 @@
   "screen.featheredfriend.settings.scroll_delivery_cooldown.syncing": "Scroll levering afkoeling: Synchroniseren...",
   "screen.featheredfriend.settings.courier_timeout_retry": "Koerier timeout auto-pensioen (seconden):%s",
   "screen.featheredfriend.settings.courier_timeout_retry.syncing": "Koerier timeout auto-retry: synchroniseren...",
+  "screen.featheredfriend.settings.brush_raven_cooldown": "Brush raven cooldown (seconds): %s",
+  "screen.featheredfriend.settings.brush_raven_cooldown.syncing": "Brush raven cooldown: Syncing...",
+  "message.featheredfriend.raven.brush_cooldown": "Deze gevederde vriend wil nu niet geborsteld worden. Misschien later?",
   "screen.featheredfriend.settings.status.synced": "Serverinstellingen gesynchroniseerd",
   "screen.featheredfriend.settings.status.waiting": "Wachten op serverinstellingen...",
   "hud.featheredfriend.raven_badge.base.idle_no_scroll": "IDLE",
@@ -111,7 +114,7 @@
   "screen.featheredfriend.raven_log.category.chest": "Borst",
   "screen.featheredfriend.raven_log.category.system": "Systeem",
   "screen.featheredfriend.raven_log_settings.title": "Raven-loginstellingen",
-  "screen.featheredfriend.raven_log_settings.subtitle": "Kies welke categorieën te tonen en hun kleuren",
+  "screen.featheredfriend.raven_log_settings.subtitle": "Kies welke categorieÃ«n te tonen en hun kleuren",
   "screen.featheredfriend.raven_log_settings.visible": "Zichtbaar:%s",
   "log.featheredfriend.perch.assignment_cleared_invalid": "Aan Raven toegewezen Borstbaars werd ongeldig; de opdracht werd goedgekeurd.",
   "log.featheredfriend.perch.threat_state_cleared": "Geperforeerde raaf dreiging staat vrij.",
@@ -182,7 +185,7 @@
   "log.featheredfriend.enderpack.workflow.level_unavailable": "Enderpackworkflow: het borstniveau is niet beschikbaar.",
   "log.featheredfriend.enderpack.workflow.target_missing_or_wrong_level": "Enderpackworkflow: doelborst ontbreekt of raaf is in verkeerd niveau.",
   "log.featheredfriend.enderpack.workflow.deposit_finished": "Enderpackworkflow: storting voltooid (%sitem(s) verplaatst).",
-  "log.featheredfriend.enderpack.workflow.target_became_invalid": "Enderpackworkflow beëindigd: geselecteerde Raven Borst werd ongeldig.",
+  "log.featheredfriend.enderpack.workflow.target_became_invalid": "Enderpackworkflow beÃ«indigd: geselecteerde Raven Borst werd ongeldig.",
   "log.featheredfriend.enderpack.workflow.returned_success": "Raven keerde terugEnderpackna een succesvolle storting (%sitem(s) verplaatst).",
   "log.featheredfriend.enderpack.workflow.returned_empty": "Raven keerde terugEnderpack: geen items werden overgedragen (kist vol of verpakking leeg).",
   "log.featheredfriend.enderpack.workflow.failed_returned": "Enderpackworkflow is onverwacht mislukt;Enderpackwerd teruggegeven aan eigenaar.",
@@ -264,7 +267,7 @@
   "tooltip.featheredfriend.raven_armor.stat.payload_safety": "Betaalbeveiliging:%s%%",
   "tooltip.featheredfriend.raven_armor.stat.health_regen": "Health Regen:%sHP/min",
   "tooltip.featheredfriend.raven_armor.stat.help.max_hits": "(Geland raakt de raaf kan overleven)",
-  "tooltip.featheredfriend.raven_armor.stat.help.dodge_chance": "(verandering vs. basis 25％ ontwijken kans)",
+  "tooltip.featheredfriend.raven_armor.stat.help.dodge_chance": "(verandering vs. basis 25ï¼… ontwijken kans)",
   "tooltip.featheredfriend.raven_armor.stat.help.detection_radius": "(3D vijandige detectiestraal)",
   "tooltip.featheredfriend.raven_armor.stat.help.payload_safety": "(kans om de lading te houden bij een hit)",
   "tooltip.featheredfriend.raven_armor.stat.help.health_regen": "(passief gezondheidsherstel per minuut)",
@@ -364,3 +367,5 @@
   "message.featheredfriend.wild_raven.tame_wrong_nugget_whisper": "Een fluisterende stem krult door je hoofd: \"Deze veren zijn niet je vriend... Je gedachten zijn broos. Let beter op...\"",
   "message.featheredfriend.wild_raven.tame_success_whisper": "Een fluisterende stem komt tot rust in je hoofd: \"Je zintuigen zijn scherp... UwFeathered Friendkeurt je goed.\""
 }
+
+
