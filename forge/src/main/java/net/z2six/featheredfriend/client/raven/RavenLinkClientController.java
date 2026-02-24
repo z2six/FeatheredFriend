@@ -684,6 +684,12 @@ public final class RavenLinkClientController {
             if (!active) {
                 return;
             }
+
+            // Once fully linked (eyes open), allow normal movement again. Raven Link teleports the player to the raven,
+            // so letting vanilla flight movement run here is what actually makes the link controllable on Forge 1.20.1.
+            if (!endingTransitionActive && visionPhase == VisionPhase.ACTIVE) {
+                return;
+            }
             if (event == null) {
                 return;
             }

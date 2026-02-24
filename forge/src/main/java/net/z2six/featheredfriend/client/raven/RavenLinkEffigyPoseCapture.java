@@ -3,6 +3,10 @@ package net.z2six.featheredfriend.client.raven;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.HumanoidModel;
+import net.minecraft.client.renderer.entity.EntityRenderer;
+import net.minecraft.client.renderer.entity.player.PlayerRenderer;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraftforge.client.event.RenderPlayerEvent;
 import net.minecraftforge.common.MinecraftForge;
@@ -10,6 +14,8 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
+
+import java.lang.reflect.Method;
 
 /**
  * Captures the local player's last-rendered humanoid limb rotations so Raven Link effigies
@@ -21,6 +27,7 @@ public final class RavenLinkEffigyPoseCapture {
     private static volatile boolean registered = false;
 
     private static volatile boolean hasSnapshot = false;
+    private static volatile int lastCapturedTick = -1;
 
     private static volatile float headXRot = 0.0F;
     private static volatile float headYRot = 0.0F;
@@ -63,6 +70,7 @@ public final class RavenLinkEffigyPoseCapture {
     }
 
     public static boolean hasSnapshot() {
+        tryCaptureNow(false);
         return hasSnapshot;
     }
 
@@ -85,28 +93,122 @@ public final class RavenLinkEffigyPoseCapture {
     public static float leftLegYRot() { return leftLegYRot; }
     public static float leftLegZRot() { return leftLegZRot; }
 
-    @SubscribeEvent
-    public static void onRenderPlayerPost(@NotNull RenderPlayerEvent.Post event) {
+    public static void captureNow() {
+        tryCaptureNow(true);
+    }
+
+    private static void tryCaptureNow(boolean force) {
         try {
             Minecraft mc = Minecraft.getInstance();
             if (mc == null || mc.player == null) {
                 return;
             }
+
             Player local = mc.player;
-            if (event.getEntity() != local) {
+            int tick = local.tickCount;
+            if (!force && hasSnapshot && lastCapturedTick == tick) {
                 return;
             }
 
-            @Nullable HumanoidModel<?> model;
+            float partialTick = 1.0F;
             try {
-                model = (event.getRenderer() == null) ? null : event.getRenderer().getModel();
+                // 1.20.1 Mojmap
+                partialTick = mc.getFrameTime();
+            } catch (Throwable ignored) {
+            }
+
+            float limbSwing;
+            float limbSwingAmount;
+            try {
+                limbSwing = local.walkAnimation.position(partialTick);
+                limbSwingAmount = local.walkAnimation.speed(partialTick);
+            } catch (Throwable ignored) {
+                // If anything about the animation state API changes, fall back to "static".
+                limbSwing = 0.0F;
+                limbSwingAmount = 0.0F;
+            }
+
+            float ageInTicks = local.tickCount + partialTick;
+
+            float bodyYaw;
+            float headYaw;
+            try {
+                bodyYaw = Mth.rotLerp(partialTick, local.yBodyRotO, local.yBodyRot);
+                headYaw = Mth.rotLerp(partialTick, local.yHeadRotO, local.yHeadRot);
+            } catch (Throwable ignored) {
+                bodyYaw = local.getYRot();
+                headYaw = local.getYRot();
+            }
+            float netHeadYaw = headYaw - bodyYaw;
+
+            float headPitch;
+            try {
+                headPitch = Mth.lerp(partialTick, local.xRotO, local.getXRot());
+            } catch (Throwable ignored) {
+                headPitch = local.getXRot();
+            }
+
+            @Nullable HumanoidModel<?> model = null;
+            try {
+                EntityRenderer<?> renderer = mc.getEntityRenderDispatcher().getRenderer(local);
+                if (renderer instanceof PlayerRenderer playerRenderer) {
+                    // Ensure model arm poses (blocking, using items, etc) are up-to-date even in first-person,
+                    // where the local player body isn't necessarily rendered.
+                    tryInvokePlayerRendererSetModelProperties(playerRenderer, local);
+                    model = playerRenderer.getModel();
+                }
             } catch (Throwable ignored) {
                 model = null;
             }
+
             if (model == null) {
                 return;
             }
 
+            // Match the vanilla render pipeline: prepareMobModel -> setupAnim, then read the rotations.
+            try {
+                @SuppressWarnings("unchecked")
+                HumanoidModel<LivingEntity> typedModel = (HumanoidModel<LivingEntity>) model;
+                typedModel.prepareMobModel((LivingEntity) local, limbSwing, limbSwingAmount, partialTick);
+                typedModel.setupAnim((LivingEntity) local, limbSwing, limbSwingAmount, ageInTicks, netHeadYaw, headPitch);
+            } catch (Throwable ignored) {
+                // If we can't safely drive the model, keep the last known render-captured snapshot.
+                return;
+            }
+
+            captureFromModel(model, tick);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void tryInvokePlayerRendererSetModelProperties(@NotNull PlayerRenderer renderer, @NotNull Player player) {
+        try {
+            // Mojmap name in 1.20.x: setModelProperties(AbstractClientPlayer)
+            Method m = null;
+            try {
+                m = PlayerRenderer.class.getDeclaredMethod("setModelProperties", player.getClass().getSuperclass());
+            } catch (Throwable ignored) {
+            }
+            if (m == null) {
+                for (Method method : PlayerRenderer.class.getDeclaredMethods()) {
+                    if (!"setModelProperties".equals(method.getName()) || method.getParameterCount() != 1) {
+                        continue;
+                    }
+                    m = method;
+                    break;
+                }
+            }
+            if (m == null) {
+                return;
+            }
+            m.setAccessible(true);
+            m.invoke(renderer, player);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void captureFromModel(@NotNull HumanoidModel<?> model, int tick) {
+        try {
             headXRot = model.head.xRot;
             headYRot = model.head.yRot;
             headZRot = model.head.zRot;
@@ -132,6 +234,34 @@ public final class RavenLinkEffigyPoseCapture {
             leftLegZRot = model.leftLeg.zRot;
 
             hasSnapshot = true;
+            lastCapturedTick = tick;
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @SubscribeEvent
+    public static void onRenderPlayerPost(@NotNull RenderPlayerEvent.Post event) {
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null || mc.player == null) {
+                return;
+            }
+            Player local = mc.player;
+            if (event.getEntity() != local) {
+                return;
+            }
+
+            @Nullable HumanoidModel<?> model;
+            try {
+                model = (event.getRenderer() == null) ? null : event.getRenderer().getModel();
+            } catch (Throwable ignored) {
+                model = null;
+            }
+            if (model == null) {
+                return;
+            }
+
+            captureFromModel(model, local.tickCount);
         } catch (Throwable ignored) {
         }
     }
