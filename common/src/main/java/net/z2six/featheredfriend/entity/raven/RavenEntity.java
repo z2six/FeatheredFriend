@@ -2525,7 +2525,13 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 cooldownSeconds = 0;
             }
             if (cooldownSeconds > 0) {
-                long now = serverLevel.getGameTime();
+                long now;
+                try {
+                    now = serverLevel.getServer().getTickCount();
+                } catch (Throwable t) {
+                    // Fallback: per-level time (can be inconsistent across dimensions in some setups).
+                    now = serverLevel.getGameTime();
+                }
                 long cdTicks = (long) cooldownSeconds * 20L;
                 Long last = BRUSH_RAVEN_COOLDOWN_TICKS_BY_PLAYER.get(player.getUUID());
                 if (last != null) {

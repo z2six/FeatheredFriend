@@ -30,6 +30,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.client.event.InputEvent;
+import net.minecraftforge.client.event.MovementInputUpdateEvent;
 import net.minecraftforge.client.event.RenderGuiEvent;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
 import net.minecraftforge.client.event.RenderHandEvent;
@@ -160,6 +161,8 @@ public final class RavenLinkClientController {
     private static volatile boolean ravenLinkTether1Allowed = false;
     private static volatile long ravenLinkTether1FadeInStartedAtMillis = 0L;
     private static volatile long ravenLinkTether2FadeInStartedAtMillis = 0L;
+    private static volatile long ravenLinkTether2LastStartAttemptAtMillis = 0L;
+    private static volatile boolean ravenLinkTether2MissingWarnedOnce = false;
     private static volatile boolean endingTransitionActive = false;
     private static volatile boolean endingShouldSendStopAtBlackout = false;
     private static volatile boolean endingStopRequestSent = false;
@@ -557,6 +560,8 @@ public final class RavenLinkClientController {
             // when holding sneak on/near the ground, which makes the camera bob/shake.
             try {
                 mc.player.setPose(Pose.STANDING);
+                mc.player.setShiftKeyDown(false);
+                mc.player.setSprinting(false);
             } catch (Throwable ignored) {
             }
 
@@ -621,6 +626,32 @@ public final class RavenLinkClientController {
             ensureLinkedRavenVisualMount(mc);
             suppressNonMovementInputs(mc);
 
+            // One-time diagnostic if tether2 never becomes active (Forge 1.20.1 can sometimes refuse certain loop sounds).
+            try {
+                if (!ravenLinkTether2MissingWarnedOnce
+                        && ravenLinkTetherLoop2 != null
+                        && ravenLinkTether2LastStartAttemptAtMillis > 0L
+                        && (System.currentTimeMillis() - ravenLinkTether2LastStartAttemptAtMillis) > 3000L
+                        && !mc.getSoundManager().isActive(ravenLinkTetherLoop2)) {
+                    ravenLinkTether2MissingWarnedOnce = true;
+                    boolean resourceExists = false;
+                    try {
+                        resourceExists = mc.getResourceManager()
+                                .getResource(new ResourceLocation("featheredfriend", "sounds/ravenlink/tether2.ogg"))
+                                .isPresent();
+                    } catch (Throwable ignored) {
+                    }
+                    float neutralVol = 1.0F;
+                    try {
+                        neutralVol = mc.options.getSoundSourceVolume(SoundSource.NEUTRAL);
+                    } catch (Throwable ignored) {
+                    }
+                    LOG.warn("[RavenLinkClientController] Raven Link tether2 loop did not become active after 3s (neutralVol={}, resourceExists={}).",
+                            neutralVol, resourceExists);
+                }
+            } catch (Throwable ignored) {
+            }
+
             boolean allowMovementInput = visionPhase == VisionPhase.ACTIVE && mc.screen == null;
             boolean forward = allowMovementInput && mc.options.keyUp.isDown();
             boolean backward = allowMovementInput && mc.options.keyDown.isDown();
@@ -644,6 +675,50 @@ public final class RavenLinkClientController {
             // debug overlay intentionally disabled for normal gameplay
         } catch (Throwable t) {
             LOG.error("[RavenLinkClientController] onClientTick failed safely", t);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onMovementInputUpdate(MovementInputUpdateEvent event) {
+        try {
+            if (!active) {
+                return;
+            }
+            if (event == null) {
+                return;
+            }
+
+            Player player;
+            try {
+                player = event.getEntity();
+            } catch (Throwable t) {
+                return;
+            }
+            if (player == null) {
+                return;
+            }
+
+            // Prevent client-side movement/sneak packets for the hidden owner while still allowing
+            // the key states to be used for Raven Link input (we read those separately from Options).
+            try {
+                var input = event.getInput();
+                if (input != null) {
+                    input.leftImpulse = 0.0F;
+                    input.forwardImpulse = 0.0F;
+                    input.jumping = false;
+                    input.shiftKeyDown = false;
+                }
+            } catch (Throwable ignored) {
+            }
+
+            try {
+                player.setSprinting(false);
+                player.setShiftKeyDown(false);
+                player.setPose(Pose.STANDING);
+            } catch (Throwable ignored) {
+            }
+        } catch (Throwable t) {
+            LOG.debug("[RavenLinkClientController] onMovementInputUpdate failed safely: {}", t.toString());
         }
     }
 
@@ -945,7 +1020,7 @@ public final class RavenLinkClientController {
             }
 
             if (ravenLinkTetherLoop1 == null && ravenLinkTether1Allowed) {
-                RavenLinkLoopSoundInstance loop = createRelativeLoopSound(RAVEN_LINK_TETHER1_SOUND_ID, 1.0F);
+                RavenLinkLoopSoundInstance loop = createRelativeLoopSound(RAVEN_LINK_TETHER1_SOUND_ID, 1.0F, false);
                 if (loop != null) {
                     mc.getSoundManager().play(loop);
                     ravenLinkTetherLoop1 = loop;
@@ -956,10 +1031,14 @@ public final class RavenLinkClientController {
             }
 
             if (ravenLinkTetherLoop2 == null) {
-                RavenLinkLoopSoundInstance loop = createRelativeLoopSound(RAVEN_LINK_TETHER2_SOUND_ID, 1.0F);
+                // Forge 1.20.1 can be finicky with relative + looping sounds on some setups.
+                // Follow the camera instead of using relative audio to keep tether2 reliable.
+                RavenLinkLoopSoundInstance loop = createRelativeLoopSound(RAVEN_LINK_TETHER2_SOUND_ID, 1.0F, true);
                 if (loop != null) {
                     mc.getSoundManager().play(loop);
                     ravenLinkTetherLoop2 = loop;
+                    ravenLinkTether2LastStartAttemptAtMillis = System.currentTimeMillis();
+                    ravenLinkTether2MissingWarnedOnce = false;
                     if (ravenLinkTether2FadeInStartedAtMillis <= 0L) {
                         ravenLinkTether2FadeInStartedAtMillis = System.currentTimeMillis();
                     }
@@ -1114,10 +1193,11 @@ public final class RavenLinkClientController {
 
     private static @org.jetbrains.annotations.Nullable RavenLinkLoopSoundInstance createRelativeLoopSound(
             @org.jetbrains.annotations.NotNull ResourceLocation soundId,
-            float pitch
+            float pitch,
+            boolean followCamera
     ) {
         try {
-            return new RavenLinkLoopSoundInstance(soundId, pitch);
+            return new RavenLinkLoopSoundInstance(soundId, pitch, followCamera);
         } catch (Throwable ignored) {
             return null;
         }
@@ -2089,6 +2169,7 @@ public final class RavenLinkClientController {
 
     private static void suppressNonMovementInputs(@org.jetbrains.annotations.NotNull Minecraft mc) {
         try {
+            forceKeyUp(mc.options.keySprint);
             forceKeyUp(mc.options.keyAttack);
             forceKeyUp(mc.options.keyUse);
             forceKeyUp(mc.options.keyPickItem);
@@ -2227,13 +2308,15 @@ public final class RavenLinkClientController {
     private static final class RavenLinkLoopSoundInstance extends AbstractTickableSoundInstance {
         private float managedVolume = 0.0F;
         private float managedPitch = 1.0F;
+        private final boolean followCamera;
 
-        private RavenLinkLoopSoundInstance(@org.jetbrains.annotations.NotNull ResourceLocation soundId, float pitch) {
+        private RavenLinkLoopSoundInstance(@org.jetbrains.annotations.NotNull ResourceLocation soundId, float pitch, boolean followCamera) {
             super(SoundEvent.createVariableRangeEvent(soundId), SoundSource.NEUTRAL, SoundInstance.createUnseededRandom());
             this.looping = true;
             this.delay = 0;
             this.attenuation = SoundInstance.Attenuation.NONE;
-            this.relative = true;
+            this.followCamera = followCamera;
+            this.relative = !followCamera;
             this.x = 0.0D;
             this.y = 0.0D;
             this.z = 0.0D;
@@ -2248,6 +2331,19 @@ public final class RavenLinkClientController {
         @Override
         public void tick() {
             // Volume is controlled externally by RavenLinkClientController each client tick.
+            // For tether2 on Forge 1.20.1, follow the camera position to avoid quirks with relative looping sounds.
+            if (followCamera) {
+                try {
+                    Minecraft mc = Minecraft.getInstance();
+                    Entity cam = mc == null ? null : mc.getCameraEntity();
+                    if (cam != null) {
+                        this.x = cam.getX();
+                        this.y = cam.getY();
+                        this.z = cam.getZ();
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
         }
 
         @Override

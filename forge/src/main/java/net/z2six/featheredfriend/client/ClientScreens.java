@@ -37,6 +37,7 @@ import org.slf4j.Logger;
 public final class ClientScreens {
 
     private static final Logger LOG = LogUtils.getLogger();
+    private static volatile boolean loggedNullScrollSealingMenuOnce = false;
 
     private ClientScreens() {
         // no-op
@@ -61,8 +62,21 @@ public final class ClientScreens {
             try {
                 MenuScreens.register(
                         FFNeoForgeMenus.SCROLL_SEALING_MENU.get(),
-                        (ScrollSealingMenu menu, net.minecraft.world.entity.player.Inventory inv, net.minecraft.network.chat.Component title) ->
-                                new ScrollSealingScreen(menu, inv, title)
+                        (ScrollSealingMenu menu, net.minecraft.world.entity.player.Inventory inv, net.minecraft.network.chat.Component title) -> {
+                            try {
+                                if (menu == null) {
+                                    if (!loggedNullScrollSealingMenuOnce) {
+                                        loggedNullScrollSealingMenuOnce = true;
+                                        LOG.error("[ClientScreens] ScrollSealingMenu was null in screen constructor; using fallback menu to avoid a hard crash.");
+                                    }
+                                    menu = new ScrollSealingMenu(0, inv);
+                                }
+                                return new ScrollSealingScreen(menu, inv, title);
+                            } catch (Throwable t) {
+                                LOG.error("[ClientScreens] Failed to construct ScrollSealingScreen", t);
+                                return new ScrollSealingScreen(new ScrollSealingMenu(0, inv), inv, title);
+                            }
+                        }
                 );
                 LOG.debug("[ClientScreens] Registered ScrollSealingScreen");
             } catch (Throwable t) {
