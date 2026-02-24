@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]Nie.Enderpackznalezione w twoich rękach, inwentaryzacji, lub szczelinie Curios.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Twój kruk potrzebuje%swięcej sekund (s) zanim może złożyćEnderpackZnowu.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Twój kruk potrzebuje%swięcej sekund (s) zanim będzie mógł dostarczyć kolejny zwój.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %szauważył skrzynkę pocztową należącą do%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Podejrzane Pióro jest wyłączone na tym serwerze.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Podejrzane Klatka jest wyłączona na tym serwerze.",

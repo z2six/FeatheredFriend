@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]なしEnderpackハンド、在庫、または Curios スロットで見つけられます。",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]お客様のニーズ%s入金する前に、もっと2秒以上Enderpackお問い合わせ",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]お客様のニーズ%s別のスクロールを渡すことができる前の秒数。",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %s所有するメールボックスに%sお問い合わせ",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]このサーバーで疑わしいフェザーが無効になっています。",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]スパイシー チェストはこのサーバーで無効になっています。",

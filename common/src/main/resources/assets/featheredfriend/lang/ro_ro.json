@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]Nu.Enderpackgăsit în mâinile tale, inventar, sau slot Curios.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Corbul tău are nevoie%smai mult al doilea (s) înainte de a putea depune oEnderpackDin nou.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Corbul tău are nevoie%smai mult al doilea (s) înainte de a putea livra un alt sul.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sa văzut o cutie poştală deţinută de%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Suspicios Feather este dezactivat pe acest server.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Suspicios. Pieptul este dezactivat pe acest server.",

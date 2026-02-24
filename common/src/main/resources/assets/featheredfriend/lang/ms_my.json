@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]TidakEnderpackDi tangan, inventori, atau slot Curios.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]kebutuhan gagak Anda%sLebih banyak detik sebelum dapat deposit sebuahEnderpackLagi.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]kebutuhan gagak Anda%sLebih banyak detik sebelum dapat memberikan gulungan lain.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sSudah terlihat kotak surat dimiliki oleh%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Curfucious Feather dinonaktifkan di server ini.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Mencurigakan Chest dilumpuhkan di server ini.",

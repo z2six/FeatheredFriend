@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]Nem.Enderpacka kezében, a leltárban, vagy a Curios lyukban.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]A hollónak szüksége van rá.%stöbb másodperc (ok), mielőtt aEnderpackMegint.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]A hollónak szüksége van rá.%stöbb másodperc (ok), mielőtt még egy tekercset szállítana.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sKiszúrt egy postaládát,%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]A gyanús Feather nem elérhető ezen a szerveren.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Gyanús. A mellkas nem működik ezen a szerveren.",

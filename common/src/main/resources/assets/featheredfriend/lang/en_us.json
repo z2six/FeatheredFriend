@@ -301,6 +301,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend] No Enderpack found in your hands, inventory, or Curios slot.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend] Your raven needs %s more second(s) before it can deposit an Enderpack again.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend] Your raven needs %s more second(s) before it can deliver another scroll.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %s has spotted a mailbox owned by %s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend] Suspicious Feather is disabled on this server.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend] Suspicious Chest is disabled on this server.",

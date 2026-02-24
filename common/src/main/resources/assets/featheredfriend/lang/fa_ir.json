@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]هیچEnderpackدر دست، موجودی یا اسلات Curios یافت شده است.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]نیازهای شما%sدوم (بازدید کنندگان) قبل از اینکه بتوانندEnderpackدوباره.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]نیازهای شما%sدوم (ها) قبل از اینکه بتواند یک پیمایش دیگر ارائه دهد.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sیک صندوق پستی متعلق به%s...",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Suspicious Feather در این سرور است.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Suspicious Chest در این سرور غیرفعال است.",

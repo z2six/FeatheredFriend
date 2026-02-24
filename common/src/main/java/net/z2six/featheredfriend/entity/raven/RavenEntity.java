@@ -2537,6 +2537,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 if (last != null) {
                     long elapsed = now - last.longValue();
                     if (elapsed < cdTicks) {
+                        player.sendSystemMessage(Component.translatable(
+                                "message.featheredfriend.raven.brush.cooldown"
+                        ));
                         return;
                     }
                 }

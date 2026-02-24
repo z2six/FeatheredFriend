@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]نہیںEnderpackآپ کے ہاتھوں، فنکاری یا کیوریو اسلوب میں پایا جاتا ہے۔",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]آپکی کھال کی ضرورت%sمزید ثانوی(s) اس سے پہلے کہ اس کی تقسیم ہو سکےEnderpackدوبارہ.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]آپکی کھال کی ضرورت%sاس سے پہلے دوسرا (s) ایک اور کتاب محفوظ کر سکتا ہے۔",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sاس کی ملکیت ڈاک بکس ہے%s. .",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]اس سرور پر سید مبارک اختر معذور ہے۔",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]برکت اس سرور پر چسٹ معذور ہے۔",

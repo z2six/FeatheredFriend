@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]Ne.Enderpacknalezený ve vašich rukou, inventář, nebo úložiště Curios.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Tvé havraní potřeby%svíce sekund (s), než může uložitEnderpackZase.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Tvé havraní potřeby%svíce sekund (s), než může dodat další svitek.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sZahlédl poštovní schránku vlastněnou%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Podezřelý Feather je na tomto serveru vypnutý.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Podezření Hrudník je na tomto serveru vypnutý.",

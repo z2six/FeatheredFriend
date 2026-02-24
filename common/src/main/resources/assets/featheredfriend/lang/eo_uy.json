@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]NeniuEnderpacktrovita en viaj manoj, stokregistro, aŭ Curios-fendeto.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Via korvo bezonas%sPli da sekundo (j) antaŭ ol ĝi povas deponiEnderpackdenove.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Via korvo bezonas%sPli da sekundo (j) antaŭ ol ĝi povas liveri alian volvlibron.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %svidis poŝtkeston posedatan fare de%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Suspicious Feather estas handikapita sur tiu servilo.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]La malsano Chest estas handikapita sur tiu servilo.",

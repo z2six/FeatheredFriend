@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]EiEnderpackTeie kätes, inventaris või Curiose pesas.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Su kaaren vajab%srohkem sekundeid, enne kui ta saab deponeeridaEnderpackuuesti.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Su kaaren vajab%sVeel sekund (s) enne, kui see saab anda teise kerimise.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %son märganud postkasti, mis kuulub%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Kahtlane Feather on selles serveris keelatud.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Kahtlane Rindkere on serveris keelatud.",

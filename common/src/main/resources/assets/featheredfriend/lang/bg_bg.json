@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]Не.EnderpackНамерени в ръцете си, инвентар, или Curios слот.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Гарванът ти има нужда.%sповече секунда(s) преди да може да депозираEnderpackОтново.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Гарванът ти има нужда.%sповече секунда (\"s) преди да може да достави друг свитък.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sе забелязал пощенска кутия на%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Подозрителното перо е изключено на този сървър.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Подозрително. Гърдите са изключени на този сървър.",

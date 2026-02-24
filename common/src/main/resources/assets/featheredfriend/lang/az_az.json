@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]QeydiyyatEnderpackSizin səhifə, sənaye və ya Curios slot tapın.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Sizin raven ehtiyacları%sDaha çox ikinci(s) bundan əvvəlEnderpackdaha.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Sizin raven ehtiyacları%sDaha çox ikinci(s) daha əvvəl ola bilər.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %smüştəri bir qazanmaq%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Suspicious Feather bu server üzərində silinir.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Sual Bu server üzərində köçürməz.",

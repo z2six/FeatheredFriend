@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]Hayır hayır hayırEnderpackEllerinizde, envanterde veya Curios yuvanızda bulundu.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]raven ihtiyaçlarınız%sDaha önce daha ikinci (s) bir depozito yatırmadan önceEnderpackTekrar.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]raven ihtiyaçlarınız%sDaha önce daha ikinci (s) başka bir kaydırak sunabilir.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sait bir posta kutusu gördü%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Suspicious Feather bu sunucuda devre dışı bırakılır.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Suspicious Göğüs bu sunucuda engellidir.",

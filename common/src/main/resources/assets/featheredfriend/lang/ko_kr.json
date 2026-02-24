@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]이름 *Enderpack손, 재고, 또는 Curios 슬롯에서 발견.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]당신의 raven 필요%s더 두 번째 (s) 전에 입금 할 수 있습니다Enderpack다시.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]당신의 raven 필요%s더 두 번째 (s) 전에 다른 스크롤을 제공 할 수 있습니다.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %s사서함이 소유한 스포트라이트%s·",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]의심스러운 깃털은이 서버에 비활성화됩니다.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]인기있는 Chest는 이 서버에 비활성화됩니다.",

@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]NēEnderpackatrasts jūsu rokās, inventāra, vai Curios slots.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Jūsu krauklis ir vajadzīgs%svairāk sekundes( s), pirms tā var noguldītEnderpackatkal.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Jūsu krauklis ir vajadzīgs%svairāk sekundes(s), pirms tā var piegādāt citu ritināšanu.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sir pamanījusi pastkasti, kas pieder%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Uz šī servera ir atslēgts aizdomīgs spalvu.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Aizdomas Krūškurvis šajā serverī ir atslēgts.",

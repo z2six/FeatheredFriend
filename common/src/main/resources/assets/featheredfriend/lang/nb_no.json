@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]NeiEnderpackfunnet i hendene, lager eller Curios slot.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Ravnen din trenger%sFlere sekunder før det kan deponere etEnderpackigjen.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Ravnen din trenger%smer sekund før den kan levere en annen rull.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %shar sett en postkasse eid av%s..",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Suspicious Feather er deaktivert på denne serveren.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Supicious Kisten er deaktivert på denne serveren.",

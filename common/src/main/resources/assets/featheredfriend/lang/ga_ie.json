@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]Níl an Tweet seo ar fáilEnderpackle fáil i do lámha, fardal, nó Sliotán Fios.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Do riachtanais raven%sníos mó dara (í) sular féidir é a thaisceadhEnderpackarís.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Do riachtanais raven%sníos mó dara (í) sular féidir é a sheachadadh eile scrollbharra.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sTá chonaic bosca poist faoi úinéireacht%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Tá Feather Suspicious faoi mhíchumas ar an bhfreastalaí.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]taiseachas aeir: fliuch Tá Chest faoi mhíchumas ar an bhfreastalaí.",

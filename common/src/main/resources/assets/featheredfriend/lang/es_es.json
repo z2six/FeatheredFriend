@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]NoEnderpackencontrado en sus manos, inventario o ranura Curios.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Tu cuervo necesita%smás segundo(s) antes de que pueda depositar unEnderpackotra vez.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Tu cuervo necesita%smás segundo(s) antes de que pueda entregar otro pergamino.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sha detectado un buzón propiedad de%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Suspicious Feather está deshabilitado en este servidor.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Sospechoso El pecho está deshabilitado en este servidor.",

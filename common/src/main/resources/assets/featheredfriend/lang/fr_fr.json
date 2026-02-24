@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]NuméroEnderpacktrouvé dans vos mains, inventaire, ou Curios fente.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Votre corbeau a besoin%splus de seconde(s) avant de pouvoir déposer uneEnderpackEncore.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Votre corbeau a besoin%splus de seconde(s) avant qu'il puisse livrer un autre défilement.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sa repéré une boîte aux lettres appartenant à%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Feather suspect est désactivé sur ce serveur.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Suspicieux Chest est désactivé sur ce serveur.",

@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]Нет.EnderpackНайденный в ваших руках, инвентарь или слот Curios.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Твой ворон нуждается%sболее секунды (ов), прежде чем он сможет внестиEnderpackОпять.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Твой ворон нуждается%sбольше секунд (секунд), прежде чем он сможет доставить другой свиток.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sПочтовый ящик, принадлежащий%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Подозрительное перо отключено на этом сервере.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]подозрительный Грудь отключена на этом сервере.",

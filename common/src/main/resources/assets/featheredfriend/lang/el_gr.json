@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]Όχι.Enderpackβρέθηκε στα χέρια σας, απογραφή, ή Curios υποδοχή.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Το κοράκι σου χρειάζεται%sπερισσότερα δευτερόλεπτα πριν να μπορεί να καταθέσειEnderpackΠάλι.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Το κοράκι σου χρειάζεται%sπερισσότερα δευτερόλεπτα πριν να μπορεί να παραδώσει ένα άλλο πάπυρο.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sέχει εντοπίσει ένα γραμματοκιβώτιο που ανήκει%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Το ύποπτο Φτερό είναι απενεργοποιημένο σε αυτόν τον διακομιστή.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Ύποπτο Το στήθος είναι απενεργοποιημένο σε αυτόν τον εξυπηρετητή.",

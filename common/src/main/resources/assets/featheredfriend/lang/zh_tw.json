@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]不Enderpack發現在你的手, 數據庫, 或Curios的空間。",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]你的烏鴉需要%s更多秒后,它才能存入Enderpack再次。",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]你的烏鴉需要%s更多秒后它才能傳送另一卷卷。",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %s發現了一個由%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]此伺服器已禁用可疑的羽毛 。",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]可疑 此伺服器已關閉胸口 。",

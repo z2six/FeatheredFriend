@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]KhôngEnderpackTìm thấy trong tay, kho hàng, hay khe cắm Curos.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Con quạ của bạn cần%sthêm giây trước khi gửiEnderpackMột lần nữa.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Con quạ của bạn cần%snhiều giây trước khi nó có thể cung cấp một cuộn sách khác.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sĐã phát hiện một hộp thư sở hữu bởi%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Máy chủ này đã tắt trình phục vụ này.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Đáng ngờ Ngực bị tắt trên máy phục vụ này.",

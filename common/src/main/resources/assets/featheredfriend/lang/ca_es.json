@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]NoEnderpackTrobada a les mans, inventari, o lloc de Curios.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]El vostre corb necessita%sMés segon ((s) abans de deixar-ne un.EnderpackUn altre cop.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]El vostre corb necessita%sMés de segon abans que pugui donar un altre desplaçament.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sHa vist una bústia propietat de%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]El Ploma Sspiciós està deshabilitat en aquest servidor.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]SuspicósName El Chest està deshabilitat en aquest servidor.",

@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]नहींEnderpackअपने हाथों, सूची, या Curios स्लॉट में पाया गया।",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]आपकी रेवेन ज़रूरत%sइससे पहले कि यह एक जमा कर सकता हैEnderpackफिर से।",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]आपकी रेवेन ज़रूरत%sइससे पहले कि यह किसी अन्य स्क्रॉल को वितरित कर सकता है।",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sअपने स्वामित्व वाले मेलबॉक्स को देखा गया है%s।",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]इस सर्वर पर संदिग्ध पंख अक्षम है।",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]शुभ चेस्ट इस सर्वर पर अक्षम है।",

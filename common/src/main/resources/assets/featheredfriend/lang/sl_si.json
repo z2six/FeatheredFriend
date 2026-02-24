@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]Št.Enderpacknašli v vaših rokah, inventar, ali Curios režo.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Vaš krokar potrebuje.%sveč sekund, preden lahko deponiraEnderpackŠe enkrat.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Vaš krokar potrebuje.%sveč sekund, preden lahko dostavi drug zvitek.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sje opazil poštni predal v lasti%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Sumljivo perje je onemogočeno na tem strežniku.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Sumljivo Prsni koš je onemogočen na tem strežniku.",

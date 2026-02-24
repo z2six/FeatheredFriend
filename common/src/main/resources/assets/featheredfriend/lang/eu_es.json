@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]EzEnderpackZure eskuetan, inbentarioan edo Curiosen gunean.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Zure bele-beharrak%ssegundo gehiago, bat gorde aurretikEnderpackBerriro.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Zure bele-beharrak%ssegundo gehiago beste korritu bat eman aurretik.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sjabetzako postontzi bat aurkitu du%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Feather susmagarria desgaituta dago zerbitzari honetan.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Suspicious Chest desgaituta dago zerbitzari honetan.",

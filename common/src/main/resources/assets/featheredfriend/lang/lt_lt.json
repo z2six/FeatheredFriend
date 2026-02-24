@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]NeEnderpackrasti jūsų rankose, inventoriaus, arba Curios lizdas.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Tavo varnui reikia%sdaugiau antra (s), kol ji gali deponuotiEnderpackDar kartą.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Tavo varnui reikia%sdaugiau sekundžių, kol ji gali pristatyti kitą slinkties.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %saptiko pašto dėžutę, priklausančią%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Įtartina, kad Fetera išjungta šiame serveryje.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Įtartina Šiame serveryje skrynia išjungta.",

@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]NoEnderpackAtopado nas súas mans, inventario ou slot Curios.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]O teu corvo necesita%smáis segundos antes de poder depositar unEnderpackoutra vez.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]O teu corvo necesita%s1 Aplicar o sentido do olfacto para percibir o olor de [algo].",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sAtopamos unha caixa de correo propiedade de%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Feather está desactivado neste servidor.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]sospeitoso Este servidor está desactivado.",

@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]JoEnderpackI gjetur në duart e tua, inventar ose në vendin e Kuriosit.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Korbi juaj ka nevojë.%smë shumë sekonda para se të depozitojë njëEnderpackPërsëri.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Korbi juaj ka nevojë.%sEdhe një sekondë para se të japë një rrotull tjetër.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sështë dalluar një mailbox në pronësi të%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Penda e dyshimtë është çaktivuar në këtë server.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]E dyshimtë Chest është çaktivuar në këtë server.",

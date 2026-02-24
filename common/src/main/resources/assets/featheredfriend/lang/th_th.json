@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]ไม่Enderpackพบในมือของคุณ รายการสินค้าหรือช่อง Curios",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]กาของท่านต้องการ%sวินาทีมากขึ้น ก่อนที่มันจะสามารถฝากEnderpackอีกครั้ง",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]กาของท่านต้องการ%sวินาทีกว่ามันจะส่งอีกม้วนได้",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sพบตู้ไปรษณีย์ของ%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]การย้ายภาพบนเซิร์ฟเวอร์นี้ ถูกปิดการใช้งาน",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]สงสัย เครื่องแม่ข่ายนี้ถูกปิดการใช้งาน",

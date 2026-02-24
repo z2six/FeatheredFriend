@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]EiEnderpackLöytyi käsissäsi, inventaario, tai Curios paikka.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Korppisi tarvitsee sinua.%sseconds [s] ennen kuin se voi tallettaaEnderpackTaas.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Korppisi tarvitsee sinua.%sseconds [s] ennen kuin se voi toimittaa toisen käärön.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %son havainnut postilaatikon omistaa%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Epäilyttävä Feather on pois päältä tällä palvelimella.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Epäilyttävä Tällä palvelimella ei ole rintaa.",

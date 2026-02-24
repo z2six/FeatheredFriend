@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]НіEnderpackЗнайдені в руках, інвентарі, або на слоті Curios.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Ваше резюме%sбільше другого(-ів) перед його можна внестиEnderpackзнову.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Ваше резюме%sбільш другий (s) до того, як він може доставити інший прокруток.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sмає відмітити поштову скриньку, яка належить%sй",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]На цьому сервері вимкнено підозрний факт.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Прозорий Честь вимкнено на цьому сервері.",

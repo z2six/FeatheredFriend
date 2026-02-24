@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]לא לאEnderpackנמצא בידיים שלך, במלאי או ב- Curios.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]הצרכים הגנובים שלך%sעוד שנייה (s) לפני שהוא יכול להפקידEnderpackשוב.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]הצרכים הגנובים שלך%sעוד שנייה (s) לפני שהוא יכול להעביר עוד מגילה.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sראה תיבת דואר בבעלות%s.",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Feather המזוין מוגבל בשרת זה.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]חשדנות צ'אט נכה בשרת זה.",

@@ -282,6 +282,7 @@
   "message.featheredfriend.enderpack.none_found": "[FeatheredFriend]Жок жокEnderpackБул сиздин колуңуздан, инвентаризацияңыздан же Curios слоттон табылган.",
   "message.featheredfriend.enderpack.deposit.cooldown": "[FeatheredFriend]Сиздин карга муктаждыктарыңыз%sбир нече секунд мурун, ал бир нече секунд мурун, ал бир нече секунд мурун, ал бир нече секунд мурун, ал бир нече секунд мурун, ал бир нече секунд мурун, ал бир нече секунд мурун, ал бир нече секунд мурун, ал бир нече секунд мурун.Enderpackдагы бир жолу.",
   "message.featheredfriend.courier.dispatch.cooldown": "[FeatheredFriend]Сиздин карга муктаждыктарыңыз%sБир нече секунд мурун, ал дагы бир түрмөктү бере алат.",
+  "message.featheredfriend.raven.brush.cooldown": "[FeatheredFriend] This feathered friend does not want to be brushed right now. Maybe later?",
   "message.featheredfriend.mailbox.spotted": "[FeatheredFriend] %sПочта кутучасынын ээси%s....",
   "message.featheredfriend.feature_disabled.suspicious_feather": "[FeatheredFriend]Бул серверде шектүү тери өчүрүлөт.",
   "message.featheredfriend.feature_disabled.suspicious_chest": "[FeatheredFriend]Шектүү Бул серверде көкүрөк иштебей калат.",
