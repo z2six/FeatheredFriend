@@ -63,6 +63,7 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.core.particles.ParticleTypes;
 import org.jetbrains.annotations.NotNull;
 
 // Modules
@@ -2342,6 +2343,13 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
 
             ItemStack stack = player.getItemInHand(hand);
+            if (stack != null && stack.is(Items.BRUSH)) {
+                if (!this.level().isClientSide) {
+                    handleBrushInteractServer(player);
+                }
+                return InteractionResult.sidedSuccess(this.level().isClientSide);
+            }
+
             RavenArmorVisual heldArmorVisual = FFItems.getRavenArmorVisual(stack);
 
             // ----------------------------------------------------------------------
@@ -2498,6 +2506,99 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             //LOG.error("[RavenEntity] mobInteract failed safely", t);
             // Fail-safe: don’t break all interactions if something goes wrong.
             return InteractionResult.PASS;
+        }
+    }
+
+    private void handleBrushInteractServer(@NotNull Player player) {
+        try {
+            if (!(this.level() instanceof ServerLevel serverLevel)) {
+                return;
+            }
+            if (!this.isAlive()) {
+                return;
+            }
+
+            int cooldownSeconds = 0;
+            try {
+                cooldownSeconds = Math.max(0, Services.PLATFORM.getBrushRavenCooldownSeconds());
+            } catch (Throwable ignored) {
+                cooldownSeconds = 0;
+            }
+            if (cooldownSeconds > 0) {
+                long now = serverLevel.getGameTime();
+                long cdTicks = (long) cooldownSeconds * 20L;
+                Long last = BRUSH_RAVEN_COOLDOWN_TICKS_BY_PLAYER.get(player.getUUID());
+                if (last != null) {
+                    long elapsed = now - last.longValue();
+                    if (elapsed < cdTicks) {
+                        return;
+                    }
+                }
+                BRUSH_RAVEN_COOLDOWN_TICKS_BY_PLAYER.put(player.getUUID(), Long.valueOf(now));
+            }
+
+            spawnHeartBurst(serverLevel);
+            playBrushCaw(serverLevel);
+
+            RandomSource rnd = this.getRandom();
+            float roll = rnd == null ? 1.0F : rnd.nextFloat();
+
+            if (roll < 0.05F) {
+                try {
+                    Entity endermite = EntityType.ENDERMITE.create(serverLevel);
+                    if (endermite != null) {
+                        endermite.moveTo(this.getX(), this.getY() + 0.15D, this.getZ(), rnd.nextFloat() * 360.0F, 0.0F);
+                        serverLevel.addFreshEntity(endermite);
+                    }
+                } catch (Throwable ignored) {
+                }
+            } else if (roll < 0.70F) {
+                try {
+                    this.spawnAtLocation(new ItemStack(FFItems.RAVEN_FEATHER.get()));
+                } catch (Throwable ignored) {
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static final java.util.concurrent.ConcurrentHashMap<java.util.UUID, Long> BRUSH_RAVEN_COOLDOWN_TICKS_BY_PLAYER =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private void spawnHeartBurst(@NotNull ServerLevel serverLevel) {
+        try {
+            RandomSource rnd = this.getRandom();
+            double width = Math.max(0.6D, this.getBbWidth());
+            double centerX = this.getX();
+            double centerY = this.getY();
+            double centerZ = this.getZ();
+
+            for (int i = 0; i < 8; i++) {
+                double x = centerX + ((rnd.nextDouble() - 0.5D) * width);
+                double y = centerY + 0.35D + rnd.nextDouble() * 0.9D;
+                double z = centerZ + ((rnd.nextDouble() - 0.5D) * width);
+                serverLevel.sendParticles(ParticleTypes.HEART, x, y, z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private void playBrushCaw(@NotNull ServerLevel serverLevel) {
+        try {
+            if (SOUND_RAVEN_CAWING_NORMAL_ID == null) {
+                return;
+            }
+            RavenSoundEngine.playAtWithRandomPitch(
+                    serverLevel,
+                    SOUND_RAVEN_CAWING_NORMAL_ID.toString(),
+                    SoundSource.NEUTRAL,
+                    this.position(),
+                    0.9F,
+                    0.95F,
+                    1.05F,
+                    this.getRandom()
+            );
+        } catch (Throwable ignored) {
         }
     }
 
@@ -3342,6 +3443,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             if (!dodged) {
                 this.setHealth(Math.max(0.0F, this.getHealth() - DAMAGE_PER_LANDED_HIT));
                 spawnSuccessfulDamageFeatherBurst(serverLevel);
+                maybeDropRavenFeatherOnSurvivedHit();
                 try {
                     Services.PLATFORM.handleCourierRavenLandedHit(this);
                 } catch (Throwable ignored) {
@@ -3485,6 +3587,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 if (this.level() instanceof ServerLevel serverLevel) {
                     spawnSuccessfulDamageFeatherBurst(serverLevel);
                 }
+                maybeDropRavenFeatherOnSurvivedHit();
                 try {
                     Services.PLATFORM.handleCourierRavenLandedHit(this);
                 } catch (Throwable ignored) {
@@ -3526,6 +3629,23 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 }
                 return false;
             }
+        }
+    }
+
+    private void maybeDropRavenFeatherOnSurvivedHit() {
+        try {
+            if (this.level() == null || this.level().isClientSide) {
+                return;
+            }
+            if (!this.isAlive()) {
+                return;
+            }
+            RandomSource rnd = this.getRandom();
+            float roll = rnd == null ? 1.0F : rnd.nextFloat();
+            if (roll < 0.35F) {
+                this.spawnAtLocation(new ItemStack(FFItems.RAVEN_FEATHER.get()));
+            }
+        } catch (Throwable ignored) {
         }
     }
 

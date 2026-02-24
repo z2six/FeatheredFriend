@@ -2,6 +2,7 @@
 package net.z2six.featheredfriend.config;
 
 import com.mojang.logging.LogUtils;
+import net.z2six.featheredfriend.Constants;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.config.ModConfig;
@@ -70,6 +71,12 @@ public final class FFServerConfig {
     public static final int DEFAULT_COURIER_TIMEOUT_RETRY_SECONDS = 60;
 
     /**
+     * Real-time cooldown (seconds) between "brushing" a raven with the vanilla Brush.
+     * 0 disables cooldown.
+     */
+    public static final int DEFAULT_BRUSH_RAVEN_COOLDOWN_SECONDS = 30;
+
+    /**
      * Raven Link duration in seconds.
      */
     public static final int DEFAULT_RAVEN_LINK_DURATION_SECONDS = 30;
@@ -121,6 +128,7 @@ public final class FFServerConfig {
     public static final ForgeConfigSpec.IntValue ENDERPACK_DEPOSIT_COOLDOWN_SECONDS;
     public static final ForgeConfigSpec.IntValue SCROLL_DELIVERY_COOLDOWN_SECONDS;
     public static final ForgeConfigSpec.IntValue COURIER_TIMEOUT_RETRY_SECONDS;
+    public static final ForgeConfigSpec.IntValue BRUSH_RAVEN_COOLDOWN_SECONDS;
     public static final ForgeConfigSpec.IntValue RAVEN_LINK_DURATION_SECONDS;
     public static final ForgeConfigSpec.BooleanValue ALLOW_SERVER_SETTINGS_SCREEN_EDITING;
     public static final ForgeConfigSpec.BooleanValue ENABLE_SUSPICIOUS_FEATHER;
@@ -198,6 +206,14 @@ public final class FFServerConfig {
                         "0 disables automatic timeout retry."
                 )
                 .defineInRange("courierTimeoutRetrySeconds", DEFAULT_COURIER_TIMEOUT_RETRY_SECONDS, 0, 86_400);
+
+        BRUSH_RAVEN_COOLDOWN_SECONDS = builder
+                .comment(
+                        "Real-time cooldown in seconds between brushing a raven (right-click with vanilla Brush).",
+                        "Hot-reloadable and server-authoritative.",
+                        "0 disables cooldown."
+                )
+                .defineInRange("brushRavenCooldownSeconds", DEFAULT_BRUSH_RAVEN_COOLDOWN_SECONDS, 0, 86_400);
 
         RAVEN_LINK_DURATION_SECONDS = builder
                 .comment(
@@ -279,9 +295,15 @@ public final class FFServerConfig {
 
     public static void register() {
         try {
-            ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, SERVER_SPEC);
+            // Forge's SERVER configs are per-world (saves/<world>/serverconfig), which is confusing for many server owners
+            // and also doesn't match NeoForge's behavior in our 1.21.1 branch (single server-wide TOML).
+            // We intentionally register as COMMON and keep a server-style filename, because:
+            // - It lives in the normal /config folder
+            // - It's still server-authoritative (we sync it to clients)
+            // - It can be hot-reloaded and edited by server admins in one predictable location
+            ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, SERVER_SPEC, Constants.MOD_ID + "-server.toml");
 
-            LOG.debug("[FFServerConfig] Registered SERVER config with active ModContainer");
+            LOG.debug("[FFServerConfig] Registered server-authoritative config as COMMON ('{}-server.toml')", Constants.MOD_ID);
         } catch (Throwable t) {
             LOG.error("[FFServerConfig] Failed to register SERVER config", t);
         }
@@ -551,6 +573,35 @@ public final class FFServerConfig {
             }
         } catch (Throwable t) {
             LOG.error("[FFServerConfig] setCourierTimeoutRetrySeconds failed", t);
+        }
+    }
+
+    public static int getBrushRavenCooldownSeconds() {
+        try {
+            int v = BRUSH_RAVEN_COOLDOWN_SECONDS.get();
+            return Math.max(0, Math.min(86_400, v));
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] getBrushRavenCooldownSeconds failed, using default {}", DEFAULT_BRUSH_RAVEN_COOLDOWN_SECONDS, t);
+            return DEFAULT_BRUSH_RAVEN_COOLDOWN_SECONDS;
+        }
+    }
+
+    public static void setBrushRavenCooldownSeconds(int value) {
+        try {
+            int clamped = Math.max(0, Math.min(86_400, value));
+            int before = getBrushRavenCooldownSeconds();
+            BRUSH_RAVEN_COOLDOWN_SECONDS.set(clamped);
+            if (before != clamped) {
+                markSettingsDirty();
+            }
+            try {
+                SERVER_SPEC.save();
+            } catch (Throwable saveErr) {
+                LOG.warn("[FFServerConfig] Failed to save SERVER config to disk after brush raven cooldown update: {}",
+                        saveErr.toString());
+            }
+        } catch (Throwable t) {
+            LOG.error("[FFServerConfig] setBrushRavenCooldownSeconds failed", t);
         }
     }
 

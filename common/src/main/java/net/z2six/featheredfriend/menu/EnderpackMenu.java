@@ -41,7 +41,12 @@ public class EnderpackMenu extends AbstractContainerMenu {
                 int index = col + row * COLS;
                 int x = 8 + col * 18;
                 int y = 18 + row * 18;
-                this.addSlot(new Slot(this.enderpackContainer, index, x, y));
+                this.addSlot(new Slot(this.enderpackContainer, index, x, y) {
+                    @Override
+                    public boolean mayPlace(@NotNull ItemStack stack) {
+                        return !EnderpackStorage.isEnderpack(stack);
+                    }
+                });
             }
         }
 
@@ -68,6 +73,7 @@ public class EnderpackMenu extends AbstractContainerMenu {
         this.stackRef = stackRef;
         this.registries = registries;
         loadFromBoundStack();
+        sanitizeForbiddenNestedEnderpacks();
     }
 
     private void loadFromBoundStack() {
@@ -85,11 +91,41 @@ public class EnderpackMenu extends AbstractContainerMenu {
         }
     }
 
+    private void sanitizeForbiddenNestedEnderpacks() {
+        try {
+            Player player = this.playerInventory.player;
+            if (player == null || player.level().isClientSide()) {
+                return;
+            }
+
+            for (int i = 0; i < SLOT_COUNT; i++) {
+                ItemStack s = this.enderpackContainer.getItem(i);
+                if (s == null || s.isEmpty()) {
+                    continue;
+                }
+                if (!EnderpackStorage.isEnderpack(s)) {
+                    continue;
+                }
+
+                ItemStack toRefund = s.copy();
+                this.enderpackContainer.setItem(i, ItemStack.EMPTY);
+
+                if (!player.getInventory().add(toRefund)) {
+                    player.drop(toRefund, false);
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
     private void saveToBoundStack() {
         try {
             if (this.stackRef == null || this.registries == null) {
                 return;
             }
+
+            sanitizeForbiddenNestedEnderpacks();
+
             ItemStack stack = this.stackRef.getCurrentStack();
             if (!EnderpackStorage.isEnderpack(stack)) {
                 stack = new ItemStack(net.z2six.featheredfriend.registry.FFItems.ENDERPACK.get());
@@ -128,6 +164,9 @@ public class EnderpackMenu extends AbstractContainerMenu {
                     return ItemStack.EMPTY;
                 }
             } else {
+                if (EnderpackStorage.isEnderpack(source)) {
+                    return ItemStack.EMPTY;
+                }
                 if (!this.moveItemStackTo(source, 0, SLOT_COUNT, false)) {
                     return ItemStack.EMPTY;
                 }

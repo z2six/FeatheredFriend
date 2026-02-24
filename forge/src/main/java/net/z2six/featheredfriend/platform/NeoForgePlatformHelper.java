@@ -651,6 +651,11 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public int getBrushRavenCooldownSecondsClient() {
+        return FFPayloads.ClientState.brushRavenCooldownSeconds();
+    }
+
+    @Override
     public void requestServerSettingsSync() {
         FFPayloads.sendRequestServerSettingsToServer();
     }
@@ -721,6 +726,11 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public void sendSetBrushRavenCooldownSeconds(int value) {
+        FFPayloads.sendSetBrushRavenCooldownSeconds(value);
+    }
+
+    @Override
     public boolean tryStartRavenLink(@NotNull ServerPlayer player) {
         return RavenLinkRuntime.tryStartLink(player);
     }
@@ -780,6 +790,11 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     @Override
     public int getCourierTimeoutRetrySeconds() {
         return FFServerConfig.getCourierTimeoutRetrySeconds();
+    }
+
+    @Override
+    public int getBrushRavenCooldownSeconds() {
+        return FFServerConfig.getBrushRavenCooldownSeconds();
     }
 
     @Override

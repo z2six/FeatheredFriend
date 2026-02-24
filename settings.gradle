@@ -25,3 +25,11 @@ rootProject.name = 'Feathered Friend'
 include("common")
 include("fabric")
 include("forge")
+
+// Local dev dependency (required mod): RPG_Calendar / rpgtimeline
+// This allows Gradle to resolve rpgtimeline from source without dropping jars into `forge/run/mods`.
+includeBuild("../RPG_Calendar") {
+    dependencySubstitution {
+        substitute module("org.z2six.rpgtimeline:rpgtimeline-forge-1.20.1") using project(":forge")
+    }
+}

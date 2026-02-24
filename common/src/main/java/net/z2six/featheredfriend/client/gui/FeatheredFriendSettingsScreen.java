@@ -69,6 +69,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
     private int enderpackDepositCooldownSeconds;
     private int scrollDeliveryCooldownSeconds;
     private int courierTimeoutRetrySeconds;
+    private int brushRavenCooldownSeconds;
     private boolean hasServerSettings = false;
     private boolean canEditChat = false;
 
@@ -105,6 +106,9 @@ public class FeatheredFriendSettingsScreen extends Screen {
     private Button courierTimeoutRetryMinusButton;
     private Button courierTimeoutRetryValueButton;
     private Button courierTimeoutRetryPlusButton;
+    private Button brushRavenCooldownMinusButton;
+    private Button brushRavenCooldownValueButton;
+    private Button brushRavenCooldownPlusButton;
     private Button doneButton;
 
     private final List<Button> scrollableButtons = new ArrayList<>();
@@ -480,6 +484,25 @@ public class FeatheredFriendSettingsScreen extends Screen {
             addScrollableButton(this.enderpackCooldownPlusButton, y);
             y += OPTION_SPACING;
 
+            this.brushRavenCooldownMinusButton = Button.builder(Component.literal("-"), btn -> adjustBrushRavenCooldownSeconds(deltaWithShift(-5)))
+                    .bounds(stepperMinusX(centerX), y, STEP_BUTTON_WIDTH, OPTION_HEIGHT)
+                    .build();
+            this.brushRavenCooldownValueButton = Button.builder(textForBrushRavenCooldown(), btn -> {})
+                    .bounds(stepperValueX(centerX), y, STEP_VALUE_WIDTH, OPTION_HEIGHT)
+                    .build();
+            this.brushRavenCooldownValueButton.active = false;
+            this.brushRavenCooldownPlusButton = Button.builder(Component.literal("+"), btn -> adjustBrushRavenCooldownSeconds(deltaWithShift(5)))
+                    .bounds(stepperPlusX(centerX), y, STEP_BUTTON_WIDTH, OPTION_HEIGHT)
+                    .build();
+
+            this.brushRavenCooldownMinusButton.active = editActive;
+            this.brushRavenCooldownPlusButton.active = editActive;
+
+            addScrollableButton(this.brushRavenCooldownMinusButton, y);
+            addScrollableButton(this.brushRavenCooldownValueButton, y);
+            addScrollableButton(this.brushRavenCooldownPlusButton, y);
+            y += OPTION_SPACING;
+
             this.scrollDeliveryCooldownMinusButton = Button.builder(Component.literal("-"), btn -> adjustScrollDeliveryCooldownSeconds(deltaWithShift(-5)))
                     .bounds(stepperMinusX(centerX), y, STEP_BUTTON_WIDTH, OPTION_HEIGHT)
                     .build();
@@ -543,6 +566,9 @@ public class FeatheredFriendSettingsScreen extends Screen {
             this.courierTimeoutRetryMinusButton = null;
             this.courierTimeoutRetryValueButton = null;
             this.courierTimeoutRetryPlusButton = null;
+            this.brushRavenCooldownMinusButton = null;
+            this.brushRavenCooldownValueButton = null;
+            this.brushRavenCooldownPlusButton = null;
         }
 
         this.doneButton = Button.builder(Component.translatable("gui.done"), btn -> onClose())
@@ -701,6 +727,15 @@ public class FeatheredFriendSettingsScreen extends Screen {
             if (this.enderpackCooldownPlusButton != null) {
                 this.enderpackCooldownPlusButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
             }
+            if (this.brushRavenCooldownValueButton != null) {
+                this.brushRavenCooldownValueButton.setMessage(textForBrushRavenCooldown());
+            }
+            if (this.brushRavenCooldownMinusButton != null) {
+                this.brushRavenCooldownMinusButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
+            }
+            if (this.brushRavenCooldownPlusButton != null) {
+                this.brushRavenCooldownPlusButton.active = this.hasServerSettings && this.canEditChat && isConnectionReady();
+            }
             if (this.scrollDeliveryCooldownValueButton != null) {
                 this.scrollDeliveryCooldownValueButton.setMessage(textForScrollDeliveryCooldown());
             }
@@ -797,6 +832,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
                 this.enderpackDepositCooldownSeconds = Services.PLATFORM.getEnderpackDepositCooldownSecondsClient();
                 this.scrollDeliveryCooldownSeconds = Services.PLATFORM.getScrollDeliveryCooldownSecondsClient();
                 this.courierTimeoutRetrySeconds = Services.PLATFORM.getCourierTimeoutRetrySecondsClient();
+                this.brushRavenCooldownSeconds = Services.PLATFORM.getBrushRavenCooldownSecondsClient();
             } else {
                 // while syncing, default to enabled + no perms
                 this.chatDisabled = false;
@@ -813,6 +849,7 @@ public class FeatheredFriendSettingsScreen extends Screen {
                 this.enderpackDepositCooldownSeconds = 0;
                 this.scrollDeliveryCooldownSeconds = 0;
                 this.courierTimeoutRetrySeconds = 0;
+                this.brushRavenCooldownSeconds = 0;
             }
 
             LOG.debug("[FeatheredFriendSettingsScreen] refreshFromCacheOnly: hasServerSettings={} chatDisabled={} enableSuspiciousFeather={} enableSuspiciousChest={} enableRavenArmor={} enableMailbox={} wildRavensPerPlayer={} ravenLinkDurationSeconds={} maxRavenChestsPerPlayer={} ravenLogRetentionMinutes={} ravenLogMaxBytesPerPlayer={} enderpackDepositCooldownSeconds={} scrollDeliveryCooldownSeconds={} courierTimeoutRetrySeconds={} canEditChat={} scrollUiFontMode={} ravenStatusGuiX={} ravenStatusGuiY={} ravenStatusGuiAnchor={} ravenStatusGuiVisualMode={}",
@@ -997,6 +1034,16 @@ public class FeatheredFriendSettingsScreen extends Screen {
         return Component.translatable(
                 "screen.featheredfriend.settings.enderpack_deposit_cooldown",
                 Integer.valueOf(enderpackDepositCooldownSeconds)
+        );
+    }
+
+    private Component textForBrushRavenCooldown() {
+        if (!hasServerSettings) {
+            return Component.translatable("screen.featheredfriend.settings.brush_raven_cooldown.syncing");
+        }
+        return Component.translatable(
+                "screen.featheredfriend.settings.brush_raven_cooldown",
+                Integer.valueOf(brushRavenCooldownSeconds)
         );
     }
 
@@ -1270,6 +1317,26 @@ public class FeatheredFriendSettingsScreen extends Screen {
             LOG.debug("[FeatheredFriendSettingsScreen] Sent SetEnderpackDepositCooldownSecondsPayload -> {}", newValue);
         } catch (Throwable t) {
             LOG.error("[FeatheredFriendSettingsScreen] adjustEnderpackDepositCooldownSeconds failed safely", t);
+        }
+    }
+
+    private void adjustBrushRavenCooldownSeconds(int deltaSeconds) {
+        try {
+            if (!hasServerSettings || !canEditChat || !isConnectionReady()) {
+                return;
+            }
+            int newValue = Math.max(0, Math.min(86_400, this.brushRavenCooldownSeconds + deltaSeconds));
+            if (newValue == this.brushRavenCooldownSeconds) {
+                return;
+            }
+            this.brushRavenCooldownSeconds = newValue;
+            if (this.brushRavenCooldownValueButton != null) {
+                this.brushRavenCooldownValueButton.setMessage(textForBrushRavenCooldown());
+            }
+            Services.PLATFORM.sendSetBrushRavenCooldownSeconds(newValue);
+            LOG.debug("[FeatheredFriendSettingsScreen] Sent SetBrushRavenCooldownSecondsPayload -> {}", newValue);
+        } catch (Throwable t) {
+            LOG.error("[FeatheredFriendSettingsScreen] adjustBrushRavenCooldownSeconds failed safely", t);
         }
     }
 

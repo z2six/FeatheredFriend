@@ -83,6 +83,8 @@
   "screen.featheredfriend.settings.raven_log_size.syncing": "Raven log max size: Syncing...",
   "screen.featheredfriend.settings.enderpack_deposit_cooldown": "Enderpack deposit cooldown (seconds): %s",
   "screen.featheredfriend.settings.enderpack_deposit_cooldown.syncing": "Enderpack deposit cooldown: Syncing...",
+  "screen.featheredfriend.settings.brush_raven_cooldown": "Brush raven cooldown (seconds): %s",
+  "screen.featheredfriend.settings.brush_raven_cooldown.syncing": "Brush raven cooldown: Syncing...",
   "screen.featheredfriend.settings.scroll_delivery_cooldown": "Scroll delivery cooldown (seconds): %s",
   "screen.featheredfriend.settings.scroll_delivery_cooldown.syncing": "Scroll delivery cooldown: Syncing...",
   "screen.featheredfriend.settings.courier_timeout_retry": "Courier timeout auto-retry (seconds): %s",
@@ -384,7 +386,6 @@
   "message.featheredfriend.wild_raven.tame_wrong_nugget_whisper": "A whispering voice curls through your mind: \"These feathers are not your friend... Your thoughts are brittle. Pay closer attention...\"",
   "message.featheredfriend.wild_raven.tame_success_whisper": "A whispering voice settles in your mind: \"Your senses are sharp... Your Feathered Friend approves of you.\""
 }
-
 
 
 

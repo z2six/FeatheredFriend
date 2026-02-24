@@ -66,6 +66,7 @@ repositories {
 // (Keep it here so you don't need to touch gradle.properties.)
 def jei_version = "15.20.0.127"
 def jade_version = "11.11.1+forge"
+def rpgtimeline_version = "2.0.4.1"
 
 dependencies {
     compileOnly project(":common")
@@ -85,6 +86,10 @@ dependencies {
     // Jade (Forge 1.20.1) - optional dependency (API used for our plugin)
     modCompileOnly "maven.modrinth:jade:${jade_version}"
     modRuntimeOnly "maven.modrinth:jade:${jade_version}"
+
+    // Timeline / RPG_Calendar (Forge 1.20.1) - REQUIRED mod dependency for scroll date display.
+    // Resolved via `includeBuild("../RPG_Calendar")` in the root settings.gradle during local dev.
+    modRuntimeOnly "org.z2six.rpgtimeline:rpgtimeline-forge-1.20.1:${rpgtimeline_version}"
 
     // Optional (but recommended if you keep @NotNull/@Nullable in common code)
     compileOnly "org.jetbrains:annotations:24.1.0"

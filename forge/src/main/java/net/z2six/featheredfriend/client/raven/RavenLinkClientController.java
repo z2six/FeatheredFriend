@@ -78,6 +78,8 @@ public final class RavenLinkClientController {
             new ResourceLocation("featheredfriend", "ravenlink.tether2");
     private static final float TETHER2_PITCH_START = 1.0F;
     private static final float TETHER2_PITCH_END = 1.5F;
+    private static final long EDGE_BLUR_RETRY_COOLDOWN_MS = 30_000L;
+    private static final int EDGE_BLUR_MAX_CONSECUTIVE_FAILURES = 3;
 
     private enum VisionPhase {
         CLOSING,
@@ -148,6 +150,11 @@ public final class RavenLinkClientController {
     private static volatile @org.jetbrains.annotations.Nullable PostChain ravenLinkEdgeBlurEffect = null;
     private static volatile int ravenLinkEdgeBlurWidth = -1;
     private static volatile int ravenLinkEdgeBlurHeight = -1;
+    private static volatile long edgeBlurNextRetryAtMillis = 0L;
+    private static volatile int edgeBlurConsecutiveFailures = 0;
+    private static volatile boolean edgeBlurPermanentlyDisabled = false;
+    private static volatile String edgeBlurLastError = "";
+    private static volatile boolean edgeBlurResourcesChecked = false;
     private static volatile @org.jetbrains.annotations.Nullable RavenLinkLoopSoundInstance ravenLinkTetherLoop1 = null;
     private static volatile @org.jetbrains.annotations.Nullable RavenLinkLoopSoundInstance ravenLinkTetherLoop2 = null;
     private static volatile boolean ravenLinkTether1Allowed = false;
@@ -916,6 +923,27 @@ public final class RavenLinkClientController {
                 return;
             }
 
+            // If the user has muted this sound category, don't spam restart attempts every tick.
+            try {
+                if (mc.options != null && mc.options.getSoundSourceVolume(SoundSource.NEUTRAL) <= 0.0F) {
+                    return;
+                }
+            } catch (Throwable ignored) {
+            }
+
+            // If the engine stopped our loops (e.g. muted category, device reset), allow re-creation.
+            try {
+                if (ravenLinkTetherLoop1 != null && !mc.getSoundManager().isActive(ravenLinkTetherLoop1)) {
+                    ravenLinkTetherLoop1 = null;
+                    ravenLinkTether1FadeInStartedAtMillis = 0L;
+                }
+                if (ravenLinkTetherLoop2 != null && !mc.getSoundManager().isActive(ravenLinkTetherLoop2)) {
+                    ravenLinkTetherLoop2 = null;
+                    ravenLinkTether2FadeInStartedAtMillis = 0L;
+                }
+            } catch (Throwable ignored) {
+            }
+
             if (ravenLinkTetherLoop1 == null && ravenLinkTether1Allowed) {
                 RavenLinkLoopSoundInstance loop = createRelativeLoopSound(RAVEN_LINK_TETHER1_SOUND_ID, 1.0F);
                 if (loop != null) {
@@ -1200,6 +1228,30 @@ public final class RavenLinkClientController {
 
     private static @org.jetbrains.annotations.Nullable PostChain ensureRavenLinkEdgeBlurEffect(@org.jetbrains.annotations.NotNull Minecraft mc) {
         try {
+            long now = System.currentTimeMillis();
+            if (edgeBlurPermanentlyDisabled || now < edgeBlurNextRetryAtMillis) {
+                return null;
+            }
+
+            if (!edgeBlurResourcesChecked) {
+                edgeBlurResourcesChecked = true;
+                try {
+                    boolean postExists = mc.getResourceManager().getResource(RAVEN_LINK_EDGE_BLUR_LOCATION).isPresent();
+                    ResourceLocation program =
+                            new ResourceLocation("featheredfriend", "shaders/program/raven_link_gaussian_blur.json");
+                    boolean programExists = mc.getResourceManager().getResource(program).isPresent();
+                    if (!postExists || !programExists) {
+                        LOG.warn("[RavenLinkClientController] Raven Link shader resources missing? postExists={} programExists={} post={} program={}",
+                                postExists, programExists, RAVEN_LINK_EDGE_BLUR_LOCATION, program);
+                    } else {
+                        LOG.debug("[RavenLinkClientController] Raven Link shader resources present: post={} program={}",
+                                RAVEN_LINK_EDGE_BLUR_LOCATION, program);
+                    }
+                } catch (Throwable t) {
+                    LOG.debug("[RavenLinkClientController] Raven Link shader resource pre-check failed safely: {}", t.toString());
+                }
+            }
+
             if (ravenLinkEdgeBlurEffect == null) {
                 ravenLinkEdgeBlurEffect = new PostChain(
                         mc.getTextureManager(),
@@ -1209,6 +1261,7 @@ public final class RavenLinkClientController {
                 );
                 ravenLinkEdgeBlurWidth = -1;
                 ravenLinkEdgeBlurHeight = -1;
+                edgeBlurConsecutiveFailures = 0;
             }
 
             int width = mc.getWindow().getWidth();
@@ -1222,7 +1275,26 @@ public final class RavenLinkClientController {
             }
             return ravenLinkEdgeBlurEffect;
         } catch (IOException | JsonSyntaxException e) {
-            LOG.warn("[RavenLinkClientController] Failed to load Raven Link edge blur shader '{}': {}", RAVEN_LINK_EDGE_BLUR_LOCATION, e.toString());
+            long now = System.currentTimeMillis();
+            edgeBlurConsecutiveFailures++;
+            edgeBlurNextRetryAtMillis = now + EDGE_BLUR_RETRY_COOLDOWN_MS;
+
+            String msg = String.valueOf(e);
+            boolean isNew = !msg.equals(edgeBlurLastError);
+            edgeBlurLastError = msg;
+            if (isNew || edgeBlurConsecutiveFailures <= 1) {
+                LOG.warn("[RavenLinkClientController] Failed to load Raven Link edge blur shader '{}' (attempt {}): {}",
+                        RAVEN_LINK_EDGE_BLUR_LOCATION, edgeBlurConsecutiveFailures, msg);
+            } else {
+                LOG.debug("[RavenLinkClientController] Failed to load Raven Link edge blur shader '{}' (attempt {}): {}",
+                        RAVEN_LINK_EDGE_BLUR_LOCATION, edgeBlurConsecutiveFailures, msg);
+            }
+
+            if (edgeBlurConsecutiveFailures >= EDGE_BLUR_MAX_CONSECUTIVE_FAILURES) {
+                edgeBlurPermanentlyDisabled = true;
+                LOG.warn("[RavenLinkClientController] Disabling Raven Link edge blur effect after {} consecutive failures.",
+                        edgeBlurConsecutiveFailures);
+            }
             releaseRavenLinkEdgeBlurEffect();
             return null;
         } catch (Throwable t) {
@@ -1941,6 +2013,11 @@ public final class RavenLinkClientController {
         releaseRavenLinkEdgeBlurEffect();
         stopTetherLoopSounds();
         resetVisionPixels();
+        edgeBlurNextRetryAtMillis = 0L;
+        edgeBlurConsecutiveFailures = 0;
+        edgeBlurPermanentlyDisabled = false;
+        edgeBlurLastError = "";
+        edgeBlurResourcesChecked = false;
 
         active = false;
         linkedRavenEntityId = -1;
@@ -2160,8 +2237,12 @@ public final class RavenLinkClientController {
             this.x = 0.0D;
             this.y = 0.0D;
             this.z = 0.0D;
-            this.volume = 0.0F;
-            this.pitch = Mth.clamp(pitch, 0.1F, 2.0F);
+            // Forge 1.20.1 sound engine can refuse to start sounds at exact 0 volume even if canStartSilent() returns true.
+            // Start at a tiny volume and fade immediately from there.
+            this.managedVolume = 0.001F;
+            this.volume = this.managedVolume;
+            this.managedPitch = Mth.clamp(pitch, 0.1F, 2.0F);
+            this.pitch = this.managedPitch;
         }
 
         @Override

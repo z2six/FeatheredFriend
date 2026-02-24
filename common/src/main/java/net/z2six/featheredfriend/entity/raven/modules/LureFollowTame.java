@@ -14,6 +14,7 @@ import net.minecraft.world.phys.Vec3;
 import net.z2six.featheredfriend.entity.raven.RavenAIState;
 import net.z2six.featheredfriend.entity.raven.RavenAnimMode;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import net.minecraft.world.item.ItemStack;
@@ -37,6 +38,16 @@ public class LureFollowTame {
     private static final Logger LOG = LogUtils.getLogger();
     private static final int FOLLOW_DIRECT_REARM_TICKS = 10;
     private static final int FOLLOW_DIRECT_TTL_TICKS = 20;
+
+    /**
+     * Prevent multiple wild ravens from simultaneously engaging the same player during the lure/taming flow.
+     * This is server-side only; claims expire quickly so they don't get stuck if a raven despawns.
+     */
+    private static final long LURE_PLAYER_CLAIM_TTL_TICKS = 60L; // 3s @ 20 TPS
+    private static final ConcurrentHashMap<java.util.UUID, LurePlayerClaim> LURE_PLAYER_CLAIMS = new ConcurrentHashMap<>();
+
+    private record LurePlayerClaim(int ravenId, long expiresAtGameTime) {
+    }
 
     /**
      * Owning raven instance. All Minecraft-facing state & methods are delegated to this.
@@ -1195,6 +1206,12 @@ public class LureFollowTame {
             }
 
             // All checks passed: lure-follow is considered active.
+            try {
+                if (raven.level() instanceof ServerLevel serverLevel) {
+                    refreshLureClaimIfHeld(this.lureFollowPlayerUuid, serverLevel.getGameTime());
+                }
+            } catch (Throwable ignored) {
+            }
             return true;
 
         } catch (Throwable t) {
@@ -1282,6 +1299,17 @@ public class LureFollowTame {
                 }
                 // If isLureFollowActive() returned false, it has already cleared the stale state.
                 // Fall through and allow this new player to take over as the lure source.
+            }
+
+            // Global per-player claim: only ONE wild raven may engage lure-follow for this player at a time.
+            try {
+                if (raven.level() instanceof ServerLevel serverLevel) {
+                    long now = serverLevel.getGameTime();
+                    if (!tryAcquireLureClaim(incomingId, now)) {
+                        return;
+                    }
+                }
+            } catch (Throwable ignored) {
             }
 
             // Refresh / claim lure memory (either first time, or same player as before).
@@ -1573,6 +1601,18 @@ public class LureFollowTame {
             // Logging is best-effort only.
         }
 
+        // Release any player-claim we held so another raven can engage immediately.
+        try {
+            java.util.UUID held = lureFollowPlayerUuid;
+            if (held != null) {
+                LurePlayerClaim existing = LURE_PLAYER_CLAIMS.get(held);
+                if (existing != null && existing.ravenId == raven.getId()) {
+                    LURE_PLAYER_CLAIMS.remove(held);
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+
         // Hard reset of all lure-follow specific state.
         lureFollowPlayerUuid = null;
         lureFollowTicks = 0;
@@ -1612,6 +1652,31 @@ public class LureFollowTame {
     private boolean isLureItem(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return false;
         return stack.is(Items.GOLD_NUGGET) || stack.is(Items.IRON_NUGGET);
+    }
+
+    private boolean tryAcquireLureClaim(@NotNull java.util.UUID playerId, long nowGameTime) {
+        try {
+            LurePlayerClaim existing = LURE_PLAYER_CLAIMS.get(playerId);
+            if (existing != null) {
+                if (existing.expiresAtGameTime >= nowGameTime && existing.ravenId != raven.getId()) {
+                    return false;
+                }
+            }
+            LURE_PLAYER_CLAIMS.put(playerId, new LurePlayerClaim(raven.getId(), nowGameTime + LURE_PLAYER_CLAIM_TTL_TICKS));
+            return true;
+        } catch (Throwable ignored) {
+            return true;
+        }
+    }
+
+    private void refreshLureClaimIfHeld(@NotNull java.util.UUID playerId, long nowGameTime) {
+        try {
+            LurePlayerClaim existing = LURE_PLAYER_CLAIMS.get(playerId);
+            if (existing == null || existing.ravenId == raven.getId() || existing.expiresAtGameTime < nowGameTime) {
+                LURE_PLAYER_CLAIMS.put(playerId, new LurePlayerClaim(raven.getId(), nowGameTime + LURE_PLAYER_CLAIM_TTL_TICKS));
+            }
+        } catch (Throwable ignored) {
+        }
     }
 
     // ------------------------

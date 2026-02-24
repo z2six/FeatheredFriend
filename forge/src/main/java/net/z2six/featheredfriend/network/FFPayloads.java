@@ -108,6 +108,7 @@ public final class FFPayloads {
         private static volatile int enderpackDepositCooldownSeconds = 0;
         private static volatile int scrollDeliveryCooldownSeconds = 0;
         private static volatile int courierTimeoutRetrySeconds = 0;
+        private static volatile int brushRavenCooldownSeconds = 0;
         private static volatile boolean canEditChat = false;
 
         private ClientState() {
@@ -128,6 +129,7 @@ public final class FFPayloads {
             enderpackDepositCooldownSeconds = 0;
             scrollDeliveryCooldownSeconds = 0;
             courierTimeoutRetrySeconds = 0;
+            brushRavenCooldownSeconds = 0;
             canEditChat = false;
         }
 
@@ -146,6 +148,7 @@ public final class FFPayloads {
         public static int enderpackDepositCooldownSeconds() { return enderpackDepositCooldownSeconds; }
         public static int scrollDeliveryCooldownSeconds() { return scrollDeliveryCooldownSeconds; }
         public static int courierTimeoutRetrySeconds() { return courierTimeoutRetrySeconds; }
+        public static int brushRavenCooldownSeconds() { return brushRavenCooldownSeconds; }
 
         private static void applyFromServer(@NotNull ServerSettingsPayload payload) {
             hasSynced = true;
@@ -162,6 +165,7 @@ public final class FFPayloads {
             enderpackDepositCooldownSeconds = payload.enderpackDepositCooldownSeconds();
             scrollDeliveryCooldownSeconds = payload.scrollDeliveryCooldownSeconds();
             courierTimeoutRetrySeconds = payload.courierTimeoutRetrySeconds();
+            brushRavenCooldownSeconds = payload.brushRavenCooldownSeconds();
             canEditChat = payload.canEditChat();
         }
     }
@@ -230,6 +234,10 @@ public final class FFPayloads {
         sendSetInt(SettingKeyInt.COURIER_TIMEOUT_RETRY_SECONDS, value);
     }
 
+    public static void sendSetBrushRavenCooldownSeconds(int value) {
+        sendSetInt(SettingKeyInt.BRUSH_RAVEN_COOLDOWN_SECONDS, value);
+    }
+
     public static void sendSettingsToPlayer(@NotNull ServerLevel level, @NotNull ServerPlayer player) {
         try {
             if (level == null || player == null) {
@@ -256,6 +264,7 @@ public final class FFPayloads {
                     FFServerConfig.getEnderpackDepositCooldownSeconds(),
                     FFServerConfig.getScrollDeliveryCooldownSeconds(),
                     FFServerConfig.getCourierTimeoutRetrySeconds(),
+                    FFServerConfig.getBrushRavenCooldownSeconds(),
                     canEdit
             );
 
@@ -374,6 +383,7 @@ public final class FFPayloads {
                     case SettingKeyInt.ENDERPACK_DEPOSIT_COOLDOWN_SECONDS -> FFServerConfig.setEnderpackDepositCooldownSeconds(msg.value());
                     case SettingKeyInt.SCROLL_DELIVERY_COOLDOWN_SECONDS -> FFServerConfig.setScrollDeliveryCooldownSeconds(msg.value());
                     case SettingKeyInt.COURIER_TIMEOUT_RETRY_SECONDS -> FFServerConfig.setCourierTimeoutRetrySeconds(msg.value());
+                    case SettingKeyInt.BRUSH_RAVEN_COOLDOWN_SECONDS -> FFServerConfig.setBrushRavenCooldownSeconds(msg.value());
                     default -> {
                         // ignore
                     }
@@ -436,6 +446,7 @@ public final class FFPayloads {
         private static final byte ENDERPACK_DEPOSIT_COOLDOWN_SECONDS = 15;
         private static final byte SCROLL_DELIVERY_COOLDOWN_SECONDS = 16;
         private static final byte COURIER_TIMEOUT_RETRY_SECONDS = 17;
+        private static final byte BRUSH_RAVEN_COOLDOWN_SECONDS = 18;
     }
 
     public record RequestServerSettingsPacket() {
@@ -487,6 +498,7 @@ public final class FFPayloads {
             int enderpackDepositCooldownSeconds,
             int scrollDeliveryCooldownSeconds,
             int courierTimeoutRetrySeconds,
+            int brushRavenCooldownSeconds,
             boolean canEditChat
     ) {
         public static void encode(@NotNull ServerSettingsPayload msg, @NotNull FriendlyByteBuf buf) {
@@ -503,6 +515,7 @@ public final class FFPayloads {
             buf.writeVarInt(msg.enderpackDepositCooldownSeconds);
             buf.writeVarInt(msg.scrollDeliveryCooldownSeconds);
             buf.writeVarInt(msg.courierTimeoutRetrySeconds);
+            buf.writeVarInt(msg.brushRavenCooldownSeconds);
             buf.writeBoolean(msg.canEditChat);
         }
 
@@ -520,6 +533,7 @@ public final class FFPayloads {
             int enderpackDepositCooldownSeconds = buf.readVarInt();
             int scrollDeliveryCooldownSeconds = buf.readVarInt();
             int courierTimeoutRetrySeconds = buf.readVarInt();
+            int brushRavenCooldownSeconds = buf.readVarInt();
             boolean canEditChat = buf.readBoolean();
             return new ServerSettingsPayload(
                     chatDisabled,
@@ -535,6 +549,7 @@ public final class FFPayloads {
                     enderpackDepositCooldownSeconds,
                     scrollDeliveryCooldownSeconds,
                     courierTimeoutRetrySeconds,
+                    brushRavenCooldownSeconds,
                     canEditChat
             );
         }
