@@ -49,6 +49,8 @@ sourceSets.main.resources.srcDir 'src/generated/resources'
 repositories {
     maven { url = "https://maven.blamejared.com" }
     maven { url = "https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/" }
+    // Local dev jars (e.g., mandatory RPGTimeline while developing FeatheredFriend).
+    flatDir { dirs "run/mods" }
     exclusiveContent {
         forRepository {
             maven {
@@ -87,9 +89,13 @@ dependencies {
     modCompileOnly "maven.modrinth:jade:${jade_version}"
     modRuntimeOnly "maven.modrinth:jade:${jade_version}"
 
-    // Timeline / RPG_Calendar (Forge 1.20.1) - REQUIRED mod dependency for scroll date display.
-    // Resolved via `includeBuild("../RPG_Calendar")` in the root settings.gradle during local dev.
-    modRuntimeOnly "org.z2six.rpgtimeline:rpgtimeline-forge-1.20.1:${rpgtimeline_version}"
+    // Timeline / RPGTimeline (Forge 1.20.1) - REQUIRED mod dependency for scroll date display.
+    def localTimelineJar = file("run/mods/rpgtimeline-forge-1.20.1-${rpgtimeline_version}.jar")
+    if (localTimelineJar.exists()) {
+        modRuntimeOnly name: "rpgtimeline-forge-1.20.1", version: rpgtimeline_version
+    } else {
+        modRuntimeOnly "org.z2six.rpgtimeline:rpgtimeline-forge-1.20.1:${rpgtimeline_version}"
+    }
 
     // Optional (but recommended if you keep @NotNull/@Nullable in common code)
     compileOnly "org.jetbrains:annotations:24.1.0"
