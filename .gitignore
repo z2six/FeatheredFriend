@@ -39,3 +39,6 @@ runs
 /tools/generate_lang_translations.py
 /.gradle-user-home/wrapper/dists/gradle-8.10-bin/deqhafrv1ntovfmgh0nh3npr9/gradle-8.10-bin.zip.lck
 /.gradle-user-home/wrapper/dists/gradle-8.10-bin/deqhafrv1ntovfmgh0nh3npr9/gradle-8.10-bin.zip.part
+/codex_rm_test.txt
+/.gradle-user-home/
+/.gradle-user-home2/
