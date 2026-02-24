@@ -12,39 +12,42 @@ import net.z2six.featheredfriend.platform.Services;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Mailbox block menu (9 slots) backed by the mailbox block entity.
+ * Custom container menu for the Raven Chest (Suspicious Chest) with a custom GUI layout.
  */
-public class MailboxMenu extends AbstractContainerMenu {
+public class RavenChestMenu extends AbstractContainerMenu {
 
-    public static final int SLOT_COUNT = 9;
+    public static final int CHEST_SLOT_COUNT = 27;
 
-    private static final int MAILBOX_ROWS = 1;
-    private static final int MAILBOX_COLS = 9;
-
-    private final Container mailboxContainer;
+    private final Container chestContainer;
     private final Inventory playerInventory;
 
-    public MailboxMenu(int containerId, @NotNull Inventory playerInventory) {
-        super(Services.PLATFORM.getMailboxMenuType(), containerId);
-        this.mailboxContainer = new SimpleContainer(SLOT_COUNT);
+    public RavenChestMenu(int containerId, @NotNull Inventory playerInventory) {
+        super(Services.PLATFORM.getRavenChestMenuType(), containerId);
+        this.chestContainer = new SimpleContainer(CHEST_SLOT_COUNT);
         this.playerInventory = playerInventory;
         initSlots();
     }
 
-    public MailboxMenu(int containerId, @NotNull Inventory playerInventory, @NotNull Container mailboxContainer) {
-        super(Services.PLATFORM.getMailboxMenuType(), containerId);
-        this.mailboxContainer = mailboxContainer;
+    public RavenChestMenu(int containerId, @NotNull Inventory playerInventory, @NotNull Container chestContainer) {
+        super(Services.PLATFORM.getRavenChestMenuType(), containerId);
+        this.chestContainer = chestContainer;
         this.playerInventory = playerInventory;
         initSlots();
+    }
+
+    public @NotNull Container getChestContainer() {
+        return this.chestContainer;
     }
 
     private void initSlots() {
-        // Mailbox slots (1x9)
-        for (int col = 0; col < MAILBOX_COLS; col++) {
-            int index = col;
-            int x = 16 + col * 18;
-            int y = 16;
-            this.addSlot(new Slot(this.mailboxContainer, index, x, y));
+        // Chest inventory (3x9)
+        for (int row = 0; row < 3; row++) {
+            for (int col = 0; col < 9; col++) {
+                int index = col + row * 9;
+                int x = 16 + col * 18;
+                int y = 16 + row * 18;
+                this.addSlot(new Slot(this.chestContainer, index, x, y));
+            }
         }
 
         // Player inventory (3x9)
@@ -52,22 +55,21 @@ public class MailboxMenu extends AbstractContainerMenu {
             for (int col = 0; col < 9; col++) {
                 int index = col + row * 9 + 9;
                 int x = 16 + col * 18;
-                int y = 46 + row * 18;
-                this.addSlot(new Slot(playerInventory, index, x, y));
+                int y = 82 + row * 18;
+                this.addSlot(new Slot(this.playerInventory, index, x, y));
             }
         }
 
         // Hotbar (1x9)
         for (int col = 0; col < 9; col++) {
             int x = 16 + col * 18;
-            int y = 104;
-            this.addSlot(new Slot(playerInventory, col, x, y));
+            int y = 140;
+            this.addSlot(new Slot(this.playerInventory, col, x, y));
         }
 
-        // Let the container know it's being opened (if supported).
         if (!playerInventory.player.level().isClientSide && playerInventory.player instanceof ServerPlayer serverPlayer) {
             try {
-                this.mailboxContainer.startOpen(serverPlayer);
+                this.chestContainer.startOpen(serverPlayer);
             } catch (Throwable ignored) {
             }
         }
@@ -88,12 +90,12 @@ public class MailboxMenu extends AbstractContainerMenu {
             ItemStack source = slot.getItem();
             ItemStack original = source.copy();
 
-            if (index < SLOT_COUNT) {
-                if (!this.moveItemStackTo(source, SLOT_COUNT, this.slots.size(), true)) {
+            if (index < CHEST_SLOT_COUNT) {
+                if (!this.moveItemStackTo(source, CHEST_SLOT_COUNT, this.slots.size(), true)) {
                     return ItemStack.EMPTY;
                 }
             } else {
-                if (!this.moveItemStackTo(source, 0, SLOT_COUNT, false)) {
+                if (!this.moveItemStackTo(source, 0, CHEST_SLOT_COUNT, false)) {
                     return ItemStack.EMPTY;
                 }
             }
@@ -114,7 +116,7 @@ public class MailboxMenu extends AbstractContainerMenu {
     @Override
     public boolean stillValid(@NotNull Player player) {
         try {
-            return this.mailboxContainer.stillValid(player);
+            return this.chestContainer.stillValid(player);
         } catch (Throwable ignored) {
             return true;
         }
@@ -126,17 +128,9 @@ public class MailboxMenu extends AbstractContainerMenu {
 
         if (!player.level().isClientSide && player instanceof ServerPlayer serverPlayer) {
             try {
-                this.mailboxContainer.stopOpen(serverPlayer);
+                this.chestContainer.stopOpen(serverPlayer);
             } catch (Throwable ignored) {
             }
         }
-    }
-
-    public @NotNull Container getMailboxContainer() {
-        return this.mailboxContainer;
-    }
-
-    public @NotNull Inventory getPlayerInventory() {
-        return this.playerInventory;
     }
 }

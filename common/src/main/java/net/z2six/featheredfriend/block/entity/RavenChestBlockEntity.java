@@ -12,13 +12,13 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.ContainerOpenersCounter;
 import net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.z2six.featheredfriend.registry.FFBlockEntities;
+import net.z2six.featheredfriend.menu.RavenChestMenu;
 import software.bernie.geckolib.animatable.GeoBlockEntity;
 import software.bernie.geckolib.animatable.instance.AnimatableInstanceCache;
 import software.bernie.geckolib.animation.AnimatableManager;
@@ -67,8 +67,8 @@ public class RavenChestBlockEntity extends RandomizableContainerBlockEntity impl
 
         @Override
         protected boolean isOwnContainer(Player player) {
-            if (player.containerMenu instanceof ChestMenu chestMenu) {
-                return chestMenu.getContainer() == RavenChestBlockEntity.this;
+            if (player.containerMenu instanceof RavenChestMenu ravenChestMenu) {
+                return ravenChestMenu.getChestContainer() == RavenChestBlockEntity.this;
             }
 
             return false;
@@ -141,7 +141,7 @@ public class RavenChestBlockEntity extends RandomizableContainerBlockEntity impl
 
     @Override
     protected AbstractContainerMenu createMenu(int id, Inventory inventory) {
-        return ChestMenu.threeRows(id, inventory, this);
+        return new RavenChestMenu(id, inventory, this);
     }
 
     @Override

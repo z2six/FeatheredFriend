@@ -36,3 +36,4 @@ runs
 # mkdocs
 /site/
 /.venv/
+/tools/generate_lang_translations.py

@@ -7,10 +7,12 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.z2six.featheredfriend.network.RavenChestChoiceInfo;
 import net.z2six.featheredfriend.network.RavenChestSelectAction;
 import net.z2six.featheredfriend.platform.Services;
+import net.z2six.featheredfriend.Constants;
 import org.jetbrains.annotations.NotNull;
 import org.lwjgl.glfw.GLFW;
 
@@ -21,9 +23,48 @@ import java.util.List;
  */
 public final class RavenChestSelectScreen extends Screen {
 
-    private static final int PANEL_WIDTH = 252;
+    private static final ResourceLocation GUI_TEXTURE =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/chestselect/chest_select_gui.png");
+    private static final ResourceLocation BUTTON_TEXTURE =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/chestselect/chest_select_button.png");
+    private static final ResourceLocation BUTTON_TEXTURE_HOVER =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/chestselect/chest_select_button_hover_state.png");
+    private static final ResourceLocation SLIDER_TEXTURE =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/chestselect/scroll_slider.png");
+    private static final ResourceLocation SLIDER_TEXTURE_HOVER =
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/chestselect/scroll_slider_hover_state.png");
+
+    private static final int GUI_WIDTH = 250;
+    private static final int GUI_HEIGHT = 250;
+
+    private static final int TITLE_BOX_X0 = 56;
+    private static final int TITLE_BOX_Y0 = 7;
+    private static final int TITLE_BOX_X1 = 194;
+    private static final int TITLE_BOX_Y1 = 24;
+
+    private static final int LIST_X0 = 16;
+    private static final int LIST_Y0 = 38;
+    private static final int LIST_X1 = 219;
+    private static final int LIST_Y1 = 196;
+
+    private static final int TRACK_X0 = 224;
+    private static final int TRACK_Y0 = 31;
+    private static final int TRACK_X1 = 234;
+    private static final int TRACK_Y1 = 197;
+
+    private static final int BUTTONS_X0 = 16;
+    private static final int BUTTONS_Y0 = 203;
+    private static final int BUTTONS_X1 = 233;
+    private static final int BUTTONS_Y1 = 233;
+
+    private static final int BUTTON_W = 105;
+    private static final int BUTTON_H = 20;
+    private static final int BUTTON_GAP = 7;
+
+    private static final int SLIDER_W = 13;
+    private static final int SLIDER_H = 36;
+
     private static final int ROW_HEIGHT = 20;
-    private static final int SCROLLBAR_WIDTH = 8;
 
     private final int ravenEntityId;
     private final RavenChestSelectAction action;
@@ -34,14 +75,23 @@ public final class RavenChestSelectScreen extends Screen {
     private double dragGrabOffsetY = 0.0D;
 
     private Button confirmButton;
-    private int panelX;
-    private int panelY;
-    private int panelWidth;
-    private int panelHeight;
     private int listX;
     private int listY;
     private int listWidth;
     private int listHeight;
+    private int trackX;
+    private int trackY;
+    private int trackWidth;
+    private int trackHeight;
+    private int buttonsY;
+    private int guiLeft;
+    private int guiTop;
+
+    /**
+     * Screen#render(...) calls renderBackground(), and Screen#render(...) (super.render) does too.
+     * We want blur exactly once per frame, before our custom texture, and never on top of it.
+     */
+    private boolean skipBackgroundPass = false;
 
     public RavenChestSelectScreen(int ravenEntityId,
                                   @NotNull List<RavenChestChoiceInfo> choices) {
@@ -61,22 +111,43 @@ public final class RavenChestSelectScreen extends Screen {
 
     @Override
     protected void init() {
-        this.panelWidth = Math.min(PANEL_WIDTH, this.width - 20);
-        this.panelHeight = Math.min(210, this.height - 20);
-        this.panelX = (this.width - this.panelWidth) / 2;
-        this.panelY = (this.height - this.panelHeight) / 2;
-        this.listX = this.panelX + 10;
-        this.listY = this.panelY + 24;
-        this.listWidth = this.panelWidth - 20;
-        this.listHeight = this.panelHeight - 72;
+        this.guiLeft = (this.width - GUI_WIDTH) / 2;
+        this.guiTop = (this.height - GUI_HEIGHT) / 2;
 
-        this.confirmButton = Button.builder(Component.translatable("screen.featheredfriend.raven_chest_select.confirm"), b -> confirm())
-                .bounds(this.panelX + 10, this.panelY + this.panelHeight - 28, 110, 20)
-                .build();
+        this.listX = this.guiLeft + LIST_X0;
+        this.listY = this.guiTop + LIST_Y0;
+        this.listWidth = (LIST_X1 - LIST_X0);
+        this.listHeight = (LIST_Y1 - LIST_Y0);
+
+        this.trackX = this.guiLeft + TRACK_X0;
+        this.trackY = this.guiTop + TRACK_Y0;
+        this.trackWidth = (TRACK_X1 - TRACK_X0);
+        this.trackHeight = (TRACK_Y1 - TRACK_Y0);
+
+        int buttonsAreaH = (BUTTONS_Y1 - BUTTONS_Y0);
+        this.buttonsY = this.guiTop + BUTTONS_Y0 + Math.max(0, (buttonsAreaH - BUTTON_H) / 2);
+
+        int confirmX = this.guiLeft + BUTTONS_X0;
+        int cancelX = confirmX + BUTTON_W + BUTTON_GAP;
+
+        this.confirmButton = new TexturedButton(
+                confirmX,
+                this.buttonsY,
+                BUTTON_W,
+                BUTTON_H,
+                Component.translatable("screen.featheredfriend.raven_chest_select.confirm"),
+                b -> confirm()
+        );
         this.addRenderableWidget(this.confirmButton);
-        this.addRenderableWidget(Button.builder(Component.translatable("gui.cancel"), b -> onClose())
-                .bounds(this.panelX + this.panelWidth - 120, this.panelY + this.panelHeight - 28, 110, 20)
-                .build());
+
+        this.addRenderableWidget(new TexturedButton(
+                cancelX,
+                this.buttonsY,
+                BUTTON_W,
+                BUTTON_H,
+                Component.translatable("gui.cancel"),
+                b -> onClose()
+        ));
 
         selectInitialEntry();
         refreshConfirmButton();
@@ -132,22 +203,21 @@ public final class RavenChestSelectScreen extends Screen {
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            if (isInsideList(mouseX, mouseY)) {
+                int row = (int) ((mouseY - this.listY) / ROW_HEIGHT);
+                int index = this.scrollIndex + row;
+                selectIndex(index);
+                return true;
+            }
+
             if (isInsideScrollbarTrack(mouseX, mouseY) && maxScrollIndex() > 0) {
                 int thumbTop = scrollbarThumbTop();
-                int thumbHeight = scrollbarThumbHeight();
-                if (mouseY >= thumbTop && mouseY <= (thumbTop + thumbHeight)) {
+                if (mouseY >= thumbTop && mouseY <= (thumbTop + SLIDER_H)) {
                     this.draggingScrollbar = true;
                     this.dragGrabOffsetY = mouseY - thumbTop;
                 } else {
                     jumpScrollTo(mouseY);
                 }
-                return true;
-            }
-
-            if (isInsideList(mouseX, mouseY)) {
-                int row = (int) ((mouseY - this.listY) / ROW_HEIGHT);
-                int index = this.scrollIndex + row;
-                selectIndex(index);
                 return true;
             }
         }
@@ -157,12 +227,12 @@ public final class RavenChestSelectScreen extends Screen {
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         if (this.draggingScrollbar && button == GLFW.GLFW_MOUSE_BUTTON_LEFT && maxScrollIndex() > 0) {
-            double travel = this.listHeight - scrollbarThumbHeight();
+            double travel = this.trackHeight - SLIDER_H;
             if (travel <= 0.0D) {
                 setScrollIndex(0);
                 return true;
             }
-            double y = mouseY - this.listY - this.dragGrabOffsetY;
+            double y = mouseY - this.trackY - this.dragGrabOffsetY;
             double ratio = Mth.clamp(y / travel, 0.0D, 1.0D);
             setScrollIndex((int) Math.round(ratio * maxScrollIndex()));
             return true;
@@ -248,39 +318,28 @@ public final class RavenChestSelectScreen extends Screen {
             setScrollIndex(0);
             return;
         }
-        double travel = this.listHeight - scrollbarThumbHeight();
+        double travel = this.trackHeight - SLIDER_H;
         if (travel <= 0.0D) {
             setScrollIndex(0);
             return;
         }
-        double y = mouseY - this.listY - (scrollbarThumbHeight() / 2.0D);
+        double y = mouseY - this.trackY - (SLIDER_H / 2.0D);
         double ratio = Mth.clamp(y / travel, 0.0D, 1.0D);
         setScrollIndex((int) Math.round(ratio * max));
     }
 
-    private int scrollbarX() {
-        return this.listX + this.listWidth - SCROLLBAR_WIDTH;
-    }
-
-    private int scrollbarThumbHeight() {
-        if (this.choices.isEmpty()) {
-            return this.listHeight;
-        }
-        int rows = visibleRows();
-        if (this.choices.size() <= rows) {
-            return this.listHeight;
-        }
-        return Math.max(18, (int) ((this.listHeight * (double) rows) / (double) this.choices.size()));
+    private int sliderX() {
+        // Slider is wider than the track; center it horizontally over the track.
+        return this.trackX + Math.round((this.trackWidth - SLIDER_W) / 2.0f);
     }
 
     private int scrollbarThumbTop() {
         int max = maxScrollIndex();
         if (max <= 0) {
-            return this.listY;
+            return this.trackY;
         }
-        int thumbHeight = scrollbarThumbHeight();
-        int travel = this.listHeight - thumbHeight;
-        return this.listY + (int) Math.round((travel * (double) this.scrollIndex) / (double) max);
+        int travel = this.trackHeight - SLIDER_H;
+        return this.trackY + (int) Math.round((travel * (double) this.scrollIndex) / (double) max);
     }
 
     private boolean isInsideList(double mouseX, double mouseY) {
@@ -291,11 +350,10 @@ public final class RavenChestSelectScreen extends Screen {
     }
 
     private boolean isInsideScrollbarTrack(double mouseX, double mouseY) {
-        int x = scrollbarX();
-        return mouseX >= x
-                && mouseX <= (x + SCROLLBAR_WIDTH)
-                && mouseY >= this.listY
-                && mouseY <= (this.listY + this.listHeight);
+        return mouseX >= this.trackX
+                && mouseX <= (this.trackX + this.trackWidth)
+                && mouseY >= this.trackY
+                && mouseY <= (this.trackY + this.trackHeight);
     }
 
     private void refreshConfirmButton() {
@@ -342,78 +400,84 @@ public final class RavenChestSelectScreen extends Screen {
     @Override
     public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
-        super.render(guiGraphics, mouseX, mouseY, partialTick);
 
-        guiGraphics.fill(this.panelX, this.panelY, this.panelX + this.panelWidth, this.panelY + this.panelHeight, 0xCC1B1B1B);
-        guiGraphics.fill(this.panelX + 1, this.panelY + 1, this.panelX + this.panelWidth - 1, this.panelY + this.panelHeight - 1, 0xCC2A2A2A);
-        guiGraphics.drawCenteredString(this.font, this.title, this.panelX + (this.panelWidth / 2), this.panelY + 9, 0xFFFFFF);
+        guiGraphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+        guiGraphics.blit(GUI_TEXTURE, this.guiLeft, this.guiTop, 0, 0, GUI_WIDTH, GUI_HEIGHT, GUI_WIDTH, GUI_HEIGHT);
 
-        guiGraphics.fill(this.listX, this.listY, this.listX + this.listWidth, this.listY + this.listHeight, 0x8F111111);
-        guiGraphics.fill(this.listX, this.listY + 1, this.listX + this.listWidth, this.listY + 2, 0x5FFFFFFF);
+        // Title centered inside the title box.
+        int titleCenterX = this.guiLeft + ((TITLE_BOX_X0 + TITLE_BOX_X1) / 2);
+        int titleY = this.guiTop + TITLE_BOX_Y0 + Math.max(0, ((TITLE_BOX_Y1 - TITLE_BOX_Y0) - 9) / 2);
+        guiGraphics.drawCenteredString(this.font, this.title, titleCenterX, titleY, 0xFFFFFF);
+
+        // List content (clipped to the list area).
+        guiGraphics.enableScissor(this.listX, this.listY, this.listX + this.listWidth, this.listY + this.listHeight);
 
         if (this.choices.isEmpty()) {
             guiGraphics.drawCenteredString(
                     this.font,
                     Component.translatable("screen.featheredfriend.raven_chest_select.none"),
-                    this.panelX + (this.panelWidth / 2),
+                    this.listX + (this.listWidth / 2),
                     this.listY + (this.listHeight / 2) - 4,
                     0xB0B0B0
             );
+        } else {
+            int rows = visibleRows();
+            for (int i = 0; i < rows; i++) {
+                int idx = this.scrollIndex + i;
+                if (idx < 0 || idx >= this.choices.size()) {
+                    break;
+                }
+
+                RavenChestChoiceInfo choice = this.choices.get(idx);
+                int rowTop = this.listY + (i * ROW_HEIGHT);
+                boolean selected = idx == this.selectedIndex;
+
+                if (selected) {
+                    guiGraphics.fill(this.listX + 2, rowTop + 1, this.listX + this.listWidth - 2, rowTop + ROW_HEIGHT - 1, 0x553F2D1A);
+                }
+
+                if (choice != null) {
+                    guiGraphics.drawString(
+                            this.font,
+                            chestLabelComponent(choice),
+                            this.listX + 6,
+                            rowTop + 6,
+                            0xFFFFFF,
+                            false
+                    );
+                }
+            }
+        }
+
+        guiGraphics.disableScissor();
+
+        // Scrollbar slider (the track is part of the background image).
+        if (maxScrollIndex() > 0) {
+            int sliderX = sliderX();
+            int sliderY = scrollbarThumbTop();
+            boolean hover = this.draggingScrollbar
+                    || (mouseX >= sliderX && mouseX <= (sliderX + SLIDER_W) && mouseY >= sliderY && mouseY <= (sliderY + SLIDER_H));
+            ResourceLocation tex = hover ? SLIDER_TEXTURE_HOVER : SLIDER_TEXTURE;
+            guiGraphics.blit(tex, sliderX, sliderY, 0, 0, SLIDER_W, SLIDER_H, SLIDER_W, SLIDER_H);
+        }
+
+        // Render widgets (buttons) without triggering another blur/background pass.
+        this.skipBackgroundPass = true;
+        super.render(guiGraphics, mouseX, mouseY, partialTick);
+        this.skipBackgroundPass = false;
+    }
+
+    @Override
+    public void renderBackground(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        if (this.skipBackgroundPass) {
             return;
         }
 
-        int rows = visibleRows();
-        int contentWidth = this.listWidth - SCROLLBAR_WIDTH - 4;
-        for (int i = 0; i < rows; i++) {
-            int idx = this.scrollIndex + i;
-            if (idx < 0 || idx >= this.choices.size()) {
-                break;
-            }
-            RavenChestChoiceInfo choice = this.choices.get(idx);
-            int rowTop = this.listY + (i * ROW_HEIGHT);
-            boolean selected = idx == this.selectedIndex;
-            if (selected) {
-                guiGraphics.fill(this.listX + 1, rowTop + 1, this.listX + contentWidth, rowTop + ROW_HEIGHT - 1, 0x663F2D1A);
-            }
-            if (i > 0) {
-                guiGraphics.fill(this.listX + 1, rowTop, this.listX + contentWidth, rowTop + 1, 0x2FFFFFFF);
-            }
-            if (choice != null) {
-                guiGraphics.drawString(
-                        this.font,
-                        chestLabelComponent(choice),
-                        this.listX + 6,
-                        rowTop + 6,
-                        0xFFFFFF,
-                        false
-                );
-            }
-        }
-
-        int sbX = scrollbarX();
-        guiGraphics.fill(sbX, this.listY, sbX + SCROLLBAR_WIDTH, this.listY + this.listHeight, 0xAA101010);
-        int thumbTop = scrollbarThumbTop();
-        int thumbHeight = scrollbarThumbHeight();
-        guiGraphics.fill(sbX + 1, thumbTop, sbX + SCROLLBAR_WIDTH - 1, thumbTop + thumbHeight, 0xCC777777);
-        guiGraphics.fill(sbX + 1, thumbTop, sbX + SCROLLBAR_WIDTH - 1, thumbTop + 1, 0xCCBDBDBD);
-
-        if (this.selectedIndex >= 0 && this.selectedIndex < this.choices.size()) {
-            RavenChestChoiceInfo selected = this.choices.get(this.selectedIndex);
-            if (selected != null) {
-                BlockPos pos = BlockPos.of(selected.blockPos());
-                guiGraphics.drawCenteredString(
-                        this.font,
-                        Component.translatable(
-                                "screen.featheredfriend.raven_chest_select.position",
-                                pos.getX(),
-                                pos.getY(),
-                                pos.getZ()
-                        ),
-                        this.panelX + (this.panelWidth / 2),
-                        this.listY + this.listHeight + 8,
-                        0xBFBFBF
-                );
-            }
+        // Keep vanilla menu blur, but do NOT draw the dark menu background overlay.
+        // Mirrors how ScrollSealingScreen keeps blur while drawing its own background.
+        try {
+            this.renderBlurredBackground(partialTick);
+        } catch (Throwable ignored) {
         }
     }
 
@@ -428,5 +492,23 @@ public final class RavenChestSelectScreen extends Screen {
     @Override
     public boolean isPauseScreen() {
         return false;
+    }
+
+    private final class TexturedButton extends Button {
+        private TexturedButton(int x, int y, int width, int height, @NotNull Component message, @NotNull OnPress onPress) {
+            super(x, y, width, height, message, onPress, DEFAULT_NARRATION);
+        }
+
+        @Override
+        protected void renderWidget(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+            boolean hover = this.isHoveredOrFocused();
+            ResourceLocation tex = hover ? BUTTON_TEXTURE_HOVER : BUTTON_TEXTURE;
+            guiGraphics.blit(tex, this.getX(), this.getY(), 0, 0, this.width, this.height, BUTTON_W, BUTTON_H);
+
+            int color = this.active ? 0xFFFFFF : 0xA0A0A0;
+            int labelX = this.getX() + (this.width / 2);
+            int labelY = this.getY() + Math.max(0, (this.height - 9) / 2);
+            guiGraphics.drawCenteredString(RavenChestSelectScreen.this.font, this.getMessage(), labelX, labelY, color);
+        }
     }
 }

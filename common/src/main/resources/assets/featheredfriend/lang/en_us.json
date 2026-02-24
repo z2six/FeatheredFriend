@@ -380,7 +380,9 @@
   "message.featheredfriend.command.courier.clear_error": "[FeatheredFriend] Error while clearing courier jobs; see log.",
   "message.featheredfriend.command.courier.clear_player_success": "[FeatheredFriend] Cleared %s raven courier job(s) for player '%s'.",
   "message.featheredfriend.command.courier.clear_player_error": "[FeatheredFriend] Error while clearing courier jobs for player; see log.",
-  "container.featheredfriend.enderpack": "Enderpack"
+  "container.featheredfriend.enderpack": "Enderpack",
+  "message.featheredfriend.wild_raven.tame_wrong_nugget_whisper": "A whispering voice curls through your mind: \"These feathers are not your friend... Your thoughts are brittle. Pay closer attention...\"",
+  "message.featheredfriend.wild_raven.tame_success_whisper": "A whispering voice settles in your mind: \"Your senses are sharp... Your Feathered Friend approves of you.\""
 }
 
 

@@ -30,6 +30,7 @@ import net.z2six.featheredfriend.item.SealStampSlotEntry;
 import net.z2six.featheredfriend.item.EnderpackStackRef;
 import net.z2six.featheredfriend.menu.EnderpackMenu;
 import net.z2six.featheredfriend.menu.MailboxMenu;
+import net.z2six.featheredfriend.menu.RavenChestMenu;
 import net.z2six.featheredfriend.menu.ScrollSealingMenu;
 import net.z2six.featheredfriend.menu.SealStampMenu;
 import net.z2six.featheredfriend.menu.ScrollViewMenu;
@@ -240,6 +241,11 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     @Override
     public MenuType<MailboxMenu> getMailboxMenuType() {
         return FFNeoForgeMenus.MAILBOX_MENU.get();
+    }
+
+    @Override
+    public MenuType<RavenChestMenu> getRavenChestMenuType() {
+        return FFNeoForgeMenus.RAVEN_CHEST_MENU.get();
     }
 
     @Override

@@ -13,6 +13,7 @@ public final class FFMenus {
     public static final String SCROLL_VIEW_ID = "scroll_view";
     public static final String ENDERPACK_ID = "enderpack";
     public static final String MAILBOX_ID = "mailbox";
+    public static final String RAVEN_CHEST_ID = "raven_chest";
 
     private FFMenus() {
     }

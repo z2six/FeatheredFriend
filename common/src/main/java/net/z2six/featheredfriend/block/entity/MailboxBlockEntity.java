@@ -30,7 +30,7 @@ import java.util.UUID;
 
 public class MailboxBlockEntity extends BlockEntity implements GeoBlockEntity, MenuProvider, Container, Clearable {
 
-    public static final int SLOT_COUNT = 8;
+    public static final int SLOT_COUNT = 9;
 
     private final AnimatableInstanceCache geoCache = GeckoLibUtil.createInstanceCache(this);
 

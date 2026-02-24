@@ -10,8 +10,10 @@ import net.z2six.featheredfriend.client.gui.SealStampScreen;
 import net.z2six.featheredfriend.client.gui.ScrollViewScreen;
 import net.z2six.featheredfriend.client.gui.EnderpackScreen;
 import net.z2six.featheredfriend.client.gui.MailboxScreen;
+import net.z2six.featheredfriend.client.gui.RavenChestScreen;
 import net.z2six.featheredfriend.menu.EnderpackMenu;
 import net.z2six.featheredfriend.menu.MailboxMenu;
+import net.z2six.featheredfriend.menu.RavenChestMenu;
 import net.z2six.featheredfriend.menu.ScrollSealingMenu;
 import net.z2six.featheredfriend.menu.SealStampMenu;
 import net.z2six.featheredfriend.menu.ScrollViewMenu;
@@ -124,7 +126,7 @@ public final class ClientScreens {
         }
 
         // ---------------------------------------------------------------------
-        // Mailbox GUI (8-slot per-player storage)
+        // Mailbox GUI (9-slot storage)
         // ---------------------------------------------------------------------
         try {
             LOG.debug("[ClientScreens] Registering screen for menu type: {} (mailbox)",
@@ -139,6 +141,24 @@ public final class ClientScreens {
             LOG.debug("[ClientScreens] Successfully registered Mailbox screen");
         } catch (Throwable t) {
             LOG.error("[ClientScreens] Failed to register Mailbox screen", t);
+        }
+
+        // ---------------------------------------------------------------------
+        // Raven Chest GUI (Suspicious Chest container)
+        // ---------------------------------------------------------------------
+        try {
+            LOG.debug("[ClientScreens] Registering screen for menu type: {} (raven_chest)",
+                    FFNeoForgeMenus.RAVEN_CHEST_MENU.get().toString());
+
+            event.register(
+                    FFNeoForgeMenus.RAVEN_CHEST_MENU.get(),
+                    (RavenChestMenu menu, net.minecraft.world.entity.player.Inventory inv, net.minecraft.network.chat.Component title) ->
+                            new RavenChestScreen(menu, inv, title)
+            );
+
+            LOG.debug("[ClientScreens] Successfully registered RavenChest screen");
+        } catch (Throwable t) {
+            LOG.error("[ClientScreens] Failed to register RavenChest screen", t);
         }
     }
 }

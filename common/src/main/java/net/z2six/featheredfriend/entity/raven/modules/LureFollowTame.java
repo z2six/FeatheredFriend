@@ -5,6 +5,7 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.chat.Component;
+import net.minecraft.ChatFormatting;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
@@ -386,6 +387,14 @@ public class LureFollowTame {
 
                 try {
                     if (raven.level() instanceof ServerLevel serverLevel && player instanceof ServerPlayer serverPlayer) {
+                        try {
+                            serverPlayer.sendSystemMessage(Component.translatable(
+                                            "message.featheredfriend.wild_raven.tame_wrong_nugget_whisper"
+                                    ).withStyle(ChatFormatting.DARK_PURPLE, ChatFormatting.ITALIC)
+                            );
+                        } catch (Throwable ignored) {
+                        }
+
                         net.z2six.featheredfriend.entity.raven.modules.TamedRaven tamed = raven.getTamedRavenModule();
                         if (tamed != null) {
                             tamed.beginDespawnWithFx(

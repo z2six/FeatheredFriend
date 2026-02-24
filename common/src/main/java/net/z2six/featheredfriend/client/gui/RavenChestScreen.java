@@ -6,27 +6,27 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 import net.z2six.featheredfriend.Constants;
-import net.z2six.featheredfriend.menu.MailboxMenu;
+import net.z2six.featheredfriend.menu.RavenChestMenu;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Simple vanilla-like container screen for MailboxMenu.
+ * Custom container screen for the Raven Chest (Suspicious Chest).
  */
-public final class MailboxScreen extends AbstractContainerScreen<MailboxMenu> {
+public final class RavenChestScreen extends AbstractContainerScreen<RavenChestMenu> {
 
     private static final ResourceLocation CONTAINER_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/mailbox/mailbox.png");
+            ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/gui/suspiciouschest/suschest.png");
 
     private static final int TEX_W = 194;
-    private static final int TEX_H = 138;
+    private static final int TEX_H = 174;
 
-    public MailboxScreen(@NotNull MailboxMenu menu,
-                         @NotNull Inventory playerInventory,
-                         @NotNull Component title) {
+    public RavenChestScreen(@NotNull RavenChestMenu menu,
+                            @NotNull Inventory playerInventory,
+                            @NotNull Component title) {
         super(menu, playerInventory, title);
         this.imageWidth = TEX_W;
         this.imageHeight = TEX_H;
-        this.inventoryLabelY = 36;
+        this.inventoryLabelY = 72;
     }
 
     @Override
@@ -36,6 +36,6 @@ public final class MailboxScreen extends AbstractContainerScreen<MailboxMenu> {
 
     @Override
     protected void renderLabels(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        // Intentionally hidden (no "Mailbox" title, no "Inventory" label).
+        // Intentionally hidden (no container title, no "Inventory" label).
     }
 }

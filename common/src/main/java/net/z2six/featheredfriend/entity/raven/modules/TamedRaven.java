@@ -5,6 +5,7 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.ChatFormatting;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
@@ -148,6 +149,14 @@ public final class TamedRaven {
 
             // Store bound raven data tied to player (for later summoning).
             storeTamedRavenForPlayer(player, name);
+
+            try {
+                player.sendSystemMessage(Component.translatable(
+                                "message.featheredfriend.wild_raven.tame_success_whisper"
+                        ).withStyle(ChatFormatting.DARK_PURPLE, ChatFormatting.ITALIC)
+                );
+            } catch (Throwable ignored) {
+            }
 
             // Play FX + fade-out, then despawn via tickServer().
             beginDespawnWithFx(serverLevel, player, name);

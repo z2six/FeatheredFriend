@@ -23,6 +23,7 @@ import net.z2six.featheredfriend.menu.ScrollViewMenu;
 import net.z2six.featheredfriend.menu.SealStampMenu;
 import net.z2six.featheredfriend.menu.EnderpackMenu;
 import net.z2six.featheredfriend.menu.MailboxMenu;
+import net.z2six.featheredfriend.menu.RavenChestMenu;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -119,6 +120,10 @@ public interface IPlatformHelper {
     }
 
     default MenuType<MailboxMenu> getMailboxMenuType() {
+        return null;
+    }
+
+    default MenuType<RavenChestMenu> getRavenChestMenuType() {
         return null;
     }
 

@@ -13,6 +13,7 @@ import net.z2six.featheredfriend.menu.ScrollViewMenu;
 import net.z2six.featheredfriend.menu.SealStampMenu;
 import net.z2six.featheredfriend.menu.EnderpackMenu;
 import net.z2six.featheredfriend.menu.MailboxMenu;
+import net.z2six.featheredfriend.menu.RavenChestMenu;
 import net.z2six.featheredfriend.registry.FFMenus;
 import org.slf4j.Logger;
 
@@ -49,6 +50,10 @@ public final class FFNeoForgeMenus {
     public static final Supplier<MenuType<MailboxMenu>> MAILBOX_MENU =
             MENUS.register(FFMenus.MAILBOX_ID,
                     () -> new MenuType<>(MailboxMenu::new, FeatureFlags.DEFAULT_FLAGS));
+
+    public static final Supplier<MenuType<RavenChestMenu>> RAVEN_CHEST_MENU =
+            MENUS.register(FFMenus.RAVEN_CHEST_ID,
+                    () -> new MenuType<>(RavenChestMenu::new, FeatureFlags.DEFAULT_FLAGS));
 
     private FFNeoForgeMenus() {
     }
