@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [2.0.0.0]
+
+### Minor
+- Ravens drop feathers when hit (35%)
+- Brush your Raven for a feather (65%) or Endermite (5%)
+- Improved spawn logic
+
+### Fixes
+Enderpack dupe
+
 ## [1.9.0.0-InDev]
 
 ### Major
