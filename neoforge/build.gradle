@@ -15,6 +15,14 @@ repositories {
             includeGroup("software.bernie.geckolib")
         }
     }
+    // Jade is hosted on Modrinth Maven.
+    maven {
+        name = "Modrinth"
+        url = "https://api.modrinth.com/maven"
+        content {
+            includeGroup("maven.modrinth")
+        }
+    }
 }
 
 neoForge {
@@ -72,11 +80,15 @@ dependencies {
     // GeckoLib (NeoForge 1.21.1)
     implementation "software.bernie.geckolib:geckolib-neoforge-1.21.1:4.8.2"
 
+    // Jade (optional integration)
+    // Compile-time API is needed for FeatheredFriendJadePlugin to compile, but the mod remains optional at runtime.
+    compileOnly "maven.modrinth:jade:15.10.5+neoforge"
+    runtimeOnly  "maven.modrinth:jade:15.10.5+neoforge"
+
     // Optional integration APIs (resolved from local dev run/mods jars).
-    // Keep these in run/mods for compilation:
-    //  - Jade-*.jar
+    // Keep these in run/mods for compilation if you prefer local jars:
     //  - curios-neoforge-*.jar
-    compileOnly fileTree(dir: 'run/mods', include: ['Jade-*.jar', 'curios-neoforge-*.jar'])
+    compileOnly fileTree(dir: 'run/mods', include: ['curios-neoforge-*.jar'])
 }
 
 // Groovy Gradle syntax
