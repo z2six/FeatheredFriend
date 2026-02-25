@@ -216,8 +216,7 @@ public class ScrollViewAttachmentInventoryScreen extends AbstractContainerScreen
     @Override
     protected void renderBg(@NotNull GuiGraphics guiGraphics, float partialTick, int mouseX, int mouseY) {
         try {
-            guiGraphics.blit(
-                    INVENTORY_TEXTURE,
+            guiGraphics.blit(net.minecraft.client.renderer.RenderType::guiTextured, INVENTORY_TEXTURE,
                     this.leftPos,
                     this.topPos,
                     0.0f,

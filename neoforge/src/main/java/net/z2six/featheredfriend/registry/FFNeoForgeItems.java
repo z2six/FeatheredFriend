@@ -26,7 +26,7 @@ public class FFNeoForgeItems {
         FFItems.ITEM_MAP.forEach((id, itemSupplier) -> {
             try {
                 LOG.debug("Registering NeoForge item '{}' via DeferredRegister", id);
-                ITEMS.register(id, itemSupplier);
+                ITEMS.register(id, key -> FFItems.withRegistrationId(key, itemSupplier::get));
             } catch (Throwable t) {
                 LOG.error("Failed to register NeoForge item '{}'", id, t);
             }

@@ -53,7 +53,9 @@ import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.Relative;
 
 import net.z2six.featheredfriend.registry.FFEntities;
 import net.z2six.featheredfriend.registry.FFBlocks;
@@ -1019,8 +1021,8 @@ public final class TamedRavenScrollWatcher {
     @Nullable
     private static Vec3 findSpawnNearPlayer(@NotNull ServerLevel level, @NotNull ServerPlayer owner) {
         try {
-            int minY = level.getMinBuildHeight() + 1;
-            int maxY = level.getMaxBuildHeight() - 2;
+            int minY = level.getMinY() + 1;
+            int maxY = level.getMaxY() - 2;
 
             int baseY = Mth.clamp(owner.blockPosition().getY() + 1, minY, maxY);
 
@@ -1166,7 +1168,7 @@ public final class TamedRavenScrollWatcher {
             ScrollSummonReturnPerch returnPerch = findScrollSummonReturnPerchForOwner(owner);
             despawnAllOwnedRavensBeforeSummon(owner, null, "single-raven pre-spawn cleanup (scroll summon)");
 
-            RavenEntity raven = FFEntities.RAVEN.get().create(level);
+            RavenEntity raven = FFEntities.RAVEN.get().create(level, EntitySpawnReason.MOB_SUMMONED);
             if (raven == null) {
                 LOG.error("[TamedRavenScrollWatcher] spawnSummonedRaven: entity factory returned null");
                 return null;
@@ -1444,10 +1446,10 @@ public final class TamedRavenScrollWatcher {
                 double half = Math.min(border.getSize() * 0.5D, 30_000_000D);
                 AABB worldLoadedBox = new AABB(
                         cx - half,
-                        level.getMinBuildHeight(),
+                        level.getMinY(),
                         cz - half,
                         cx + half,
-                        level.getMaxBuildHeight(),
+                        level.getMaxY(),
                         cz + half
                 );
 
@@ -1793,7 +1795,9 @@ public final class TamedRavenScrollWatcher {
             if (!previousArmor.isEmpty()) {
                 boolean added = player.getInventory().add(previousArmor);
                 if (!added) {
-                    raven.spawnAtLocation(previousArmor);
+                    if (raven.level() instanceof ServerLevel serverLevel) {
+                        raven.spawnAtLocation(serverLevel, previousArmor);
+                    }
                 }
             }
             return true;
@@ -1865,7 +1869,7 @@ public final class TamedRavenScrollWatcher {
     @NotNull
     private static ItemStack buildSealedScrollFromNbt(@NotNull CompoundTag sealedScrollNbt) {
         try {
-            Item item = BuiltInRegistries.ITEM.get(SEALED_SCROLL_ID);
+            Item item = BuiltInRegistries.ITEM.getValue(SEALED_SCROLL_ID);
             if (item == null) {
                 LOG.warn("[TamedRavenScrollWatcher] buildSealedScrollFromNbt: sealed scroll item missing (id={})", SEALED_SCROLL_ID);
                 return ItemStack.EMPTY;
@@ -2221,7 +2225,7 @@ public final class TamedRavenScrollWatcher {
             }
 
             if (raven.level() != targetLevel) {
-                raven.teleportTo(targetLevel, x, y, z, Set.of(), yaw, pitch);
+                raven.teleportTo(targetLevel, x, y, z, Set.<Relative>of(), yaw, pitch, false);
             } else {
                 raven.moveTo(x, y, z, yaw, pitch);
             }
@@ -2262,8 +2266,8 @@ public final class TamedRavenScrollWatcher {
             final int cz = feet.getZ();
             final int feetY = feet.getY();
 
-            final int minY = level.getMinBuildHeight();
-            final int maxY = level.getMaxBuildHeight() - 1;
+            final int minY = level.getMinY();
+            final int maxY = level.getMaxY() - 1;
 
             // 1) Ceiling scan within 15 blocks above player feet
             int ceilingY = scanFirstCeilingYWithin15(level, owner, cx, feetY, cz, minY, maxY);
@@ -2302,8 +2306,8 @@ public final class TamedRavenScrollWatcher {
             int baseY = Mth.floor(owner.getY() + preferredOffsetY + 0.5D);
 
             // Keep away from build limits; then also ensure 3-high pocket fits.
-            int clampMin = level.getMinBuildHeight() + 2;
-            int clampMax = level.getMaxBuildHeight() - 2;
+            int clampMin = level.getMinY() + 2;
+            int clampMax = level.getMaxY() - 2;
             baseY = Mth.clamp(baseY, clampMin, clampMax);
 
             if (baseY < minY) baseY = minY;
@@ -2567,7 +2571,7 @@ public final class TamedRavenScrollWatcher {
                         hand,
                         stack
                 );
-                return InteractionResult.sidedSuccess(true);
+                return InteractionResult.SUCCESS;
             }
 
             // SERVER: perform the first leg of courier dispatch.
@@ -3878,7 +3882,7 @@ public final class TamedRavenScrollWatcher {
                 double x = chestPos.getX() + RAVEN_CHEST_PERCH_OFFSET_X;
                 double y = chestPos.getY() + RAVEN_CHEST_PERCH_OFFSET_Y;
                 double z = chestPos.getZ() + RAVEN_CHEST_PERCH_OFFSET_Z;
-                raven.teleportTo(targetLevel, x, y, z, Set.of(), yaw, pitch);
+                raven.teleportTo(targetLevel, x, y, z, Set.<Relative>of(), yaw, pitch, false);
             }
             applyRavenChestPerchPose(targetLevel, raven, chestPos);
             if (!alreadyPerchedAtTarget) {

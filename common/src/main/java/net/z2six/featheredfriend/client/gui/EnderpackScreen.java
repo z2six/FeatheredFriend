@@ -29,7 +29,7 @@ public final class EnderpackScreen extends AbstractContainerScreen<EnderpackMenu
     protected void renderBg(@NotNull GuiGraphics guiGraphics, float partialTick, int mouseX, int mouseY) {
         int x = this.leftPos;
         int y = this.topPos;
-        guiGraphics.blit(CONTAINER_TEXTURE, x, y, 0, 0, this.imageWidth, ROWS * 18 + 17, 256, 256);
-        guiGraphics.blit(CONTAINER_TEXTURE, x, y + ROWS * 18 + 17, 0, 126, this.imageWidth, 96, 256, 256);
+        guiGraphics.blit(net.minecraft.client.renderer.RenderType::guiTextured, CONTAINER_TEXTURE, x, y, 0, 0, this.imageWidth, ROWS * 18 + 17, 256, 256);
+        guiGraphics.blit(net.minecraft.client.renderer.RenderType::guiTextured, CONTAINER_TEXTURE, x, y + ROWS * 18 + 17, 0, 126, this.imageWidth, 96, 256, 256);
     }
 }

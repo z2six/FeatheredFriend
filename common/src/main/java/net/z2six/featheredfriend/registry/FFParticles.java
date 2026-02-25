@@ -39,7 +39,7 @@ public final class FFParticles {
 
     private static SimpleParticleType resolveSimple(ResourceLocation id, SimpleParticleType fallback) {
         try {
-            ParticleType<?> type = BuiltInRegistries.PARTICLE_TYPE.get(id);
+            ParticleType<?> type = BuiltInRegistries.PARTICLE_TYPE.getValue(id);
             if (type instanceof SimpleParticleType simple) {
                 return simple;
             }

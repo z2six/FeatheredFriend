@@ -242,7 +242,7 @@ public class LureFollowTame {
             // CLIENT: just play the hand animation when the server accepts it.
             if (clientSide) {
                 LOG.debug("[RavenEntity] handleTamingInteract: CLIENT side, returning sidedSuccess(true)");
-                return InteractionResult.sidedSuccess(true);
+                return InteractionResult.SUCCESS;
             }
 
             // SERVER: actually try to feed / consume.

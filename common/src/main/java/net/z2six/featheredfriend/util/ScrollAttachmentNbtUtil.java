@@ -119,7 +119,7 @@ public final class ScrollAttachmentNbtUtil {
                 }
                 if (id == null) continue;
 
-                Item item = BuiltInRegistries.ITEM.get(id);
+                Item item = BuiltInRegistries.ITEM.getValue(id);
                 if (item == null || item == Items.AIR) {
                     LOG.warn("[ScrollAttachmentNbtUtil] Unknown/air item id '{}' in attachment index {}", id, i);
                     continue;

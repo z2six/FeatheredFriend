@@ -1,6 +1,7 @@
 package net.z2six.featheredfriend.client.ravenbadge;
 
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.NotNull;
 
@@ -70,11 +71,12 @@ public final class SpriteSheetAnimator {
         int textureHeight = rows * frameHeight;
 
         guiGraphics.blit(
+                RenderType::guiTextured,
                 texture,
                 x,
                 y,
-                u,
-                v,
+                (float) u,
+                (float) v,
                 renderWidth,
                 renderHeight,
                 textureWidth,

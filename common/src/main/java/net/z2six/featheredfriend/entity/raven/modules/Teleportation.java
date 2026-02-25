@@ -267,7 +267,16 @@ public final class Teleportation {
 
                         try {
                             // NOTE: Neo/vanilla signature may vary by mappings; this call has worked in your previous code.
-                            teleported = ravenEntity.teleportTo(serverLevel, target.x, target.y, target.z, Set.of(), ravenEntity.getYRot(), ravenEntity.getXRot());
+                            teleported = ravenEntity.teleportTo(
+                                    serverLevel,
+                                    target.x,
+                                    target.y,
+                                    target.z,
+                                    Set.<net.minecraft.world.entity.Relative>of(),
+                                    ravenEntity.getYRot(),
+                                    ravenEntity.getXRot(),
+                                    false
+                            );
                         } catch (Throwable t) {
                             if (ravenEntity.tickCount % 20 == 0) {
                                 LOG.warn("[Teleportation] TeleportSequence teleportTo failed safely: {}", t.toString());

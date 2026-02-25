@@ -6,11 +6,10 @@
     " YY"
   ],
   "key": {
-    "Y": { "item": "minecraft:copper_ingot" }
+    "Y": "minecraft:copper_ingot"
   },
   "result": {
     "id": "featheredfriend:raven_armor_copper",
     "count": 1
   }
 }
-

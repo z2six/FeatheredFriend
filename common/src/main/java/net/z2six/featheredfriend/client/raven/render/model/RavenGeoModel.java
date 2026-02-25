@@ -9,6 +9,7 @@ import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import net.z2six.featheredfriend.entity.raven.RavenVariant;
 import org.slf4j.Logger;
 import software.bernie.geckolib.model.GeoModel;
+import software.bernie.geckolib.renderer.GeoRenderer;
 
 /**
  * neoforge/src/main/java/net/z2six/featheredfriend/client/raven/render/model/RavenGeoModel.java
@@ -21,7 +22,7 @@ public class RavenGeoModel extends GeoModel<RavenEntity> {
     private static final Logger LOG = LogUtils.getLogger();
 
     @Override
-    public ResourceLocation getModelResource(RavenEntity animatable) {
+    public ResourceLocation getModelResource(RavenEntity animatable, GeoRenderer<RavenEntity> renderer) {
         try {
             RavenVariant v = (animatable != null) ? animatable.getVariant() : RavenVariant.NORMAL;
             // Use visual helper; DYNCATCH kept so you can still breakpoint/future-proof
@@ -33,7 +34,7 @@ public class RavenGeoModel extends GeoModel<RavenEntity> {
     }
 
     @Override
-    public ResourceLocation getTextureResource(RavenEntity animatable) {
+    public ResourceLocation getTextureResource(RavenEntity animatable, GeoRenderer<RavenEntity> renderer) {
         try {
             RavenArmorVisual armorVisual = (animatable != null) ? animatable.getRavenArmorVisual() : RavenArmorVisual.NONE;
             return DYNCATCH(RavenVisuals.texture(armorVisual), RavenVisuals.texture(RavenArmorVisual.NONE));

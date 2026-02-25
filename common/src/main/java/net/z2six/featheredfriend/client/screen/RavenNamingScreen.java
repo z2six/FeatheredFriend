@@ -147,7 +147,7 @@ public class RavenNamingScreen extends Screen {
             this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
             super.render(guiGraphics, mouseX, mouseY, partialTick);
 
-            guiGraphics.blit(BG_TEXTURE, this.bgLeft, this.bgTop, 0, 0, BG_WIDTH, BG_HEIGHT, BG_WIDTH, BG_HEIGHT);
+            guiGraphics.blit(net.minecraft.client.renderer.RenderType::guiTextured, BG_TEXTURE, this.bgLeft, this.bgTop, 0, 0, BG_WIDTH, BG_HEIGHT, BG_WIDTH, BG_HEIGHT);
 
             Font renderFont = this.font;
 

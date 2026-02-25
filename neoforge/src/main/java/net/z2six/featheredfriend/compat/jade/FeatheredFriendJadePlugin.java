@@ -3,6 +3,7 @@ package net.z2six.featheredfriend.compat.jade;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
@@ -258,9 +259,7 @@ public final class FeatheredFriendJadePlugin implements IWailaPlugin {
         public void render(@NotNull GuiGraphics guiGraphics, float x, float y, float maxX, float maxY) {
             int renderX = Math.round(x);
             int renderY = Math.round(y);
-            guiGraphics.setColor(1.0F, 1.0F, 1.0F, this.alpha);
-            guiGraphics.blitSprite(this.sprite, renderX, renderY, FEATHER_RENDER_SIZE, FEATHER_RENDER_SIZE);
-            guiGraphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+            guiGraphics.blitSprite(RenderType::guiTextured, this.sprite, renderX, renderY, FEATHER_RENDER_SIZE, FEATHER_RENDER_SIZE);
         }
     }
 }

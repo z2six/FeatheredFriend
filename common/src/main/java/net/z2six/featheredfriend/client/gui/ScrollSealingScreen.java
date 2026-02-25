@@ -1298,7 +1298,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                             int mouseX,
                             int mouseY) {
         try {
-            guiGraphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+            com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
             // Hit-tests for both gizmos
             boolean inSmallWax = isMouseInWaxAreaSmall(mouseX, mouseY);
             boolean inZoomWax = isMouseInWaxAreaZoom(mouseX, mouseY);
@@ -1464,12 +1464,13 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
                 break;
             }
             default: {
-                guiGraphics.blit(
-                        SCROLL_GUI_TEXTURE,
+                guiGraphics.blit(net.minecraft.client.renderer.RenderType::guiTextured, SCROLL_GUI_TEXTURE,
                         this.leftPos,
                         this.topPos,
                         0,
                         0,
+                        this.imageWidth,
+                        this.imageHeight,
                         this.imageWidth,
                         this.imageHeight
                 );
@@ -1483,8 +1484,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         int u = frameIndex * SCROLL_FRAME_WIDTH;
         int v = 0;
 
-        guiGraphics.blit(
-                textureToUse,
+        guiGraphics.blit(net.minecraft.client.renderer.RenderType::guiTextured, textureToUse,
                 this.leftPos,
                 this.topPos,
                 (float) u,
@@ -1550,8 +1550,7 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         int x = this.leftPos + PEARL_X;
         int y = this.topPos + PEARL_Y;
 
-        guiGraphics.blit(
-                PEARL_TEXTURE,
+        guiGraphics.blit(net.minecraft.client.renderer.RenderType::guiTextured, PEARL_TEXTURE,
                 x,
                 y,
                 (float) u,
@@ -1622,11 +1621,11 @@ public class ScrollSealingScreen extends AbstractContainerScreen<ScrollSealingMe
         // AbstractContainerScreen's default renderBackground(...) draws a darkened backdrop via renderTransparentBackground(...),
         // so we bypass it and only run the blur + our own scroll UI.
         try {
-            this.renderBlurredBackground(partialTick);
+            this.renderBlurredBackground();
         } catch (Throwable ignored) {
         }
 
-        guiGraphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+        com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
         this.renderBg(guiGraphics, partialTick, mouseX, mouseY);
     }
 

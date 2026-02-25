@@ -5,9 +5,9 @@
     "GBG"
   ],
   "key": {
-    "G": { "item": "minecraft:gold_nugget" },
-    "C": { "item": "minecraft:chest" },
-    "B": { "item": "minecraft:blackstone" }
+    "G": "minecraft:gold_nugget",
+    "C": "minecraft:chest",
+    "B": "minecraft:blackstone"
   },
   "result": {
     "id": "featheredfriend:mailbox",

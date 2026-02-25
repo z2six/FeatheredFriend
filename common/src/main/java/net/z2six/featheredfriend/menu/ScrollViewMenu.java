@@ -614,7 +614,7 @@ public class ScrollViewMenu extends AbstractContainerMenu implements SealBreakGa
                 return ItemStack.EMPTY;
             }
 
-            Item item = BuiltInRegistries.ITEM.get(id);
+            Item item = BuiltInRegistries.ITEM.getValue(id);
             if (item == null || item == Items.AIR) {
                 LOG.warn("[ScrollViewMenu] rebuildStackFromAttachmentTag: item '{}' not found (AIR); skipping", id);
                 return ItemStack.EMPTY;

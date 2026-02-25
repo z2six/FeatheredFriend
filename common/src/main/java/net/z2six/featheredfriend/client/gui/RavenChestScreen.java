@@ -31,7 +31,7 @@ public final class RavenChestScreen extends AbstractContainerScreen<RavenChestMe
 
     @Override
     protected void renderBg(@NotNull GuiGraphics guiGraphics, float partialTick, int mouseX, int mouseY) {
-        guiGraphics.blit(CONTAINER_TEXTURE, this.leftPos, this.topPos, 0, 0, this.imageWidth, this.imageHeight, TEX_W, TEX_H);
+        guiGraphics.blit(net.minecraft.client.renderer.RenderType::guiTextured, CONTAINER_TEXTURE, this.leftPos, this.topPos, 0, 0, this.imageWidth, this.imageHeight, TEX_W, TEX_H);
     }
 
     @Override

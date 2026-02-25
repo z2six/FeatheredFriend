@@ -1391,8 +1391,8 @@ public final class Landing {
 
             int maxY = Integer.MIN_VALUE;
 
-            int scanTop = Mth.clamp(hintY + 2, ravenEntity.level().getMinBuildHeight(), ravenEntity.level().getMaxBuildHeight() - 1);
-            int scanBottom = Mth.clamp(hintY - 8, ravenEntity.level().getMinBuildHeight(), ravenEntity.level().getMaxBuildHeight() - 1);
+            int scanTop = Mth.clamp(hintY + 2, ravenEntity.level().getMinY(), ravenEntity.level().getMaxY() - 1);
+            int scanBottom = Mth.clamp(hintY - 8, ravenEntity.level().getMinY(), ravenEntity.level().getMaxY() - 1);
 
             for (int y = scanTop; y >= scanBottom; y--) {
                 if (isLeavesAt(cx, y, cz, ravenEntity)

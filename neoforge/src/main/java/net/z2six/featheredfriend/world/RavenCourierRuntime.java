@@ -22,6 +22,7 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.Enemy;
@@ -911,7 +912,7 @@ public final class RavenCourierRuntime {
                 return;
             }
 
-            RavenEntity raven = FFEntities.RAVEN.get().create(perchTarget.level());
+            RavenEntity raven = FFEntities.RAVEN.get().create(perchTarget.level(), EntitySpawnReason.MOB_SUMMONED);
             if (raven == null) {
                 return;
             }
@@ -1063,8 +1064,8 @@ public final class RavenCourierRuntime {
                     double minZ = level.getWorldBorder().getMinZ() - 16.0D;
                     double maxX = level.getWorldBorder().getMaxX() + 16.0D;
                     double maxZ = level.getWorldBorder().getMaxZ() + 16.0D;
-                    double minY = level.getMinBuildHeight() - 1;
-                    double maxY = level.getMaxBuildHeight() + 1;
+                    double minY = level.getMinY() - 1;
+                    double maxY = level.getMaxY() + 1;
 
                     AABB worldBox = new AABB(minX, minY, minZ, maxX, maxY, maxZ);
 
@@ -1612,7 +1613,7 @@ public final class RavenCourierRuntime {
             } catch (Throwable ignored) {
             }
 
-            RavenEntity raven = FFEntities.RAVEN.get().create(level);
+            RavenEntity raven = FFEntities.RAVEN.get().create(level, EntitySpawnReason.MOB_SUMMONED);
             if (raven == null) {
                 return null;
             }
@@ -1638,8 +1639,8 @@ public final class RavenCourierRuntime {
             }
 
             if (spawnPos == null) {
-                int minY = level.getMinBuildHeight() + 1;
-                int maxY = level.getMaxBuildHeight() - 2;
+                int minY = level.getMinY() + 1;
+                int maxY = level.getMaxY() - 2;
                 int baseY = Mth.clamp(mailboxPos.getY() + 1, minY, maxY);
 
                 spawnPos = findSpawnNearBase(level, mailboxPos.getX(), baseY, mailboxPos.getZ(), minY, maxY);
@@ -1838,7 +1839,7 @@ public final class RavenCourierRuntime {
                 return;
             }
 
-            Item sealedScrollItem = BuiltInRegistries.ITEM.get(SEALED_SCROLL_ID);
+            Item sealedScrollItem = BuiltInRegistries.ITEM.getValue(SEALED_SCROLL_ID);
             if (sealedScrollItem == null) {
                 ffTag.putInt(NBT_COURIER_MAILBOX_OUTCOME, COURIER_MAILBOX_OUTCOME_FULL);
                 ffTag.remove(NBT_COURIER_MAILBOX_DEPOSIT_AT);
@@ -2075,7 +2076,7 @@ public final class RavenCourierRuntime {
                                                        @NotNull ServerPlayer recipient,
                                                        @NotNull RavenCourierData.DeliveryJob job) {
         try {
-            RavenEntity raven = FFEntities.RAVEN.get().create(level);
+            RavenEntity raven = FFEntities.RAVEN.get().create(level, EntitySpawnReason.MOB_SUMMONED);
             if (raven == null) {
                 LOG.error("[RavenCourierRuntime] spawnCourierRavenForJob: entity factory returned null for jobId={}", job.jobId);
                 return null;
@@ -2180,8 +2181,8 @@ public final class RavenCourierRuntime {
     @Nullable
     private static Vec3 findSpawnNearPlayer(@NotNull ServerLevel level, @NotNull ServerPlayer target) {
         try {
-            int minY = level.getMinBuildHeight() + 1;
-            int maxY = level.getMaxBuildHeight() - 2;
+            int minY = level.getMinY() + 1;
+            int maxY = level.getMaxY() - 2;
 
             int baseY = Mth.clamp(target.blockPosition().getY() + 1, minY, maxY);
 
@@ -2352,8 +2353,8 @@ public final class RavenCourierRuntime {
             final int cz = feet.getZ();
             final int feetY = feet.getY();
 
-            final int minY = level.getMinBuildHeight();
-            final int maxY = level.getMaxBuildHeight() - 1;
+            final int minY = level.getMinY();
+            final int maxY = level.getMaxY() - 1;
 
             // Step 1: Ceiling scan 15 blocks above player (vertical column at (cx,cz))
             int ceilingY = scanFirstCeilingYWithin15(level, player, cx, feetY, cz, minY, maxY);
@@ -2385,8 +2386,8 @@ public final class RavenCourierRuntime {
             int baseY = Mth.floor(player.getY() + preferredOffsetY + 0.5D);
 
             // Keep away from build limits; ensure 3-high pocket fits.
-            int clampMin = level.getMinBuildHeight() + 2;
-            int clampMax = level.getMaxBuildHeight() - 2;
+            int clampMin = level.getMinY() + 2;
+            int clampMax = level.getMaxY() - 2;
             baseY = Mth.clamp(baseY, clampMin, clampMax);
 
             if (baseY < minY) baseY = minY;
@@ -2766,7 +2767,7 @@ public final class RavenCourierRuntime {
                                                            @NotNull ServerPlayer player,
                                                            @NotNull RavenCourierData.DeliveryJob job) {
         try {
-            Item sealedScrollItem = BuiltInRegistries.ITEM.get(SEALED_SCROLL_ID);
+            Item sealedScrollItem = BuiltInRegistries.ITEM.getValue(SEALED_SCROLL_ID);
             if (sealedScrollItem == null) {
                 LOG.error("[RavenCourierRuntime] giveSealedScrollToPlayerFromJob: sealed scroll item not found (id={})", SEALED_SCROLL_ID);
                 return false;
@@ -3007,7 +3008,7 @@ public final class RavenCourierRuntime {
                                                 @NotNull RavenEntity raven,
                                                 @NotNull RavenCourierData.DeliveryJob job) {
         try {
-            Item sealedScrollItem = BuiltInRegistries.ITEM.get(SEALED_SCROLL_ID);
+            Item sealedScrollItem = BuiltInRegistries.ITEM.getValue(SEALED_SCROLL_ID);
             if (sealedScrollItem == null) {
                 LOG.error("[RavenCourierRuntime] dropSealedScrollAtRaven: sealed scroll item not found (id={})", SEALED_SCROLL_ID);
                 return;
@@ -3021,7 +3022,7 @@ public final class RavenCourierRuntime {
                     false
             );
 
-            raven.spawnAtLocation(stack, 0.2F);
+            raven.spawnAtLocation(level, stack, 0.2F);
 
             LOG.debug("[RavenCourierRuntime] dropSealedScrollAtRaven: dropped sealed scroll for jobId={} at pos={}", job.jobId, raven.position());
 

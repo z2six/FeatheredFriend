@@ -936,20 +936,6 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         return false;
     }
 
-    @Override
-    protected void checkInsideBlocks() {
-        try {
-            if (this.isNoGravity()) {
-                return;
-            }
-            super.checkInsideBlocks();
-        } catch (Throwable t) {
-            if (this.tickCount % 200 == 0) {
-                //LOG.warn("[RavenEntity] checkInsideBlocks failed: {}", t.toString());
-            }
-        }
-    }
-
     private void enforceDefaultRavenHealthProfile() {
         try {
             double targetMaxHealth = Math.max(1.0D, (double) getEffectiveMaxHits());
@@ -1001,7 +987,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     public net.minecraft.world.entity.SpawnGroupData finalizeSpawn(
             net.minecraft.world.level.ServerLevelAccessor level,
             net.minecraft.world.DifficultyInstance difficulty,
-            net.minecraft.world.entity.MobSpawnType spawnType,
+            net.minecraft.world.entity.EntitySpawnReason spawnType,
             @org.jetbrains.annotations.Nullable net.minecraft.world.entity.SpawnGroupData spawnGroupData
     ) {
         net.minecraft.world.entity.SpawnGroupData out = null;
@@ -1549,11 +1535,11 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         try {
             ServerPlayer owner = level.getServer().getPlayerList().getPlayer(observerUuid);
             if (owner != null && owner.isAlive() && !owner.isRemoved()) {
-                owner.sendSystemMessage(Component.translatable(
+                owner.displayClientMessage(Component.translatable(
                         "message.featheredfriend.mailbox.spotted",
                         ravenName,
                         mailboxOwnerName
-                ));
+                ), false);
             }
         } catch (Throwable ignored) {
         }
@@ -1824,8 +1810,8 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
 
             BlockPos base = BlockPos.containing(followGoal);
-            int minY = level.getMinBuildHeight() + 1;
-            int maxY = level.getMaxBuildHeight() - 2;
+            int minY = level.getMinY() + 1;
+            int maxY = level.getMaxY() - 2;
             int baseY = Mth.clamp(base.getY(), minY, maxY);
 
             int[][] offsets = new int[][]{
@@ -2346,7 +2332,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 if (!this.level().isClientSide) {
                     handleBrushInteractServer(player);
                 }
-                return InteractionResult.sidedSuccess(this.level().isClientSide);
+                return this.level().isClientSide ? InteractionResult.SUCCESS : InteractionResult.SUCCESS_SERVER;
             }
             RavenArmorVisual heldArmorVisual = FFItems.getRavenArmorVisual(stack);
 
@@ -2369,16 +2355,16 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
                 if (!Services.PLATFORM.isRavenArmorEnabled()) {
                     if (!this.level().isClientSide) {
-                        player.sendSystemMessage(Component.translatable("message.featheredfriend.feature_disabled.raven_armor"));
+                        player.displayClientMessage(Component.translatable("message.featheredfriend.feature_disabled.raven_armor"), false);
                     }
-                    return InteractionResult.sidedSuccess(this.level().isClientSide);
+                    return this.level().isClientSide ? InteractionResult.SUCCESS : InteractionResult.SUCCESS_SERVER;
                 }
 
                 if (!this.level().isClientSide && player instanceof ServerPlayer serverPlayer) {
                     try {
                         RavenArmorVisual equippedBefore = this.getRavenArmorVisual();
                         if (equippedBefore == heldArmorVisual) {
-                            return InteractionResult.sidedSuccess(false);
+                            return InteractionResult.SUCCESS_SERVER;
                         }
 
                         this.setRavenArmorVisual(heldArmorVisual);
@@ -2392,14 +2378,16 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                         if (!previousArmor.isEmpty()) {
                             boolean added = player.getInventory().add(previousArmor);
                             if (!added) {
-                                this.spawnAtLocation(previousArmor);
+                                if (this.level() instanceof ServerLevel serverLevel) {
+                                    this.spawnAtLocation(serverLevel, previousArmor);
+                                }
                             }
                         }
                     } catch (Throwable ignored) {
                     }
                 }
 
-                return InteractionResult.sidedSuccess(this.level().isClientSide);
+                return this.level().isClientSide ? InteractionResult.SUCCESS : InteractionResult.SUCCESS_SERVER;
             }
 
             if ((stack == null || stack.isEmpty()) && player.isCrouching()) {
@@ -2425,7 +2413,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                             if (!previousArmor.isEmpty()) {
                                 boolean added = player.getInventory().add(previousArmor);
                                 if (!added) {
-                                    this.spawnAtLocation(previousArmor);
+                                    if (this.level() instanceof ServerLevel serverLevel) {
+                                        this.spawnAtLocation(serverLevel, previousArmor);
+                                    }
                                 }
                             }
                         }
@@ -2433,7 +2423,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     }
                 }
 
-                return InteractionResult.sidedSuccess(this.level().isClientSide);
+                return this.level().isClientSide ? InteractionResult.SUCCESS : InteractionResult.SUCCESS_SERVER;
             }
 
             // ----------------------------------------------------------------------
@@ -2550,7 +2540,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
 
             if (roll < 0.05F) {
                 try {
-                    Entity endermite = EntityType.ENDERMITE.create(serverLevel);
+                    Entity endermite = EntityType.ENDERMITE.create(serverLevel, net.minecraft.world.entity.EntitySpawnReason.TRIGGERED);
                     if (endermite != null) {
                         endermite.moveTo(this.getX(), this.getY() + 0.15D, this.getZ(), rnd.nextFloat() * 360.0F, 0.0F);
                         serverLevel.addFreshEntity(endermite);
@@ -2559,7 +2549,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 }
             } else if (roll < 0.70F) {
                 try {
-                    this.spawnAtLocation(new ItemStack(FFItems.RAVEN_FEATHER.get()));
+                    this.spawnAtLocation(serverLevel, new ItemStack(FFItems.RAVEN_FEATHER.get()));
                 } catch (Throwable ignored) {
                 }
             }
@@ -2644,8 +2634,8 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         }
         try {
             BlockPos basePos = BlockPos.containing(base);
-            int minY = this.level().getMinBuildHeight() + 1;
-            int maxY = this.level().getMaxBuildHeight() - 2;
+            int minY = this.level().getMinY() + 1;
+            int maxY = this.level().getMaxY() - 2;
 
             int baseY = Mth.clamp(basePos.getY(), minY, maxY);
             int baseX = basePos.getX();
@@ -3501,32 +3491,26 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
     }
 
     @Override
-    public boolean hurt(net.minecraft.world.damagesource.DamageSource source, float amount) {
+    public boolean hurtServer(ServerLevel serverLevel, net.minecraft.world.damagesource.DamageSource source, float amount) {
         try {
-            if (!this.level().isClientSide && isSuffocationDamage(source)) {
+            if (isSuffocationDamage(source)) {
                 return handleSuffocationDespawn(source);
             }
 
             if (isAssignedRavenChestPerch() && !isRavenLinkControlled()) {
-                if (this.level().isClientSide) {
-                    return false;
-                }
                 return handleAssignedRavenChestPerchHit(source, amount);
             }
 
             // Let vanilla short-circuits happen first if we are truly invulnerable to this.
             // (Note: even if invulnerable, we still might want to teleport; requirement says ALWAYS teleport on hit,
-            // but if hurt() is never called, we can't. Here, hurt() *is* called, so we can do it.)
-            if (this.isInvulnerableTo(source)) {
+            // but if hurt() is never called, we can't. Here, hurtServer() *is* called, so we can do it.)
+            if (this.isInvulnerableTo(serverLevel, source)) {
                 if (isEntityAttackSource(source)) {
                     // For direct combat sources, still run custom dodge/hit handling.
                 } else {
-                    // Still attempt the damage blink (server-side).
                     try {
-                        if (!this.level().isClientSide) {
-                            // force post-teleport roam even if we don't take damage
-                            teleportation.requestDamageBlinkTeleport(source, amount, "invulnerable-hurt", this);
-                        }
+                        // force post-teleport roam even if we don't take damage
+                        teleportation.requestDamageBlinkTeleport(source, amount, "invulnerable-hurt", this);
                     } catch (Throwable ignored) {
                     }
                     RavenLogService.logForRavenOwnerKey(
@@ -3539,7 +3523,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             }
 
             // Our combat blink logic (server authoritative).
-            boolean dodge = false;
+            boolean dodge;
             try {
                 boolean wouldDieIfLanded = this.getHealth() <= DAMAGE_PER_LANDED_HIT;
                 dodge = net.z2six.featheredfriend.entity.raven.modules.DamageDodge.handleHurt(
@@ -3551,7 +3535,7 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 );
             } catch (Throwable t) {
                 if (this.tickCount % 80 == 0) {
-                    //LOG.warn("[RavenEntity] hurt: DamageDodge failed safely: {}", t.toString());
+                    //LOG.warn("[RavenEntity] hurtServer: DamageDodge failed safely: {}", t.toString());
                 }
                 dodge = false;
             }
@@ -3563,19 +3547,12 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                     Services.PLATFORM.notifyRavenBadgeHit(this, true);
                 } catch (Throwable ignored) {
                 }
-                if (this.tickCount % 20 == 0) {
-                    /* LOG.debug("[RavenEntity] hurt: DODGED damage. amount={} src={} pos={}",
-                            amount,
-                            (source == null ? "null" : source.toString()),
-                            this.position());
-                     */
-                }
                 return false;
             }
 
             // Not dodged: each landed hit counts as one hit-point regardless of incoming amount.
-            boolean result = super.hurt(source, DAMAGE_PER_LANDED_HIT);
-            if (!result && !this.level().isClientSide) {
+            boolean result = super.hurtServer(serverLevel, source, DAMAGE_PER_LANDED_HIT);
+            if (!result) {
                 float before = this.getHealth();
                 float after = Math.max(0.0F, before - DAMAGE_PER_LANDED_HIT);
                 if (after < before) {
@@ -3587,11 +3564,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 }
             }
 
-            if (result && !this.level().isClientSide) {
+            if (result) {
                 boolean wasCourierRavenBeforeHit = isCourierRavenForBadge();
-                if (this.level() instanceof ServerLevel serverLevel) {
-                    spawnSuccessfulDamageFeatherBurst(serverLevel);
-                }
+                spawnSuccessfulDamageFeatherBurst(serverLevel);
                 maybeDropRavenFeatherOnSurvivedHit();
                 try {
                     Services.PLATFORM.handleCourierRavenLandedHit(this);
@@ -3606,31 +3581,20 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
                 }
             }
 
-            if (this.tickCount % 20 == 0) {
-                /* LOG.debug("[RavenEntity] hurt: took damage. applied={} amount={} src={} hpNow={} pos={}",
-                        result,
-                        amount,
-                        (source == null ? "null" : source.toString()),
-                        this.getHealth(),
-                        this.position());
-                 */
-            }
-
             return result;
-
         } catch (Throwable t) {
             // Fail-safe: never crash in hurt. Apply vanilla behavior if we can.
             if (this.tickCount % 40 == 0) {
-                /* LOG.error("[RavenEntity] hurt failed; falling back to super.hurt. src={} amt={}",
+                /* LOG.error("[RavenEntity] hurtServer failed; falling back to super.hurtServer. src={} amt={}",
                         (source == null ? "null" : source.toString()), amount, t);
                  */
             }
             try {
-                return super.hurt(source, amount);
+                return super.hurtServer(serverLevel, source, amount);
             } catch (Throwable t2) {
                 // Absolute fail-safe: do not crash server.
                 if (this.tickCount % 40 == 0) {
-                    //LOG.error("[RavenEntity] super.hurt also failed; suppressing to prevent crash. {}", t2.toString());
+                    //LOG.error("[RavenEntity] super.hurtServer also failed; suppressing to prevent crash. {}", t2.toString());
                 }
                 return false;
             }
@@ -3648,7 +3612,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
             RandomSource rnd = this.getRandom();
             float roll = rnd == null ? 1.0F : rnd.nextFloat();
             if (roll < 0.35F) {
-                this.spawnAtLocation(new ItemStack(FFItems.RAVEN_FEATHER.get()));
+                if (this.level() instanceof ServerLevel serverLevel) {
+                    this.spawnAtLocation(serverLevel, new ItemStack(FFItems.RAVEN_FEATHER.get()));
+                }
             }
         } catch (Throwable ignored) {
         }
@@ -3871,7 +3837,9 @@ public class RavenEntity extends TamableAnimal implements GeoEntity {
         try {
             if (!this.level().isClientSide && !this.ravenFeatherDeathDropDone) {
                 this.ravenFeatherDeathDropDone = true;
-                this.spawnAtLocation(new ItemStack(FFItems.RAVEN_FEATHER.get()));
+                if (this.level() instanceof ServerLevel serverLevel) {
+                    this.spawnAtLocation(serverLevel, new ItemStack(FFItems.RAVEN_FEATHER.get()));
+                }
             }
         } catch (Throwable ignored) {
         }

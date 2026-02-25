@@ -188,8 +188,7 @@ public class EnderPearlInventoryScreen extends AbstractContainerScreen<ScrollSea
                             int mouseX,
                             int mouseY) {
         try {
-            guiGraphics.blit(
-                    INVENTORY_TEXTURE,
+            guiGraphics.blit(net.minecraft.client.renderer.RenderType::guiTextured, INVENTORY_TEXTURE,
                     this.leftPos,
                     this.topPos,
                     0.0f,

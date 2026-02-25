@@ -10,8 +10,8 @@ import net.minecraft.tags.BlockTags;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.Mob;
-import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
@@ -197,7 +197,7 @@ public final class RavenSpawnEvents {
             final long gameTime = level.getGameTime();
 
             // We use the registry lookup each run to avoid stale references in dev reload edge cases.
-            final EntityType<?> ravenType = BuiltInRegistries.ENTITY_TYPE.get(RAVEN_ID);
+            final EntityType<?> ravenType = BuiltInRegistries.ENTITY_TYPE.getValue(RAVEN_ID);
             if (ravenType == null) {
                 if ((gameTime % DEBUG_LOG_INTERVAL_TICKS) == 0L) {
                     LOG.warn("[RavenSpawnEvents] Raven EntityType not found for id {}", RAVEN_ID);
@@ -728,7 +728,7 @@ public final class RavenSpawnEvents {
             // getHeight(WORLD_SURFACE) returns "first air block above the surface" for most columns,
             // so start by checking the block BELOW that (the actual surface).
             final int surfaceY = height - 1;
-            if (surfaceY <= level.getMinBuildHeight()) {
+            if (surfaceY <= level.getMinY()) {
                 continue;
             }
 
@@ -736,7 +736,7 @@ public final class RavenSpawnEvents {
             // If the top-most block is a solid non-canopy block, scanning is pointless.
             for (int slack = 0; slack <= MAX_SURFACE_SLACK; slack++) {
                 final int y = surfaceY - slack;
-                if (y <= level.getMinBuildHeight()) {
+                if (y <= level.getMinY()) {
                     break;
                 }
 
@@ -872,7 +872,7 @@ public final class RavenSpawnEvents {
                 return false;
             }
 
-            final Entity created = type.create(level);
+            final Entity created = type.create(level, EntitySpawnReason.NATURAL);
             if (created == null) {
                 LOG.warn("[RavenSpawnEvents] EntityType.create() returned null for {}", RAVEN_ID);
                 return false;
@@ -891,7 +891,7 @@ public final class RavenSpawnEvents {
                     mob.finalizeSpawn(
                             level,
                             level.getCurrentDifficultyAt(pos),
-                            MobSpawnType.NATURAL,
+                            EntitySpawnReason.NATURAL,
                             null
                     );
                 } catch (Throwable t) {

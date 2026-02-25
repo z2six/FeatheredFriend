@@ -15,12 +15,12 @@ public class MailboxGeoModel extends GeoModel<MailboxBlockEntity> {
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/block/mailbox.png");
 
     @Override
-    public ResourceLocation getModelResource(MailboxBlockEntity animatable) {
+    public ResourceLocation getModelResource(MailboxBlockEntity animatable, software.bernie.geckolib.renderer.GeoRenderer<MailboxBlockEntity> renderer) {
         return MODEL;
     }
 
     @Override
-    public ResourceLocation getTextureResource(MailboxBlockEntity animatable) {
+    public ResourceLocation getTextureResource(MailboxBlockEntity animatable, software.bernie.geckolib.renderer.GeoRenderer<MailboxBlockEntity> renderer) {
         return TEXTURE;
     }
 
@@ -29,4 +29,3 @@ public class MailboxGeoModel extends GeoModel<MailboxBlockEntity> {
         return ANIMATION;
     }
 }
-

@@ -772,21 +772,20 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         try {
 // Draw the full stamp UI texture instead of the flat coloured background.
 // This completely replaces the previous white/yellow-ish square.
-            guiGraphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+            com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
             guiGraphics.blit(
+                    net.minecraft.client.renderer.RenderType::guiTextured,
                     STAMP_UI_TEXTURE,
                     this.leftPos,
                     this.topPos,
+                    0,
+                    0,
                     this.imageWidth,
                     this.imageHeight,
-                    0,
-                    0,
-                    GUI_WIDTH,
-                    GUI_HEIGHT,
                     GUI_WIDTH,
                     GUI_HEIGHT
             );
-            guiGraphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+            com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
         } catch (Throwable t) {
             LOG.error("[SealStampScreen] renderBg failed", t);
         }
@@ -827,11 +826,11 @@ public class SealStampScreen extends AbstractContainerScreen<SealStampMenu> {
         // AbstractContainerScreen's default renderBackground(...) draws a darkened backdrop via renderTransparentBackground(...),
         // so we bypass it and only run the blur + our own UI texture.
         try {
-            this.renderBlurredBackground(partialTick);
+            this.renderBlurredBackground();
         } catch (Throwable ignored) {
         }
 
-        guiGraphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+        com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
         this.renderBg(guiGraphics, partialTick, mouseX, mouseY);
     }
 

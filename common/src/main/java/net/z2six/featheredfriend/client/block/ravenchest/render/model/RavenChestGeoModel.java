@@ -15,12 +15,12 @@ public class RavenChestGeoModel extends GeoModel<RavenChestBlockEntity> {
             ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "textures/block/ravenchest.png");
 
     @Override
-    public ResourceLocation getModelResource(RavenChestBlockEntity animatable) {
+    public ResourceLocation getModelResource(RavenChestBlockEntity animatable, software.bernie.geckolib.renderer.GeoRenderer<RavenChestBlockEntity> renderer) {
         return MODEL;
     }
 
     @Override
-    public ResourceLocation getTextureResource(RavenChestBlockEntity animatable) {
+    public ResourceLocation getTextureResource(RavenChestBlockEntity animatable, software.bernie.geckolib.renderer.GeoRenderer<RavenChestBlockEntity> renderer) {
         return TEXTURE;
     }
 

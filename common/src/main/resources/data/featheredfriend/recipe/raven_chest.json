@@ -6,14 +6,13 @@
     "GBG"
   ],
   "key": {
-    "G": { "item": "minecraft:gold_ingot" },
-    "E": { "item": "minecraft:ender_eye" },
-    "B": { "item": "minecraft:blackstone" },
-    "C": { "item": "minecraft:chest" }
+    "G": "minecraft:gold_ingot",
+    "E": "minecraft:ender_eye",
+    "B": "minecraft:blackstone",
+    "C": "minecraft:chest"
   },
   "result": {
     "id": "featheredfriend:raven_chest",
     "count": 1
   }
 }
-

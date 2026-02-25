@@ -763,12 +763,13 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                 frameIndex = 0;
             }
             default -> {
-                guiGraphics.blit(
-                        SCROLL_GUI_TEXTURE,
+                guiGraphics.blit(net.minecraft.client.renderer.RenderType::guiTextured, SCROLL_GUI_TEXTURE,
                         this.leftPos,
                         this.topPos,
                         0,
                         0,
+                        this.imageWidth,
+                        this.imageHeight,
                         this.imageWidth,
                         this.imageHeight
                 );
@@ -782,8 +783,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
         int u = frameIndex * SCROLL_FRAME_WIDTH;
         int v = 0;
 
-        guiGraphics.blit(
-                texture,
+        guiGraphics.blit(net.minecraft.client.renderer.RenderType::guiTextured, texture,
                 this.leftPos,
                 this.topPos,
                 (float) u,
@@ -944,8 +944,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
                 LOG.debug("[ScrollViewScreen] renderAttachmentsPearlIcon: hovered=true frameIndex={} at ({},{})", frameIndex, x, y);
             }
 
-            g.blit(
-                    PEARL_TEXTURE,
+            g.blit(net.minecraft.client.renderer.RenderType::guiTextured, PEARL_TEXTURE,
                     x,
                     y,
                     (float) u,
@@ -1669,7 +1668,7 @@ public class ScrollViewScreen extends AbstractContainerScreen<ScrollViewMenu> {
     private static Item resolveItemByPath(@NotNull String path) {
         try {
             ResourceLocation id = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, path);
-            Item item = BuiltInRegistries.ITEM.get(id);
+            Item item = BuiltInRegistries.ITEM.getValue(id);
             if (item == null) {
                 LOG.error("[ScrollViewScreen] resolveItemByPath: item {} is null", id);
                 return Items.AIR;

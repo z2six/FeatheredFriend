@@ -3,8 +3,10 @@ package net.z2six.featheredfriend.client.raven;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.model.HumanoidModel;
+import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.player.PlayerRenderer;
+import net.minecraft.client.renderer.entity.state.PlayerRenderState;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
@@ -105,6 +107,9 @@ public final class RavenLinkEffigyPoseCapture {
             }
 
             Player local = mc.player;
+            if (!(local instanceof AbstractClientPlayer clientPlayer)) {
+                return;
+            }
             int tick = local.tickCount;
             if (!force && hasSnapshot && lastCapturedTick == tick) {
                 return;
@@ -112,7 +117,7 @@ public final class RavenLinkEffigyPoseCapture {
 
             float partialTick = 1.0F;
             try {
-                partialTick = mc.getTimer().getGameTimeDeltaPartialTick(true);
+                partialTick = mc.getDeltaTracker().getGameTimeDeltaPartialTick(true);
             } catch (Throwable ignored) {
             }
 
@@ -148,31 +153,35 @@ public final class RavenLinkEffigyPoseCapture {
             }
 
             @Nullable HumanoidModel<?> model = null;
+            @Nullable PlayerRenderState renderState = null;
             try {
-                EntityRenderer<?> renderer = mc.getEntityRenderDispatcher().getRenderer(local);
+                EntityRenderer<?, ?> renderer = mc.getEntityRenderDispatcher().getRenderer(local);
                 if (renderer instanceof PlayerRenderer playerRenderer) {
                     // Ensure model arm poses (blocking, using items, etc) are up-to-date even in first-person,
                     // where the local player body isn't necessarily rendered.
                     tryInvokePlayerRendererSetModelProperties(playerRenderer, local);
                     model = playerRenderer.getModel();
+                    renderState = playerRenderer.createRenderState();
+                    playerRenderer.extractRenderState(clientPlayer, renderState, partialTick);
                 }
             } catch (Throwable ignored) {
                 model = null;
+                renderState = null;
             }
 
             if (model == null) {
                 return;
             }
 
-            // Match the vanilla render pipeline: prepareMobModel -> setupAnim, then read the rotations.
-            try {
-                @SuppressWarnings("unchecked")
-                HumanoidModel<LivingEntity> typedModel = (HumanoidModel<LivingEntity>) model;
-                typedModel.prepareMobModel((LivingEntity) local, limbSwing, limbSwingAmount, partialTick);
-                typedModel.setupAnim((LivingEntity) local, limbSwing, limbSwingAmount, ageInTicks, netHeadYaw, headPitch);
-            } catch (Throwable ignored) {
-                // If we can't safely drive the model, keep the last known render-captured snapshot.
-                return;
+            if (renderState != null) {
+                // Match the modern renderer pipeline where models animate from a render-state object.
+                try {
+                    @SuppressWarnings("unchecked")
+                    HumanoidModel<PlayerRenderState> typedModel = (HumanoidModel<PlayerRenderState>) model;
+                    typedModel.setupAnim(renderState);
+                } catch (Throwable ignored) {
+                    return;
+                }
             }
 
             captureFromModel(model, tick);
@@ -242,7 +251,7 @@ public final class RavenLinkEffigyPoseCapture {
                 return;
             }
             Player local = mc.player;
-            if (event.getEntity() != local) {
+            if (event.getRenderState().id != local.getId()) {
                 return;
             }
 

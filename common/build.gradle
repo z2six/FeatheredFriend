@@ -3,6 +3,9 @@ plugins {
     id 'net.neoforged.moddev'
 }
 
+def depMinecraftVersion = (project.findProperty('dep_minecraft_version') ?: minecraft_version).toString()
+def geckolibMinecraftVersion = (project.findProperty('geckolib_minecraft_version') ?: depMinecraftVersion).toString()
+
 repositories {
     maven {
         name = "GeckoLib"
@@ -33,7 +36,7 @@ dependencies {
     annotationProcessor group: 'io.github.llamalad7', name: 'mixinextras-common', version: '0.3.5'
 
     // GeckoLib common API (used by RavenEntity/renderer interfaces)
-    compileOnly "software.bernie.geckolib:geckolib-common-1.21.1:${geckolib_version}"
+    compileOnly "software.bernie.geckolib:geckolib-common-${geckolibMinecraftVersion}:${geckolib_version}"
 }
 
 configurations {
@@ -50,5 +53,12 @@ configurations {
 artifacts {
     commonJava sourceSets.main.java.sourceDirectories.singleFile
     commonResources sourceSets.main.resources.sourceDirectories.singleFile
+}
+
+def compileOutputSuffix = project.findProperty('ff_compile_output_suffix')?.toString()
+if (compileOutputSuffix) {
+    tasks.withType(JavaCompile).configureEach {
+        destinationDirectory.set(layout.buildDirectory.dir("classes/java/${name}-${compileOutputSuffix}"))
+    }
 }
 

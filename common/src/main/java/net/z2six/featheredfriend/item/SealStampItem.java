@@ -8,7 +8,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.InteractionResultHolder;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
@@ -55,21 +55,21 @@ public class SealStampItem extends Item {
 
     @Override
     @NotNull
-    public InteractionResultHolder<ItemStack> use(@NotNull Level level,
-                                                  @NotNull net.minecraft.world.entity.player.Player player,
-                                                  @NotNull InteractionHand hand) {
+    public InteractionResult use(@NotNull Level level,
+                                 @NotNull net.minecraft.world.entity.player.Player player,
+                                 @NotNull InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
 
         try {
             // Client side: immediately return SUCCESS so the animation plays.
             if (level.isClientSide) {
                 LOG.debug("[SealStampItem] use() on client; returning SUCCESS (no logic client-side)");
-                return InteractionResultHolder.success(stack);
+                return InteractionResult.SUCCESS;
             }
 
             if (!(player instanceof ServerPlayer serverPlayer)) {
                 LOG.warn("[SealStampItem] use() called on non-ServerPlayer on logical server; returning PASS");
-                return InteractionResultHolder.pass(stack);
+                return InteractionResult.PASS;
             }
 
             boolean etched = isEtched(stack);
@@ -79,7 +79,7 @@ public class SealStampItem extends Item {
             if (etched) {
                 // STEP 1: For now, just log. Later this will perform sealing behaviour.
                 LOG.debug("[SealStampItem] Stamp is already etched; future behaviour will seal scrolls, etc.");
-                return InteractionResultHolder.success(stack);
+                return InteractionResult.SUCCESS_SERVER;
             }
 
             // Not yet etched: open dedicated Seal Stamp placeholder GUI.
@@ -88,10 +88,10 @@ public class SealStampItem extends Item {
 
             Services.PLATFORM.openSealStampScreen(serverPlayer);
 
-            return InteractionResultHolder.success(stack);
+            return InteractionResult.SUCCESS_SERVER;
         } catch (Throwable t) {
             LOG.error("[SealStampItem] use() failed; returning PASS to avoid crashes", t);
-            return InteractionResultHolder.pass(stack);
+            return InteractionResult.PASS;
         }
     }
 
@@ -178,4 +178,3 @@ public class SealStampItem extends Item {
         }
     }
 }
-

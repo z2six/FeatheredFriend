@@ -16,7 +16,7 @@ public final class FFNeoForgeBlocks {
         FFBlocks.BLOCK_MAP.forEach((id, blockSupplier) -> {
             try {
                 LOG.debug("Registering NeoForge block '{}' via DeferredRegister", id);
-                BLOCKS.register(id, blockSupplier);
+                BLOCKS.register(id, key -> FFBlocks.withRegistrationId(key, blockSupplier::get));
             } catch (Throwable t) {
                 LOG.error("Failed to register NeoForge block '{}'", id, t);
             }
@@ -31,4 +31,3 @@ public final class FFNeoForgeBlocks {
         BLOCKS.register(modEventBus);
     }
 }
-

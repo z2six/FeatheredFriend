@@ -2,7 +2,7 @@ package net.z2six.featheredfriend.item;
 
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.InteractionResultHolder;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
@@ -19,9 +19,7 @@ public class RavensEyeItem extends TooltipItem {
     }
 
     @Override
-    public @NotNull InteractionResultHolder<ItemStack> use(@NotNull Level level,
-                                                            @NotNull Player player,
-                                                            @NotNull InteractionHand hand) {
+    public @NotNull InteractionResult use(@NotNull Level level, @NotNull Player player, @NotNull InteractionHand hand) {
         ItemStack held = player.getItemInHand(hand);
         try {
             if (level.isClientSide()) {
@@ -29,16 +27,14 @@ public class RavensEyeItem extends TooltipItem {
                     Services.PLATFORM.sendRavenLinkEffigyPoseSnapshotToServer();
                 } catch (Throwable ignored) {
                 }
-                return InteractionResultHolder.success(held);
+                return InteractionResult.SUCCESS;
             }
             if (player instanceof ServerPlayer serverPlayer) {
                 boolean started = Services.PLATFORM.tryStartRavenLink(serverPlayer);
-                return started
-                        ? InteractionResultHolder.success(held)
-                        : InteractionResultHolder.fail(held);
+                return started ? InteractionResult.SUCCESS_SERVER : InteractionResult.FAIL;
             }
         } catch (Throwable ignored) {
         }
-        return InteractionResultHolder.pass(held);
+        return InteractionResult.PASS;
     }
 }

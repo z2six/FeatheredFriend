@@ -5,12 +5,8 @@
     "F"
   ],
   "key": {
-    "E": {
-      "item": "minecraft:ender_eye"
-    },
-    "F": {
-      "item": "featheredfriend:raven_feather"
-    }
+    "E": "minecraft:ender_eye",
+    "F": "featheredfriend:raven_feather"
   },
   "result": {
     "id": "featheredfriend:ravens_eye",

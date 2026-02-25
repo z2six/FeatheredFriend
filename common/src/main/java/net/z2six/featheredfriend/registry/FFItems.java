@@ -3,9 +3,13 @@ package net.z2six.featheredfriend.registry;
 
 import com.mojang.logging.LogUtils;
 import com.google.common.base.Suppliers;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.BlockItem;
+import net.z2six.featheredfriend.Constants;
 import net.z2six.featheredfriend.entity.raven.RavenArmorVisual;
 import net.z2six.featheredfriend.item.EnderpackItem;
 import net.z2six.featheredfriend.item.RavenArmorItem;
@@ -38,6 +42,8 @@ import java.util.function.Supplier;
 public final class FFItems {
 
     private static final Logger LOG = LogUtils.getLogger();
+    private static final ThreadLocal<ResourceLocation> REGISTRATION_ID = new ThreadLocal<>();
+    private static final ThreadLocal<String> REGISTRATION_NAME = new ThreadLocal<>();
 
     /**
      * Deterministic map of item id → memoized item instance supplier.
@@ -53,27 +59,27 @@ public final class FFItems {
     // Unsealed scroll: stackable, opens the scroll sealing GUI on use.
     public static final Supplier<Item> SCROLL_UNSEALED = register(
             "scroll_unsealed",
-            () -> new UnsealedScrollItem(new Item.Properties().stacksTo(64))
+            () -> new UnsealedScrollItem(itemProperties().stacksTo(64))
     );
 
     // Opened scroll: non-stackable (already read/opened by the player).
     // Now uses ScrollViewItem to open the placeholder GUI on RMB.
     public static final Supplier<Item> SCROLL_OPENED = register(
             "scroll_opened",
-            () -> new ScrollViewItem(new Item.Properties().stacksTo(1))
+            () -> new ScrollViewItem(itemProperties().stacksTo(1))
     );
 
     // Sealed scroll: non-stackable (stacksTo(1)).
     // Now uses ScrollViewItem to open the placeholder GUI on RMB.
     public static final Supplier<Item> SCROLL_SEALED = register(
             "scroll_sealed",
-            () -> new ScrollViewItem(new Item.Properties().stacksTo(1))
+            () -> new ScrollViewItem(itemProperties().stacksTo(1))
     );
 
     // Seal stamp: custom item that opens the seal-etching GUI on RMB if not yet etched.
     public static final Supplier<Item> SEAL_STAMP = register(
             "seal_stamp",
-            () -> new SealStampItem(new Item.Properties()
+            () -> new SealStampItem(itemProperties()
                     .stacksTo(1)
                     .durability(256))
     );
@@ -81,20 +87,20 @@ public final class FFItems {
     public static final Supplier<Item> ENDERPACK = register(
             "enderpack",
             () -> new EnderpackItem(
-                    new Item.Properties().stacksTo(1),
+                    itemProperties().stacksTo(1),
                     "tooltip.featheredfriend.enderpack"
             )
     );
 
     public static final Supplier<Item> RAVEN_FEATHER = register(
             "raven_feather",
-            () -> new Item(new Item.Properties().stacksTo(64))
+            () -> new Item(itemProperties().stacksTo(64))
     );
 
     public static final Supplier<Item> RAVENS_EYE = register(
             "ravens_eye",
             () -> new RavensEyeItem(
-                    new Item.Properties().stacksTo(64),
+                    itemProperties().stacksTo(64),
                     "tooltip.featheredfriend.ravens_eye"
             )
     );
@@ -110,7 +116,7 @@ public final class FFItems {
             "raven_chest",
             () -> new TooltipBlockItem(
                     FFBlocks.RAVEN_CHEST.get(),
-                    new Item.Properties().stacksTo(1),
+                    itemProperties().stacksTo(1),
                     "tooltip.featheredfriend.raven_chest"
             )
     );
@@ -119,14 +125,14 @@ public final class FFItems {
             "mailbox",
             () -> new BlockItem(
                     FFBlocks.MAILBOX.get(),
-                    new Item.Properties().stacksTo(64)
+                    itemProperties().stacksTo(64)
             )
     );
 
     public static final Supplier<Item> RAVEN_ARMOR_LEATHER = register(
             "raven_armor_leather",
             () -> new RavenArmorItem(
-                    new Item.Properties().stacksTo(1),
+                    itemProperties().stacksTo(1),
                     "tooltip.featheredfriend.raven_armor_leather",
                     RAVEN_ARMOR_STATS_LEATHER
             )
@@ -135,7 +141,7 @@ public final class FFItems {
     public static final Supplier<Item> RAVEN_ARMOR_COPPER = register(
             "raven_armor_copper",
             () -> new RavenArmorItem(
-                    new Item.Properties().stacksTo(1),
+                    itemProperties().stacksTo(1),
                     "tooltip.featheredfriend.raven_armor_copper",
                     RAVEN_ARMOR_STATS_COPPER
             )
@@ -144,7 +150,7 @@ public final class FFItems {
     public static final Supplier<Item> RAVEN_ARMOR_IRON = register(
             "raven_armor_iron",
             () -> new RavenArmorItem(
-                    new Item.Properties().stacksTo(1),
+                    itemProperties().stacksTo(1),
                     "tooltip.featheredfriend.raven_armor_iron",
                     RAVEN_ARMOR_STATS_IRON
             )
@@ -153,7 +159,7 @@ public final class FFItems {
     public static final Supplier<Item> RAVEN_ARMOR_GOLD = register(
             "raven_armor_gold",
             () -> new RavenArmorItem(
-                    new Item.Properties().stacksTo(1),
+                    itemProperties().stacksTo(1),
                     "tooltip.featheredfriend.raven_armor_gold",
                     RAVEN_ARMOR_STATS_GOLD
             )
@@ -162,7 +168,7 @@ public final class FFItems {
     public static final Supplier<Item> RAVEN_ARMOR_DIAMOND = register(
             "raven_armor_diamond",
             () -> new RavenArmorItem(
-                    new Item.Properties().stacksTo(1),
+                    itemProperties().stacksTo(1),
                     "tooltip.featheredfriend.raven_armor_diamond",
                     RAVEN_ARMOR_STATS_DIAMOND
             )
@@ -171,7 +177,7 @@ public final class FFItems {
     public static final Supplier<Item> RAVEN_ARMOR_NETHERITE = register(
             "raven_armor_netherite",
             () -> new RavenArmorItem(
-                    new Item.Properties().stacksTo(1),
+                    itemProperties().stacksTo(1),
                     "tooltip.featheredfriend.raven_armor_netherite",
                     RAVEN_ARMOR_STATS_NETHERITE
             )
@@ -254,18 +260,64 @@ public final class FFItems {
     // Internal helper
     // -------------------------------------------------------------------------
 
+    public static <T> T withRegistrationId(ResourceLocation id, Supplier<T> supplier) {
+        ResourceLocation previous = REGISTRATION_ID.get();
+        REGISTRATION_ID.set(id);
+        try {
+            return supplier.get();
+        } finally {
+            if (previous == null) {
+                REGISTRATION_ID.remove();
+            } else {
+                REGISTRATION_ID.set(previous);
+            }
+        }
+    }
+
+    private static <T> T withRegistrationName(String name, Supplier<T> supplier) {
+        String previous = REGISTRATION_NAME.get();
+        REGISTRATION_NAME.set(name);
+        try {
+            return supplier.get();
+        } finally {
+            if (previous == null) {
+                REGISTRATION_NAME.remove();
+            } else {
+                REGISTRATION_NAME.set(previous);
+            }
+        }
+    }
+
+    private static Item.Properties itemProperties() {
+        ResourceLocation id = REGISTRATION_ID.get();
+        if (id == null) {
+            String name = REGISTRATION_NAME.get();
+            if (name != null) {
+                id = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, name);
+            }
+        }
+
+        Item.Properties properties = new Item.Properties();
+        if (id != null) {
+            properties = properties.setId(ResourceKey.create(Registries.ITEM, id));
+        }
+        return properties;
+    }
+
     private static Supplier<Item> register(String name, Supplier<Item> factory) {
 
         LOG.debug("[FFItems] Queuing common item '{}' for registration", name);
 
         // Memoize the factory so the Item instance is created once per runtime.
         Supplier<Item> memoized = Suppliers.memoize(() -> {
-            try {
-                return factory.get();
-            } catch (Throwable t) {
-                LOG.error("[FFItems] Failed to create Item instance for '{}', falling back to plain Item", name, t);
-                return new Item(new Item.Properties());
-            }
+            return withRegistrationName(name, () -> {
+                try {
+                    return factory.get();
+                } catch (Throwable t) {
+                    LOG.error("[FFItems] Failed to create Item instance for '{}', falling back to plain Item", name, t);
+                    return new Item(itemProperties());
+                }
+            });
         });
 
         Supplier<Item> previous = ITEM_MAP.put(name, memoized);

@@ -6,11 +6,10 @@
     " YY"
   ],
   "key": {
-    "Y": { "item": "minecraft:leather" }
+    "Y": "minecraft:leather"
   },
   "result": {
     "id": "featheredfriend:raven_armor_leather",
     "count": 1
   }
 }
-

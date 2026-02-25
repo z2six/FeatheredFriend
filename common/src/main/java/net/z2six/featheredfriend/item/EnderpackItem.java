@@ -4,7 +4,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.InteractionResultHolder;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -28,21 +28,19 @@ public class EnderpackItem extends Item {
     }
 
     @Override
-    public @NotNull InteractionResultHolder<ItemStack> use(@NotNull Level level,
-                                                            @NotNull Player player,
-                                                            @NotNull InteractionHand hand) {
+    public @NotNull InteractionResult use(@NotNull Level level, @NotNull Player player, @NotNull InteractionHand hand) {
         ItemStack held = player.getItemInHand(hand);
         try {
             if (level.isClientSide()) {
-                return InteractionResultHolder.success(held);
+                return InteractionResult.SUCCESS;
             }
             if (player instanceof ServerPlayer serverPlayer) {
                 Services.PLATFORM.openEnderpackScreen(serverPlayer, hand);
-                return InteractionResultHolder.success(held);
+                return InteractionResult.SUCCESS_SERVER;
             }
         } catch (Throwable ignored) {
         }
-        return InteractionResultHolder.pass(held);
+        return InteractionResult.PASS;
     }
 
     @Override

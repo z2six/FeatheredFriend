@@ -22,11 +22,13 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.level.Level;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.RenderHandEvent;
@@ -70,7 +72,7 @@ public final class RavenLinkClientController {
     private static final double CLOSING_CAMERA_PUSH_DISTANCE = 1.28D;
     private static final double CLOSING_CAMERA_LIFT_DISTANCE = 0.16D;
     private static final ResourceLocation RAVEN_LINK_EDGE_BLUR_LOCATION =
-            ResourceLocation.fromNamespaceAndPath("featheredfriend", "shaders/post/raven_link_edge_blur.json");
+            ResourceLocation.fromNamespaceAndPath("featheredfriend", "post_effect/raven_link_edge_blur.json");
     private static final ResourceLocation RAVEN_LINK_OPENING_CAW_SOUND_ID =
             ResourceLocation.fromNamespaceAndPath("featheredfriend", "raven.caw_whistle");
     private static final ResourceLocation RAVEN_LINK_TETHER1_SOUND_ID =
@@ -394,8 +396,14 @@ public final class RavenLinkClientController {
             if (!mc.options.getCameraType().isFirstPerson()) {
                 return;
             }
-            Entity entity = event.getEntity();
-            if (entity != null && entity.getId() == linkedRavenEntityId) {
+            if (!hasServerRavenState) {
+                return;
+            }
+            var state = event.getRenderState();
+            double dx = state.x - serverRavenX;
+            double dy = state.y - serverRavenY;
+            double dz = state.z - serverRavenZ;
+            if ((dx * dx + dy * dy + dz * dz) <= 0.16D) {
                 event.setCanceled(true);
             }
         } catch (Throwable t) {
@@ -406,8 +414,7 @@ public final class RavenLinkClientController {
     @SubscribeEvent
     public static void onRenderPlayerPre(RenderPlayerEvent.Pre event) {
         try {
-            Entity entity = event.getEntity();
-            if (entity != null && HIDDEN_OWNER_ENTITY_IDS.contains(entity.getId())) {
+            if (HIDDEN_OWNER_ENTITY_IDS.contains(event.getRenderState().id)) {
                 event.setCanceled(true);
             }
         } catch (Throwable t) {
@@ -518,7 +525,7 @@ public final class RavenLinkClientController {
             if (strength > 0.0D) {
                 fov *= (1.0D + ((LINK_FOV_MULTIPLIER - 1.0D) * strength));
             }
-            event.setFOV(Math.min(170.0D, fov));
+            event.setFOV((float) Math.min(170.0D, fov));
         } catch (Throwable t) {
             LOG.debug("[RavenLinkClientController] onComputeViewportFov failed safely: {}", t.toString());
         }
@@ -1025,7 +1032,9 @@ public final class RavenLinkClientController {
 
             long now = System.currentTimeMillis();
             endingTransitionActive = true;
-            endingShouldSendStopAtBlackout = sendStopRequest;
+            // Always stop on full-black so end-side hidden actions stay inside blackout
+            // (effigy remove, owner teleport restore, raven unmount/return).
+            endingShouldSendStopAtBlackout = true;
             endingStopRequestSent = false;
             endingStartedAtMillis = now;
             endingTether1StartVolume = ravenLinkTetherLoop1 == null ? 0.0F : ravenLinkTetherLoop1.getManagedVolume();
@@ -1168,73 +1177,18 @@ public final class RavenLinkClientController {
     private static void applyEdgeGaussianBlur(@org.jetbrains.annotations.NotNull Minecraft mc,
                                               float partialTicks,
                                               double strength) {
-        try {
-            PostChain blurChain = ensureRavenLinkEdgeBlurEffect(mc);
-            if (blurChain == null) {
-                return;
-            }
-            float radius = Mth.clamp((float) (2.4D + (strength * 4.8D)), 1.0F, 8.0F);
-            float edgeMix = Mth.clamp((float) (0.34D + (strength * 0.46D)), 0.0F, 1.0F);
-            float edgeStart = Mth.clamp((float) (0.58D - (strength * 0.06D)), 0.45F, 0.70F);
-            blurChain.setUniform("Radius", radius);
-            blurChain.setUniform("EdgeMix", edgeMix);
-            blurChain.setUniform("EdgeStart", edgeStart);
-            blurChain.setUniform("EdgeEnd", 0.98F);
-            blurChain.setUniform("EdgePower", 1.55F);
-            blurChain.process(partialTicks);
-            // PostChain leaves the target unbound after processing; rebind so GUI tint draws on top.
-            mc.getMainRenderTarget().bindWrite(false);
-        } catch (Throwable t) {
-            LOG.debug("[RavenLinkClientController] applyEdgeGaussianBlur failed safely: {}", t.toString());
-            releaseRavenLinkEdgeBlurEffect();
-        }
+        // 1.21.3+ moved post effects to the frame-graph pipeline; keep rendering stable
+        // if the legacy PostChain JSON workflow isn't available.
     }
 
     private static @org.jetbrains.annotations.Nullable PostChain ensureRavenLinkEdgeBlurEffect(@org.jetbrains.annotations.NotNull Minecraft mc) {
-        try {
-            if (ravenLinkEdgeBlurEffect == null) {
-                ravenLinkEdgeBlurEffect = new PostChain(
-                        mc.getTextureManager(),
-                        mc.getResourceManager(),
-                        mc.getMainRenderTarget(),
-                        RAVEN_LINK_EDGE_BLUR_LOCATION
-                );
-                ravenLinkEdgeBlurWidth = -1;
-                ravenLinkEdgeBlurHeight = -1;
-            }
-
-            int width = mc.getWindow().getWidth();
-            int height = mc.getWindow().getHeight();
-            if (width > 0
-                    && height > 0
-                    && (width != ravenLinkEdgeBlurWidth || height != ravenLinkEdgeBlurHeight)) {
-                ravenLinkEdgeBlurEffect.resize(width, height);
-                ravenLinkEdgeBlurWidth = width;
-                ravenLinkEdgeBlurHeight = height;
-            }
-            return ravenLinkEdgeBlurEffect;
-        } catch (IOException | JsonSyntaxException e) {
-            LOG.warn("[RavenLinkClientController] Failed to load Raven Link edge blur shader '{}': {}", RAVEN_LINK_EDGE_BLUR_LOCATION, e.toString());
-            releaseRavenLinkEdgeBlurEffect();
-            return null;
-        } catch (Throwable t) {
-            LOG.debug("[RavenLinkClientController] ensureRavenLinkEdgeBlurEffect failed safely: {}", t.toString());
-            releaseRavenLinkEdgeBlurEffect();
-            return null;
-        }
+        return null;
     }
 
     private static void releaseRavenLinkEdgeBlurEffect() {
-        try {
-            if (ravenLinkEdgeBlurEffect != null) {
-                ravenLinkEdgeBlurEffect.close();
-            }
-        } catch (Throwable ignored) {
-        } finally {
-            ravenLinkEdgeBlurEffect = null;
-            ravenLinkEdgeBlurWidth = -1;
-            ravenLinkEdgeBlurHeight = -1;
-        }
+        ravenLinkEdgeBlurEffect = null;
+        ravenLinkEdgeBlurWidth = -1;
+        ravenLinkEdgeBlurHeight = -1;
     }
 
     private static void resetVisionPixels() {
@@ -1666,7 +1620,7 @@ public final class RavenLinkClientController {
             int ravenSectionX = SectionPos.posToSectionCoord(serverRavenX);
             int ravenSectionZ = SectionPos.posToSectionCoord(serverRavenZ);
             if (ravenSectionX != forcedViewAreaSectionX || ravenSectionZ != forcedViewAreaSectionZ) {
-                viewArea.repositionCamera(serverRavenX, serverRavenZ);
+                viewArea.repositionCamera(SectionPos.of(ravenSectionX, playerSectionY, ravenSectionZ));
                 forcedViewAreaSectionX = ravenSectionX;
                 forcedViewAreaSectionZ = ravenSectionZ;
             }
@@ -1933,7 +1887,16 @@ public final class RavenLinkClientController {
 
     private static void ensureLinkedRavenVisualMount(@org.jetbrains.annotations.NotNull Minecraft mc) {
         try {
-            if (!active || linkedRavenEntityId < 0 || mc.level == null || mc.player == null) {
+            // Only force the local visual mount while the link is fully active.
+            // This avoids showing mount snaps before eyes fully close on start and
+            // during the graceful end transition.
+            if (!active
+                    || endingTransitionActive
+                    || !hasServerRavenState
+                    || visionPhase == VisionPhase.CLOSING
+                    || linkedRavenEntityId < 0
+                    || mc.level == null
+                    || mc.player == null) {
                 return;
             }
 
@@ -2118,6 +2081,11 @@ public final class RavenLinkClientController {
 
         @Override
         public boolean shouldRender(double x, double y, double z) {
+            return false;
+        }
+
+        @Override
+        public boolean hurtServer(ServerLevel level, DamageSource source, float amount) {
             return false;
         }
     }

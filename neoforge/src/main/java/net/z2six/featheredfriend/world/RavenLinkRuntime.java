@@ -24,7 +24,9 @@ import net.minecraft.server.level.TicketType;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.Pose;
+import net.minecraft.world.entity.Relative;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.level.Level;
@@ -998,10 +1000,10 @@ public final class RavenLinkRuntime {
                 double half = Math.min(level.getWorldBorder().getSize() * 0.5D, 30_000_000D);
                 AABB worldBox = new AABB(
                         cx - half,
-                        level.getMinBuildHeight(),
+                        level.getMinY(),
                         cz - half,
                         cx + half,
-                        level.getMaxBuildHeight(),
+                        level.getMaxY(),
                         cz + half
                 );
                 List<RavenLinkEffigyEntity> effigies = level.getEntitiesOfClass(
@@ -1100,9 +1102,10 @@ public final class RavenLinkRuntime {
                     ravenPos.x,
                     ravenPos.y,
                     ravenPos.z,
-                    Set.of(),
+                    Set.<Relative>of(),
                     raven.getYRot(),
-                    raven.getXRot()
+                    raven.getXRot(),
+                    false
             );
 
             owner.setInvisible(true);
@@ -1149,9 +1152,10 @@ public final class RavenLinkRuntime {
                         session.ownerAnchorPos.x,
                         session.ownerAnchorPos.y,
                         session.ownerAnchorPos.z,
-                        Set.of(),
+                        Set.<Relative>of(),
                         session.ownerAnchorYaw,
-                        session.ownerAnchorPitch
+                        session.ownerAnchorPitch,
+                        false
                 );
             }
         } catch (Throwable t) {
@@ -1339,9 +1343,10 @@ public final class RavenLinkRuntime {
                             session.ownerAnchorPos.x,
                             session.ownerAnchorPos.y,
                             session.ownerAnchorPos.z,
-                            Set.of(),
+                            Set.<Relative>of(),
                             session.ownerAnchorYaw,
-                            session.ownerAnchorPitch
+                            session.ownerAnchorPitch,
+                            false
                     );
                 }
                 return;
@@ -1354,9 +1359,10 @@ public final class RavenLinkRuntime {
                         session.ownerAnchorPos.x,
                         session.ownerAnchorPos.y,
                         session.ownerAnchorPos.z,
-                        Set.of(),
+                        Set.<Relative>of(),
                         session.ownerAnchorYaw,
-                        session.ownerAnchorPitch
+                        session.ownerAnchorPitch,
+                        false
                 );
             }
         } catch (Throwable t) {
@@ -1451,7 +1457,7 @@ public final class RavenLinkRuntime {
             }
 
             if (raven.level() != targetLevel) {
-                raven.teleportTo(targetLevel, x, y, z, Set.of(), yaw, pitch);
+                raven.teleportTo(targetLevel, x, y, z, Set.<Relative>of(), yaw, pitch, false);
             } else {
                 raven.moveTo(x, y, z, yaw, pitch);
             }
@@ -2211,10 +2217,10 @@ public final class RavenLinkRuntime {
                 double half = Math.min(level.getWorldBorder().getSize() * 0.5D, 30_000_000D);
                 AABB worldBox = new AABB(
                         cx - half,
-                        level.getMinBuildHeight(),
+                        level.getMinY(),
                         cz - half,
                         cx + half,
-                        level.getMaxBuildHeight(),
+                        level.getMaxY(),
                         cz + half
                 );
                 List<RavenEntity> ravens = level.getEntitiesOfClass(
@@ -2309,7 +2315,7 @@ public final class RavenLinkRuntime {
             snapshot.remove("Rotation");
             snapshot.remove("Passengers");
 
-            Entity created = raven.getType().create(level);
+            Entity created = raven.getType().create(level, EntitySpawnReason.MOB_SUMMONED);
             if (!(created instanceof RavenEntity replacement)) {
                 return null;
             }
@@ -2343,7 +2349,7 @@ public final class RavenLinkRuntime {
                 return null;
             }
 
-            RavenLinkEffigyEntity effigy = FFEntities.RAVEN_LINK_EFFIGY.get().create(anchorLevel);
+            RavenLinkEffigyEntity effigy = FFEntities.RAVEN_LINK_EFFIGY.get().create(anchorLevel, EntitySpawnReason.MOB_SUMMONED);
             if (effigy == null) {
                 return null;
             }

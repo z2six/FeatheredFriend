@@ -2,6 +2,9 @@
 package net.z2six.featheredfriend.registry;
 
 import com.google.common.base.Suppliers;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import com.mojang.logging.LogUtils;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
@@ -43,7 +46,7 @@ public final class FFEntities {
                     .of(RavenEntity::new, MobCategory.CREATURE)
                     .sized(RAVEN_HITBOX_WIDTH, RAVEN_HITBOX_HEIGHT)
                     .clientTrackingRange(8)
-                    .build(Constants.MOD_ID + ":raven")
+                    .build(entityTypeKey("raven"))
     );
 
     public static final Supplier<EntityType<RavenLinkEffigyEntity>> RAVEN_LINK_EFFIGY = register(
@@ -52,8 +55,12 @@ public final class FFEntities {
                     .of(RavenLinkEffigyEntity::new, MobCategory.MISC)
                     .sized(RAVEN_LINK_EFFIGY_HITBOX_WIDTH, RAVEN_LINK_EFFIGY_HITBOX_HEIGHT)
                     .clientTrackingRange(10)
-                    .build(Constants.MOD_ID + ":raven_link_effigy")
+                    .build(entityTypeKey("raven_link_effigy"))
     );
+
+    private static ResourceKey<EntityType<?>> entityTypeKey(String path) {
+        return ResourceKey.create(Registries.ENTITY_TYPE, ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, path));
+    }
 
     public static AttributeSupplier.Builder createRavenAttributes() {
         try {

@@ -23,9 +23,7 @@ public final class FFNeoForgeBlockEntities {
             (Supplier<BlockEntityType<RavenChestBlockEntity>>) (Supplier<?>)
                     BLOCK_ENTITY_TYPES.register(
                             "raven_chest",
-                            () -> BlockEntityType.Builder
-                                    .of(RavenChestBlockEntity::new, FFBlocks.RAVEN_CHEST.get())
-                                    .build(null)
+                            () -> new BlockEntityType<>(RavenChestBlockEntity::new, FFBlocks.RAVEN_CHEST.get())
                     );
 
     @SuppressWarnings("unchecked")
@@ -33,9 +31,7 @@ public final class FFNeoForgeBlockEntities {
             (Supplier<BlockEntityType<MailboxBlockEntity>>) (Supplier<?>)
                     BLOCK_ENTITY_TYPES.register(
                             "mailbox",
-                            () -> BlockEntityType.Builder
-                                    .of(MailboxBlockEntity::new, FFBlocks.MAILBOX.get())
-                                    .build(null)
+                            () -> new BlockEntityType<>(MailboxBlockEntity::new, FFBlocks.MAILBOX.get())
                     );
 
     static {

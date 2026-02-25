@@ -401,8 +401,8 @@ public final class RavenChestSelectScreen extends Screen {
     public void render(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         this.renderBackground(guiGraphics, mouseX, mouseY, partialTick);
 
-        guiGraphics.setColor(1.0F, 1.0F, 1.0F, 1.0F);
-        guiGraphics.blit(GUI_TEXTURE, this.guiLeft, this.guiTop, 0, 0, GUI_WIDTH, GUI_HEIGHT, GUI_WIDTH, GUI_HEIGHT);
+        com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+        guiGraphics.blit(net.minecraft.client.renderer.RenderType::guiTextured, GUI_TEXTURE, this.guiLeft, this.guiTop, 0, 0, GUI_WIDTH, GUI_HEIGHT, GUI_WIDTH, GUI_HEIGHT);
 
         // Title centered inside the title box.
         int titleCenterX = this.guiLeft + ((TITLE_BOX_X0 + TITLE_BOX_X1) / 2);
@@ -458,7 +458,7 @@ public final class RavenChestSelectScreen extends Screen {
             boolean hover = this.draggingScrollbar
                     || (mouseX >= sliderX && mouseX <= (sliderX + SLIDER_W) && mouseY >= sliderY && mouseY <= (sliderY + SLIDER_H));
             ResourceLocation tex = hover ? SLIDER_TEXTURE_HOVER : SLIDER_TEXTURE;
-            guiGraphics.blit(tex, sliderX, sliderY, 0, 0, SLIDER_W, SLIDER_H, SLIDER_W, SLIDER_H);
+            guiGraphics.blit(net.minecraft.client.renderer.RenderType::guiTextured, tex, sliderX, sliderY, 0, 0, SLIDER_W, SLIDER_H, SLIDER_W, SLIDER_H);
         }
 
         // Render widgets (buttons) without triggering another blur/background pass.
@@ -476,7 +476,7 @@ public final class RavenChestSelectScreen extends Screen {
         // Keep vanilla menu blur, but do NOT draw the dark menu background overlay.
         // Mirrors how ScrollSealingScreen keeps blur while drawing its own background.
         try {
-            this.renderBlurredBackground(partialTick);
+            this.renderBlurredBackground();
         } catch (Throwable ignored) {
         }
     }
@@ -503,7 +503,7 @@ public final class RavenChestSelectScreen extends Screen {
         protected void renderWidget(@NotNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
             boolean hover = this.isHoveredOrFocused();
             ResourceLocation tex = hover ? BUTTON_TEXTURE_HOVER : BUTTON_TEXTURE;
-            guiGraphics.blit(tex, this.getX(), this.getY(), 0, 0, this.width, this.height, BUTTON_W, BUTTON_H);
+            guiGraphics.blit(net.minecraft.client.renderer.RenderType::guiTextured, tex, this.getX(), this.getY(), 0, 0, this.width, this.height, BUTTON_W, BUTTON_H);
 
             int color = this.active ? 0xFFFFFF : 0xA0A0A0;
             int labelX = this.getX() + (this.width / 2);

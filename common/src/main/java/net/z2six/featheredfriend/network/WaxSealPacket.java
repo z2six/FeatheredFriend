@@ -436,7 +436,7 @@ public record WaxSealPacket(
     private static Item resolveItemByPath(@NotNull String path) {
         try {
             ResourceLocation id = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, path);
-            Item item = BuiltInRegistries.ITEM.get(id);
+            Item item = BuiltInRegistries.ITEM.getValue(id);
             if (item == null) {
                 LOG.error("[WaxSealPacket] resolveItemByPath: item {} is null", id);
                 return Items.AIR;

@@ -4,7 +4,7 @@ package net.z2six.featheredfriend.item;
 import com.mojang.logging.LogUtils;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.InteractionResultHolder;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -29,9 +29,7 @@ public class UnsealedScrollItem extends Item {
     }
 
     @Override
-    public @NotNull InteractionResultHolder<ItemStack> use(@NotNull Level level,
-                                                           @NotNull Player player,
-                                                           @NotNull InteractionHand hand) {
+    public @NotNull InteractionResult use(@NotNull Level level, @NotNull Player player, @NotNull InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
 
         try {
@@ -48,6 +46,6 @@ public class UnsealedScrollItem extends Item {
             LOG.error("[UnsealedScrollItem] Failed to open scroll sealing screen", t);
         }
 
-        return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
+        return level.isClientSide ? InteractionResult.SUCCESS : InteractionResult.SUCCESS_SERVER;
     }
 }

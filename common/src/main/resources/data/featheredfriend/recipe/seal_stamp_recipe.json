@@ -7,12 +7,8 @@
     "P"
   ],
   "key": {
-    "S": {
-      "item": "minecraft:stick"
-    },
-    "P": {
-      "tag": "minecraft:planks"
-    }
+    "S": "minecraft:stick",
+    "P": "#minecraft:planks"
   },
   "result": {
     "id": "featheredfriend:seal_stamp",

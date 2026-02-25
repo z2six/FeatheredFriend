@@ -258,15 +258,14 @@ public final class WaxSealVisualizer {
 
             if (hasTexture) {
                 gg.blit(
+                        net.minecraft.client.renderer.RenderType::guiTextured,
                         WAX_SEAL_TEXTURE,
                         sealX,
                         sealY,
+                        0,
+                        0,
                         sealWidth,
                         sealHeight,
-                        0,
-                        0,
-                        WAX_SEAL_TEXTURE_WIDTH,
-                        WAX_SEAL_TEXTURE_HEIGHT,
                         WAX_SEAL_TEXTURE_WIDTH,
                         WAX_SEAL_TEXTURE_HEIGHT
                 );

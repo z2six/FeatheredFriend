@@ -78,7 +78,7 @@ public final class TamedRavenDeathHandler {
                 RavenArmorVisual armorVisual = raven.getRavenArmorVisual();
                 ItemStack armorDrop = FFItems.createRavenArmorStack(armorVisual);
                 if (!armorDrop.isEmpty()) {
-                    raven.spawnAtLocation(armorDrop);
+                    raven.spawnAtLocation(serverLevel, armorDrop);
                 }
             } catch (Throwable tDrop) {
                 LOG.warn("[TamedRavenDeathHandler] Failed to drop raven armor on death: {}", tDrop.toString());

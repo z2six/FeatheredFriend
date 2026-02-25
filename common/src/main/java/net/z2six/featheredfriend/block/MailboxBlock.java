@@ -3,6 +3,7 @@ package net.z2six.featheredfriend.block;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.util.RandomSource;
 import net.minecraft.stats.Stats;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.InteractionResult;
@@ -12,6 +13,7 @@ import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.ScheduledTickAccess;
 import net.minecraft.world.level.block.BaseEntityBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -23,7 +25,7 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
-import net.minecraft.world.level.block.state.properties.DirectionProperty;
+import net.minecraft.world.level.block.state.properties.EnumProperty;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
@@ -43,7 +45,7 @@ import java.util.List;
 public class MailboxBlock extends BaseEntityBlock {
 
     public static final MapCodec<MailboxBlock> CODEC = simpleCodec(MailboxBlock::new);
-    public static final DirectionProperty FACING = BlockStateProperties.HORIZONTAL_FACING;
+    public static final EnumProperty<Direction> FACING = BlockStateProperties.HORIZONTAL_FACING;
 
     // Derived from mailbox.geo.json (including the 0.25 inflate) so the hitbox matches the GeckoLib model.
     private static final double MIN = 0.25D;
@@ -111,16 +113,18 @@ public class MailboxBlock extends BaseEntityBlock {
 
     @Override
     public BlockState updateShape(BlockState state,
-                                  Direction direction,
-                                  BlockState neighborState,
-                                  LevelAccessor level,
+                                  LevelReader level,
+                                  ScheduledTickAccess scheduledTickAccess,
                                   BlockPos pos,
-                                  BlockPos neighborPos) {
+                                  Direction direction,
+                                  BlockPos neighborPos,
+                                  BlockState neighborState,
+                                  RandomSource random) {
         if (direction == state.getValue(FACING).getOpposite() && !state.canSurvive(level, pos)) {
             return Blocks.AIR.defaultBlockState();
         }
 
-        return super.updateShape(state, direction, neighborState, level, pos, neighborPos);
+        return super.updateShape(state, level, scheduledTickAccess, pos, direction, neighborPos, neighborState, random);
     }
 
     @Override

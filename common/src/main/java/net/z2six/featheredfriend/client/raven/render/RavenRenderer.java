@@ -2,7 +2,6 @@
 package net.z2six.featheredfriend.client.raven.render;
 
 import com.mojang.logging.LogUtils;
-import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
@@ -12,8 +11,8 @@ import net.minecraft.world.entity.player.Player;
 import net.z2six.featheredfriend.client.raven.render.model.RavenGeoModel;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import org.slf4j.Logger;
+import software.bernie.geckolib.object.Color;
 import software.bernie.geckolib.renderer.GeoEntityRenderer;
-import software.bernie.geckolib.util.Color;
 import java.lang.reflect.Method;
 
 /**
@@ -63,30 +62,6 @@ public class RavenRenderer extends GeoEntityRenderer<RavenEntity> {
         } catch (Throwable ignored) {
         }
         return super.shouldRender(livingEntity, camera, camX, camY, camZ);
-    }
-
-    @Override
-    public void render(RavenEntity entity,
-                       float entityYaw,
-                       float partialTick,
-                       PoseStack poseStack,
-                       MultiBufferSource bufferSource,
-                       int packedLight) {
-        try {
-            if (entity != null
-                    && entity.isRavenLinkControlled()
-                    && entity.isPassenger()
-                    && entity.getVehicle() instanceof Player) {
-                poseStack.pushPose();
-                poseStack.translate(0.0D, RAVEN_LINK_RIDING_RENDER_Y_OFFSET, 0.0D);
-                super.render(entity, entityYaw, partialTick, poseStack, bufferSource, packedLight);
-                poseStack.popPose();
-                return;
-            }
-        } catch (Throwable ignored) {
-            // fall through to default render path
-        }
-        super.render(entity, entityYaw, partialTick, poseStack, bufferSource, packedLight);
     }
 
     /**

@@ -6,9 +6,7 @@
     "P"
   ],
   "key": {
-    "P": {
-      "item": "minecraft:paper"
-    }
+    "P": "minecraft:paper"
   },
   "result": {
     "id": "featheredfriend:scroll_unsealed",

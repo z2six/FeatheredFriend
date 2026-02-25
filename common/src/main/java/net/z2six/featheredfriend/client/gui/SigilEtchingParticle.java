@@ -316,15 +316,14 @@ public class SigilEtchingParticle {
                 RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, a);
 
                 guiGraphics.blit(
+                        net.minecraft.client.renderer.RenderType::guiTextured,
                         PARTICLE_TEXTURE,
                         -half,
                         -half,
-                        drawSize,
-                        drawSize,
                         0,
                         0,
-                        16,
-                        16,
+                        drawSize,
+                        drawSize,
                         16,
                         16
                 );
