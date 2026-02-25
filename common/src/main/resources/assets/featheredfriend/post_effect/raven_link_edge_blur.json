@@ -1,0 +1,67 @@
+{
+  "targets": {
+    "blur_swap": {},
+    "blur_final": {},
+    "composite_out": {}
+  },
+  "passes": [
+    {
+      "program": "featheredfriend:program/raven_link_gaussian_blur",
+      "inputs": [
+        {
+          "sampler_name": "DiffuseSampler",
+          "target": "minecraft:main",
+          "bilinear": true
+        }
+      ],
+      "output": "blur_swap",
+      "uniforms": [
+        {
+          "name": "BlurDir",
+          "values": [1.0, 0.0]
+        }
+      ]
+    },
+    {
+      "program": "featheredfriend:program/raven_link_gaussian_blur",
+      "inputs": [
+        {
+          "sampler_name": "DiffuseSampler",
+          "target": "blur_swap",
+          "bilinear": true
+        }
+      ],
+      "output": "blur_final",
+      "uniforms": [
+        {
+          "name": "BlurDir",
+          "values": [0.0, 1.0]
+        }
+      ]
+    },
+    {
+      "program": "featheredfriend:program/raven_link_edge_composite",
+      "inputs": [
+        {
+          "sampler_name": "DiffuseSampler",
+          "target": "blur_final"
+        },
+        {
+          "sampler_name": "SceneSampler",
+          "target": "minecraft:main"
+        }
+      ],
+      "output": "composite_out"
+    },
+    {
+      "program": "featheredfriend:program/raven_link_copy_opaque",
+      "inputs": [
+        {
+          "sampler_name": "DiffuseSampler",
+          "target": "composite_out"
+        }
+      ],
+      "output": "minecraft:main"
+    }
+  ]
+}

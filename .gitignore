@@ -43,3 +43,15 @@ runs
 /.gradle-user-home/
 /.gradle-user-home2/
 /.gradle-user-home-cod/
+/tmp_AbstractContainerScreen.class
+/.gradle-user-home-alt/wrapper/dists/gradle-8.10-bin/deqhafrv1ntovfmgh0nh3npr9/gradle-8.10-bin.zip.lck
+/.gradle-user-home-neo1213/wrapper/dists/gradle-8.10-bin/deqhafrv1ntovfmgh0nh3npr9/gradle-8.10-bin.zip.lck
+/.gradle-user-home-alt/wrapper/dists/gradle-8.10-bin/deqhafrv1ntovfmgh0nh3npr9/gradle-8.10-bin.zip.part
+/.gradle-user-home-neo1213/wrapper/dists/gradle-8.10-bin/deqhafrv1ntovfmgh0nh3npr9/gradle-8.10-bin.zip.part
+/net/minecraft/client/renderer/entity/EntityRenderer.java
+/patches/net/minecraft/client/gui/GuiGraphics.java.patch
+/net/minecraft/client/model/HumanoidModel.java
+/net/neoforged/neoforge/client/extensions/IGuiGraphicsExtension.java
+/net/minecraft/client/renderer/entity/LivingEntityRenderer.java
+/net/minecraft/client/model/PlayerModel.java
+/net/minecraft/client/renderer/entity/player/PlayerRenderer.java
