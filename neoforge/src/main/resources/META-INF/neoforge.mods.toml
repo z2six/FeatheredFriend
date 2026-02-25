@@ -30,7 +30,7 @@ ordering = "NONE"
 side = "BOTH"
 [[dependencies.${mod_id}]]
 modId="rpgtimeline"
-type="required"
+type="optional"
 versionRange="[0,)"
 ordering="AFTER"
 side="BOTH"
