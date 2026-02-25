@@ -3,6 +3,8 @@ plugins {
     id 'net.neoforged.moddev'
 }
 
+def geckolibCommonMinecraftVersion = (project.findProperty('geckolib_common_minecraft_version') ?: minecraft_version).toString()
+
 repositories {
     maven {
         name = "GeckoLib"
@@ -33,7 +35,7 @@ dependencies {
     annotationProcessor group: 'io.github.llamalad7', name: 'mixinextras-common', version: '0.3.5'
 
     // GeckoLib common API (used by RavenEntity/renderer interfaces)
-    compileOnly "software.bernie.geckolib:geckolib-common-1.21.1:${geckolib_version}"
+    compileOnly "software.bernie.geckolib:geckolib-common-${geckolibCommonMinecraftVersion}:${geckolib_version}"
 }
 
 configurations {

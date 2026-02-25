@@ -5,6 +5,12 @@ plugins {
     id 'net.neoforged.moddev'
 }
 
+def depMinecraftVersion = (project.findProperty('dep_minecraft_version') ?: minecraft_version).toString()
+def jeiMinecraftVersion = (project.findProperty('jei_minecraft_version') ?: depMinecraftVersion).toString()
+def geckolibMinecraftVersion = (project.findProperty('geckolib_minecraft_version') ?: depMinecraftVersion).toString()
+def resolvedJeiVersion = (project.findProperty('jei_version') ?: '19.25.1.328').toString()
+def resolvedJadeVersion = (project.findProperty('jade_version') ?: '15.10.5+neoforge').toString()
+
 repositories {
     // GeckoLib's official Cloudsmith Maven repository (required to resolve GeckoLib artifacts)
     // Restrict scope to the GeckoLib group to avoid affecting other dependency resolution.
@@ -74,16 +80,16 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 dependencies {
     // JEI API for compile-time, JEI mod for runtime
-    compileOnly "mezz.jei:jei-1.21.1-neoforge-api:19.25.1.328"
-    runtimeOnly  "mezz.jei:jei-1.21.1-neoforge:19.25.1.328"
+    compileOnly "mezz.jei:jei-${jeiMinecraftVersion}-neoforge-api:${resolvedJeiVersion}"
+    runtimeOnly  "mezz.jei:jei-${jeiMinecraftVersion}-neoforge:${resolvedJeiVersion}"
 
-    // GeckoLib (NeoForge 1.21.1)
-    implementation "software.bernie.geckolib:geckolib-neoforge-1.21.1:4.8.2"
+    // GeckoLib (NeoForge 1.21.x; artifact suffix can be overridden per matrix profile)
+    implementation "software.bernie.geckolib:geckolib-neoforge-${geckolibMinecraftVersion}:${geckolib_version}"
 
     // Jade (optional integration)
     // Compile-time API is needed for FeatheredFriendJadePlugin to compile, but the mod remains optional at runtime.
-    compileOnly "maven.modrinth:jade:15.10.5+neoforge"
-    runtimeOnly  "maven.modrinth:jade:15.10.5+neoforge"
+    compileOnly "maven.modrinth:jade:${resolvedJadeVersion}"
+    runtimeOnly  "maven.modrinth:jade:${resolvedJadeVersion}"
 
     // Optional integration APIs (resolved from local dev run/mods jars).
     // Keep these in run/mods for compilation if you prefer local jars:
@@ -97,4 +103,111 @@ tasks.withType(JavaCompile).configureEach {
     options.compilerArgs += ["-Xlint:unchecked"]
     // (Optional, often handy too)
     // options.compilerArgs += ["-Xlint:deprecation"]
+}
+
+// NeoForge 1.21.0-1.21.2 compatibility profiles.
+// Note: NeoForge has no dedicated 1.21.2 runtime line, so 1.21.2 tasks use the 1.21.1 runtime.
+def neoCompatProfiles = [
+    [id: "1_21_0", label: "1.21.0", mc: "1.21",   neoforge: "21.0.167", neoform: "1.21-20240613.152323",   jei: "19.8.2.99",   jeiMc: "1.21",   gecko: "4.5.8", jade: "15.10.5+neoforge"],
+    [id: "1_21_1", label: "1.21.1", mc: "1.21.1", neoforge: "21.1.219", neoform: "1.21.1-20240808.144430", jei: "19.25.1.328", jeiMc: "1.21.1", gecko: "4.8.2", jade: "15.10.5+neoforge"],
+    [id: "1_21_2", label: "1.21.2", mc: "1.21.1", neoforge: "21.1.219", neoform: "1.21.1-20240808.144430", jei: "19.25.1.328", jeiMc: "1.21.1", gecko: "4.8.2", jade: "15.10.5+neoforge", aliasNote: "uses 1.21.1 NeoForge runtime"]
+]
+
+def matrixProps = { profile ->
+    [
+        "minecraft_version": profile.mc,
+        "neoforge_version": profile.neoforge,
+        "neo_form_version": profile.neoform,
+        "dep_minecraft_version": profile.mc,
+        "jei_minecraft_version": (profile.jeiMc ?: profile.mc),
+        "geckolib_minecraft_version": profile.mc,
+        "jei_version": profile.jei,
+        "geckolib_version": profile.gecko,
+        "geckolib_common_minecraft_version": profile.mc,
+        "jade_version": profile.jade
+    ]
+}
+
+def isWindowsOs = System.getProperty("os.name").toLowerCase().contains("windows")
+def gradleCommandPrefix = isWindowsOs ? ["cmd", "/c", "gradlew.bat"] : ["./gradlew"]
+def localGradleUserHome = new File(rootProject.projectDir, ".gradle-user-home").absolutePath
+
+def registerMatrixExecTask = { String taskName, String groupName, String descriptionText, List<String> gradleTasks, Map<String, String> props ->
+    tasks.register(taskName) {
+        group = groupName
+        description = descriptionText
+        doLast {
+            def argsList = []
+            argsList.addAll(gradleCommandPrefix)
+            argsList.addAll(gradleTasks)
+            argsList += "--no-daemon"
+            argsList += "--configure-on-demand"
+            props.each { key, value ->
+                argsList += "-P${key}=${value}"
+            }
+            project.exec {
+                workingDir rootProject.projectDir
+                environment "GRADLE_USER_HOME", localGradleUserHome
+                commandLine argsList
+            }
+        }
+    }
+}
+
+neoCompatProfiles.each { profile ->
+    def suffix = profile.id
+    def alias = profile.aliasNote ? " (${profile.aliasNote})" : ""
+    registerMatrixExecTask(
+            "matrixNeoCheck_${suffix}",
+            "ff matrix",
+            "Verifies NeoForge compilation for Minecraft ${profile.label}${alias}.",
+            [":common:compileJava", ":neoforge:compileJava"],
+            matrixProps(profile)
+    )
+    registerMatrixExecTask(
+            "runClientNeo_${suffix}",
+            "mod development",
+            "Runs NeoForge client for Minecraft ${profile.label}${alias}.",
+            [":neoforge:runClient"],
+            matrixProps(profile)
+    )
+    registerMatrixExecTask(
+            "runClient2Neo_${suffix}",
+            "mod development",
+            "Runs NeoForge second client for Minecraft ${profile.label}${alias}.",
+            [":neoforge:runClient2"],
+            matrixProps(profile)
+    )
+}
+
+def finalJarProfile = neoCompatProfiles.find { it.id == "1_21_0" }
+registerMatrixExecTask(
+        "matrixNeoJar_1_21_0",
+        "ff matrix",
+        "Builds the final NeoForge jar using the 1.21.0 compatibility profile.",
+        [":neoforge:jar"],
+        matrixProps(finalJarProfile)
+)
+
+tasks.register("matrixNeoCleanLibs") {
+    group = "ff matrix"
+    description = "Clears neoforge/build/libs so the compatibility build leaves one fresh jar."
+    doLast {
+        delete(fileTree(dir: file('build/libs')))
+    }
+}
+
+def compatBuildOrder = ["matrixNeoCleanLibs", "matrixNeoCheck_1_21_1", "matrixNeoCheck_1_21_2", "matrixNeoJar_1_21_0"]
+for (int i = 1; i < compatBuildOrder.size(); i++) {
+    def currentTaskName = compatBuildOrder[i]
+    def previousTaskName = compatBuildOrder[i - 1]
+    tasks.named(currentTaskName) {
+        mustRunAfter(previousTaskName)
+    }
+}
+
+tasks.register("buildNeo_1_21_0_to_1_21_2") {
+    group = "build"
+    description = "Compiles against 1.21.1 and 1.21.2 profiles, then builds one final jar from the 1.21.0 profile."
+    dependsOn(compatBuildOrder)
 }
