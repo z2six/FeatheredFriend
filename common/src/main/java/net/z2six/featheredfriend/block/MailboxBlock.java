@@ -38,7 +38,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 
 /**
- * Wall-mounted mailbox block (sign-like placement). Storage is per-mailbox and shared for all viewers.
+ * Wall-mounted mailbox block (sign-like placement). Storage is per-mailbox and shared for all viewers..
  */
 public class MailboxBlock extends BaseEntityBlock {
 
