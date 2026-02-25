@@ -1,159 +1,79 @@
-![Feathered Friend banner](https://media.forgecdn.net/attachments/description/null/description_d99b0f3c-59bb-4b67-b6bb-a0fdfe0f8076.png)
+![Title banner](https://cdn.modrinth.com/data/cached_images/9f959c492632f365cca0296b4480d577cbdab403.png)
 
 **Feathered Friend** is a roleplay-focused communication overhaul that replaces boring vanilla chat with something far more flavorful: trained ravens, wax-sealed scrolls, and unique personal sigils.
 
----
+**Dependencies:**
+- [Timeline](https://modrinth.com/mod/rpg-timeline)
+- [GeckoLib](https://modrinth.com/mod/geckolib)
 
-## What is Feathered Friend?
+**Compatibility:**
+- [Jade](https://modrinth.com/mod/jade)
+- [JEI](https://modrinth.com/mod/jei)
 
-Instead of typing into vanilla chat, you communicate by writing scrolls, sealing them with wax and your personal sigil, and sending them off via your trained raven.  
-By default, **vanilla chat is disabled** (server-side config can re-enable it if desired).
+**Localization:**  
+48 languages are currently supported.
 
-The goal is to provide a **simple, immersive, and meaningful** way to talk to other players that fits perfectly into medieval / fantasy / roleplay worlds.
-
----
-
-## How it works – from wild raven to trusted courier
-
-1. **Find a Raven**  
-   Explore the world and locate a wild raven. They’re cautious and clever, so don’t expect them to be instantly friendly.
-
-2. **Tame the Raven**  
-   Ravens love Golden Nuggets, but they’re not all the same.  
-   Each raven has its own personality – some tame easily, others are stubborn.  
-   Listen to its cawing to figure out how much it wants from you.
-
-3. **Craft your Seal Stamp & forge your Sigil**  
-   Craft your **Seal Stamp**, then carve a **completely unique sigil** into it.  
-   Your sigil is generated from a secret passphrase and stored securely using **SHA-256**.  
-   No other player can legitimately reproduce your sigil.
-
-4. **Write and seal your Scroll**  
-   Craft a scroll (**2x paper vertically**) and write your message on it.  
-   When you’re done, use wax and your Seal Stamp to create a **Sealed Scroll** that bears your personal sigil.
-
-5. **Summon your Raven**  
-   Whistle for your raven to come to you. Once it’s by your side, hold the **Sealed Scroll** in your hand.
-
-6. **Send your message**  
-   Right-click your raven while holding the Sealed Scroll.  
-   The raven immediately takes off and delivers the message to the target player – even if **the sender and/or recipient are offline**.  
-   The delivery system is handled entirely server-side and stored in world data.
+[![Support me on Ko-fi](https://img.shields.io/badge/Ko--fi-SUPPORT-FF5E5B?logo=ko-fi&logoColor=white&style=for-the-badge)](https://ko-fi.com/z2six)
+[![Join our Discord](https://img.shields.io/badge/Discord-JOIN-5865F2?logo=discord&logoColor=white&style=for-the-badge)](https://discord.gg/EF6Wvkt7AK)
 
 ---
 
-## Sigils, Seal Stamps & Identity
+![Features main banner](https://cdn.modrinth.com/data/cached_images/9395633475c7ac4af089bb10e5041d9778277aab.png)
 
-Your sigil is your in-world identity. It can’t be copied, forged, or reliably brute-forced by other players:
+![Taming banner](https://cdn.modrinth.com/data/cached_images/00f61527b0dde696ef520caf51665d97764461ba_0.webp)
 
-- Sigils are derived from a **secret passphrase** → turned into a SHA-256 key → used as a **seed** for generation.
-- Sigils are composed from **Seed, Style, and Etchings**, giving you endless combinations.
-- The result: practical in-world “signatures” that are **visually unique** and **cryptographically safe** to use on scrolls.
+Ravens like shiny objects and are very peculiar. **Bring shinies**, and **listen carefully** to the Raven's cawing... Make a mistake, and the Raven will deem your intellect unworthy! 🤓
 
-Some example sigils:
+![Raven Armor banner](https://cdn.modrinth.com/data/cached_images/18e5e080686c71f0ab3c5b644b7c0aaf5dffd63c_0.webp)
 
-|  |  |
-|---|---|
-| ![Sigil example 1](https://media.forgecdn.net/attachments/description/null/description_46b03b19-5da6-4724-9d41-ec220a578761.png) | ![Sigil example 2](https://media.forgecdn.net/attachments/description/null/description_8db1ccd6-c4d2-4136-9210-92a6956ce55c.png) |
-| ![Sigil example 3](https://media.forgecdn.net/attachments/description/null/description_c8ea1f85-2ab7-40ab-be09-631ebb20844e.png) | ![Sigil example 4](https://media.forgecdn.net/attachments/description/null/description_bde1ecbf-af2a-4a16-bea6-38aac097adca.png) |
+Raven armors aren't just "more HP". They introduce **completely new stats** that make your Raven more useful in several different ways.
 
----
+![Sigils banner](https://cdn.modrinth.com/data/cached_images/6aad49e489ebe5f97c4cd895af1acbf1b6117867.png)
 
-## Scrolls & Writing Interface
+You'll need to know whether a scroll about important war plans is legit. Luckily, the sigils you stamp on scrolls' wax are **completely unique** and **cannot be reproduced**.
 
-To send a message, you’ll first craft and write your scroll:
+![Scrolls banner](https://cdn.modrinth.com/data/cached_images/cc936c8d066dcb9cb6a465652428cda88d08c5d0.png)
 
-- **Crafting**: 2x Paper placed vertically in a crafting grid → basic scroll.
-- **Writing**: Open the scroll UI and write your message exactly as you want it delivered.
-- **Sealing**: Apply wax + your Seal Stamp to bind the contents and imprint your sigil.
+The main purpose of this mod: scrolls! Better than vanilla chat. And, you can also **attach items** (if you have an Ender Pearl).
 
-![Scroll writing UI](https://media.forgecdn.net/attachments/description/null/description_ce4bbd53-86cf-405e-b364-e3494f19a15c.png)
+![Mailbox banner](https://cdn.modrinth.com/data/cached_images/500ee55651b270decab66683cea6163ab22b9e57_0.webp)
 
----
+Your friend offline? No problem, your Raven will **deliver scrolls at the recipient's mailbox**, as long as your Raven has spotted the mailbox before.
 
-## Custom Date & Calendar System
+![Suspicious Chest banner](https://cdn.modrinth.com/data/cached_images/d0fa78dae0f1fa73c8f9c8226550a03b438af223.png)
 
-Note: This feature is now provided by the standalone RPG Calendar mod.
-Install RPG Calendar alongside FeatheredFriend to enable date stamping.
+The Suspicious Chest... It allows you to **send items back to your base** while you are on an adventure. Some say it's alive, others say that it serves a secret purpose... 😱
 
-Feathered Friend also ships with a **fully customizable in-game date system**.  
-By default, your world starts on:
+![Suspicious Feather banner](https://cdn.modrinth.com/data/cached_images/9303fa71c2b5eb3c8e001944b22e4a725dd353f1_0.webp)
 
-**Day 1 of Dawnroot, 1 A.N.**  
-*(Year 1 After Notch 😉)*
+Tether your soul at any time, and **fly around as your Raven**. Oh, and [Simple Voice Chat](https://www.curseforge.com/minecraft/mc-mods/simple-voice-chat) works as well. Go scare your friends! 👻
 
-- Day / month / year names are configurable.
-- Perfect for lore-rich servers that want their own in-world calendar.
-- Pairs naturally with written correspondence and long-lasting roleplay campaigns.
+![Config banner](https://cdn.modrinth.com/data/cached_images/fb327b8a97b32f10d54272f693b54a3cdeb45698.png)
 
----
+"The customer is always right." That's why you can adjust whatever you like, including the **disabling of features**.
 
-## Raven AI & Behavior
+![Coming Soon banner](https://cdn.modrinth.com/data/cached_images/c5e55e8818a20dc72faa3794e9650cbe547910bd_0.webp)
 
-Ravens aren’t just re-skinned parrots – they’re built to feel smart, cautious, and a little bit supernatural:
+But where do these Ravens come from? What is their relation to Ender magic? Who knows...
 
-- **Custom A\* Pathfinding**  
-  Ravens use a custom A\* implementation tuned to keep them from getting stuck on terrain.  
-  If a raven *does* get into trouble, it will gracefully **teleport nearby or further along its path** rather than hanging in place forever.
+![Credits main banner](https://cdn.modrinth.com/data/cached_images/8d5261ce0af3522dd8aa86503e494ac873d29c4d.png)
 
-- **Hard to Kill**  
-  Ravens have a **75% chance to dodge incoming damage**.  
-  When they’re hurt or feel threatened, they will **teleport away** to safety and try to avoid further contact.
+3D modeling is done by [@Jonny324](https://github.com/Jonny324) ([portfolio](https://www.artstation.com/jonny324)), UI design by FOOG (@foogFox_ on [Twitter/X](https://x.com/foogFox_)), and sound effects were generated using ElevenLabs; ownership/usage rights for all commissioned and generated assets are retained by me, and all such assets are All Rights Reserved.
 
-- **Eyes and Ears Everywhere**  
-  Ravens are extremely perceptive. They “see” and “hear” players around them and will **flee as soon as they detect danger**.  
-  They hear and see everything. 😉
+I would not have made this mod if it wasn't for [Devrune](https://www.curseforge.com/members/devrune/projects) and his [Messenger Crow](https://www.curseforge.com/minecraft/mc-mods/messenger-crow) mod. This mod is clearly borrowing from that amazing concept 🙏
 
----
+Also a big shoutout to the members in our Discord:
+- Archemagos: testing features, creating the "Enderpack" and "Suspicious Feather" item textures
+- Cyan(ide): creating the "Raven's Feather" texture
+- MyBoyCharles: cooking up some great ideas for me to develop
+- Cursed Crusader: finding (too many 😤) bugs and visual inspo
 
-## Delivery System & Multiplayer Support
+![Legal main banner](https://cdn.modrinth.com/data/cached_images/eb28ab3d78eed070feb886a936dddfdb08282469.png)
 
-- **Server-side Delivery**  
-  Raven deliveries are **fully independent of any specific player or entity**.  
-  A central delivery system runs on the server and is stored in world data.
+Custom license: [Z2SIX Mod License (Code + Assets)](https://github.com/z2six/FeatheredFriend/blob/1.21.1/LICENSE.md)  
+https://github.com/z2six/FeatheredFriend/blob/1.21.1/LICENSE.md
 
-- **Works with Offline Players**  
-  You can send scrolls to both **online and offline** players.  
-  Once someone has logged in at least once, they are remembered as a **known player** and can receive ravens anytime.
-
-- **Player Cache**  
-  Known players are cached so you can keep sending messages without needing them online every time.
-
-- **Configurable Vanilla Chat**  
-  By default, vanilla chat is turned off to encourage raven-based communication.  
-  Server admins can re-enable vanilla chat in the config if needed.
-
----
-
-## Planned & Ongoing Work
-
-**Todo / Roadmap**
-
-- General bug fixing (please report any issues you find!)
-- More polish for UI, particles, sounds, and raven behavior
-- Additional sigil **Styles** and variations
-- More / better sound effects for ravens, seals, and scroll handling
-- After a period of stabilization and polishing:
-    - Port to all NeoForge 1.21.x versions
-    - Port to Forge 1.20.1
-
----
-
-## Licensing
-
-- **Code:** MIT License
-- **Assets (textures, models, sounds, etc.):** **ALL RIGHTS RESERVED** by Z2SIX
-
-You are free to read, modify, and build on the **code** under the terms of the MIT license.  
-However, **any changes to or redistribution of the assets outside this mod** is **not allowed under any circumstances**.
-
----
-
-## Distribution & Modpacks
-
-You may include **Feathered Friend** in modpacks and on servers as long as:
-
-- The mod’s JAR and assets remain **unmodified** inside the pack.
-- You do not extract or reuse the art / audio assets outside of this mod.
-
-If you enjoy the mod, a link back to this page is always appreciated. 🖋️🕊️
+Assets (3rd-party assets) excluded from above license:
+- "Whistle" sound FX
+- "Jacquard" font
+- "Alagard" font
