@@ -50,7 +50,7 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
 
     /**
      * Number of high-level motif passes per slice.
-     * Each pass picks a different motif recipe to mark.
+     * Each pass picks a different motif recipes to mark.
      *
      * Reduced for cleaner, larger designs.
      */
@@ -129,10 +129,10 @@ public final class SealSigilShapeSetMedieval0 implements SealSigilShapeSet {
             carveHeraldicCrossCluster(pixels, cx, cy, radius, radiusSq, sliceStart, sliceEnd, rng);
             carveShieldAndBossBand(pixels, cx, cy, radius, radiusSq, sliceStart, sliceEnd, rng);
 
-            // 2) Motif passes; each selects a recipe to carve more features.
+            // 2) Motif passes; each selects a recipes to carve more features.
             for (int pass = 0; pass < passes; pass++) {
                 try {
-                    int recipe = rng.nextInt(5); // drop one recipe to cut clutter
+                    int recipe = rng.nextInt(5); // drop one recipes to cut clutter
                     switch (recipe) {
                         case 0 -> carveCrenellatedTowerRim(pixels, cx, cy, radius, radiusSq, sliceStart, sliceEnd, rng, pass);
                         case 1 -> carveCathedralArcTracery(pixels, cx, cy, radius, radiusSq, sliceStart, sliceEnd, rng, pass);

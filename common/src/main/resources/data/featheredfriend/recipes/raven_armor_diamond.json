@@ -9,7 +9,7 @@
     "Y": { "item": "minecraft:diamond" }
   },
   "result": {
-    "id": "featheredfriend:raven_armor_diamond",
+    "item": "featheredfriend:raven_armor_diamond",
     "count": 1
   }
 }

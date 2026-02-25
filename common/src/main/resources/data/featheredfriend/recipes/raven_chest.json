@@ -12,7 +12,7 @@
     "C": { "item": "minecraft:chest" }
   },
   "result": {
-    "id": "featheredfriend:raven_chest",
+    "item": "featheredfriend:raven_chest",
     "count": 1
   }
 }

@@ -6,10 +6,10 @@
     " YY"
   ],
   "key": {
-    "Y": { "item": "minecraft:gold_ingot" }
+    "Y": { "item": "minecraft:netherite_ingot" }
   },
   "result": {
-    "id": "featheredfriend:raven_armor_gold",
+    "item": "featheredfriend:raven_armor_netherite",
     "count": 1
   }
 }

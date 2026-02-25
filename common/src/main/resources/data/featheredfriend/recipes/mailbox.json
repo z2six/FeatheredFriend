@@ -10,7 +10,7 @@
     "B": { "item": "minecraft:blackstone" }
   },
   "result": {
-    "id": "featheredfriend:mailbox",
+    "item": "featheredfriend:mailbox",
     "count": 1
   }
 }

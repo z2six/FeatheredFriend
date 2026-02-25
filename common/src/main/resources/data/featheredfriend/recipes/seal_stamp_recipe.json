@@ -2,16 +2,20 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "pattern": [
-    "P",
+    "S",
+    "S",
     "P"
   ],
   "key": {
+    "S": {
+      "item": "minecraft:stick"
+    },
     "P": {
-      "item": "minecraft:paper"
+      "tag": "minecraft:planks"
     }
   },
   "result": {
-    "id": "featheredfriend:scroll_unsealed",
+    "item": "featheredfriend:seal_stamp",
     "count": 1
   }
 }
