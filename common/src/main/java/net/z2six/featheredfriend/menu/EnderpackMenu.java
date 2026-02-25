@@ -1,6 +1,6 @@
 package net.z2six.featheredfriend.menu;
 
-import net.minecraft.core.HolderLookup;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.player.Inventory;
@@ -8,7 +8,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
-import net.z2six.featheredfriend.item.EnderpackStackRef;
+import net.z2six.featheredfriend.item.EnderpackSharedStorage;
 import net.z2six.featheredfriend.item.EnderpackStorage;
 import net.z2six.featheredfriend.platform.Services;
 import org.jetbrains.annotations.NotNull;
@@ -28,8 +28,7 @@ public class EnderpackMenu extends AbstractContainerMenu {
     private final Container enderpackContainer = new SimpleContainer(SLOT_COUNT);
     private final Inventory playerInventory;
 
-    private @Nullable EnderpackStackRef stackRef;
-    private @Nullable HolderLookup.Provider registries;
+    private @Nullable ServerPlayer boundPlayer;
 
     public EnderpackMenu(int containerId, @NotNull Inventory playerInventory) {
         super(Services.PLATFORM.getEnderpackMenuType(), containerId);
@@ -68,21 +67,18 @@ public class EnderpackMenu extends AbstractContainerMenu {
         }
     }
 
-    public void bindServerStorage(@NotNull EnderpackStackRef stackRef,
-                                  @NotNull HolderLookup.Provider registries) {
-        this.stackRef = stackRef;
-        this.registries = registries;
-        loadFromBoundStack();
+    public void bindServerStorage(@NotNull ServerPlayer player) {
+        this.boundPlayer = player;
+        loadFromSharedStorage();
         sanitizeForbiddenNestedEnderpacks();
     }
 
-    private void loadFromBoundStack() {
+    private void loadFromSharedStorage() {
         try {
-            if (this.stackRef == null || this.registries == null) {
+            if (this.boundPlayer == null) {
                 return;
             }
-            ItemStack stack = this.stackRef.getCurrentStack();
-            List<ItemStack> loaded = EnderpackStorage.load(stack, this.registries);
+            List<ItemStack> loaded = EnderpackSharedStorage.load(this.boundPlayer);
             for (int i = 0; i < SLOT_COUNT; i++) {
                 ItemStack s = (i < loaded.size()) ? loaded.get(i) : ItemStack.EMPTY;
                 this.enderpackContainer.setItem(i, s == null ? ItemStack.EMPTY : s.copy());
@@ -118,17 +114,20 @@ public class EnderpackMenu extends AbstractContainerMenu {
         }
     }
 
-    private void saveToBoundStack() {
+    private void saveToSharedStorage(boolean sanitizeFirst) {
         try {
-            if (this.stackRef == null || this.registries == null) {
+            ServerPlayer targetPlayer = this.boundPlayer;
+            if (targetPlayer == null && !this.playerInventory.player.level().isClientSide()
+                    && this.playerInventory.player instanceof ServerPlayer serverPlayer) {
+                targetPlayer = serverPlayer;
+                this.boundPlayer = serverPlayer;
+            }
+            if (targetPlayer == null) {
                 return;
             }
 
-            sanitizeForbiddenNestedEnderpacks();
-
-            ItemStack stack = this.stackRef.getCurrentStack();
-            if (!EnderpackStorage.isEnderpack(stack)) {
-                stack = new ItemStack(net.z2six.featheredfriend.registry.FFItems.ENDERPACK.get());
+            if (sanitizeFirst) {
+                sanitizeForbiddenNestedEnderpacks();
             }
 
             net.minecraft.core.NonNullList<ItemStack> toSave =
@@ -138,8 +137,7 @@ public class EnderpackMenu extends AbstractContainerMenu {
                 toSave.set(i, (s == null || s.isEmpty()) ? ItemStack.EMPTY : s.copy());
             }
 
-            EnderpackStorage.save(stack, toSave, this.registries);
-            this.stackRef.setCurrentStack(stack);
+            EnderpackSharedStorage.save(targetPlayer, toSave);
         } catch (Throwable ignored) {
         }
     }
@@ -191,10 +189,18 @@ public class EnderpackMenu extends AbstractContainerMenu {
     }
 
     @Override
+    public void slotsChanged(@NotNull Container container) {
+        super.slotsChanged(container);
+        if (!this.playerInventory.player.level().isClientSide()) {
+            saveToSharedStorage(false);
+        }
+    }
+
+    @Override
     public void removed(@NotNull Player player) {
         super.removed(player);
         if (!player.level().isClientSide()) {
-            saveToBoundStack();
+            saveToSharedStorage(true);
         }
     }
 

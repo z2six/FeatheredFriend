@@ -4,7 +4,6 @@ package net.z2six.featheredfriend.world;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.HolderLookup;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -38,9 +37,10 @@ import net.z2six.featheredfriend.entity.raven.RavenEntity;
 import net.z2six.featheredfriend.entity.raven.modules.RavenSoundEngine;
 import net.z2six.featheredfriend.entity.raven.modules.TamedRaven;
 import net.z2six.featheredfriend.entity.raven.modules.Teleportation;
-import net.z2six.featheredfriend.item.EnderpackStorage;
+import net.z2six.featheredfriend.item.EnderpackSharedStorage;
 import net.z2six.featheredfriend.log.RavenLogCategory;
 import net.z2six.featheredfriend.log.FFLogThrottle;
+import net.z2six.featheredfriend.menu.EnderpackMenu;
 import net.z2six.featheredfriend.network.RavenChestChoiceInfo;
 import net.z2six.featheredfriend.network.RavenChestSelectAction;
 import net.z2six.featheredfriend.platform.Services;
@@ -193,6 +193,7 @@ public final class TamedRavenScrollWatcher {
         private @NotNull String chestDimensionId;
         private long chestBlockPos;
         private @NotNull EnderpackExtraction extraction;
+        private @NotNull List<ItemStack> inFlightStacks = List.of();
         private long depositAtGameTime;
         private long returnAtGameTime;
         private boolean deposited;
@@ -750,9 +751,8 @@ public final class TamedRavenScrollWatcher {
                                     ravenChest.triggerScriptedOpenForTicks(ENDERPACK_WORKFLOW_CHEST_HOLD_TICKS);
 
                                     int moved = transferEnderpackContentsIntoContainer(
-                                            workflow.extraction.enderpackStack,
-                                            ravenChest,
-                                            chestLevel.registryAccess()
+                                            workflow.inFlightStacks,
+                                            ravenChest
                                     );
                                     workflow.movedItems = Math.max(0, moved);
                                     workflow.deposited = true;
@@ -795,7 +795,7 @@ public final class TamedRavenScrollWatcher {
 
                 RavenEntity returnedRaven = spawnReturnRavenForOwner(owner);
                 Vec3 dropPos = returnedRaven != null ? returnedRaven.position() : owner.position();
-                returnExtractedEnderpack(owner, workflow.extraction, dropPos);
+                restoreEnderpackAfterWorkflow(owner, workflow, dropPos);
                 returnedToOwner = true;
 
                 if (workflow.invalidTarget) {
@@ -849,7 +849,7 @@ public final class TamedRavenScrollWatcher {
             try {
                 ServerPlayer owner = server.getPlayerList().getPlayer(workflow.ownerUuid);
                 if (owner != null) {
-                    returnExtractedEnderpack(owner, workflow.extraction, owner.position());
+                    restoreEnderpackAfterWorkflow(owner, workflow, owner.position());
                     logPlayer(
                             owner,
                             RavenLogCategory.ENDERPACK,
@@ -2977,6 +2977,11 @@ public final class TamedRavenScrollWatcher {
                 return;
             }
 
+            if (hasActiveEnderpackDepositWorkflowForOwner(player.getUUID())) {
+                player.sendSystemMessage(Component.literal("[FeatheredFriend] Enderpack deposit already in progress."));
+                return;
+            }
+
             logPlayer(
                     player,
                     RavenLogCategory.ENDERPACK,
@@ -3055,6 +3060,14 @@ public final class TamedRavenScrollWatcher {
                 return;
             }
 
+            closeOpenEnderpackMenu(player);
+            EnderpackSharedStorage.migrateLegacyDataFromStackIfSharedEmpty(
+                    player,
+                    extraction.enderpackStack,
+                    targetLevel.registryAccess()
+            );
+            List<ItemStack> inFlightStacks = EnderpackSharedStorage.beginDepositSnapshot(player);
+
             setRavenChestPerchAssignment(raven, dimensionId, blockPos);
             applyRavenChestPerchPose(targetLevel, raven, targetPos);
             raven.setPersistenceRequired();
@@ -3065,6 +3078,7 @@ public final class TamedRavenScrollWatcher {
             workflow.chestDimensionId = dimensionId;
             workflow.chestBlockPos = blockPos;
             workflow.extraction = extraction;
+            workflow.inFlightStacks = inFlightStacks;
             workflow.depositAtGameTime = targetLevel.getGameTime() + ENDERPACK_WORKFLOW_DEPOSIT_DELAY_TICKS;
             workflow.returnAtGameTime = workflow.depositAtGameTime + ENDERPACK_WORKFLOW_RETURN_DELAY_TICKS;
             workflow.deposited = false;
@@ -3314,20 +3328,13 @@ public final class TamedRavenScrollWatcher {
         }
     }
 
-    private static int transferEnderpackContentsIntoContainer(@NotNull ItemStack enderpackStack,
-                                                              @NotNull net.minecraft.world.Container container,
-                                                              @NotNull HolderLookup.Provider registries) {
+    private static int transferEnderpackContentsIntoContainer(@Nullable List<ItemStack> inFlightStacks,
+                                                              @NotNull net.minecraft.world.Container container) {
         try {
-            if (!FFItems.isEnderpack(enderpackStack)) {
+            if (inFlightStacks == null || inFlightStacks.isEmpty()) {
                 return 0;
             }
-            List<ItemStack> packStacks = new ArrayList<>(EnderpackStorage.load(enderpackStack, registries));
-            if (packStacks.isEmpty()) {
-                return 0;
-            }
-
-            int moved = moveStacksIntoContainer(packStacks, container);
-            EnderpackStorage.save(enderpackStack, packStacks, registries);
+            int moved = moveStacksIntoContainer(inFlightStacks, container);
             container.setChanged();
             return Math.max(0, moved);
         } catch (Throwable t) {
@@ -3398,6 +3405,46 @@ public final class TamedRavenScrollWatcher {
         }
 
         return moved;
+    }
+
+    private static boolean hasActiveEnderpackDepositWorkflowForOwner(@NotNull UUID ownerUuid) {
+        for (EnderpackDepositWorkflow workflow : ENDERPACK_DEPOSIT_WORKFLOWS.values()) {
+            if (workflow == null || workflow.ownerUuid == null) {
+                continue;
+            }
+            if (ownerUuid.equals(workflow.ownerUuid)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void closeOpenEnderpackMenu(@NotNull ServerPlayer player) {
+        try {
+            if (player.containerMenu instanceof EnderpackMenu) {
+                player.closeContainer();
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void restoreEnderpackAfterWorkflow(@NotNull ServerPlayer owner,
+                                                      @NotNull EnderpackDepositWorkflow workflow,
+                                                      @NotNull Vec3 dropPos) {
+        try {
+            closeOpenEnderpackMenu(owner);
+            returnExtractedEnderpack(owner, workflow.extraction, dropPos);
+            List<ItemStack> overflow = EnderpackSharedStorage.mergeIntoSharedAndGetOverflow(
+                    owner,
+                    workflow.inFlightStacks == null ? List.of() : workflow.inFlightStacks
+            );
+            for (ItemStack stack : overflow) {
+                giveOrDropNearPlayer(owner, stack, dropPos);
+            }
+        } catch (Throwable t) {
+            LOG.warn("[TamedRavenScrollWatcher] restoreEnderpackAfterWorkflow failed safely for player='{}': {}",
+                    safePlayerName(owner), t.toString());
+        }
     }
 
     private static void returnExtractedEnderpack(@NotNull ServerPlayer player,

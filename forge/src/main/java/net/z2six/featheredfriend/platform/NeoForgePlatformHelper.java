@@ -24,7 +24,7 @@ import net.z2six.featheredfriend.config.FFServerConfig;
 import net.z2six.featheredfriend.client.ravenbadge.RavenStatusGuiAnchor;
 import net.z2six.featheredfriend.client.ravenbadge.RavenStatusGuiVisualMode;
 import net.z2six.featheredfriend.entity.raven.RavenEntity;
-import net.z2six.featheredfriend.item.EnderpackStorage;
+import net.z2six.featheredfriend.item.EnderpackSharedStorage;
 import net.z2six.featheredfriend.item.SealStampItem;
 import net.z2six.featheredfriend.item.SealStampSlotEntry;
 import net.z2six.featheredfriend.item.EnderpackStackRef;
@@ -146,10 +146,20 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
                 return;
             }
 
+            ItemStack sourceStack = source.ref.getCurrentStack();
+            if (FFItems.isEnderpack(sourceStack)) {
+                EnderpackSharedStorage.migrateLegacyDataFromStackIfSharedEmpty(
+                        player,
+                        sourceStack,
+                        player.server.registryAccess()
+                );
+                source.ref.setCurrentStack(sourceStack);
+            }
+
             player.openMenu(new SimpleMenuProvider(
                     (int containerId, Inventory inv, Player p) -> {
                         EnderpackMenu menu = new EnderpackMenu(containerId, inv);
-                        menu.bindServerStorage(source.ref, player.server.registryAccess());
+                        menu.bindServerStorage(player);
                         return menu;
                     },
                     Component.translatable("container.featheredfriend.enderpack")
@@ -509,14 +519,16 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
                 return -1;
             }
 
-            List<ItemStack> packStacks = new ArrayList<>(EnderpackStorage.load(sourceStack, registries));
+            EnderpackSharedStorage.migrateLegacyDataFromStackIfSharedEmpty(player, sourceStack, registries);
+            source.ref.setCurrentStack(sourceStack);
+
+            List<ItemStack> packStacks = new ArrayList<>(EnderpackSharedStorage.load(player));
             if (packStacks.isEmpty()) {
                 return 0;
             }
 
             int moved = moveStacksIntoContainer(packStacks, container);
-            EnderpackStorage.save(sourceStack, packStacks, registries);
-            source.ref.setCurrentStack(sourceStack);
+            EnderpackSharedStorage.save(player, packStacks);
             container.setChanged();
             return moved;
         } catch (Throwable t) {
