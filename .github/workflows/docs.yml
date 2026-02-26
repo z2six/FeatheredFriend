@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     environment:
-      name: github-pages
+      name: ${{ github.ref_name == '1.21.0-1.21.2' && 'github-pages-1.21.0-1.21.2' || 'github-pages' }}
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Deploy to GitHub Pages
