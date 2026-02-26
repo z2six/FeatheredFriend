@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 ## [2.0.1.2]
 
 ### Minor
-- Nerfed Enderpacks, effectively only allowing the use of one.
+- Nerfed Enderpacks, effectively only allowing the use of one
 
 ### Fixes
 - FORGE 1.20.1: Fixed `arrive.ogg` audio corruption
